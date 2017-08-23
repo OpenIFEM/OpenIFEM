@@ -1,27 +1,23 @@
 template<int dim>
 void LinearElasticSolver<dim>::assemble()
 {
-  // quadrature formula for volume integration, 2 Gauss points in each direction
-  QGauss<dim>  quadratureFormula(2);
-  // quadrature formula for surface integration, 2 Gauss points in each direction
-  QGauss<dim-1> faceQuadratureFormula(2);
   // fe values for volume integration
-  FEValues<dim> feValues (this->fe, quadratureFormula,
+  FEValues<dim> feValues (this->fe, this->quadFormula,
     update_values | update_gradients | update_quadrature_points | update_JxW_values);
   // fe values for surface integration
-  FEFaceValues<dim> feFaceValues(this->fe, faceQuadratureFormula,
+  FEFaceValues<dim> feFaceValues(this->fe, this->faceQuadFormula,
     update_values | update_quadrature_points |
     update_normal_vectors | update_JxW_values);
   const unsigned int   dofsPerCell = this->fe.dofs_per_cell;
-  const unsigned int   numQuadPts  = quadratureFormula.size();
-  const unsigned int numFaceQuadPts = faceQuadratureFormula.size();
+  const unsigned int   numQuadPts  = this->quadFormula.size();
+  const unsigned int numFaceQuadPts = this->faceQuadFormula.size();
   FullMatrix<double> cellMatrix(dofsPerCell, dofsPerCell);
   Vector<double> cellRhs (dofsPerCell);
   vector<types::global_dof_index> localDofIndices(dofsPerCell);
   // TODO: these should not be hardcoded!
-  double lambda = 1.;
-  double mu = 1.;
-  double rho = 1.;
+  double lambda = this->material->getLameFirst();
+  double mu = this->material->getLameSecond();
+  double rho = this->material->getDensity();
   for (auto cell = this->dofHandler.begin_active();
     cell != this->dofHandler.end(); ++cell)
   {
@@ -29,7 +25,8 @@ void LinearElasticSolver<dim>::assemble()
     cellRhs = 0.;
     feValues.reinit (cell);
     // matrix
-    for (unsigned int i=0; i < dofsPerCell; ++i) {
+    for (unsigned int i=0; i < dofsPerCell; ++i)
+    {
       const unsigned int component_i = this->fe.system_to_component_index(i).first;
       for (unsigned int j = 0; j < dofsPerCell; ++j)
       {
@@ -89,3 +86,47 @@ void LinearElasticSolver<dim>::assemble()
   }
 }
 
+template<int dim>
+void LinearElasticSolver<dim>::evaluateStressStrain()
+{
+  FEValues<dim> feValues (this->fe, this->quadFormula,
+    update_values | update_gradients | update_quadrature_points | update_JxW_values);
+  const unsigned int   numQuadPts  = this->quadFormula.size();
+  for (auto cell = this->dofHandler.begin_active(); cell != this->dofHandler.end(); ++cell)
+  {
+    feValues.reinit(cell);
+    vector<vector<Tensor<1, dim>>> quadPointGradients(numQuadPts,
+      vector<Tensor<1, dim>>(dim));
+    feValues.get_function_gradients(this->solution, quadPointGradients);
+    const unsigned int numComponents = (dim == 2? 3 : 6);
+    vector<Vector<double>> strain(numQuadPts, Vector<double>(numComponents));
+    vector<Vector<double>> stress(numQuadPts, Vector<double>(numComponents));
+    FullMatrix<double> coefficient(numComponents, numComponents);
+    double lambda = 1.0;
+    double mu = 1.0;
+    coefficient(0, 0) = lambda + 2*mu;
+    coefficient(0, 1) = lambda;
+    coefficient(1, 0) = lambda;
+    coefficient(1, 1) = lambda + 2*mu;
+    coefficient(2, 2) = mu;
+    for (unsigned int q = 0; q < numQuadPts; ++q)
+    {
+      if (dim == 2)
+      {
+        strain[q](0) = quadPointGradients[q][0][0];
+        strain[q](1) = quadPointGradients[q][1][1];
+        strain[q](2) = quadPointGradients[q][0][1] + quadPointGradients[q][1][0];
+      }
+      else
+      {
+        strain[q](0) = quadPointGradients[q][0][0];
+        strain[q](1) = quadPointGradients[q][1][1];
+        strain[q](2) = quadPointGradients[q][2][2];
+        strain[q](3) = quadPointGradients[q][1][2] + quadPointGradients[q][2][1];
+        strain[q](4) = quadPointGradients[q][0][2] + quadPointGradients[q][2][0];
+        strain[q](5) = quadPointGradients[q][0][1] + quadPointGradients[q][1][0];
+      }
+      coefficient.vmult(stress[q], strain[q]);
+    }
+  }
+}

@@ -1,4 +1,5 @@
 #include "linearElasticSolver.h"
+#include "linearMaterial.h"
 
 #include <iostream>
 
@@ -6,6 +7,9 @@ int main(int argc, char* argv[])
 {
   try
   {
+    using namespace dealii;
+    using namespace IFEM;
+
     LinearElasticSolver<2> solver;
     if (argc > 1)
     {
@@ -15,6 +19,9 @@ int main(int argc, char* argv[])
     {
       solver.generateMesh();
     }
+    LinearMaterial<2> steel(1., 1.);
+    solver.setMaterial(steel);
+    solver.printMaterial();
     solver.readBC();
     solver.setup();
     solver.assemble();
@@ -22,6 +29,7 @@ int main(int argc, char* argv[])
     solver.output(0);
     solver.solve();
     solver.output(1);
+    solver.evaluateStressStrain();
   }
   catch (std::exception& exc)
   {

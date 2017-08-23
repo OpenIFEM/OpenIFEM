@@ -18,6 +18,9 @@ SET(TARGET_SRC
   solverBase.tpp
   linearElasticSolver.h
   linearElasticSolver.tpp
+  material.h
+  material.tpp
+  linearMaterial.h
   )
 
 # Usually, you will not need to modify anything beyond this point...

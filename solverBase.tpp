@@ -1,4 +1,11 @@
 template<int dim>
+void SolverBase<dim>::setMaterial(const Material<dim>& mat)
+{
+  // Allocate and copy
+  this->material = make_shared<Material<dim>>(mat);
+}
+
+template<int dim>
 void SolverBase<dim>::generateMesh()
 {
   if (dim == 2)
@@ -123,7 +130,7 @@ void SolverBase<dim>::readBC(const std::string& fileName)
       }
       if (dofs.size() != vals.size())
       {
-        throw(runtime_error("Displacement bc has different numbers of dofs and values!"));
+        throw runtime_error("Displacement bc has different numbers of dofs and values!");
       }
       if (static_cast<int>(dofs.size()) > dim)
       {
