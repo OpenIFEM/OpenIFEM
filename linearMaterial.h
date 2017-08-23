@@ -1,3 +1,6 @@
+#ifndef LINEAR_MATERIAL
+#define LINEAR_MATERIAL
+
 #include <deal.II/base/symmetric_tensor.h>
 #include "material.h"
 
@@ -40,3 +43,5 @@ namespace IFEM
     return elasticity;
   }
 }
+
+#endif

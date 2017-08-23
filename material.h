@@ -12,6 +12,8 @@ namespace IFEM
   class Material
   {
   public:
+    /** Default constructor needed because there exists another constructor.*/
+    Material() {}
     Material(double lame1, double lame2, double rho = 1.0) :
       lambda(lame1), mu(lame2), density(rho), initialized(true) {}
     virtual ~Material() {}
@@ -25,7 +27,7 @@ namespace IFEM
     double getDensity() const;
 
     virtual void print() const;
-  private:
+  protected:
     double lambda = 0.0; // Lame's first parameter
     double mu = 0.0; // Shear modulus
     double density = 0.0;

@@ -106,7 +106,7 @@ namespace IFEM
     /**
     * Set the material.
     */
-    void setMaterial(const Material<dim>&);
+    virtual void setMaterial(Material<dim>*);
     /**
     * Temporary function to print material properties.
     */

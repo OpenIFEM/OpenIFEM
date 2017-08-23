@@ -1,6 +1,24 @@
 template<int dim>
+void LinearElasticSolver<dim>::setMaterial(Material<dim>* mat)
+{
+  LinearMaterial<dim>* linear = dynamic_cast<LinearMaterial<dim>*>(mat);
+  if (!linear)
+  {
+    throw runtime_error("A linear material is expected in a linear elastic solver!");
+  }
+  this->material = make_shared<LinearMaterial<dim>>(*linear);
+}
+
+template<int dim>
 void LinearElasticSolver<dim>::assemble()
 {
+  shared_ptr<LinearMaterial<dim>> linear =
+    dynamic_pointer_cast<LinearMaterial<dim>>(this->material);
+  if (!linear)
+  {
+    throw runtime_error("A linear material is expected in a linear elastic solver!");
+  }
+  SymmetricTensor<4, dim> elasticity = linear->getElasticityTensor();
   // fe values for volume integration
   FEValues<dim> feValues (this->fe, this->quadFormula,
     update_values | update_gradients | update_quadrature_points | update_JxW_values);

@@ -1,8 +1,12 @@
 template<int dim>
-void SolverBase<dim>::setMaterial(const Material<dim>& mat)
+void SolverBase<dim>::setMaterial(Material<dim>* mat)
 {
+  if (!mat)
+  {
+    throw runtime_error("A valid material is expected!");
+  }
   // Allocate and copy
-  this->material = make_shared<Material<dim>>(mat);
+  this->material = make_shared<Material<dim>>(*mat);
 }
 
 template<int dim>

@@ -3,7 +3,7 @@
 
 #include <deal.II/base/symmetric_tensor.h>
 #include "solverBase.h"
-#include "material.h"
+#include "linearMaterial.h"
 
 namespace IFEM
 {
@@ -25,6 +25,7 @@ namespace IFEM
     */
     void assemble();
     void evaluateStressStrain();
+    void setMaterial(Material<dim>*) override;
   };
 
 #include "linearElasticSolver.tpp"
