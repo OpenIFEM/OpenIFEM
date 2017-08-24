@@ -99,10 +99,10 @@ namespace IFEM
     */
     void solve();
     /**
-    * Output in vtk format. It only outputs the displacement,
+    * Output in vtu format. It only outputs the displacement,
     * should be overriden by specific solvers.
     */
-    void output(const unsigned int) const;
+    virtual void output(const unsigned int) const;
     /**
     * Set the material.
     */

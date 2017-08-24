@@ -29,7 +29,6 @@ int main(int argc, char* argv[])
     solver.output(0);
     solver.solve();
     solver.output(1);
-    solver.evaluateStressStrain();
   }
   catch (std::exception& exc)
   {

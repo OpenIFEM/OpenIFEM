@@ -2,6 +2,9 @@
 #define LINEAR_ELASTIC_SOLVER
 
 #include <deal.II/base/symmetric_tensor.h>
+#include <deal.II/fe/fe_dgq.h>
+#include <deal.II/fe/fe_tools.h>
+
 #include "solverBase.h"
 #include "linearMaterial.h"
 
@@ -24,8 +27,8 @@ namespace IFEM
     * Assemble the system matrix and system rhs at the same time.
     */
     void assemble();
-    void evaluateStressStrain();
     void setMaterial(Material<dim>*) override;
+    void output(unsigned int) const override;
   };
 
 #include "linearElasticSolver.tpp"
