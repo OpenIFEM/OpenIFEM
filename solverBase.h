@@ -103,14 +103,6 @@ namespace IFEM
     * should be overriden by specific solvers.
     */
     virtual void output(const unsigned int) const;
-    /**
-    * Set the material.
-    */
-    virtual void setMaterial(Material<dim>*);
-    /**
-    * Temporary function to print material properties.
-    */
-    void printMaterial() const {this->material->print();}
   protected:
     Triangulation<dim> tria;
     DoFHandler<dim> dofHandler;
@@ -134,9 +126,6 @@ namespace IFEM
       map<unsigned int,
         pair<vector<bool>, vector<double>>> displacement;
     } bc;
-
-    /** Store the material as a pointer instead of an object due to the polymorphism. */
-    shared_ptr<Material<dim>> material;
   };
 
 #include "solverBase.tpp"

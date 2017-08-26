@@ -13,7 +13,7 @@ namespace IFEM
   {
   public:
     /** Default constructor needed because there exists another constructor.*/
-    Material() {}
+    Material() : lambda(0.0), mu(0.0), density(0.0), initialized(false) {}
     Material(double lame1, double lame2, double rho = 1.0) :
       lambda(lame1), mu(lame2), density(rho), initialized(true) {}
     virtual ~Material() {}
@@ -28,10 +28,10 @@ namespace IFEM
 
     virtual void print() const;
   protected:
-    double lambda = 0.0; // Lame's first parameter
-    double mu = 0.0; // Shear modulus
-    double density = 0.0;
-    bool initialized = false;
+    double lambda; // Lame's first parameter
+    double mu; // Shear modulus
+    double density;
+    bool initialized;
   };
 
 #include "material.tpp"

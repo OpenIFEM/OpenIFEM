@@ -13,7 +13,8 @@ namespace IFEM
   class LinearMaterial : public Material<dim>
   {
   public:
-    LinearMaterial<dim>(double lameFirst, double lameSecond, double rho = 1.0) :
+    LinearMaterial() : Material<dim>() {}
+    LinearMaterial(double lameFirst, double lameSecond, double rho = 1.0) :
       Material<dim>(lameFirst, lameSecond, rho) {}
     SymmetricTensor<4, dim> getElasticityTensor() const;
   };

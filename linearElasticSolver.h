@@ -27,8 +27,10 @@ namespace IFEM
     * Assemble the system matrix and system rhs at the same time.
     */
     void assemble();
-    void setMaterial(Material<dim>*) override;
-    void output(unsigned int) const override;
+    void setMaterial(const LinearMaterial<dim>& mat) {this->material = mat;}
+    void output(unsigned int) const;
+  private:
+    LinearMaterial<dim> material;
   };
 
 #include "linearElasticSolver.tpp"

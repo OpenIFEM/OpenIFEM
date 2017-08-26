@@ -20,8 +20,7 @@ int main(int argc, char* argv[])
       solver.generateMesh();
     }
     LinearMaterial<2> steel(1., 1.);
-    solver.setMaterial(&steel);
-    solver.printMaterial();
+    solver.setMaterial(steel);
     solver.readBC();
     solver.setup();
     solver.assemble();

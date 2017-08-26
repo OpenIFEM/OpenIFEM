@@ -1,27 +1,16 @@
-template<int dim>
-void SolverBase<dim>::setMaterial(Material<dim>* mat)
+template<>
+void SolverBase<2>::generateMesh()
 {
-  if (!mat)
-  {
-    throw runtime_error("A valid material is expected!");
-  }
-  // Allocate and copy
-  this->material = make_shared<Material<dim>>(*mat);
+  GridGenerator::hyper_rectangle(this->tria, Point<2>(0.,0.),
+    Point<2>(8.,1.), true);
+  this->tria.refine_global(5);
 }
 
-template<int dim>
-void SolverBase<dim>::generateMesh()
+template<>
+void SolverBase<3>::generateMesh()
 {
-  if (dim == 2)
-  {
-    GridGenerator::hyper_rectangle(this->tria, Point<2>(0.,0.),
-      Point<2>(8.,1.), true);
-  }
-  else
-  {
-    GridGenerator::hyper_rectangle(this->tria, Point<2>(0.,0.,0.),
-      Point<2>(8.,1.,1.), true);
-  }
+  GridGenerator::hyper_rectangle(this->tria, Point<3>(0.,0.,0.),
+    Point<3>(8.,1.,1.), true);
   this->tria.refine_global(5);
 }
 
@@ -32,13 +21,6 @@ void SolverBase<dim>::readMesh(const std::string& fileName)
   gridIn.attach_triangulation(this->tria);
   ifstream file(fileName);
   gridIn.read_abaqus(file);
-
-  /*
-  string outFileName(fileName.substr(0, fileName.find('.')));
-  ofstream outFile(outFileName.c_str());
-  GridOut gridOut;
-  gridOut.write_eps(this->tria, outFile);
-  */
 
   cout << "Mesh info: " << endl << "dimension: " << dim
     << " number of cells: " << this->tria.n_active_cells() << endl;
@@ -193,8 +175,6 @@ void SolverBase<dim>::setup()
   DynamicSparsityPattern dsp(this->dofHandler.n_dofs(), this->dofHandler.n_dofs());
   DoFTools::make_sparsity_pattern(this->dofHandler, dsp);
   this->pattern.copy_from(dsp);
-  //ofstream out("sparsityPattern.svg");
-  //this->pattern.print_svg(out);
   this->sysMatrix.reinit(this->pattern);
   this->solution.reinit(this->dofHandler.n_dofs());
   this->sysRhs.reinit(this->dofHandler.n_dofs());
@@ -226,7 +206,7 @@ void SolverBase<dim>::solve()
   cg.solve(this->sysMatrix, this->solution, this->sysRhs, preconditioner);
 }
 
-template <int dim>
+template<int dim>
 void SolverBase<dim>::output(const unsigned int cycle) const
 {
   std::string fileName = "solution-";
