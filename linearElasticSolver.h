@@ -1,10 +1,6 @@
 #ifndef LINEAR_ELASTIC_SOLVER
 #define LINEAR_ELASTIC_SOLVER
 
-#include <deal.II/base/symmetric_tensor.h>
-#include <deal.II/fe/fe_dgq.h>
-#include <deal.II/fe/fe_tools.h>
-
 #include "solverBase.h"
 #include "linearMaterial.h"
 
@@ -28,7 +24,7 @@ namespace IFEM
     */
     void assemble();
     void setMaterial(const LinearMaterial<dim>& mat) {this->material = mat;}
-    void output(unsigned int) const;
+    void output(const unsigned int) const override;
   private:
     LinearMaterial<dim> material;
   };

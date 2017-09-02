@@ -187,7 +187,7 @@ void SolverBase<dim>::applyBC()
   for (auto itr = this->bc.displacement.begin(); itr != this->bc.displacement.end(); ++itr)
   {
     unsigned int id = itr->first;
-    ConstantFunction<dim> function(itr->second.second); // value of the BC
+    Functions::ConstantFunction<dim> function(itr->second.second); // value of the BC
     ComponentMask mask(itr->second.first);
     VectorTools::interpolate_boundary_values(this->dofHandler, id,
       function, boundaryValues, mask);
@@ -204,36 +204,4 @@ void SolverBase<dim>::solve()
   PreconditionSSOR<> preconditioner;
   preconditioner.initialize(this->sysMatrix, 1.2);
   cg.solve(this->sysMatrix, this->solution, this->sysRhs, preconditioner);
-}
-
-template<int dim>
-void SolverBase<dim>::output(const unsigned int cycle) const
-{
-  std::string fileName = "solution-";
-  fileName += ('0' + cycle);
-  fileName += ".vtu";
-  std::ofstream out(fileName.c_str());
-  DataOut<dim> data;
-  data.attach_dof_handler(this->dofHandler);
-  std::vector<std::string> solutionNames;
-  switch (dim)
-    {
-    case 1:
-      solutionNames.push_back ("displacement");
-      break;
-    case 2:
-      solutionNames.push_back ("x_displacement");
-      solutionNames.push_back ("y_displacement");
-      break;
-    case 3:
-      solutionNames.push_back ("x_displacement");
-      solutionNames.push_back ("y_displacement");
-      solutionNames.push_back ("z_displacement");
-      break;
-    default:
-      Assert(false, ExcNotImplemented());
-    }
-  data.add_data_vector(this->solution, solutionNames);
-  data.build_patches();
-  data.write_vtu(out);
 }

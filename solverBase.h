@@ -102,7 +102,7 @@ namespace IFEM
     * Output in vtu format. It only outputs the displacement,
     * should be overriden by specific solvers.
     */
-    virtual void output(const unsigned int) const;
+    virtual void output(const unsigned int) const = 0;
   protected:
     Triangulation<dim> tria;
     DoFHandler<dim> dofHandler;
