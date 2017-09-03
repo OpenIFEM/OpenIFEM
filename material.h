@@ -1,13 +1,9 @@
 #ifndef MATERIAL
 #define MATERIAL
 
-#include <stdexcept>
 
 namespace IFEM
 {
-  using namespace dealii;
-  using namespace std;
-
   template<int dim>
   class Material
   {
@@ -33,8 +29,6 @@ namespace IFEM
     double density;
     bool initialized;
   };
-
-#include "material.tpp"
 }
 
 

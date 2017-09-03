@@ -6,8 +6,8 @@
 
 namespace IFEM
 {
-  using namespace dealii;
-  using namespace std;
+  extern template class Material<2>;
+  extern template class Material<3>;
 
   template<int dim>
   class LinearMaterial : public Material<dim>
@@ -16,17 +16,17 @@ namespace IFEM
     LinearMaterial() : Material<dim>() {}
     LinearMaterial(double lameFirst, double lameSecond, double rho = 1.0) :
       Material<dim>(lameFirst, lameSecond, rho) {}
-    SymmetricTensor<4, dim> getElasticityTensor() const;
+    dealii::SymmetricTensor<4, dim> getElasticityTensor() const;
   };
 
   template<int dim>
-  SymmetricTensor<4, dim> LinearMaterial<dim>::getElasticityTensor() const
+  dealii::SymmetricTensor<4, dim> LinearMaterial<dim>::getElasticityTensor() const
   {
     if (!this->initialized)
     {
       throw std::runtime_error("Material is not initialized!");
     }
-    SymmetricTensor<4, dim> elasticity;
+    dealii::SymmetricTensor<4, dim> elasticity;
     for (unsigned int i = 0; i < dim; ++i)
     {
       for (unsigned int j = 0; j < dim; ++j)
@@ -43,6 +43,9 @@ namespace IFEM
     }
     return elasticity;
   }
+
+  template class LinearMaterial<2>;
+  template class LinearMaterial<3>;
 }
 
 #endif

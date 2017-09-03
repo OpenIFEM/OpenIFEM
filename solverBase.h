@@ -44,9 +44,8 @@
 
 namespace IFEM
 {
-  using namespace dealii;
-  using namespace std;
-
+  extern template class Material<2>;
+  extern template class Material<3>;
   /*! \brief Base class for all solvers.
   *
   * It implements some general functions.
@@ -55,7 +54,7 @@ namespace IFEM
   class SolverBase
   {
   public:
-    SolverBase(int order = 1) : dofHandler(tria), fe(FE_Q<dim>(order), dim),
+    SolverBase(int order = 1) : dofHandler(tria), fe(dealii::FE_Q<dim>(order), dim),
       quadFormula(2), faceQuadFormula(2) {}
     ~SolverBase() {this->dofHandler.clear();}
     /** Mesh generator.
@@ -93,44 +92,43 @@ namespace IFEM
     /**
     * Apply the Dirichlet bc.
     */
-    void applyBC(SparseMatrix<double>&, Vector<double>&, Vector<double>&);
+    void applyBC(dealii::SparseMatrix<double>&,
+      dealii::Vector<double>&, dealii::Vector<double>&);
     /**
     * Solve the equation.
     */
-    void solve(const SparseMatrix<double>&, Vector<double>&, const Vector<double>&);
+    void solve(const dealii::SparseMatrix<double>&,
+      dealii::Vector<double>&, const dealii::Vector<double>&);
     /**
-    * Output in vtu format. It only outputs the displacement,
-    * should be overriden by specific solvers.
+    * virtual output function, must be overriden by specific solvers.
     */
     virtual void output(const unsigned int) const = 0;
   protected:
-    Triangulation<dim> tria;
-    DoFHandler<dim> dofHandler;
-    FESystem<dim> fe;
-    SparsityPattern pattern;
-    SparseMatrix<double> tangentStiffness;
-    SparseMatrix<double> mass;
-    SparseMatrix<double> sysMatrix; // A = M + beta*dt^2*K
+    dealii::Triangulation<dim> tria;
+    dealii::DoFHandler<dim> dofHandler;
+    dealii::FESystem<dim> fe;
+    dealii::SparsityPattern pattern;
+    dealii::SparseMatrix<double> tangentStiffness;
+    dealii::SparseMatrix<double> mass;
+    dealii::SparseMatrix<double> sysMatrix; // A = M + beta*dt^2*K
     /** In principal, quadature formulas should not be declared as part of
     the class. However, we want them to be consistent during the entire simulation. */
-    QGauss<dim>  quadFormula;
-    QGauss<dim-1>  faceQuadFormula;
-    Vector<double> solution;
-    Vector<double> sysRhs;
+    dealii::QGauss<dim>  quadFormula;
+    dealii::QGauss<dim-1>  faceQuadFormula;
+    dealii::Vector<double> solution;
+    dealii::Vector<double> sysRhs;
 
     struct BoundaryCondition
     {
-      Tensor<1, dim> gravity;
-      map<unsigned int, Tensor<1, dim>> traction;
-      map<unsigned int, double> pressure;
+      dealii::Tensor<1, dim> gravity;
+      std::map<unsigned int, dealii::Tensor<1, dim>> traction;
+      std::map<unsigned int, double> pressure;
       /** A mapping between the boundary id and a pair of direction mask
       and the corresponding value. */
-      map<unsigned int,
-        pair<vector<bool>, vector<double>>> displacement;
+      std::map<unsigned int,
+        std::pair<std::vector<bool>, std::vector<double>>> displacement;
     } bc;
   };
-
-#include "solverBase.tpp"
 }
 
 #endif

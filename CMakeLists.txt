@@ -14,13 +14,13 @@ SET(TARGET "main")
 
 SET(TARGET_SRC
   main.cpp
-  solverBase.h
-  solverBase.tpp
-  linearElasticSolver.h
-  linearElasticSolver.tpp
+  solverBase.cpp
+  linearElasticSolver.cpp
+  material.cpp
   material.h
-  material.tpp
   linearMaterial.h
+  solverBase.h
+  linearElasticSolver.h
   )
 
 # Usually, you will not need to modify anything beyond this point...

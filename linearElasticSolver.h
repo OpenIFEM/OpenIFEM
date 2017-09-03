@@ -6,12 +6,11 @@
 
 namespace IFEM
 {
-  using namespace dealii;
-  using namespace std;
+  extern template class SolverBase<2>;
+  extern template class SolverBase<3>;
 
   /*! \brief Solver for linear elastic materials
   *
-  * Currently dynamics is not implemented.
   * Reference: http://www.dealii.org/8.5.0/doxygen/deal.II/step_8.html
   */
   template<int dim>
@@ -19,8 +18,8 @@ namespace IFEM
   {
   public:
     LinearElasticSolver(int order = 1): SolverBase<dim>(order) {};
-    void runStatics(const string& fileName = "");
-    void runDynamics(const string& fileName = "");
+    void runStatics(const std::string& fileName = "");
+    void runDynamics(const std::string& fileName = "");
     /*
     * Assemble the system matrix and system rhs at the same time.
     */
@@ -30,8 +29,6 @@ namespace IFEM
   private:
     LinearMaterial<dim> material;
   };
-
-#include "linearElasticSolver.tpp"
 }
 
 #endif

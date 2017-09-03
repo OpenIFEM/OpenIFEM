@@ -3,18 +3,21 @@
 
 #include <iostream>
 
+using namespace IFEM;
+
+extern template class IFEM::LinearElasticSolver<2>;
+extern template class IFEM::LinearElasticSolver<3>;
+
 int main(int argc, char* argv[])
 {
   try
   {
-    using namespace dealii;
-    using namespace IFEM;
 
     LinearElasticSolver<2> solver;
     if (argc > 1)
     {
-      //solver.runStatics(string(argv[1]));
-      solver.runDynamics(string(argv[1]));
+      //solver.runStatics(std::string(argv[1]));
+      solver.runDynamics(std::string(argv[1]));
     }
     else
     {
