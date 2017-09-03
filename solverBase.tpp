@@ -175,13 +175,15 @@ void SolverBase<dim>::setup()
   DynamicSparsityPattern dsp(this->dofHandler.n_dofs(), this->dofHandler.n_dofs());
   DoFTools::make_sparsity_pattern(this->dofHandler, dsp);
   this->pattern.copy_from(dsp);
+  this->tangentStiffness.reinit(this->pattern);
+  this->mass.reinit(this->pattern);
   this->sysMatrix.reinit(this->pattern);
   this->solution.reinit(this->dofHandler.n_dofs());
   this->sysRhs.reinit(this->dofHandler.n_dofs());
 }
 
 template<int dim>
-void SolverBase<dim>::applyBC()
+void SolverBase<dim>::applyBC(SparseMatrix<double>& A, Vector<double>& x, Vector<double>& b)
 {
   map<types::global_dof_index, double> boundaryValues;
   for (auto itr = this->bc.displacement.begin(); itr != this->bc.displacement.end(); ++itr)
@@ -192,16 +194,16 @@ void SolverBase<dim>::applyBC()
     VectorTools::interpolate_boundary_values(this->dofHandler, id,
       function, boundaryValues, mask);
   }
-  MatrixTools::apply_boundary_values(boundaryValues, this->sysMatrix,
-    this->solution, this->sysRhs);
+  MatrixTools::apply_boundary_values(boundaryValues, A, x, b);
 }
 
 template<int dim>
-void SolverBase<dim>::solve()
+void SolverBase<dim>::solve(const SparseMatrix<double>& A,
+  Vector<double>& x, const Vector<double>& b)
 {
   SolverControl control(5000, 1e-12);
   SolverCG<> cg(control);
   PreconditionSSOR<> preconditioner;
-  preconditioner.initialize(this->sysMatrix, 1.2);
-  cg.solve(this->sysMatrix, this->solution, this->sysRhs, preconditioner);
+  preconditioner.initialize(this->tangentStiffness, 1.2);
+  cg.solve(A, x, b, preconditioner);
 }

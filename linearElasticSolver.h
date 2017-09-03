@@ -19,6 +19,8 @@ namespace IFEM
   {
   public:
     LinearElasticSolver(int order = 1): SolverBase<dim>(order) {};
+    void runStatics(const string& fileName = "");
+    void runDynamics(const string& fileName = "");
     /*
     * Assemble the system matrix and system rhs at the same time.
     */

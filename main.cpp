@@ -13,21 +13,13 @@ int main(int argc, char* argv[])
     LinearElasticSolver<2> solver;
     if (argc > 1)
     {
-      solver.readMesh(string(argv[1]));
+      //solver.runStatics(string(argv[1]));
+      solver.runDynamics(string(argv[1]));
     }
     else
     {
-      solver.generateMesh();
+      solver.runStatics();
     }
-    LinearMaterial<2> steel(1., 1.);
-    solver.setMaterial(steel);
-    solver.readBC();
-    solver.setup();
-    solver.assemble();
-    solver.applyBC();
-    solver.output(0);
-    solver.solve();
-    solver.output(1);
   }
   catch (std::exception& exc)
   {

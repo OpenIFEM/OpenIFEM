@@ -124,7 +124,7 @@ void LinearElasticSolver<dim>::assemble()
     {
       for (unsigned int j = 0; j < dofsPerCell; ++j)
       {
-        this->sysMatrix.add(localDofIndices[i], localDofIndices[j], cellMatrix(i,j));
+        this->tangentStiffness.add(localDofIndices[i], localDofIndices[j], cellMatrix(i,j));
       }
       this->sysRhs(localDofIndices[i]) += cellRhs(i);
     }
@@ -134,29 +134,6 @@ void LinearElasticSolver<dim>::assemble()
 template <int dim>
 void LinearElasticSolver<dim>::output(const unsigned int cycle) const
 {
-  /*-------------------------------------------------------------------------------------*/
-  // We need to move mesh in order to output the up-to-date coordinates
-  // There is no direct way to loop through all the vertices in deal.II,
-  // we have to do this level by level
-  vector<bool> vertexMoved(this->tria.n_vertices(), false);
-  for (auto cell = this->dofHandler.begin_active(); cell != this->dofHandler.end(); ++cell)
-  {
-    for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
-    {
-      if (!vertexMoved[cell->vertex_index(v)])
-      {
-        Point<dim> displacement;
-        for (unsigned int d = 0; d < dim; ++d)
-        {
-          // Using vertex_dof_index is dangerous in mixed formulation, see Step-18
-          displacement[d] = this->solution(cell->vertex_dof_index(v, d));
-        }
-        cell->vertex(v) += displacement;
-        vertexMoved[cell->vertex_index(v)] = true;
-      }
-    }
-  }
-
   /*-------------------------------------------------------------------------------------*/
   // Compute stress and strain
   
@@ -234,8 +211,10 @@ void LinearElasticSolver<dim>::output(const unsigned int cycle) const
 
   /*-------------------------------------------------------------------------------------*/
   // Output the strain, stress and displacements
-  std::string fileName = "solution-";
-  fileName += ('0' + cycle);
+  std::string fileName = "LinearElastic-";
+  char id[50];
+  snprintf(id, 50, "%d", cycle);
+  fileName += id;
   fileName += ".vtu";
   std::ofstream out(fileName.c_str());
   DataOut<dim> data;
@@ -267,4 +246,101 @@ void LinearElasticSolver<dim>::output(const unsigned int cycle) const
 
   data.build_patches();
   data.write_vtu(out);
+}
+
+template<int dim>
+void LinearElasticSolver<dim>::runStatics(const string& fileName)
+{
+  LinearMaterial<dim> steel(1., 1.);
+  if (fileName.empty())
+  {
+    this->generateMesh();
+  }
+  else
+  {
+    this->readMesh(fileName);
+  }
+  this->setMaterial(steel);
+  this->readBC();
+  this->setup();
+  this->assemble();
+  this->applyBC(this->tangentStiffness, this->solution, this->sysRhs);
+  this->output(0);
+  this->solve(this->tangentStiffness, this->solution, this->sysRhs);
+  this->output(1);
+}
+
+template<int dim>
+void LinearElasticSolver<dim>::runDynamics(const string& fileName)
+{
+  const double damping = 1.5;
+  const double gamma = 0.5 + damping;
+  const double beta = gamma/2;
+  const double dt = 1;
+  const int nsteps = 200;
+  const int nprint = 10;
+  int step = 0;
+
+  if (fileName.empty())
+  {
+    this->generateMesh();
+  }
+  else
+  {
+    this->readMesh(fileName);
+  }
+  LinearMaterial<dim> steel(1., 1.);
+  this->setMaterial(steel);
+  this->readBC();
+  this->setup();
+  this->assemble();
+  this->output(0);
+
+  Vector<double> un(this->dofHandler.n_dofs()); // displacement at step n
+  Vector<double> un1(this->dofHandler.n_dofs()); // displacement at step n+1
+  Vector<double> vn(this->dofHandler.n_dofs()); // velocity at step n
+  Vector<double> vn1(this->dofHandler.n_dofs()); // velocity at step n+1
+  Vector<double> an(this->dofHandler.n_dofs()); // acceleration at step n
+  Vector<double> an1(this->dofHandler.n_dofs()); // acceleration at step n+1
+
+  Vector<double> temp1(this->dofHandler.n_dofs()); // temp1 = un + dt*vn + dt^2*(0.5-beta)*an
+  Vector<double> temp2(this->dofHandler.n_dofs()); // temp2 = -K*temp1 + Fn+1
+
+  // a0 = F0/M
+  MatrixCreator::create_mass_matrix(this->dofHandler, this->quadFormula, this->mass); // rho=1
+  this->mass *= this->material.getDensity();
+  this->applyBC(this->mass, an, this->sysRhs);
+  this->solve(this->mass, an, this->sysRhs);
+
+  // A = M + beta*dt^2*K
+  this->sysMatrix = 0.0;
+  this->sysMatrix.add(1.0, this->tangentStiffness);
+  this->sysMatrix.add(beta*dt*dt, this->mass);
+
+  while (step < nsteps)
+  {
+    temp1 = un;
+    temp1.add(dt, vn, dt*dt*(0.5-beta), an);
+    this->tangentStiffness.vmult(temp2, temp1);
+    temp2 *= -1.0;
+    temp2 += this->sysRhs;
+    this->applyBC(this->sysMatrix, an1, temp2);
+    this->solve(this->sysMatrix, an1, temp2);
+    // un1 = un + dt*vn + dt^2*((0.5-beta)*an + beta*an1)
+    un1 = un;
+    un1.add(dt, vn);
+    un1.add((0.5-beta)*dt*dt, an, beta*dt*dt, an1);
+    // vn1 = vn + dt*((1-gamma)*an + gamma*an1)
+    vn1 = vn;
+    vn1.add((1-gamma)*dt, an, gamma*dt, an1);
+    un = un1;
+    vn = vn1;
+    an = an1;
+    ++step;
+    if (step % nprint == 0)
+    {
+      this->solution = un;
+      this->output(step);
+    }
+  }
 }

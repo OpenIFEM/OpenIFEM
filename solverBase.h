@@ -93,11 +93,11 @@ namespace IFEM
     /**
     * Apply the Dirichlet bc.
     */
-    void applyBC();
+    void applyBC(SparseMatrix<double>&, Vector<double>&, Vector<double>&);
     /**
     * Solve the equation.
     */
-    void solve();
+    void solve(const SparseMatrix<double>&, Vector<double>&, const Vector<double>&);
     /**
     * Output in vtu format. It only outputs the displacement,
     * should be overriden by specific solvers.
@@ -108,7 +108,9 @@ namespace IFEM
     DoFHandler<dim> dofHandler;
     FESystem<dim> fe;
     SparsityPattern pattern;
-    SparseMatrix<double> sysMatrix;
+    SparseMatrix<double> tangentStiffness;
+    SparseMatrix<double> mass;
+    SparseMatrix<double> sysMatrix; // A = M + beta*dt^2*K
     /** In principal, quadature formulas should not be declared as part of
     the class. However, we want them to be consistent during the entire simulation. */
     QGauss<dim>  quadFormula;
