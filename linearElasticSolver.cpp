@@ -235,26 +235,19 @@ namespace IFEM
     data.add_data_vector(scalarDofHandler, stressGlobal[1], "Syy");
     data.add_data_vector(scalarDofHandler, stressGlobal[3], "Sxy");
 
-    switch(dim)
+    if (dim == 3)
     {
-      case 2:
-        data.add_data_vector(this->dofHandler, this->solution,
-          std::vector<std::string>{"Ux", "Uy"});
-        break;
-      case 3:
-        data.add_data_vector(scalarDofHandler, strainGlobal[2], "Ezz");
-        data.add_data_vector(scalarDofHandler, strainGlobal[4], "Exy");
-        data.add_data_vector(scalarDofHandler, strainGlobal[5], "Eyz");
-        data.add_data_vector(scalarDofHandler, stressGlobal[2], "Szz");
-        data.add_data_vector(scalarDofHandler, stressGlobal[4], "Sxy");
-        data.add_data_vector(scalarDofHandler, stressGlobal[5], "Syz");
-        data.add_data_vector(this->dofHandler, this->solution,
-          std::vector<std::string>{"Ux", "Uy", "Uz"});
-        break;
-      default:
-        Assert(false, ExcNotImplemented());
+      data.add_data_vector(scalarDofHandler, strainGlobal[2], "Ezz");
+      data.add_data_vector(scalarDofHandler, strainGlobal[4], "Exy");
+      data.add_data_vector(scalarDofHandler, strainGlobal[5], "Eyz");
+      data.add_data_vector(scalarDofHandler, stressGlobal[2], "Szz");
+      data.add_data_vector(scalarDofHandler, stressGlobal[4], "Sxy");
+      data.add_data_vector(scalarDofHandler, stressGlobal[5], "Syz");
     }
-
+    std::vector<DataComponentInterpretation::DataComponentInterpretation>
+      interpretation(dim, DataComponentInterpretation::component_is_part_of_vector);
+    data.add_data_vector(this->dofHandler, this->solution,
+      std::vector<std::string>(dim, "displacement"), interpretation);
     data.build_patches();
     data.write_vtu(out);
   }
