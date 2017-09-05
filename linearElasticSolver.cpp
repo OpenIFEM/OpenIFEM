@@ -63,81 +63,104 @@ namespace IFEM
   using namespace dealii;
 
   template<int dim>
-  void LinearElasticSolver<dim>::assemble()
+  LinearElasticSolver<dim>::AssemblyScratchData::AssemblyScratchData(
+    const FiniteElement<dim> &finite_element, const QGauss<dim> &quad,
+    const QGauss<dim-1> &face_quad) : fe_values(finite_element, quad,
+    update_values | update_gradients | update_quadrature_points | update_JxW_values),
+    fe_face_values(finite_element, face_quad,
+      update_values | update_quadrature_points | update_normal_vectors | update_JxW_values) {}
+
+  template<int dim>
+  LinearElasticSolver<dim>::AssemblyScratchData::AssemblyScratchData(
+    const AssemblyScratchData &scratch) :
+    fe_values(scratch.fe_values.get_fe(), scratch.fe_values.get_quadrature(),
+      scratch.fe_values.get_update_flags()), 
+    fe_face_values(scratch.fe_face_values.get_fe(), scratch.fe_face_values.get_quadrature(),
+      scratch.fe_face_values.get_update_flags()) {}
+
+  template<int dim>
+  void LinearElasticSolver<dim>::localAssemble(const typename
+      DoFHandler<dim>::active_cell_iterator &cell, AssemblyScratchData &scratch,
+      AssemblyCopyData &data)
   {
     SymmetricTensor<4, dim> elasticity = this->material.getElasticityTensor();
-    // fe values for volume integration
-    FEValues<dim> feValues (this->fe, this->quadFormula,
-      update_values | update_gradients | update_quadrature_points | update_JxW_values);
-    // fe values for surface integration
-    FEFaceValues<dim> feFaceValues(this->fe, this->faceQuadFormula,
-      update_values | update_quadrature_points |
-      update_normal_vectors | update_JxW_values);
     const unsigned int   dofsPerCell = this->fe.dofs_per_cell;
     const unsigned int   numQuadPts  = this->quadFormula.size();
     const unsigned int numFaceQuadPts = this->faceQuadFormula.size();
-    FullMatrix<double> cellMatrix(dofsPerCell, dofsPerCell);
-    Vector<double> cellRhs (dofsPerCell);
-    std::vector<types::global_dof_index> localDofIndices(dofsPerCell);
-    for (auto cell = this->dofHandler.begin_active();
-      cell != this->dofHandler.end(); ++cell)
+    data.cell_matrix.reinit(dofsPerCell, dofsPerCell);
+    data.cell_rhs.reinit(dofsPerCell);
+    data.dof_indices.resize(dofsPerCell);
+    scratch.fe_values.reinit(cell);
+    // matrix
+    for (unsigned int i = 0; i < dofsPerCell; ++i)
     {
-      cellMatrix = 0.;
-      cellRhs = 0.;
-      feValues.reinit (cell);
-      // matrix
-      for (unsigned int i=0; i < dofsPerCell; ++i)
+      for (unsigned int j = 0; j < dofsPerCell; ++j)
       {
-        for (unsigned int j = 0; j < dofsPerCell; ++j)
-        {
-          for (unsigned int q = 0; q < numQuadPts; ++q)
-          {
-            cellMatrix(i,j) += getStrain(feValues, i, q)*elasticity*
-              getStrain(feValues, j, q)*feValues.JxW(q);
-          }
-        }
-      }
-      // body force
-      double rho = this->material.getDensity();
-      for (unsigned int i=0; i < dofsPerCell; ++i)
-      {
-        const unsigned int component_i = this->fe.system_to_component_index(i).first;
         for (unsigned int q = 0; q < numQuadPts; ++q)
         {
-          cellRhs(i) += feValues.shape_value(i, q)*rho*
-            this->bc.gravity[component_i]*feValues.JxW(q);
+            data.cell_matrix(i,j) += getStrain(scratch.fe_values, i, q)*elasticity*
+              getStrain(scratch.fe_values, j, q)*scratch.fe_values.JxW(q);
         }
       }
-      // traction
-      for (unsigned int i = 0; i < GeometryInfo<dim>::faces_per_cell; ++i)
+    }
+    // body force
+    double rho = this->material.getDensity();
+    for (unsigned int i = 0; i < dofsPerCell; ++i)
+    {
+      const unsigned int component_i = this->fe.system_to_component_index(i).first;
+      for (unsigned int q = 0; q < numQuadPts; ++q)
       {
-        if (cell->face(i)->at_boundary() &&
-          this->bc.traction.find(cell->face(i)->boundary_id()) != this->bc.traction.end())
+        data.cell_rhs(i) += scratch.fe_values.shape_value(i, q)*rho*
+          this->bc.gravity[component_i]*scratch.fe_values.JxW(q);
+      }
+    }
+    // traction
+    for (unsigned int i = 0; i < GeometryInfo<dim>::faces_per_cell; ++i)
+    {
+      if (cell->face(i)->at_boundary() &&
+        this->bc.traction.find(cell->face(i)->boundary_id()) != this->bc.traction.end())
+      {
+        scratch.fe_face_values.reinit(cell, i);
+        Tensor<1,dim> traction = this->bc.traction[cell->face(i)->boundary_id()];
+        for (unsigned int q = 0; q < numFaceQuadPts; ++q)
         {
-          feFaceValues.reinit(cell, i);
-          Tensor<1,dim> traction = this->bc.traction[cell->face(i)->boundary_id()];
-          for (unsigned int q = 0; q < numFaceQuadPts; ++q)
+          for (unsigned int j = 0; j < dofsPerCell; ++j)
           {
-            for (unsigned int j = 0; j < dofsPerCell; ++j)
-            {
-              const unsigned int component_j = this->fe.system_to_component_index(j).first;
-              cellRhs(j) += feFaceValues.shape_value(j, q)*traction[component_j]
-                *feFaceValues.JxW(q);
-            }
+            const unsigned int component_j = this->fe.system_to_component_index(j).first;
+            data.cell_rhs(j) += scratch.fe_face_values.shape_value(j, q)*traction[component_j]
+              *scratch.fe_face_values.JxW(q);
           }
         }
       }
-      // scatter
-      cell->get_dof_indices(localDofIndices);
-      for (unsigned int i = 0; i < dofsPerCell; ++i)
-      {
-        for (unsigned int j = 0; j < dofsPerCell; ++j)
-        {
-          this->tangentStiffness.add(localDofIndices[i], localDofIndices[j], cellMatrix(i,j));
-        }
-        this->sysRhs(localDofIndices[i]) += cellRhs(i);
-      }
     }
+    cell->get_dof_indices(data.dof_indices);
+  }
+
+  template<int dim>
+  void LinearElasticSolver<dim>::scatter(const AssemblyCopyData &data)
+  {
+    for (unsigned int i = 0; i < data.dof_indices.size(); ++i)
+    {
+      for (unsigned int j = 0; j < data.dof_indices.size(); ++j)
+      {
+        this->tangentStiffness.add(data.dof_indices[i], data.dof_indices[j],
+          data.cell_matrix(i,j));
+      }
+      this->sysRhs(data.dof_indices[i]) += data.cell_rhs(i);
+    }
+  }
+
+  template<int dim>
+  void LinearElasticSolver<dim>::globalAssemble()
+  {
+    /** 
+     * WorkStream is designed such that the first function runs in parallel and
+     * the second function call runs in serial.
+     */
+    WorkStream::run(this->dofHandler.begin_active(), this->dofHandler.end(),
+      *this, &LinearElasticSolver::localAssemble, &LinearElasticSolver::scatter,
+      AssemblyScratchData(this->fe, this->quadFormula, this->faceQuadFormula),
+      AssemblyCopyData());
   }
 
   template <int dim>
@@ -199,10 +222,10 @@ namespace IFEM
         if (dim == 3)
         {
           strainGlobal[2][scalarCell->vertex_dof_index(v, 0)] += cellAvgStrain[2][2]; // Ezz
-          strainGlobal[4][scalarCell->vertex_dof_index(v, 0)] += cellAvgStrain[0][1]; // Exy
+          strainGlobal[4][scalarCell->vertex_dof_index(v, 0)] += cellAvgStrain[0][1]; // Exz
           strainGlobal[5][scalarCell->vertex_dof_index(v, 0)] += cellAvgStrain[1][2]; // Eyz
           stressGlobal[2][scalarCell->vertex_dof_index(v, 0)] += cellAvgStress[2][2]; // Szz
-          stressGlobal[4][scalarCell->vertex_dof_index(v, 0)] += cellAvgStress[0][1]; // Sxy
+          stressGlobal[4][scalarCell->vertex_dof_index(v, 0)] += cellAvgStress[0][1]; // Sxz
           stressGlobal[5][scalarCell->vertex_dof_index(v, 0)] += cellAvgStress[1][2]; // Syz
         }
         count[scalarCell->vertex_dof_index(v, 0)]++;
@@ -238,10 +261,10 @@ namespace IFEM
     if (dim == 3)
     {
       data.add_data_vector(scalarDofHandler, strainGlobal[2], "Ezz");
-      data.add_data_vector(scalarDofHandler, strainGlobal[4], "Exy");
+      data.add_data_vector(scalarDofHandler, strainGlobal[4], "Exz");
       data.add_data_vector(scalarDofHandler, strainGlobal[5], "Eyz");
       data.add_data_vector(scalarDofHandler, stressGlobal[2], "Szz");
-      data.add_data_vector(scalarDofHandler, stressGlobal[4], "Sxy");
+      data.add_data_vector(scalarDofHandler, stressGlobal[4], "Sxz");
       data.add_data_vector(scalarDofHandler, stressGlobal[5], "Syz");
     }
     std::vector<DataComponentInterpretation::DataComponentInterpretation>
@@ -267,7 +290,7 @@ namespace IFEM
     this->setMaterial(steel);
     this->readBC();
     this->setup();
-    this->assemble();
+    this->globalAssemble();
     this->applyBC(this->tangentStiffness, this->solution, this->sysRhs);
     this->output(0);
     this->solve(this->tangentStiffness, this->solution, this->sysRhs);
@@ -297,7 +320,7 @@ namespace IFEM
     this->setMaterial(steel);
     this->readBC();
     this->setup();
-    this->assemble();
+    this->globalAssemble();
     this->output(0);
 
     Vector<double> un(this->dofHandler.n_dofs()); // displacement at step n

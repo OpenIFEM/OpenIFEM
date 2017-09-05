@@ -9,6 +9,7 @@ namespace IFEM
   extern template class Material<2>;
   extern template class Material<3>;
 
+  /*! \brief Linear material. */
   template<int dim>
   class LinearMaterial : public Material<dim>
   {

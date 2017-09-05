@@ -1,9 +1,9 @@
 #ifndef MATERIAL
 #define MATERIAL
 
-
 namespace IFEM
 {
+  /*! \brief The base class for all materials. */
   template<int dim>
   class Material
   {

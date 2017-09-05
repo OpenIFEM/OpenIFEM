@@ -8,17 +8,19 @@ namespace IFEM
   template<>
   void SolverBase<2>::generateMesh()
   {
-    GridGenerator::hyper_rectangle(this->tria, Point<2>(0.,0.),
-      Point<2>(8.,1.), true);
-    this->tria.refine_global(5);
+    GridGenerator::subdivided_hyper_rectangle(this->tria, std::vector<unsigned int>{128, 16},
+      Point<2>(0.,0.), Point<2>(8.,1.), true);
+    std::cout << "Mesh info: " << endl << "dimension: 2" 
+      << " number of cells: " << this->tria.n_active_cells() << std::endl;
   }
 
   template<>
   void SolverBase<3>::generateMesh()
   {
-    GridGenerator::hyper_rectangle(this->tria, Point<3>(0.,0.,0.),
-      Point<3>(8.,1.,1.), true);
-    this->tria.refine_global(5);
+    GridGenerator::subdivided_hyper_rectangle(this->tria, std::vector<unsigned int>{32, 4, 4},
+      Point<3>(0.,0.,0.), Point<3>(8.,1.,1.), true);
+    std::cout << "Mesh info: " << endl << "dimension: 3"
+      << " number of cells: " << this->tria.n_active_cells() << std::endl;
   }
 
   template<int dim>

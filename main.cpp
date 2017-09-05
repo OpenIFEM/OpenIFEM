@@ -13,11 +13,10 @@ int main(int argc, char* argv[])
   try
   {
 
-    LinearElasticSolver<2> solver;
+    LinearElasticSolver<3> solver;
     if (argc > 1)
     {
-      //solver.runStatics(std::string(argv[1]));
-      solver.runDynamics(std::string(argv[1]));
+      solver.runStatics(std::string(argv[1]));
     }
     else
     {
