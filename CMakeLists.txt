@@ -16,7 +16,6 @@ SET(TARGET_SRC
   main.cpp
   solverBase.cpp
   linearElasticSolver.cpp
-  material.cpp
   material.h
   linearMaterial.h
   solverBase.h

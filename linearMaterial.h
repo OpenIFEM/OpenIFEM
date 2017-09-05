@@ -23,10 +23,6 @@ namespace IFEM
   template<int dim>
   dealii::SymmetricTensor<4, dim> LinearMaterial<dim>::getElasticityTensor() const
   {
-    if (!this->initialized)
-    {
-      throw std::runtime_error("Material is not initialized!");
-    }
     dealii::SymmetricTensor<4, dim> elasticity;
     for (unsigned int i = 0; i < dim; ++i)
     {

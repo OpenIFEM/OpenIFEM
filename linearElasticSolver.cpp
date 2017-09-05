@@ -83,7 +83,9 @@ namespace IFEM
       DoFHandler<dim>::active_cell_iterator &cell, AssemblyScratchData &scratch,
       AssemblyCopyData &data)
   {
-    SymmetricTensor<4, dim> elasticity = this->material.getElasticityTensor();
+    auto mat = std::dynamic_pointer_cast<LinearMaterial<dim>>(this->material);
+    Assert(mat, ExcInternalError());
+    SymmetricTensor<4, dim> elasticity = mat->getElasticityTensor();
     const unsigned int   dofsPerCell = this->fe.dofs_per_cell;
     const unsigned int   numQuadPts  = this->quadFormula.size();
     const unsigned int numFaceQuadPts = this->faceQuadFormula.size();
@@ -104,7 +106,7 @@ namespace IFEM
       }
     }
     // body force
-    double rho = this->material.getDensity();
+    double rho = this->material->getDensity();
     for (unsigned int i = 0; i < dofsPerCell; ++i)
     {
       const unsigned int component_i = this->fe.system_to_component_index(i).first;
@@ -183,7 +185,9 @@ namespace IFEM
     // Count how many cells share a particular dof
     std::vector<unsigned int> count(scalarDofHandler.n_dofs(), 0);
 
-    SymmetricTensor<4, dim> elasticity = this->material.getElasticityTensor();
+    auto mat = std::dynamic_pointer_cast<LinearMaterial<dim>>(this->material);
+    Assert(mat, ExcInternalError());
+    SymmetricTensor<4, dim> elasticity = mat->getElasticityTensor();
 
     // Need to re-calculate the gradients
     FEValues<dim> feValues (this->fe, this->quadFormula, update_gradients);
@@ -278,7 +282,6 @@ namespace IFEM
   template<int dim>
   void LinearElasticSolver<dim>::runStatics(const std::string& fileName)
   {
-    LinearMaterial<dim> steel(1., 1.);
     if (fileName.empty())
     {
       this->generateMesh();
@@ -287,6 +290,7 @@ namespace IFEM
     {
       this->readMesh(fileName);
     }
+    auto steel = std::make_shared<LinearMaterial<dim>>(1., 1.);
     this->setMaterial(steel);
     this->readBC();
     this->setup();
@@ -316,7 +320,7 @@ namespace IFEM
     {
       this->readMesh(fileName);
     }
-    LinearMaterial<dim> steel(1., 1.);
+    auto steel = std::make_shared<LinearMaterial<dim>>(1., 1.);
     this->setMaterial(steel);
     this->readBC();
     this->setup();
@@ -335,7 +339,7 @@ namespace IFEM
 
     // a0 = F0/M
     MatrixCreator::create_mass_matrix(this->dofHandler, this->quadFormula, this->mass); // rho=1
-    this->mass *= this->material.getDensity();
+    this->mass *= this->material->getDensity();
     this->applyBC(this->mass, an, this->sysRhs);
     this->solve(this->mass, an, this->sysRhs);
 

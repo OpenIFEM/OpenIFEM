@@ -21,7 +21,6 @@ namespace IFEM
     void runStatics(const std::string& fileName = "");
     void runDynamics(const std::string& fileName = "");
   private:
-    LinearMaterial<dim> material;
     /**
      * The scratch to be used in multithread assembly.
      * We could as well construct them as local variables but repeatedly constructing
@@ -59,7 +58,6 @@ namespace IFEM
      * Copy the local data to global. This should run serially.
      */
     void scatter(const AssemblyCopyData &);
-    void setMaterial(const LinearMaterial<dim>& mat) {this->material = mat;}
     void output(const unsigned int) const override;
   };
 }

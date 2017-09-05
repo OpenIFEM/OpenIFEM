@@ -41,8 +41,13 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/foreach.hpp>
 
+#include "material.h"
+
 namespace IFEM
 {
+  extern template class Material<2>;
+  extern template class Material<3>;
+
   /*! \brief Base class for all solvers.
    *
    *  It implements some general functions.
@@ -82,6 +87,9 @@ namespace IFEM
       std::map<unsigned int,
         std::pair<std::vector<bool>, std::vector<double>>> displacement;
     } bc;
+    /** A generic material associated with the solver. */
+    std::shared_ptr<Material<dim>> material;
+    void setMaterial(std::shared_ptr<Material<dim>> mat) {this->material = mat;}
     /** Mesh generator.
      *  deal.II can generate simple meshes, we use those generators if
      *  we only need simple geometry. Currently it is not automated,
