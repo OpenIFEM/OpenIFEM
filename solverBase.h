@@ -73,9 +73,9 @@ namespace IFEM
      *  In principal, it should not be declared as part of the class.
      *  However, we make it a member so that it is consistent during the entire simulation.
      */
-    dealii::QGauss<dim>  quadFormula;
+    const dealii::QGauss<dim>  quadFormula;
     /** Quadrature formula for surface integration. */
-    dealii::QGauss<dim-1>  faceQuadFormula;
+    const dealii::QGauss<dim-1>  faceQuadFormula;
     /** Neumann and Dirichlet boundary conditions. */
     struct BoundaryCondition
     {
@@ -124,7 +124,7 @@ namespace IFEM
     void applyBC(dealii::SparseMatrix<double>&,
       dealii::Vector<double>&, dealii::Vector<double>&);
     /** Solve the equation. */
-    void solve(const dealii::SparseMatrix<double>&,
+    unsigned int solve(const dealii::SparseMatrix<double>&,
       dealii::Vector<double>&, const dealii::Vector<double>&);
     /** virtual output function, must be overriden by specific solvers. */
     virtual void output(const unsigned int) const = 0;

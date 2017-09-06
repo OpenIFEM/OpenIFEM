@@ -13,6 +13,7 @@ namespace
    * Reference: http://www.dealii.org/8.5.0/doxygen/deal.II/step_18.html
    */
   template<int dim>
+  inline
   SymmetricTensor<2, dim> getStrain(const FEValues<dim>& feValues,
     const unsigned int a, const unsigned int q)
   {
@@ -39,6 +40,7 @@ namespace
    * We simply take this vector to compute the strain in a straight-forward way.
    */
   template<int dim>
+  inline
   SymmetricTensor<2, dim> getStrain(const std::vector<Tensor<1, dim>>& grad)
   {
     Assert(grad.size() == dim, ExcInternalError());
@@ -247,11 +249,7 @@ namespace IFEM
 
     /*-------------------------------------------------------------------------------------*/
     // Output the strain, stress and displacements
-    std::string fileName = "LinearElastic-";
-    char id[50];
-    snprintf(id, 50, "%d", cycle);
-    fileName += id;
-    fileName += ".vtu";
+    std::string fileName = "LinearElastic-" + Utilities::int_to_string(cycle, 4) + ".vtu";
     std::ofstream out(fileName.c_str());
     DataOut<dim> data;
 
@@ -290,14 +288,14 @@ namespace IFEM
     {
       this->readMesh(fileName);
     }
-    auto steel = std::make_shared<LinearMaterial<dim>>(1., 1.);
-    this->setMaterial(steel);
+    this->setMaterial(std::make_shared<LinearMaterial<dim>>(1., 1.));
     this->readBC();
     this->setup();
     this->globalAssemble();
     this->applyBC(this->tangentStiffness, this->solution, this->sysRhs);
     this->output(0);
-    this->solve(this->tangentStiffness, this->solution, this->sysRhs);
+    auto n = this->solve(this->tangentStiffness, this->solution, this->sysRhs);
+    std::cout << "Matrix solver converged in " << n << " steps" << std::endl;
     this->output(1);
   }
 

@@ -198,7 +198,8 @@ namespace IFEM
     for (auto itr = this->bc.displacement.begin(); itr != this->bc.displacement.end(); ++itr)
     {
       unsigned int id = itr->first;
-      Functions::ConstantFunction<dim> function(itr->second.second); // value of the BC
+      // If deal.II version is 9.0, use Functions::ConstantFunction instead
+      ConstantFunction<dim> function(itr->second.second); // value of the BC
       ComponentMask mask(itr->second.first);
       VectorTools::interpolate_boundary_values(this->dofHandler, id,
         function, boundaryValues, mask);
@@ -207,7 +208,7 @@ namespace IFEM
   }
 
   template<int dim>
-  void SolverBase<dim>::solve(const SparseMatrix<double>& A,
+  unsigned int SolverBase<dim>::solve(const SparseMatrix<double>& A,
     Vector<double>& x, const Vector<double>& b)
   {
     SolverControl control(5000, 1e-12);
@@ -215,6 +216,7 @@ namespace IFEM
     PreconditionSSOR<> preconditioner;
     preconditioner.initialize(this->tangentStiffness, 1.2);
     cg.solve(A, x, b, preconditioner);
+    return control.last_step();
   }
 
   template class SolverBase<2>;

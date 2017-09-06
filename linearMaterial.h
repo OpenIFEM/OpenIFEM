@@ -23,7 +23,7 @@ namespace IFEM
   template<int dim>
   dealii::SymmetricTensor<4, dim> LinearMaterial<dim>::getElasticityTensor() const
   {
-    dealii::SymmetricTensor<4, dim> elasticity;
+    static dealii::SymmetricTensor<4, dim> elasticity;
     for (unsigned int i = 0; i < dim; ++i)
     {
       for (unsigned int j = 0; j < dim; ++j)
