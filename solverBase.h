@@ -31,6 +31,7 @@
 #include <deal.II/numerics/vector_tools.h>
 #include <deal.II/numerics/matrix_tools.h>
 #include <deal.II/numerics/data_out.h>
+#include <deal.II/numerics/data_postprocessor.h>
 
 #include <iostream>
 #include <fstream>
@@ -41,6 +42,7 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/foreach.hpp>
 
+#include "parameters.h"
 #include "material.h"
 
 namespace IFEM
@@ -56,10 +58,12 @@ namespace IFEM
   class SolverBase
   {
   public:
-    SolverBase(int order = 1) : dofHandler(tria), fe(dealii::FE_Q<dim>(order), dim),
-      quadFormula(2), faceQuadFormula(2) {}
+    SolverBase(const std::string& infile = "parameters.prm") : parameters(infile),
+      dofHandler(tria), fe(dealii::FE_Q<dim>(1), dim), quadFormula(2), faceQuadFormula(2) {}
     ~SolverBase() {this->dofHandler.clear();}
   protected:
+    /** All input parameters, must come first. */
+    IFEM::Parameters::AllParameters parameters;
     dealii::Triangulation<dim> tria;
     dealii::DoFHandler<dim> dofHandler;
     dealii::FESystem<dim> fe;
@@ -89,7 +93,6 @@ namespace IFEM
     } bc;
     /** A generic material associated with the solver. */
     std::shared_ptr<Material<dim>> material;
-    void setMaterial(std::shared_ptr<Material<dim>> mat) {this->material = mat;}
     /** Mesh generator.
      *  deal.II can generate simple meshes, we use those generators if
      *  we only need simple geometry. Currently it is not automated,

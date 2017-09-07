@@ -1,11 +1,9 @@
 #include "linearElasticSolver.h"
 
-#include<vector>
-
 namespace
 {
   using namespace dealii;
-  /** 
+  /**
    * Helper function that returns the contribution to strain epsilon(i, j) at the q-th
    * quadrature point made by the a-th shape function where a is in the range of dofs_per_cell.
    * Note that shape_grad_component(a, q, i) returns the full gradient of the i-th component
@@ -58,11 +56,92 @@ namespace
     }
     return strain;
   }
+
+  template<int dim>
+  class StrainPostprocessor : public DataPostprocessorTensor<dim>
+  {
+  public:
+    StrainPostprocessor() : DataPostprocessorTensor<dim>("strain", update_gradients) {}
+    virtual void evaluate_vector_field(
+      const dealii::DataPostprocessorInputs::Vector<dim> &input_data,
+      std::vector<Vector<double>> &computed_quantities) const override
+    {
+      // ensure that there really are as many output slots
+      // as there are points at which DataOut provides the
+      // gradients:
+      AssertDimension(input_data.solution_gradients.size(),
+        computed_quantities.size());
+      for (unsigned int p=0; p<input_data.solution_gradients.size(); ++p)
+      {
+        // ensure that each output slot has exactly 'dim*dim'
+        // components (as should be expected, given that we
+        // want to create tensor-valued outputs), and copy the
+        // gradients of the solution at the evaluation points
+        // into the output slots:
+        AssertDimension (computed_quantities[p].size(),
+                          (Tensor<2,dim>::n_independent_components));
+        for (unsigned int d=0; d<dim; ++d)
+        {
+          for (unsigned int e=0; e<dim; ++e)
+          {
+            computed_quantities[p][Tensor<2,dim>::component_to_unrolled_index
+              (TableIndices<2>(d,e))] = (input_data.solution_gradients[p][d][e] +
+              input_data.solution_gradients[p][e][d])/2;
+          }
+        }
+      }
+    }
+  };
+
+  template class StrainPostprocessor<2>;
+  template class StrainPostprocessor<3>;
+
+  template<int dim>
+  class StressPostprocessor : public DataPostprocessorTensor<dim>
+  {
+  public:
+    StressPostprocessor(const dealii::SymmetricTensor<4, dim>& C)
+      : DataPostprocessorTensor<dim>("stress", update_gradients), elasticity(C) {}
+    virtual void evaluate_vector_field(
+      const dealii::DataPostprocessorInputs::Vector<dim> &input_data,
+      std::vector<Vector<double>> &computed_quantities) const override
+    {
+      AssertDimension(input_data.solution_gradients.size(),
+        computed_quantities.size());
+      std::vector<SymmetricTensor<2, dim>> strain(computed_quantities.size());
+      std::vector<SymmetricTensor<2, dim>> stress(computed_quantities.size());
+      for (unsigned int p=0; p<input_data.solution_gradients.size(); ++p)
+      {
+        AssertDimension (computed_quantities[p].size(),
+                          (Tensor<2,dim>::n_independent_components));
+        for (unsigned int d=0; d<dim; ++d)
+        {
+          for (unsigned int e=0; e<dim; ++e)
+          {
+            strain[p][d][e] = (input_data.solution_gradients[p][d][e] +
+              input_data.solution_gradients[p][e][d])/2;
+          }
+        }
+        stress[p] = elasticity*strain[p];
+        // computed_quantities has dim*dim components
+        // so we have to convert SymmetricTensor to general tensor
+        Tensor<2, dim> temp = stress[p];
+        temp.unroll(computed_quantities[p]);
+      }
+    }
+  private:
+    SymmetricTensor<4, dim> elasticity;
+  };
+
+  template class StressPostprocessor<2>;
+  template class StressPostprocessor<3>;
 }
 
 namespace IFEM
 {
   using namespace dealii;
+  extern template class StrainPostprocessor<2>;
+  extern template class StrainPostprocessor<3>;
 
   template<int dim>
   LinearElasticSolver<dim>::AssemblyScratchData::AssemblyScratchData(
@@ -76,7 +155,7 @@ namespace IFEM
   LinearElasticSolver<dim>::AssemblyScratchData::AssemblyScratchData(
     const AssemblyScratchData &scratch) :
     fe_values(scratch.fe_values.get_fe(), scratch.fe_values.get_quadrature(),
-      scratch.fe_values.get_update_flags()), 
+      scratch.fe_values.get_update_flags()),
     fe_face_values(scratch.fe_face_values.get_fe(), scratch.fe_face_values.get_quadrature(),
       scratch.fe_face_values.get_update_flags()) {}
 
@@ -157,7 +236,7 @@ namespace IFEM
   template<int dim>
   void LinearElasticSolver<dim>::globalAssemble()
   {
-    /** 
+    /**
      * WorkStream is designed such that the first function runs in parallel and
      * the second function call runs in serial.
      */
@@ -170,109 +249,22 @@ namespace IFEM
   template <int dim>
   void LinearElasticSolver<dim>::output(const unsigned int cycle) const
   {
-    /*-------------------------------------------------------------------------------------*/
-    // Compute stress and strain
-    
-    // A new pair of FE and DoFHandler whose nodal dofs are scalar
-    FE_Q<dim> scalarFe(1);
-    DoFHandler<dim> scalarDofHandler(this->tria);
-    scalarDofHandler.distribute_dofs(scalarFe);
-
-    // stress and strain should contain Sxx, Syy, Szz, Sxy, Sxz, Syz
-    // (in 2D Szz, Sxz, Syz are zero)
-    // Each of these components is a Vector of size n_dofs
-    std::vector<Vector<double>> strainGlobal(6, Vector<double>(scalarDofHandler.n_dofs()));
-    std::vector<Vector<double>> stressGlobal(6, Vector<double>(scalarDofHandler.n_dofs()));
-
-    // Count how many cells share a particular dof
-    std::vector<unsigned int> count(scalarDofHandler.n_dofs(), 0);
-
-    auto mat = std::dynamic_pointer_cast<LinearMaterial<dim>>(this->material);
-    Assert(mat, ExcInternalError());
-    SymmetricTensor<4, dim> elasticity = mat->getElasticityTensor();
-
-    // Need to re-calculate the gradients
-    FEValues<dim> feValues (this->fe, this->quadFormula, update_gradients);
-    // Average strain and stress in a cell
-    SymmetricTensor<2, dim> cellAvgStrain, cellAvgStress;
-    auto cell = this->dofHandler.begin_active();
-    auto scalarCell = scalarDofHandler.begin_active();
-    for (; cell != this->dofHandler.end(); ++cell, ++scalarCell)
-    {
-      cellAvgStrain.clear();
-      cellAvgStress.clear();
-      feValues.reinit(cell);
-      // Gradients of all displacement components at all quadrature points
-      std::vector<std::vector<Tensor<1, dim>>> quadDispGradients(this->quadFormula.size(),
-        std::vector<Tensor<1, dim>>(dim));
-      feValues.get_function_gradients(this->solution, quadDispGradients);
-      for (unsigned int q = 0; q < this->quadFormula.size(); ++q)
-      {
-        // strain and stress tensors at a quadrature point
-        SymmetricTensor<2, dim> quadStrain = getStrain(quadDispGradients[q]);
-        SymmetricTensor<2, dim> quadStress = elasticity*quadStrain;
-        cellAvgStrain += quadStrain;
-        cellAvgStress += quadStress;
-      }
-      cellAvgStrain /= this->quadFormula.size();
-      cellAvgStress /= this->quadFormula.size();
-      // Distribute the cell average strain and stress to global dofs
-      for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
-      {
-        strainGlobal[0][scalarCell->vertex_dof_index(v, 0)] += cellAvgStrain[0][0]; // Exx
-        strainGlobal[1][scalarCell->vertex_dof_index(v, 0)] += cellAvgStrain[1][1]; // Eyy
-        strainGlobal[3][scalarCell->vertex_dof_index(v, 0)] += cellAvgStrain[0][1]; // Exy
-        stressGlobal[0][scalarCell->vertex_dof_index(v, 0)] += cellAvgStress[0][0]; // Sxx
-        stressGlobal[1][scalarCell->vertex_dof_index(v, 0)] += cellAvgStress[1][1]; // Syy
-        stressGlobal[3][scalarCell->vertex_dof_index(v, 0)] += cellAvgStress[0][1]; // Sxy
-        if (dim == 3)
-        {
-          strainGlobal[2][scalarCell->vertex_dof_index(v, 0)] += cellAvgStrain[2][2]; // Ezz
-          strainGlobal[4][scalarCell->vertex_dof_index(v, 0)] += cellAvgStrain[0][1]; // Exz
-          strainGlobal[5][scalarCell->vertex_dof_index(v, 0)] += cellAvgStrain[1][2]; // Eyz
-          stressGlobal[2][scalarCell->vertex_dof_index(v, 0)] += cellAvgStress[2][2]; // Szz
-          stressGlobal[4][scalarCell->vertex_dof_index(v, 0)] += cellAvgStress[0][1]; // Sxz
-          stressGlobal[5][scalarCell->vertex_dof_index(v, 0)] += cellAvgStress[1][2]; // Syz
-        }
-        count[scalarCell->vertex_dof_index(v, 0)]++;
-      }
-    }
-    // Global nodal average
-    for (unsigned int i = 0; i < 6; ++i)
-    {
-      for (types::global_dof_index j = 0; j < scalarDofHandler.n_dofs(); ++j)
-      {
-        strainGlobal[i][j] /= count[j];
-        stressGlobal[i][j] /= count[j];
-      }
-    }
-
-    /*-------------------------------------------------------------------------------------*/
     // Output the strain, stress and displacements
     std::string fileName = "LinearElastic-" + Utilities::int_to_string(cycle, 4) + ".vtu";
     std::ofstream out(fileName.c_str());
+    // Pitfall! StrainPostprocessor must be declared before DataOut because the latter is
+    // holding a pointer to the former!
+    StrainPostprocessor<dim> strain;
+    auto mat = std::dynamic_pointer_cast<LinearMaterial<dim>>(this->material);
+    Assert(mat, ExcInternalError());
+    StressPostprocessor<dim> stress(mat->getElasticityTensor());
     DataOut<dim> data;
-
-    data.add_data_vector(scalarDofHandler, strainGlobal[0], "Exx");
-    data.add_data_vector(scalarDofHandler, strainGlobal[1], "Eyy");
-    data.add_data_vector(scalarDofHandler, strainGlobal[3], "Exy");
-    data.add_data_vector(scalarDofHandler, stressGlobal[0], "Sxx");
-    data.add_data_vector(scalarDofHandler, stressGlobal[1], "Syy");
-    data.add_data_vector(scalarDofHandler, stressGlobal[3], "Sxy");
-
-    if (dim == 3)
-    {
-      data.add_data_vector(scalarDofHandler, strainGlobal[2], "Ezz");
-      data.add_data_vector(scalarDofHandler, strainGlobal[4], "Exz");
-      data.add_data_vector(scalarDofHandler, strainGlobal[5], "Eyz");
-      data.add_data_vector(scalarDofHandler, stressGlobal[2], "Szz");
-      data.add_data_vector(scalarDofHandler, stressGlobal[4], "Sxz");
-      data.add_data_vector(scalarDofHandler, stressGlobal[5], "Syz");
-    }
     std::vector<DataComponentInterpretation::DataComponentInterpretation>
       interpretation(dim, DataComponentInterpretation::component_is_part_of_vector);
     data.add_data_vector(this->dofHandler, this->solution,
       std::vector<std::string>(dim, "displacement"), interpretation);
+    data.add_data_vector(this->dofHandler, this->solution, strain);
+    data.add_data_vector(this->dofHandler, this->solution, stress);
     data.build_patches();
     data.write_vtu(out);
   }
@@ -288,7 +280,8 @@ namespace IFEM
     {
       this->readMesh(fileName);
     }
-    this->setMaterial(std::make_shared<LinearMaterial<dim>>(1., 1.));
+    this->material = std::make_shared<LinearMaterial<dim>>(
+      this->parameters.lambda, this->parameters.mu, this->parameters.rho);
     this->readBC();
     this->setup();
     this->globalAssemble();
@@ -318,8 +311,8 @@ namespace IFEM
     {
       this->readMesh(fileName);
     }
-    auto steel = std::make_shared<LinearMaterial<dim>>(1., 1.);
-    this->setMaterial(steel);
+    this->material = std::make_shared<LinearMaterial<dim>>(
+      this->parameters.lambda, this->parameters.mu, this->parameters.rho);
     this->readBC();
     this->setup();
     this->globalAssemble();

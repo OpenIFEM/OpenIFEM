@@ -199,7 +199,7 @@ namespace IFEM
     {
       unsigned int id = itr->first;
       // If deal.II version is 9.0, use Functions::ConstantFunction instead
-      ConstantFunction<dim> function(itr->second.second); // value of the BC
+      Functions::ConstantFunction<dim> function(itr->second.second); // value of the BC
       ComponentMask mask(itr->second.first);
       VectorTools::interpolate_boundary_values(this->dofHandler, id,
         function, boundaryValues, mask);

@@ -9,7 +9,7 @@ int main(int argc, char* argv[])
 {
   try
   {
-    IFEM::LinearElasticSolver<3> solver;
+    IFEM::LinearElasticSolver<2> solver;
     if (argc > 1)
     {
       solver.runStatics(std::string(argv[1]));

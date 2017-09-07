@@ -17,7 +17,7 @@ namespace IFEM
   class LinearElasticSolver : public SolverBase<dim>
   {
   public:
-    LinearElasticSolver(int order = 1): SolverBase<dim>(order) {};
+    LinearElasticSolver(const std::string& infile = "parameters.prm"): SolverBase<dim>(infile) {};
     void runStatics(const std::string& fileName = "");
     void runDynamics(const std::string& fileName = "");
   private:
