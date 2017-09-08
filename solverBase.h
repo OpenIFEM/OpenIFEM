@@ -47,9 +47,6 @@
 
 namespace IFEM
 {
-  extern template class Material<2>;
-  extern template class Material<3>;
-
   /*! \brief Base class for all solvers.
    *
    *  It implements some general functions.

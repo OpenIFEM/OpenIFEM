@@ -15,10 +15,11 @@ SET(TARGET "main")
 SET(TARGET_SRC
   main.cpp
   solverBase.cpp
+  linearElasticMaterial.cpp
   linearElasticSolver.cpp
   parameters.cpp
   material.h
-  linearMaterial.h
+  linearElasticMaterial.h
   solverBase.h
   linearElasticSolver.h
   parameters.h

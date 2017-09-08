@@ -1,5 +1,6 @@
 #include <deal.II/base/parameter_handler.h>
 #include <string>
+#include <vector>
 #include <iostream>
 
 namespace IFEM
@@ -14,16 +15,16 @@ namespace IFEM
       void parseParameters(dealii::ParameterHandler &);
     };
 
-    struct LinearMaterial
+    struct Material
     {
-      double lambda;
-      double mu;
+      std::string type;
       double rho;
+      double E; // Linear elastic material only
+      double nu; // Linear elastic material only
+      std::vector<double> C; // Hyperelastic material only
       static void declareParameters(dealii::ParameterHandler &);
       void parseParameters(dealii::ParameterHandler &);
     };
-
-    // HyperelasticMaterial
 
     struct LinearSolver
     {
@@ -46,19 +47,12 @@ namespace IFEM
       void parseParameters(dealii::ParameterHandler &);
     };
 
-    struct AllParameters : public FESystem, public LinearMaterial,
+    struct AllParameters : public FESystem, public Material,
       public LinearSolver, public Time
     {
       AllParameters(const std::string &);
       static void declareParameters(dealii::ParameterHandler &prm);
       void parseParameters(dealii::ParameterHandler &prm);
     };
-    /*
-    std::ostream& operator<<(std::ostream&, const FESystem&);
-    std::ostream& operator<<(std::ostream&, const LinearMaterial&);
-    std::ostream& operator<<(std::ostream&, const LinearSolver&);
-    std::ostream& operator<<(std::ostream&, const Time&);
-    std::ostream& operator<<(std::ostream&, const AllParameters&);
-    */
   }
 }

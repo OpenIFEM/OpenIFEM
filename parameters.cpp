@@ -8,9 +8,9 @@ namespace IFEM
     {
       prm.enter_subsection("Finite element system");
       {
-        prm.declare_entry("Polynomial degree", "1", dealii::Patterns::Integer(0),
+        prm.declare_entry("Polynomial degree", "1", dealii::Patterns::Integer(1),
           "Displacement system polynomial order");
-        prm.declare_entry("Quadrature order", "2", dealii::Patterns::Integer(0),
+        prm.declare_entry("Quadrature order", "2", dealii::Patterns::Integer(2),
           "Gauss quadrature order");
       }
       prm.leave_subsection();
@@ -26,29 +26,45 @@ namespace IFEM
       prm.leave_subsection();
     }
 
-    void LinearMaterial::declareParameters(dealii::ParameterHandler &prm)
+    void Material::declareParameters(dealii::ParameterHandler &prm)
     {
-      prm.enter_subsection("Linear material properties");
+      prm.enter_subsection("Material properties");
       {
-        prm.declare_entry("Young's modulus", "2.5", dealii::Patterns::Double(0.0),
-          "Young's modulus");
-        prm.declare_entry("Poisson's ratio", "0.25", dealii::Patterns::Double(0.0, 0.5),
-          "Poisson's ratio");
+        prm.declare_entry("Material type", "LinearElastic",
+          dealii::Patterns::Selection("LinearElastic|NeoHookean"), "Type of material");
         prm.declare_entry("Density", "1.0", dealii::Patterns::Double(0.0),
           "Density");
+        prm.declare_entry("Young's modulus", "0.0", dealii::Patterns::Double(0.0),
+          "Young's modulus, only used by linear elastic materials");
+        prm.declare_entry("Poisson's ratio", "0.0", dealii::Patterns::Double(0.0, 0.5),
+          "Poisson's ratio, only used by linear elastic materials");
+        const char *text =
+          "A list of material constants separated by comma, "
+          "only used by hyperelastic materials.";
+        prm.declare_entry("Hyperelastic parameters", "",
+          dealii::Patterns::List(dealii::Patterns::Double()), text);
       }
       prm.leave_subsection();
     }
 
-    void LinearMaterial::parseParameters(dealii::ParameterHandler &prm)
+    void Material::parseParameters(dealii::ParameterHandler &prm)
     {
-      prm.enter_subsection("Linear material properties");
+      prm.enter_subsection("Material properties");
       {
-        double E = prm.get_double("Young's modulus");
-        double nu = prm.get_double("Poisson's ratio");
+        this->type = prm.get("Material type");
         this->rho = prm.get_double("Density");
-        this->lambda = E*nu/((1+nu)*(1-2*nu));
-        this->mu = E/(2*(1+nu));
+        if (type == "LinearElastic")
+        {
+          this->E = prm.get_double("Young's modulus");
+          this->nu = prm.get_double("Poisson's ratio");
+        }
+        else if (type == "NeoHookean")
+        {
+          std::string raw_input = prm.get("Hyperelastic parameters");
+          std::vector<std::string> parsed_input =
+            dealii::Utilities::split_string_list(raw_input);
+          this->C = dealii::Utilities::string_to_double(parsed_input);
+        }
       }
       prm.leave_subsection();
     }
@@ -117,7 +133,7 @@ namespace IFEM
     void AllParameters::declareParameters(dealii::ParameterHandler &prm)
     {
       FESystem::declareParameters(prm);
-      LinearMaterial::declareParameters(prm);
+      Material::declareParameters(prm);
       LinearSolver::declareParameters(prm);
       Time::declareParameters(prm);
     }
@@ -125,7 +141,7 @@ namespace IFEM
     void AllParameters::parseParameters(dealii::ParameterHandler &prm)
     {
       FESystem::parseParameters(prm);
-      LinearMaterial::parseParameters(prm);
+      Material::parseParameters(prm);
       LinearSolver::parseParameters(prm);
       Time::parseParameters(prm);
     }

@@ -93,9 +93,6 @@ namespace
     }
   };
 
-  template class StrainPostprocessor<2>;
-  template class StrainPostprocessor<3>;
-
   template<int dim>
   class StressPostprocessor : public DataPostprocessorTensor<dim>
   {
@@ -132,16 +129,11 @@ namespace
   private:
     SymmetricTensor<4, dim> elasticity;
   };
-
-  template class StressPostprocessor<2>;
-  template class StressPostprocessor<3>;
 }
 
 namespace IFEM
 {
   using namespace dealii;
-  extern template class StrainPostprocessor<2>;
-  extern template class StrainPostprocessor<3>;
 
   template<int dim>
   LinearElasticSolver<dim>::AssemblyScratchData::AssemblyScratchData(
@@ -164,7 +156,7 @@ namespace IFEM
       DoFHandler<dim>::active_cell_iterator &cell, AssemblyScratchData &scratch,
       AssemblyCopyData &data)
   {
-    auto mat = std::dynamic_pointer_cast<LinearMaterial<dim>>(this->material);
+    auto mat = std::dynamic_pointer_cast<LinearElasticMaterial<dim>>(this->material);
     Assert(mat, ExcInternalError());
     SymmetricTensor<4, dim> elasticity = mat->getElasticityTensor();
     const unsigned int   dofsPerCell = this->fe.dofs_per_cell;
@@ -255,7 +247,7 @@ namespace IFEM
     // Pitfall! StrainPostprocessor must be declared before DataOut because the latter is
     // holding a pointer to the former!
     StrainPostprocessor<dim> strain;
-    auto mat = std::dynamic_pointer_cast<LinearMaterial<dim>>(this->material);
+    auto mat = std::dynamic_pointer_cast<LinearElasticMaterial<dim>>(this->material);
     Assert(mat, ExcInternalError());
     StressPostprocessor<dim> stress(mat->getElasticityTensor());
     DataOut<dim> data;
@@ -280,8 +272,6 @@ namespace IFEM
     {
       this->readMesh(fileName);
     }
-    this->material = std::make_shared<LinearMaterial<dim>>(
-      this->parameters.lambda, this->parameters.mu, this->parameters.rho);
     this->readBC();
     this->setup();
     this->globalAssemble();
@@ -311,8 +301,6 @@ namespace IFEM
     {
       this->readMesh(fileName);
     }
-    this->material = std::make_shared<LinearMaterial<dim>>(
-      this->parameters.lambda, this->parameters.mu, this->parameters.rho);
     this->readBC();
     this->setup();
     this->globalAssemble();

@@ -2,12 +2,14 @@
 #define LINEAR_ELASTIC_SOLVER
 
 #include "solverBase.h"
-#include "linearMaterial.h"
+#include "linearElasticMaterial.h"
 
 namespace IFEM
 {
   extern template class SolverBase<2>;
   extern template class SolverBase<3>;
+  extern template class LinearElasticMaterial<2>;
+  extern template class LinearElasticMaterial<3>;
 
   /*! \brief Solver for linear elastic materials
    *
@@ -17,7 +19,11 @@ namespace IFEM
   class LinearElasticSolver : public SolverBase<dim>
   {
   public:
-    LinearElasticSolver(const std::string& infile = "parameters.prm"): SolverBase<dim>(infile) {};
+    LinearElasticSolver(const std::string& infile = "parameters.prm"): SolverBase<dim>(infile)
+    {
+      this->material = std::make_shared<LinearElasticMaterial<dim>>(
+        this->parameters.E, this->parameters.nu, this->parameters.rho);
+    };
     void runStatics(const std::string& fileName = "");
     void runDynamics(const std::string& fileName = "");
   private:
