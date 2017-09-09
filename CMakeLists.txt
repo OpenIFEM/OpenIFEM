@@ -18,11 +18,14 @@ SET(TARGET_SRC
   linearElasticMaterial.cpp
   linearElasticSolver.cpp
   parameters.cpp
+  hyperelasticMaterial.cpp
   material.h
   linearElasticMaterial.h
   solverBase.h
   linearElasticSolver.h
   parameters.h
+  hyperelasticMaterial.h
+  neoHookean.h
   )
 
 # Usually, you will not need to modify anything beyond this point...
