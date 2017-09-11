@@ -55,7 +55,7 @@ namespace IFEM
       {return ST::dev_P*getTauBar();}
     /** Return the volumetric part of the Kirchhoff stress. tau_{vol} = pI */
     virtual dealii::SymmetricTensor<2, dim> getTauVol() const
-      {return get_dPsi_vol_dJ()*ST::I;}
+      {return kappa*(detF-1)*detF*get_dPsi_vol_dJ()*ST::I;}
     /** Return the volumetric part of the spatial elasticity tensor multiplied with J */
     virtual dealii::SymmetricTensor<4, dim> getJcVol() const;
     /** Return the isochoric part of the spatial elasticity tensor multiplied with J */
