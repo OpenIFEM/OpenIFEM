@@ -459,12 +459,402 @@ namespace IFEM
       Assert(lqph.size() == numQuadPts, ExcInternalError());
       for (unsigned int q = 0; q < numQuadPts; ++q)
       {
-        const double det_F_qp = lqph[q]->getDetF();
+        const double det = lqph[q]->getDetF();
         const double JxW = feVals.JxW(q);
-        volue += det_F_qp * JxW;
+        volume += det * JxW;
       }
     }
-    Assert(vol_current > 0.0, ExcInternalError());
-    return vol_current;
+    Assert(volume > 0.0, ExcInternalError());
+    return volume;
+  }
+
+  template<int dim>
+  void HyperelasticSolver<dim>::getErrorResidual(Errors &residual)
+  {
+    Vector<double> res(dofHandler.n_dofs());
+    for (unsigned int i = 0; i < dofHandler.n_dofs(); ++i)
+    {
+      if (!constraints.is_constrained(i))
+      {
+        res(i) = systemRHS(i);
+      }
+    }
+    residual.norm = res.l2_norm();
+  }
+
+
+  template<int dim>
+  void HyperelasticSolver<dim>::getErrorUpdate(const Vector<double> &newton_update,
+    Errors &error_update)
+  {
+    Vector<double> error(dofHandler.n_dofs());
+    for (unsigned int i = 0; i < dofHandler.n_dofs(); ++i)
+    {
+      if (!constraints.is_constrained(i))
+      {
+        error(i) = newton_update(i);
+      }
+    }
+    error_update.norm = error.l2_norm();
+  }
+
+  template<int dim>
+  Vector<double> HyperelasticSolver<dim>::getSolution(
+    const Vector<double> &solution_delta) const
+  {
+    Vector<double> solution_total(solution);
+    solution_total += solution_delta;
+    return solution_total;
+  }
+
+  template<int dim>
+  void HyperelasticSolver<dim>::assembleGlobalK()
+  {
+    timer.enter_subsection("Assemble tangent matrix");
+    std::cout << " ASM_K " << std::flush;
+
+    tangentMatrix = 0.0;
+
+    const UpdateFlags uf_cell(update_values    |
+                              update_gradients |
+                              update_JxW_values);
+
+    PerTaskDataK per_task_data(dofsPerCell);
+    ScratchDataK scratch_data(fe, quadFormula, uf_cell);
+
+    WorkStream::run(dofHandler.begin_active(),
+                    dofHandler.end(),
+                    std::bind(&HyperelasticSolver<dim>::assembleLocalK,
+                              this,
+                              std::placeholders::_1,
+                              std::placeholders::_2,
+                              std::placeholders::_3),
+                    std::bind(&HyperelasticSolver<dim>::copy_local_to_global_K,
+                              this,
+                              std::placeholders::_1),
+                    scratch_data,
+                    per_task_data);
+
+    timer.leave_subsection();
+  }
+
+  template<int dim>
+  void HyperelasticSolver<dim>::copyLocalToGlobalK(const PerTaskDataK &data)
+  {
+    for (unsigned int i = 0; i < dofs_per_cell; ++i)
+    {
+      for (unsigned int j = 0; j < dofs_per_cell; ++j)
+      {
+        tangent_matrix.add(data.local_dof_indices[i],
+                           data.local_dof_indices[j],
+                           data.cell_matrix(i, j));
+      }
+    }
+  }
+
+  template<int dim>
+  void HyperelasticSolver<dim>::assembleLocalK(
+    const typename DoFHandler<dim>::active_cell_iterator &cell,
+    ScratchDataK &scratch, PerTaskDataK &data) const
+  {
+    data.reset();
+    scratch.reset();
+    scratch.feValues.reinit(cell);
+    cell->get_dof_indices(data.local_dof_indices);
+
+    const std::vector<std::shared_ptr<const PointHistory<dim>>> lqph =
+      quadrature_point_history.get_data(cell);
+    Assert(lqph.size() == numQuadPts, ExcInternalError());
+
+    for (unsigned int q = 0; q < numQuadPts; ++q)
+    {
+      const Tensor<2, dim> F_inv = lqph[q]->getFInv();
+      for (unsigned int k = 0; k < dofsPerCell; ++k)
+      {
+        // TODO: remove these two lines
+        const unsigned int k_group = fe.system_to_base_index(k).first.first;
+        Assert(k_group == 0, ExcInternalError());
+        scratch.grad_Nx[q][k] = scratch.feValues[uFe].gradient(k, q)*F_inv;
+        scratch.symm_grad_Nx[q][k] = symmetrize(scratch.grad_Nx[q][k]);
+      }
+    }
+
+    for (unsigned int q = 0; q < numQuadPts; ++q)
+    {
+      const Tensor<2, dim> tau = lqph[q]->getTau();
+      const SymmetricTensor<4, dim> Jc = lqph[q]->getJc();
+      const std::vector<SymmetricTensor<2, dim>> &symm_grad_Nx = scratch.symm_grad_Nx[q];
+      const std::vector<Tensor<2, dim>> &grad_Nx = scratch.grad_Nx[q];
+      const double JxW = scratch.feValues.JxW(q);
+
+      // TODO: remove i_group j_group
+      for (unsigned int i = 0; i < dofsPerCell; ++i)
+      {
+        const unsigned int component_i = fe.system_to_component_index(i).first;
+        const unsigned int i_group = fe.system_to_base_index(i).first.first;
+        for (unsigned int j = 0; j <= i; ++j)
+        {
+          const unsigned int component_j = fe.system_to_component_index(j).first;
+          const unsigned int j_group = fe.system_to_base_index(j).first.first;
+          Assert(i_group == 0, ExcInternalError());
+          Assert(j_group == 0, ExcInternalError());
+          data.cell_matrix(i, j) += symm_grad_Nx[i]*Jc*symm_grad_Nx[j]*JxW;
+          if (component_i == component_j)
+          {
+            data.cell_matrix(i, j) += grad_Nx[i][component_i]*tau
+              *grad_Nx[j][component_j]*JxW;
+          }
+        }
+      }
+    }
+
+    for (unsigned int i = 0; i < dofsPerCell; ++i)
+    {
+      for (unsigned int j = i + 1; j < dofsPerCell; ++j)
+      {
+        data.cell_matrix(i, j) = data.cell_matrix(j, i);
+      }
+    }
+  }
+
+  template<int dim>
+  void HyperelasticSolver<dim>::assembleGlobalRHS()
+  {
+    timer.enter_subsection("Assemble system right-hand side");
+    std::cout << " ASM_R " << std::flush;
+    sysRHS = 0.0;
+    const UpdateFlags uf_cell(update_values |
+                              update_gradients |
+                              update_JxW_values);
+    const UpdateFlags uf_face(update_values |
+                              update_normal_vectors |
+                              update_JxW_values);
+    PerTaskDataRHS per_task_data(dofsPerCell);
+    ScratchDataRHS scratch_data(fe, quadFormula, uf_cell, quadFaceFormula, uf_face);
+    WorkStream::run(dofHandler.begin_active(),
+                    dofHandler.end(),
+                    std::bind(&HyperelasticSolver<dim>::assembleLocalRHS,
+                              this,
+                              std::placeholders::_1,
+                              std::placeholders::_2,
+                              std::placeholders::_3),
+                    std::bind(&HyperelasticSolver<dim>::copyLocalToGlobalRHS,
+                              this,
+                              std::placeholders::_1),
+                    scratch_data,
+                    per_task_data);
+    timer.leave_subsection();
+  }
+
+  template<int dim>
+  void HyperelasticSolver<dim>::copyLocalToGlobalRHS(const PerTaskDataRHS &data)
+  {
+    for (unsigned int i = 0; i < dofsPerCell; ++i)
+    {
+      sysRHS(data.local_dof_indices[i]) += data.cell_rhs(i);
+    }
+  }
+
+  template<int dim>
+  void HyperelasticSolver<dim>::assembleLocalRHS(
+    const typename DoFHandler<dim>::active_cell_iterator &cell,
+    ScratchDataRHS &scratch, PerTaskDataRHS &data) const
+  {
+    data.reset();
+    scratch.reset();
+    scratch.feValues.reinit(cell);
+    cell->get_dof_indices(data.local_dof_indices);
+
+    const std::vector<std::shared_ptr<const PointHistory<dim>>> lqph =
+      quadrature_point_history.get_data(cell);
+    Assert(lqph.size() == numQuadPts, ExcInternalError());
+
+    for (unsigned int q = 0; q < numQuadPts; ++q)
+    {
+      const Tensor<2, dim> F_inv = lqph[q]->getFInv();
+      for (unsigned int k = 0; k < dofsPerCell; ++k)
+      {
+        const unsigned int k_group = fe.system_to_base_index(k).first.first;
+        Assert(k_group == 0, ExcInternalError());
+        scratch.symm_grad_Nx[q][k] = symmetrize(scratch.feValues[uFe].gradient(k, q)*F_inv);
+      }
+    }
+
+    for (unsigned int q = 0; q < numQuadPts; ++q)
+    {
+      const SymmetricTensor<2, dim> tau = lqph[q]->getTau();
+      const std::vector<SymmetricTensor<2, dim>> &symm_grad_Nx = scratch.symm_grad_Nx[q];
+      const double JxW = scratch.feValues.JxW(q);
+      for (unsigned int i = 0; i < dofsPerCell; ++i)
+      {
+        const unsigned int i_group = fe.system_to_base_index(i).first.first;
+        Assert(i_group == 0, ExcInternalError());
+        data.cell_rhs(i) -= (symm_grad_Nx[i]*tau)*JxW;
+      }
+    }
+
+    for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell; ++face)
+    {
+      if (cell->face(face)->at_boundary() == true && cell->face(face)->boundary_id() == 6)
+      {
+        scratch.feFaceValues.reinit(cell, face);
+        for (unsigned int q = 0; q < numFaceQuadPts; ++q)
+        {
+          const Tensor<1, dim> &N = scratch.feFaceValues.normal_vector(q);
+          static const double  p0 = -4.0/(parameters.scale*parameters.scale);
+          const double time_ramp = (time.current()/time.end());
+          const double pressure = p0*parameters.p_p0*time_ramp;
+          const Tensor<1, dim> traction = pressure*N;
+          for (unsigned int i = 0; i < dofsPerCell; ++i)
+          {
+            const unsigned int i_group = fe.system_to_base_index(i).first.first;
+            Assert(i_group == 0, ExcInternalError());
+            {
+              const unsigned int component_i = fe.system_to_component_index(i).first;
+              const double Ni = scratch.feFaceValues.shape_value(i, q);
+              const double JxW = scratch.feFaceValues.JxW(q);
+              data.cell_rhs(i) += (Ni*traction[component_i])*JxW;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  template<int dim>
+  void HyperelasticSolver<dim>::makeConstraints(const int &it_nr)
+  {
+    std::cout << " CST " << std::flush;
+    if (it_nr > 0)
+    {
+      return;
+    }
+    constraints.clear();
+
+    const FEValuesExtractors::Scalar x_displacement(0);
+    const FEValuesExtractors::Scalar y_displacement(1);
+    {
+      const int boundary_id = 0;
+      VectorTools::interpolate_boundary_values(dofHandler,
+                                               boundary_id,
+                                               Functions::ZeroFunction<dim>(n_components),
+                                               constraints,
+                                               fe.component_mask(x_displacement));
+    }
+    {
+      const int boundary_id = 2;
+      VectorTools::interpolate_boundary_values(dofHandler,
+                                               boundary_id,
+                                               Functions::ZeroFunction<dim>(n_components),
+                                               constraints,
+                                               fe.component_mask(y_displacement));
+    }
+
+    if (dim==3)
+    {
+      const FEValuesExtractors::Scalar z_displacement(2);
+      {
+        const int boundary_id = 3;
+        VectorTools::interpolate_boundary_values(dofHandler,
+                                                  boundary_id,
+                                                  Functions::ZeroFunction<dim>(n_components),
+                                                  constraints,
+                                                  (fe.component_mask(x_displacement) |
+                                                   fe.component_mask(z_displacement)));
+      }
+      {
+        const int boundary_id = 4;
+        VectorTools::interpolate_boundary_values(dofHandler,
+                                                 boundary_id,
+                                                 Functions::ZeroFunction<dim>(n_components),
+                                                 constraints,
+                                                 fe.component_mask(z_displacement));
+      }
+      {
+        const int boundary_id = 6;
+        VectorTools::interpolate_boundary_values(dofHandler,
+                                                 boundary_id,
+                                                 Functions::ZeroFunction<dim>(n_components),
+                                                 constraints,
+                                                 (fe.component_mask(x_displacement) |
+                                                  fe.component_mask(z_displacement)));
+      }
+    }
+    else
+    {
+      {
+        const int boundary_id = 3;
+        VectorTools::interpolate_boundary_values(dofHandler,
+                                                 boundary_id,
+                                                 Functions::ZeroFunction<dim>(n_components),
+                                                 constraints,
+                                                 fe.component_mask(x_displacement));
+      }
+      {
+        const int boundary_id = 6;
+        VectorTools::interpolate_boundary_values(dofHandler,
+                                                 boundary_id,
+                                                 Functions::ZeroFunction<dim>(n_components),
+                                                 constraints,
+                                                 fe.component_mask(x_displacement));
+      }
+    }
+    constraints.close();
+  }
+
+  template<int dim>
+  std::pair<unsigned int, double>
+  HyperelasticSolver<dim>::solveLinearSystem(Vector<double> &newton_update)
+  {
+    unsigned int lin_it = 0;
+    double lin_res = 0.0;
+
+    timer.enter_subsection("Linear solver");
+    std::cout << " SLV " << std::flush;
+    if (parameters.type_lin == "CG")
+    {
+      const int solver_its = tangentMatrix.m()*parameters.max_iterations_lin;
+      const double tol_sol = parameters.tol_lin*sysRHS.l2_norm();
+      SolverControl solver_control(solver_its, tol_sol);
+      GrowingVectorMemory<Vector<double>> GVM;
+      SolverCG<Vector<double>> solver_CG(solver_control, GVM);
+      PreconditionSelector<SparseMatrix<double>, Vector<double>>
+      preconditioner(parameters.preconditioner_type, parameters.preconditioner_relaxation);
+      preconditioner.use_matrix(tangentMatrix);
+      solver_CG.solve(tangentMatrix, newton_update, sysRHS, preconditioner);
+      lin_it = solver_control.last_step();
+      lin_res = solver_control.last_value();
+    }
+    else
+    {
+      Assert(false, ExcMessage("Linear solver type not implemented"));
+    }
+    timer.leave_subsection();
+    constraints.distribute(newton_update);
+    return std::make_pair(lin_it, lin_res);
+  }
+
+  template <int dim>
+  void HyperelasticSolver<dim>::output() const
+  {
+    DataOut<dim> data_out;
+    std::vector<DataComponentInterpretation::DataComponentInterpretation>
+    data_component_interpretation(dim,
+      DataComponentInterpretation::component_is_part_of_vector);
+    std::vector<std::string> solution_name(dim, "displacement");
+    data_out.attach_dof_handler(dofHandler);
+    data_out.add_data_vector(solution, solution_name, DataOut<dim>::type_dof_data,
+      data_component_interpretation);
+    Vector<double> soln(solution.size());
+    for (unsigned int i = 0; i < soln.size(); ++i)
+    {
+      soln(i) = solution_n(i);
+    }
+    MappingQEulerian<dim> q_mapping(degree, dofHandler, soln);
+    data_out.build_patches(q_mapping, degree);
+    std::ostringstream filename;
+    filename << "solution-" << dim << "d-" << time.get_timestep() << ".vtk";
+    std::ofstream output(filename.str().c_str());
+    data_out.write_vtk(output);
   }
 }
