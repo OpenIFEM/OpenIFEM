@@ -1,3 +1,6 @@
+#ifndef PARAMETERS
+#define PARAMETERS
+
 #include <deal.II/base/parameter_handler.h>
 #include <string>
 #include <vector>
@@ -9,15 +12,43 @@ namespace IFEM
   {
     struct FESystem
     {
-      unsigned int poly_degree;
-      unsigned int quad_order;
+      unsigned int polyDegree;
+      unsigned int quadOrder;
+      static void declareParameters(dealii::ParameterHandler &);
+      void parseParameters(dealii::ParameterHandler &);
+    };
+
+    struct Geometry
+    {
+      unsigned int globalRefinement;
+      double scale;
+      static void declareParameters(dealii::ParameterHandler &);
+      void parseParameters(dealii::ParameterHandler &);
+    };
+
+    struct LinearSolver
+    {
+      std::string typeLin;
+      double tolLin;
+      double maxItrLin;
+      std::string typePre;
+      double relaxPre;
+      static void declareParameters(dealii::ParameterHandler &);
+      void parseParameters(dealii::ParameterHandler &);
+    };
+
+    struct NonlinearSolver
+    {
+      unsigned int maxItrNL;
+      double       tolF;
+      double       tolU;
       static void declareParameters(dealii::ParameterHandler &);
       void parseParameters(dealii::ParameterHandler &);
     };
 
     struct Material
     {
-      std::string type;
+      std::string typeMat;
       double rho;
       double E; // Linear elastic material only
       double nu; // Linear elastic material only
@@ -26,29 +57,16 @@ namespace IFEM
       void parseParameters(dealii::ParameterHandler &);
     };
 
-    struct LinearSolver
-    {
-      std::string type_lin;
-      double tol_lin;
-      double max_iterations_lin;
-      std::string preconditioner_type;
-      double preconditioner_relaxation;
-      static void declareParameters(dealii::ParameterHandler &);
-      void parseParameters(dealii::ParameterHandler &);
-    };
-
-    // NonLinearSolver
-
     struct Time
     {
-      double end_time;
-      double delta_t;
+      double endTime;
+      double deltaTime;
       static void declareParameters(dealii::ParameterHandler &);
       void parseParameters(dealii::ParameterHandler &);
     };
 
-    struct AllParameters : public FESystem, public Material,
-      public LinearSolver, public Time
+    struct AllParameters : public FESystem, public Geometry,
+      public LinearSolver, public NonlinearSolver, public Material, public Time
     {
       AllParameters(const std::string &);
       static void declareParameters(dealii::ParameterHandler &prm);
@@ -56,3 +74,5 @@ namespace IFEM
     };
   }
 }
+
+#endif

@@ -41,7 +41,7 @@
 #include <fstream>
 
 #include "parameters.h"
-#include "hyperelasticMaterial.h"
+#include "neoHookean.h"
 
 namespace
 {
@@ -55,7 +55,9 @@ namespace
     void normalize(const Errors &rhs)
     {
       if (rhs.norm != 0.0)
+      {
         norm /= rhs.norm;
+      }
     }
     double norm;
   };
@@ -100,20 +102,20 @@ namespace
       Jc(dealii::SymmetricTensor<4, dim>()), dPsi_vol_dJ(0.0), d2Psi_vol_dJ2(0.0) {}
     virtual ~PointHistory() {}
     /** Initialize the members with the input parameters */
-    void setup(const Parameters::AllParameters&);
+    void setup(const IFEM::Parameters::AllParameters&);
     /** 
      * Update the state with the displacement gradient
      * in the reference configuration. 
      */
     void update(const dealii::Tensor<2, dim>&);
-    double getDetF() const {return this->material->getDetF();}
-    const dealii::Tensor<2, dim>& getFInv() const {return this->FInv;}
-    const dealii::SymmetricTensor<2, dim>& getTau() const {return this->tau;}
-    const dealii::SymmetricTensor<4, dim>& getJc() const {return this->Jc;}
-    double get_dPsi_vol_dJ() const {return this->dPsi_vol_dJ;}
-    double get_d2Psi_vol_dJ2() const {return this->d2Psi_vol_dJ2;}
+    double getDetF() const {return material->getDetF();}
+    const dealii::Tensor<2, dim>& getFInv() const {return FInv;}
+    const dealii::SymmetricTensor<2, dim>& getTau() const {return tau;}
+    const dealii::SymmetricTensor<4, dim>& getJc() const {return Jc;}
+    double get_dPsi_vol_dJ() const {return dPsi_vol_dJ;}
+    double get_d2Psi_vol_dJ2() const {return d2Psi_vol_dJ2;}
   private:
-    std::shared_ptr<HyperelasticMaterial<dim>> material;
+    std::shared_ptr<IFEM::HyperelasticMaterial<dim>> material;
     dealii::Tensor<2, dim> FInv;
     dealii::SymmetricTensor<2, dim> tau;
     dealii::SymmetricTensor<4, dim> Jc;
@@ -135,8 +137,8 @@ namespace IFEM
   {
   public:
     HyperelasticSolver(const std::string& infile = "parameters.prm");
-    ~HyperelasticSolver() {dofHandler.clear();}
-    void runStatics(const std::string& fileName = "");
+    ~HyperelasticSolver() {this->dofHandler.clear();}
+    void runStatics();
   private:
     /**
      * Forward-declare some structures for assembly using WorkStream
@@ -155,12 +157,14 @@ namespace IFEM
 
     // Tangent matrix
     void assembleGlobalK();
-    void assembleLocalK();
+    void assembleLocalK(const typename dealii::DoFHandler<dim>::active_cell_iterator &cell,
+      ScratchDataK &scratch, PerTaskDataK &data) const;
     void copyLocalToGlobalK(const PerTaskDataK&);
 
     // System RHS
     void assembleGlobalRHS();
-    void assembleLocalRHS();
+    void assembleLocalRHS(const typename dealii::DoFHandler<dim>::active_cell_iterator &cell,
+      ScratchDataRHS &scratch, PerTaskDataRHS &data) const;
     void copyLocalToGlobalRHS(const PerTaskDataRHS&);
 
     // Apply boundary conditions
@@ -186,7 +190,7 @@ namespace IFEM
     /* Solve a linear equation, return the number of iterations and residual. */
     std::pair<unsigned int, double> solveLinearSystem(dealii::Vector<double>&);
     // Given the increment of the solution, return the current solution.
-    dealii::Vector<double> getSolution(const dealii::Vector<double>&) const,
+    dealii::Vector<double> getSolution(const dealii::Vector<double>&) const;
     void output() const;
 
     Parameters::AllParameters parameters;
@@ -212,12 +216,12 @@ namespace IFEM
     const unsigned int numQuadPts;
     const unsigned int numFaceQuadPts;
     // Tells dealii to view the dofs as a vector when necessary
-    const FEValuesExtractors::Vector uFe;
+    const dealii::FEValuesExtractors::Vector uFe;
 
     dealii::ConstraintMatrix constraints;
     dealii::SparsityPattern pattern;
     dealii::SparseMatrix<double> tangentMatrix;
-    dealii::Vector<double> sysRHS;
+    dealii::Vector<double> systemRHS;
     dealii::Vector<double> solution;
 
     /**
@@ -241,7 +245,7 @@ namespace IFEM
 
     // Print the header and footer of the output table
     static void printConvHeader();
-    static void printConvFooter();
+    void printConvFooter();
   };
 }
 

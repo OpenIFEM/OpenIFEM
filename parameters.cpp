@@ -9,7 +9,7 @@ namespace IFEM
       prm.enter_subsection("Finite element system");
       {
         prm.declare_entry("Polynomial degree", "1", dealii::Patterns::Integer(1),
-          "Displacement system polynomial order");
+          "Element polynomial order");
         prm.declare_entry("Quadrature order", "2", dealii::Patterns::Integer(2),
           "Gauss quadrature order");
       }
@@ -20,8 +20,88 @@ namespace IFEM
     {
       prm.enter_subsection("Finite element system");
       {
-        this->poly_degree = prm.get_integer("Polynomial degree");
-        this->quad_order = prm.get_integer("Quadrature order");
+        polyDegree = prm.get_integer("Polynomial degree");
+        quadOrder = prm.get_integer("Quadrature order");
+      }
+      prm.leave_subsection();
+    }
+
+    void Geometry::declareParameters(dealii::ParameterHandler &prm)
+    {
+      prm.enter_subsection("Geometry");
+      {
+        prm.declare_entry("Global refinement", "2", dealii::Patterns::Integer(0),
+          "Global refinement level");
+        prm.declare_entry("Grid scale", "1e-3", dealii::Patterns::Double(0.0),
+          "Global grid scaling factor");
+      }
+      prm.leave_subsection();
+    }
+
+    void Geometry::parseParameters(dealii::ParameterHandler &prm)
+    {
+      prm.enter_subsection("Geometry");
+      {
+        globalRefinement = prm.get_integer("Global refinement");
+        scale = prm.get_double("Grid scale");
+      }
+      prm.leave_subsection();
+    }
+
+    void LinearSolver::declareParameters(dealii::ParameterHandler &prm)
+    {
+      prm.enter_subsection("Linear solver");
+      {
+        prm.declare_entry("Solver type", "CG", dealii::Patterns::Selection("CG|Direct"),
+          "Type of solver used to solve the linear system");
+        prm.declare_entry("Residual", "1e-6", dealii::Patterns::Double(0.0),
+          "Linear solver residual (scaled by residual norm)");
+        prm.declare_entry("Max iteration multiplier", "1", dealii::Patterns::Double(0.0),
+          "Linear solver iterations (multiples of the system matrix size)");
+        prm.declare_entry("Preconditioner type", "ssor", dealii::Patterns::Selection("jacobi|ssor"),
+          "Type of preconditioner");
+        prm.declare_entry("Preconditioner relaxation", "0.65", dealii::Patterns::Double(0.0),
+          "Preconditioner relaxation value");
+      }
+      prm.leave_subsection();
+    }
+
+    void LinearSolver::parseParameters(dealii::ParameterHandler &prm)
+    {
+      prm.enter_subsection("Linear solver");
+      {
+        typeLin = prm.get("Solver type");
+        tolLin = prm.get_double("Residual");
+        maxItrLin = prm.get_double("Max iteration multiplier");
+        typePre = prm.get("Preconditioner type");
+        relaxPre = prm.get_double("Preconditioner relaxation");
+      }
+      prm.leave_subsection();
+    }
+
+    void NonlinearSolver::declareParameters(dealii::ParameterHandler &prm)
+    {
+      prm.enter_subsection("Nonlinear solver");
+      {
+        prm.declare_entry("Max iterations Newton-Raphson", "10",
+          dealii::Patterns::Integer(0), "Number of Newton-Raphson iterations allowed");
+
+        prm.declare_entry("Tolerance force", "1.0e-9", dealii::Patterns::Double(0.0),
+          "Force residual tolerance");
+
+        prm.declare_entry("Tolerance displacement", "1.0e-6", dealii::Patterns::Double(0.0),
+          "Displacement error tolerance");
+      }
+      prm.leave_subsection();
+    }
+
+    void NonlinearSolver::parseParameters(dealii::ParameterHandler &prm)
+    {
+      prm.enter_subsection("Nonlinear solver");
+      {
+        maxItrNL = prm.get_integer("Max iterations Newton-Raphson");
+        tolF = prm.get_double("Tolerance force");
+        tolU = prm.get_double("Tolerance displacement");
       }
       prm.leave_subsection();
     }
@@ -51,51 +131,20 @@ namespace IFEM
     {
       prm.enter_subsection("Material properties");
       {
-        this->type = prm.get("Material type");
-        this->rho = prm.get_double("Density");
-        if (type == "LinearElastic")
+        typeMat = prm.get("Material type");
+        rho = prm.get_double("Density");
+        if (typeMat == "LinearElastic")
         {
           this->E = prm.get_double("Young's modulus");
           this->nu = prm.get_double("Poisson's ratio");
         }
-        else if (type == "NeoHookean")
+        else if (typeMat == "NeoHookean")
         {
           std::string raw_input = prm.get("Hyperelastic parameters");
           std::vector<std::string> parsed_input =
             dealii::Utilities::split_string_list(raw_input);
-          this->C = dealii::Utilities::string_to_double(parsed_input);
+          C = dealii::Utilities::string_to_double(parsed_input);
         }
-      }
-      prm.leave_subsection();
-    }
-
-    void LinearSolver::declareParameters(dealii::ParameterHandler &prm)
-    {
-      prm.enter_subsection("Linear solver");
-      {
-        prm.declare_entry("Solver type", "CG", dealii::Patterns::Selection("CG|Direct"),
-          "Type of solver used to solve the linear system");
-        prm.declare_entry("Residual", "1e-6", dealii::Patterns::Double(0.0),
-          "Linear solver residual (scaled by residual norm)");
-        prm.declare_entry("Max iteration multiplier", "1", dealii::Patterns::Double(0.0),
-          "Linear solver iterations (multiples of the system matrix size)");
-        prm.declare_entry("Preconditioner type", "ssor", dealii::Patterns::Selection("jacobi|ssor"),
-          "Type of preconditioner");
-        prm.declare_entry("Preconditioner relaxation", "0.65", dealii::Patterns::Double(0.0),
-          "Preconditioner relaxation value");
-      }
-      prm.leave_subsection();
-    }
-
-    void LinearSolver::parseParameters(dealii::ParameterHandler &prm)
-    {
-      prm.enter_subsection("Linear solver");
-      {
-        this->type_lin = prm.get("Solver type");
-        this->tol_lin = prm.get_double("Residual");
-        this->max_iterations_lin = prm.get_double("Max iteration multiplier");
-        this->preconditioner_type = prm.get("Preconditioner type");
-        this->preconditioner_relaxation = prm.get_double("Preconditioner relaxation");
       }
       prm.leave_subsection();
     }
@@ -115,8 +164,8 @@ namespace IFEM
     {
       prm.enter_subsection("Time");
       {
-        this->end_time = prm.get_double("End time");
-        this->delta_t = prm.get_double("Time step size");
+        endTime = prm.get_double("End time");
+        deltaTime = prm.get_double("Time step size");
       }
       prm.leave_subsection();
     }
@@ -133,16 +182,20 @@ namespace IFEM
     void AllParameters::declareParameters(dealii::ParameterHandler &prm)
     {
       FESystem::declareParameters(prm);
-      Material::declareParameters(prm);
+      Geometry::declareParameters(prm);
       LinearSolver::declareParameters(prm);
+      NonlinearSolver::declareParameters(prm);
+      Material::declareParameters(prm);
       Time::declareParameters(prm);
     }
 
     void AllParameters::parseParameters(dealii::ParameterHandler &prm)
     {
       FESystem::parseParameters(prm);
-      Material::parseParameters(prm);
+      Geometry::parseParameters(prm);
       LinearSolver::parseParameters(prm);
+      NonlinearSolver::parseParameters(prm);
+      Material::parseParameters(prm);
       Time::parseParameters(prm);
     }
   }

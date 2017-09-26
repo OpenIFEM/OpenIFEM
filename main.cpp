@@ -1,23 +1,19 @@
 #include <iostream>
 
 #include "linearElasticSolver.h"
+#include "hyperelasticSolver.h"
 
 extern template class IFEM::LinearElasticSolver<2>;
 extern template class IFEM::LinearElasticSolver<3>;
+extern template class IFEM::HyperelasticSolver<2>;
+extern template class IFEM::HyperelasticSolver<3>;
 
-int main(int argc, char* argv[])
+int main()
 {
   try
   {
-    IFEM::LinearElasticSolver<2> solver;
-    if (argc > 1)
-    {
-      solver.runStatics(std::string(argv[1]));
-    }
-    else
-    {
-      solver.runStatics();
-    }
+    IFEM::HyperelasticSolver<2> solver;
+    solver.runStatics();
   }
   catch (std::exception& exc)
   {
