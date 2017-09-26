@@ -9,13 +9,14 @@ namespace IFEM
   template <int dim>
   class Material
   {
-    public:
-      Material(): density(0.0) {}
-      Material(double rho): density(rho) {}
-      virtual ~Material() {}
-      double getDensity() {return this->density;}
-    protected:
-      double density;
+  public:
+    Material() : density(0.0) {}
+    Material(double rho) : density(rho) {}
+    virtual ~Material() {}
+    double getDensity() { return this->density; }
+
+  protected:
+    double density;
   };
 }
 

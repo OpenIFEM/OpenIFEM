@@ -1,8 +1,8 @@
 #ifndef LINEAR_ELASTIC_SOLVER
 #define LINEAR_ELASTIC_SOLVER
 
-#include "solverBase.h"
 #include "linearElasticMaterial.h"
+#include "solverBase.h"
 
 namespace IFEM
 {
@@ -15,35 +15,38 @@ namespace IFEM
    *
    * Reference: http://www.dealii.org/8.5.0/doxygen/deal.II/step_8.html
    */
-  template<int dim>
+  template <int dim>
   class LinearElasticSolver : public SolverBase<dim>
   {
   public:
-    LinearElasticSolver(const std::string& infile = "parameters.prm"): SolverBase<dim>(infile)
+    LinearElasticSolver(const std::string &infile = "parameters.prm")
+      : SolverBase<dim>(infile)
     {
       this->material = std::make_shared<LinearElasticMaterial<dim>>(
         this->parameters.E, this->parameters.nu, this->parameters.rho);
     };
-    void runStatics(const std::string& fileName = "");
-    void runDynamics(const std::string& fileName = "");
+    void runStatics(const std::string &fileName = "");
+    void runDynamics(const std::string &fileName = "");
+
   private:
     /**
      * The scratch to be used in multithread assembly.
-     * We could as well construct them as local variables but repeatedly constructing
-     * FEValues is expensive.
+     * We could as well construct them as local variables but repeatedly
+     * constructing FEValues is expensive.
      */
     struct AssemblyScratchData
     {
-      AssemblyScratchData(const dealii::FiniteElement<dim>&, const dealii::QGauss<dim>&,
-        const dealii::QGauss<dim-1>&);
+      AssemblyScratchData(const dealii::FiniteElement<dim> &,
+                          const dealii::QGauss<dim> &,
+                          const dealii::QGauss<dim - 1> &);
       AssemblyScratchData(const AssemblyScratchData &scratch);
 
       dealii::FEValues<dim> fe_values;
       dealii::FEFaceValues<dim> fe_face_values;
     };
     /**
-     * Instead of using mutex, we store the result of the local assembly in a structure
-     * and then copy it into the global matrix SERIALLY.
+     * Instead of using mutex, we store the result of the local assembly in a
+     * structure and then copy it into the global matrix SERIALLY.
      */
     struct AssemblyCopyData
     {
@@ -58,8 +61,10 @@ namespace IFEM
     /**
      * Assemble the local matrix and rhs at a given cell.
      */
-    void localAssemble(const typename dealii::DoFHandler<dim>::active_cell_iterator&,
-      AssemblyScratchData &, AssemblyCopyData &);
+    void localAssemble(
+      const typename dealii::DoFHandler<dim>::active_cell_iterator &,
+      AssemblyScratchData &,
+      AssemblyCopyData &);
     /**
      * Copy the local data to global. This should run serially.
      */
