@@ -41,7 +41,7 @@
 #include <fstream>
 
 #include "parameters.h"
-#include "hyperelasticMaterial.h"
+#include "neoHookean.h"
 
 namespace
 {
@@ -137,8 +137,8 @@ namespace IFEM
   {
   public:
     HyperelasticSolver(const std::string& infile = "parameters.prm");
-    ~HyperelasticSolver() {dofHandler.clear();}
-    void runStatics(const std::string& fileName = "");
+    ~HyperelasticSolver() {this->dofHandler.clear();}
+    void runStatics();
   private:
     /**
      * Forward-declare some structures for assembly using WorkStream
@@ -157,12 +157,14 @@ namespace IFEM
 
     // Tangent matrix
     void assembleGlobalK();
-    void assembleLocalK();
+    void assembleLocalK(const typename dealii::DoFHandler<dim>::active_cell_iterator &cell,
+      ScratchDataK &scratch, PerTaskDataK &data) const;
     void copyLocalToGlobalK(const PerTaskDataK&);
 
     // System RHS
     void assembleGlobalRHS();
-    void assembleLocalRHS();
+    void assembleLocalRHS(const typename dealii::DoFHandler<dim>::active_cell_iterator &cell,
+      ScratchDataRHS &scratch, PerTaskDataRHS &data) const;
     void copyLocalToGlobalRHS(const PerTaskDataRHS&);
 
     // Apply boundary conditions
@@ -219,7 +221,7 @@ namespace IFEM
     dealii::ConstraintMatrix constraints;
     dealii::SparsityPattern pattern;
     dealii::SparseMatrix<double> tangentMatrix;
-    dealii::Vector<double> sysRHS;
+    dealii::Vector<double> systemRHS;
     dealii::Vector<double> solution;
 
     /**
@@ -243,7 +245,7 @@ namespace IFEM
 
     // Print the header and footer of the output table
     static void printConvHeader();
-    static void printConvFooter();
+    void printConvFooter();
   };
 }
 

@@ -182,16 +182,20 @@ namespace IFEM
     void AllParameters::declareParameters(dealii::ParameterHandler &prm)
     {
       FESystem::declareParameters(prm);
-      Material::declareParameters(prm);
+      Geometry::declareParameters(prm);
       LinearSolver::declareParameters(prm);
+      NonlinearSolver::declareParameters(prm);
+      Material::declareParameters(prm);
       Time::declareParameters(prm);
     }
 
     void AllParameters::parseParameters(dealii::ParameterHandler &prm)
     {
       FESystem::parseParameters(prm);
-      Material::parseParameters(prm);
+      Geometry::parseParameters(prm);
       LinearSolver::parseParameters(prm);
+      NonlinearSolver::parseParameters(prm);
+      Material::parseParameters(prm);
       Time::parseParameters(prm);
     }
   }
