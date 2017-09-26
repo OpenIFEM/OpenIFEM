@@ -48,11 +48,11 @@ namespace IFEM
   template<int dim>
   HyperelasticSolver<dim>::HyperelasticSolver(const std::string& infile) :
     parameters(infile), vol(0.), 
-    time(parameters.end_time, parameters.delta_t),
+    time(parameters.endTime, parameters.deltaTime),
     timer(std::cout, TimerOutput::summary, TimerOutput::wall_times),
-    degree(parameters.poly_degree), fe(FE_Q<dim>(parameters.poly_degree, dim)),
-    dofHandler(tria), dofsPerCell(fe.dofs_per_cell), quadFormula(parameters.quad_order),
-    quadFaceFormula(parameters.quad_order), numQuadPts(quadFormula.size()),
+    degree(parameters.polyDegree), fe(FE_Q<dim>(parameters.polyDegree, dim)),
+    dofHandler(tria), dofsPerCell(fe.dofs_per_cell), quadFormula(parameters.quadOrder),
+    quadFaceFormula(parameters.quadOrder), numQuadPts(quadFormula.size()),
     numFaceQuadPts(quadFaceFormula.size()), uFe(0)
   {
   }
@@ -70,7 +70,7 @@ namespace IFEM
     setup();
     output();
     time.increment();
-    Vector<double> solution_delta(this->dofHandler.n_dofs());
+    Vector<double> solution_delta(dofHandler.n_dofs());
     while (time.current() < time.end())
     {
       solution_delta = 0.0;
@@ -84,17 +84,17 @@ namespace IFEM
   template<int dim>
   struct HyperelasticSolver<dim>::PerTaskDataK
   {
-    // cell_matrix and local_dof_indices are needed to
+    // cellMatrix and localDofIndices are needed to
     // assemble the global matrix
-    FullMatrix<double> cell_matrix;
-    std::vector<types::global_dof_index> local_dof_indices;
+    FullMatrix<double> cellMatrix;
+    std::vector<types::global_dof_index> localDofIndices;
 
     PerTaskDataK(const unsigned int dofsPerCell) :
-      cell_matrix(dofsPerCell, dofsPerCell),
-      local_dof_indices(dofsPerCell) {}
+      cellMatrix(dofsPerCell, dofsPerCell),
+      localDofIndices(dofsPerCell) {}
     void reset()
     {
-      cell_matrix = 0.0;
+      cellMatrix = 0.0;
     }
   };
 
@@ -104,15 +104,15 @@ namespace IFEM
     // These are needed to compute local matrices
     FEValues<dim> feValues;
     std::vector<std::vector<double>> Nx;
-    std::vector<std::vector<Tensor<2, dim>>> grad_Nx;
-    std::vector<std::vector<SymmetricTensor<2, dim>>> symm_grad_Nx;
+    std::vector<std::vector<Tensor<2, dim>>> gradNx;
+    std::vector<std::vector<SymmetricTensor<2, dim>>> symGradNx;
 
     ScratchDataK(const FiniteElement<dim>& fe_cell,
       const QGauss<dim>& qf_cell, const UpdateFlag uf_cell) :
       feValues(fe_cell, qf_cell, uf_cell),
       Nx(qf_cell.size(), std::vector<double>(fe_cell.dofs_per_cell)),
-      grad_Nx(qf_cell.size(), std::vector<Tensor<2, dim>>(fe_cell.dofs_per_cell)),
-      symm_grad_Nx(qf_cell.size(),
+      gradNx(qf_cell.size(), std::vector<Tensor<2, dim>>(fe_cell.dofs_per_cell)),
+      symGradNx(qf_cell.size(),
         std::vector<SymmetricTensor<2, dim>>(fe_cell.dofs_per_cell)) {}
 
     void reset()
@@ -123,13 +123,13 @@ namespace IFEM
       for (unsigned int q = 0; q < n_q_points; ++q)
       {
         Assert(Nx[q].size() == n_dofs_per_cell, ExcInternalError());
-        Assert(grad_Nx[q].size() == n_dofs_per_cell, ExcInternalError());
-        Assert(symm_grad_Nx[q].size() = n_dofs_per_cell, ExcInternalError());
+        Assert(gradNx[q].size() == n_dofs_per_cell, ExcInternalError());
+        Assert(symGradNx[q].size() = n_dofs_per_cell, ExcInternalError());
         for (unsigned int k = 0; k < n_dofs_per_cell; ++k)
         {
           Nx[q][k] = 0.0;
-          grad_Nx[q][k] = 0.0;
-          symm_grad_Nx[q][k] = 0.0;
+          gradNx[q][k] = 0.0;
+          symGradNx[q][k] = 0.0;
         }
       }
     }
@@ -138,15 +138,15 @@ namespace IFEM
   template<int dim>
   struct HyperelasticSolver<dim>::PerTaskDataRHS
   {
-    // cell_rhs and local_dof_indices are needed in assembly
-    Vector<double> cell_rhs;
-    std::vector<types::global_dof_index> local_dof_indices;
+    // cellRhs and localDofIndices are needed in assembly
+    Vector<double> cellRHS;
+    std::vector<types::global_dof_index> localDofIndices;
 
     PerTaskDataRHS(const unsigned int dofs_per_cell) :
-      cell_rhs(dofs_per_cell), local_dof_indices(dofs_per_cell) {}
+      cellRHS(dofs_per_cell), localDofIndices(dofs_per_cell) {}
     void reset()
     {
-      cell_rhs = 0.0;
+      cellRHS = 0.0;
     }
   };
 
@@ -157,28 +157,28 @@ namespace IFEM
     FEValues<dim> feValues;
     FEFaceValues<dim> feFaceValues;
     std::vector<std::vector<double>> Nx;
-    std::vector<std::vector<SymmetricTensor<2, dim>>> symm_grad_Nx;
+    std::vector<std::vector<SymmetricTensor<2, dim>>> symGradNx;
 
-    ScratchDataRHS(const ScratchData_RHS &rhs) :
+    ScratchDataRHS(const ScratchDataRHS &rhs) :
       feValues(rhs.feValues.get_fe(), rhs.feValues.get_quadrature(),
-        rhs.get_update_flags()),
+        rhs.feValues.get_update_flags()),
       feFaceValues(rhs.feFaceValues.get_fe(), rhs.feFaceValues.get_quadrature(),
         rhs.feFaceValues.get_update_flags()),
-      Nx(rhs.Nx), symm_grad_Nx(rhs.symm_grad_Nx)
+      Nx(rhs.Nx), symGradNx(rhs.symGradNx)
     {}
 
     void reset()
     {
-      const unsigned int numQuadPts = Nx.size();
-      const unsigned int dofsPerCell = Nx[0].size();
-      for (unsigned int q = 0; q < numQuadPts; ++q)
+      const unsigned int n_q_points = Nx.size();
+      const unsigned int n_dofs_per_cell = Nx[0].size();
+      for (unsigned int q = 0; q < n_q_points; ++q)
       {
-        Assert(Nx[q].size() == dofsPerCell, ExcInternalError());
-        Assert(symm_grad_Nx[q].size() == dofsPerCell, ExcInternalError());
-        for (unsigned int k = 0; k < numQuadPts; ++k)
+        Assert(Nx[q].size() == n_dofs_per_cell, ExcInternalError());
+        Assert(symGradNx[q].size() == n_dofs_per_cell, ExcInternalError());
+        for (unsigned int k = 0; k < n_q_points; ++k)
         {
           Nx[q][k] = 0.0;
-          symm_grad_Nx[q][k] = 0.0;
+          symGradNx[q][k] = 0.0;
         }
       }
     }
@@ -202,27 +202,27 @@ namespace IFEM
      * To avoid copy, use a reference.
      */
     const Vector<double> &solution;
-    std::vector<Tensor<2, dim>> grad_u;
+    std::vector<Tensor<2, dim>> gradU; // displacement gradient at quad points
     FEValues<dim> feValues;
 
     ScratchDataQPH(const FiniteElement<dim> &fe_cell,
       const QGauss<dim> &qf_cell, const UpdateFlags uf_cell,
       const Vector<double> &soln) : solution(soln),
-      grad_u(qf_cell.size()), feValues(fe_cell, qf_cell, uf_cell)
+      gradU(qf_cell.size()), feValues(fe_cell, qf_cell, uf_cell)
     {}
 
     ScratchDataQPH(const ScratchDataQPH &rhs) :
-      solution(rhs.solution), grad_u(rhs.grad_u),
+      solution(rhs.solution), gradU(rhs.gradU),
       feValues(rhs.feValues.get_fe(), rhs.feValues.get_quadrature(),
         rhs.feValues.get_update_flags())
     {}
 
     void reset()
     {
-      const unsigned int n_q_points = grad_u.size();
+      const unsigned int n_q_points = gradU.size();
       for (unsigned int q = 0; q < n_q_points; ++q)
       {
-        grad_u[q] = 0.0;
+        gradU[q] = 0.0;
       }
     }
   };
@@ -230,15 +230,14 @@ namespace IFEM
   template<int dim>
   void HyperelasticSolver<dim>::generateMesh()
   {
-    GridGenerator::hyper_rectangle(this->tria,
+    GridGenerator::hyper_rectangle(tria,
       (dim == 3 ? Point<dim>(0.0, 0.0, 0.0) : Point<dim>(0.0, 0.0)),
       (dim == 3 ? Point<dim>(1.0, 1.0, 1.0) : Point<dim>(1.0, 1.0)),
       true);
     GridTools::scale(parameters.scale, tria);
-    tria.refine_global(std::max(1U, parameters.global_refinement));
-    this->vol = GridTools::volume(this->tria);
+    tria.refine_global(std::max(1U, parameters.globalRefinement));
+    vol = GridTools::volume(tria);
     std::cout << "Grid:\n\t Reference volume: " << vol_reference << std::endl;
-
     // The boundary id is hardcoded for now
     for (auto cell = tria.begin_active(); cell != tria.end(); ++cell)
     {
@@ -275,8 +274,8 @@ namespace IFEM
     DoFRenumbering::Cuthill_McKee(dofHandler);
 
     std::cout << "Triangulation:"
-              << "\n\t Number of active cells: " << triangulation.n_active_cells()
-              << "\n\t Number of degrees of freedom: " << dof_handler_ref.n_dofs()
+              << "\n\t Number of active cells: " << tria.n_active_cells()
+              << "\n\t Number of degrees of freedom: " << dofHandler.n_dofs()
               << std::endl;
 
     tangentMatrix.clear();
@@ -317,13 +316,13 @@ namespace IFEM
     const Vector<double> solution_total(getSolution(solution_delta));
     const UpdateFlags uf_QPH(update_values | update_gradients);
     PerTaskDataQPH per_task_data_QPH;
-    ScratchDataQPH scratch_data_QPH(fe, qf_cell, uf_QPH, solution_total);
+    ScratchDataQPH scratch_data_QPH(fe, quadFormula, uf_QPH, solution_total);
 
     WorkStream::run(dofHandler.begin_active(),
                     dofHandler.end(),
                     *this,
                     &HyperelasticSolver::updateLocalQPH,
-                    &Solid::copyLocalToGlobalQPH,
+                    &HyperelasticSolver::copyLocalToGlobalQPH,
                     scratch_data_QPH,
                     per_task_data_QPH);
 
@@ -338,13 +337,13 @@ namespace IFEM
     const std::vector<std::shared_ptr<PointHistory<dim>>> lqph =
       quadraturePointHistory.get_data(cell);
     Assert(lqph.size() == numQuadPts, ExcInternalError());
-    Assert(scratch.grad_u.size() == numQuadPts, ExcInternalError());
+    Assert(scratch.gradU.size() == numQuadPts, ExcInternalError());
     scratch.reset();
     scratch.feValues.reinit(cell);
-    scratch.feValues[uFe].get_function_gradients(scratch.solution, scratch.grad_u);
+    scratch.feValues[uFe].get_function_gradients(scratch.solution, scratch.gradU);
     for (unsigned int q = 0; q < numQuadPts; ++q)
     {
-      lqph[q]->update(scratch.grad_u[q]);
+      lqph[q]->update(scratch.gradU[q]);
     }
   }
 
@@ -366,7 +365,7 @@ namespace IFEM
     print_conv_header();
 
     unsigned int newton_iteration = 0;
-    for (; newton_iteration < parameters.max_iterations_NR; ++newton_iteration)
+    for (; newton_iteration < parameters.maxItrNL; ++newton_iteration)
     {
       std::cout << " " << std::setw(2) << newton_iteration << " " << std::flush;
 
@@ -392,7 +391,7 @@ namespace IFEM
       }
 
       assembleGlobalTangent();
-      make_constraints(newton_iteration);
+      makeConstraints(newton_iteration);
       constraints.condense(tangentMatrix, systemRHS);
 
       const std::pair<unsigned int, double>
@@ -412,12 +411,12 @@ namespace IFEM
 
       std::cout << " | " << std::fixed << std::setprecision(3) << std::setw(7)
                 << std::scientific << lin_solver_output.first << "  "
-                << lin_solver_output.second << "  " << error_residual_norm.norm
-                << "  " << error_residual_norm.u << "  " << error_update_norm.norm
-                << "  " << error_update_norm.u << "  " << std::endl;
+                << lin_solver_output.second << "  " << errorResidualNorm.norm
+                << "  " << errorResidualNorm.norm << "  " << errorUpdateNorm.norm
+                << "  " << errorUpdateNorm.norm << "  " << std::endl;
     }
 
-    AssertThrow(newton_iteration < parameters.max_iterations_NR,
+    AssertThrow(newton_iteration < parameters.maxItrNL,
       ExcMessage("No convergence in nonlinear solver!"));
   }
 
@@ -441,8 +440,8 @@ namespace IFEM
     std::string splitter("_", width);
     std::cout << splitter << std::endl;
     std::cout << "Relative errors:" << std::endl
-              << "Displacement:\t" << error_update.u / error_update_0.u << std::endl
-              << "Force: \t\t" << error_residual.u / error_residual_0.u << std::endl;
+              << "Displacement:\t" << errorUpdate.norm / errorUpdate0.norm << std::endl
+              << "Force: \t\t" << errorResidual.norm / errorResidual0.norm << std::endl;
   }
 
   template<int dim>
@@ -450,7 +449,6 @@ namespace IFEM
   {
     double volume = 0.0;
     FEValues<dim> feVals(fe, quadFormula, update_JxW_values);
-
     for (auto cell = tria.begin_active(); cell != tria.end(); ++cell)
     {
       feVals.reinit(cell);
@@ -461,7 +459,7 @@ namespace IFEM
       {
         const double det = lqph[q]->getDetF();
         const double JxW = feVals.JxW(q);
-        volume += det * JxW;
+        volume += det*JxW;
       }
     }
     Assert(volume > 0.0, ExcInternalError());
@@ -481,7 +479,6 @@ namespace IFEM
     }
     residual.norm = res.l2_norm();
   }
-
 
   template<int dim>
   void HyperelasticSolver<dim>::getErrorUpdate(const Vector<double> &newton_update,
@@ -512,16 +509,10 @@ namespace IFEM
   {
     timer.enter_subsection("Assemble tangent matrix");
     std::cout << " ASM_K " << std::flush;
-
     tangentMatrix = 0.0;
-
-    const UpdateFlags uf_cell(update_values    |
-                              update_gradients |
-                              update_JxW_values);
-
+    const UpdateFlags uf_cell(update_values|update_gradients|update_JxW_values);
     PerTaskDataK per_task_data(dofsPerCell);
     ScratchDataK scratch_data(fe, quadFormula, uf_cell);
-
     WorkStream::run(dofHandler.begin_active(),
                     dofHandler.end(),
                     std::bind(&HyperelasticSolver<dim>::assembleLocalK,
@@ -529,25 +520,23 @@ namespace IFEM
                               std::placeholders::_1,
                               std::placeholders::_2,
                               std::placeholders::_3),
-                    std::bind(&HyperelasticSolver<dim>::copy_local_to_global_K,
+                    std::bind(&HyperelasticSolver<dim>::copyLocalToGlobalK,
                               this,
                               std::placeholders::_1),
                     scratch_data,
                     per_task_data);
-
     timer.leave_subsection();
   }
 
   template<int dim>
   void HyperelasticSolver<dim>::copyLocalToGlobalK(const PerTaskDataK &data)
   {
-    for (unsigned int i = 0; i < dofs_per_cell; ++i)
+    for (unsigned int i = 0; i < dofsPerCell; ++i)
     {
-      for (unsigned int j = 0; j < dofs_per_cell; ++j)
+      for (unsigned int j = 0; j < dofsPerCell; ++j)
       {
-        tangent_matrix.add(data.local_dof_indices[i],
-                           data.local_dof_indices[j],
-                           data.cell_matrix(i, j));
+        tangentMatrix.add(data.localDofIndices[i], data.localDofIndices[j],
+          data.cellMatrix(i, j));
       }
     }
   }
@@ -560,7 +549,7 @@ namespace IFEM
     data.reset();
     scratch.reset();
     scratch.feValues.reinit(cell);
-    cell->get_dof_indices(data.local_dof_indices);
+    cell->get_dof_indices(data.localDofIndices);
 
     const std::vector<std::shared_ptr<const PointHistory<dim>>> lqph =
       quadrature_point_history.get_data(cell);
@@ -574,8 +563,8 @@ namespace IFEM
         // TODO: remove these two lines
         const unsigned int k_group = fe.system_to_base_index(k).first.first;
         Assert(k_group == 0, ExcInternalError());
-        scratch.grad_Nx[q][k] = scratch.feValues[uFe].gradient(k, q)*F_inv;
-        scratch.symm_grad_Nx[q][k] = symmetrize(scratch.grad_Nx[q][k]);
+        scratch.gradNx[q][k] = scratch.feValues[uFe].gradient(k, q)*F_inv;
+        scratch.symGradNx[q][k] = symmetrize(scratch.gradNx[q][k]);
       }
     }
 
@@ -583,8 +572,8 @@ namespace IFEM
     {
       const Tensor<2, dim> tau = lqph[q]->getTau();
       const SymmetricTensor<4, dim> Jc = lqph[q]->getJc();
-      const std::vector<SymmetricTensor<2, dim>> &symm_grad_Nx = scratch.symm_grad_Nx[q];
-      const std::vector<Tensor<2, dim>> &grad_Nx = scratch.grad_Nx[q];
+      const std::vector<SymmetricTensor<2, dim>> &symm_grad_Nx = scratch.symGradNx[q];
+      const std::vector<Tensor<2, dim>> &grad_Nx = scratch.gradNx[q];
       const double JxW = scratch.feValues.JxW(q);
 
       // TODO: remove i_group j_group
@@ -598,11 +587,10 @@ namespace IFEM
           const unsigned int j_group = fe.system_to_base_index(j).first.first;
           Assert(i_group == 0, ExcInternalError());
           Assert(j_group == 0, ExcInternalError());
-          data.cell_matrix(i, j) += symm_grad_Nx[i]*Jc*symm_grad_Nx[j]*JxW;
+          data.cellMatrix(i, j) += symm_grad_Nx[i]*Jc*symm_grad_Nx[j]*JxW;
           if (component_i == component_j)
           {
-            data.cell_matrix(i, j) += grad_Nx[i][component_i]*tau
-              *grad_Nx[j][component_j]*JxW;
+            data.cellMatrix(i, j) += gradNx[i][component_i]*tau*gradNx[j][component_j]*JxW;
           }
         }
       }
@@ -612,7 +600,7 @@ namespace IFEM
     {
       for (unsigned int j = i + 1; j < dofsPerCell; ++j)
       {
-        data.cell_matrix(i, j) = data.cell_matrix(j, i);
+        data.cellMatrix(i, j) = data.cellMatrix(j, i);
       }
     }
   }
@@ -623,12 +611,8 @@ namespace IFEM
     timer.enter_subsection("Assemble system right-hand side");
     std::cout << " ASM_R " << std::flush;
     sysRHS = 0.0;
-    const UpdateFlags uf_cell(update_values |
-                              update_gradients |
-                              update_JxW_values);
-    const UpdateFlags uf_face(update_values |
-                              update_normal_vectors |
-                              update_JxW_values);
+    const UpdateFlags uf_cell(update_values|update_gradients|update_JxW_values);
+    const UpdateFlags uf_face(update_values|update_normal_vectors|update_JxW_values);
     PerTaskDataRHS per_task_data(dofsPerCell);
     ScratchDataRHS scratch_data(fe, quadFormula, uf_cell, quadFaceFormula, uf_face);
     WorkStream::run(dofHandler.begin_active(),
@@ -651,7 +635,7 @@ namespace IFEM
   {
     for (unsigned int i = 0; i < dofsPerCell; ++i)
     {
-      sysRHS(data.local_dof_indices[i]) += data.cell_rhs(i);
+      sysRHS(data.localDofIndices[i]) += data.cellRHS(i);
     }
   }
 
@@ -663,7 +647,7 @@ namespace IFEM
     data.reset();
     scratch.reset();
     scratch.feValues.reinit(cell);
-    cell->get_dof_indices(data.local_dof_indices);
+    cell->get_dof_indices(data.localDofIndices);
 
     const std::vector<std::shared_ptr<const PointHistory<dim>>> lqph =
       quadrature_point_history.get_data(cell);
@@ -676,20 +660,20 @@ namespace IFEM
       {
         const unsigned int k_group = fe.system_to_base_index(k).first.first;
         Assert(k_group == 0, ExcInternalError());
-        scratch.symm_grad_Nx[q][k] = symmetrize(scratch.feValues[uFe].gradient(k, q)*F_inv);
+        scratch.symGradNx[q][k] = symmetrize(scratch.feValues[uFe].gradient(k, q)*F_inv);
       }
     }
 
     for (unsigned int q = 0; q < numQuadPts; ++q)
     {
       const SymmetricTensor<2, dim> tau = lqph[q]->getTau();
-      const std::vector<SymmetricTensor<2, dim>> &symm_grad_Nx = scratch.symm_grad_Nx[q];
+      const std::vector<SymmetricTensor<2, dim>> &symm_grad_Nx = scratch.symGradNx[q];
       const double JxW = scratch.feValues.JxW(q);
       for (unsigned int i = 0; i < dofsPerCell; ++i)
       {
         const unsigned int i_group = fe.system_to_base_index(i).first.first;
         Assert(i_group == 0, ExcInternalError());
-        data.cell_rhs(i) -= (symm_grad_Nx[i]*tau)*JxW;
+        data.cellRHS(i) -= (symm_grad_Nx[i]*tau)*JxW; // -internal force
       }
     }
 
@@ -701,20 +685,18 @@ namespace IFEM
         for (unsigned int q = 0; q < numFaceQuadPts; ++q)
         {
           const Tensor<1, dim> &N = scratch.feFaceValues.normal_vector(q);
-          static const double  p0 = -4.0/(parameters.scale*parameters.scale);
+          static const double  p0 = -400.0/(parameters.scale*parameters.scale);
           const double time_ramp = (time.current()/time.end());
-          const double pressure = p0*parameters.p_p0*time_ramp;
+          const double pressure = p0*time_ramp;
           const Tensor<1, dim> traction = pressure*N;
           for (unsigned int i = 0; i < dofsPerCell; ++i)
           {
             const unsigned int i_group = fe.system_to_base_index(i).first.first;
             Assert(i_group == 0, ExcInternalError());
-            {
-              const unsigned int component_i = fe.system_to_component_index(i).first;
-              const double Ni = scratch.feFaceValues.shape_value(i, q);
-              const double JxW = scratch.feFaceValues.JxW(q);
-              data.cell_rhs(i) += (Ni*traction[component_i])*JxW;
-            }
+            const unsigned int component_i = fe.system_to_component_index(i).first;
+            const double Ni = scratch.feFaceValues.shape_value(i, q);
+            const double JxW = scratch.feFaceValues.JxW(q);
+            data.cellRHS(i) += (Ni*traction[component_i])*JxW; // +external force
           }
         }
       }
@@ -727,7 +709,7 @@ namespace IFEM
     std::cout << " CST " << std::flush;
     if (it_nr > 0)
     {
-      return;
+      return; // only need to apply constraints at the first iteration
     }
     constraints.clear();
 
@@ -737,7 +719,7 @@ namespace IFEM
       const int boundary_id = 0;
       VectorTools::interpolate_boundary_values(dofHandler,
                                                boundary_id,
-                                               Functions::ZeroFunction<dim>(n_components),
+                                               Functions::ZeroFunction<dim>(dim),
                                                constraints,
                                                fe.component_mask(x_displacement));
     }
@@ -745,7 +727,7 @@ namespace IFEM
       const int boundary_id = 2;
       VectorTools::interpolate_boundary_values(dofHandler,
                                                boundary_id,
-                                               Functions::ZeroFunction<dim>(n_components),
+                                               Functions::ZeroFunction<dim>(dim),
                                                constraints,
                                                fe.component_mask(y_displacement));
     }
@@ -756,17 +738,17 @@ namespace IFEM
       {
         const int boundary_id = 3;
         VectorTools::interpolate_boundary_values(dofHandler,
-                                                  boundary_id,
-                                                  Functions::ZeroFunction<dim>(n_components),
-                                                  constraints,
-                                                  (fe.component_mask(x_displacement) |
-                                                   fe.component_mask(z_displacement)));
+                                                 boundary_id,
+                                                 Functions::ZeroFunction<dim>(dim),
+                                                 constraints,
+                                                 (fe.component_mask(x_displacement) |
+                                                  fe.component_mask(z_displacement)));
       }
       {
         const int boundary_id = 4;
         VectorTools::interpolate_boundary_values(dofHandler,
                                                  boundary_id,
-                                                 Functions::ZeroFunction<dim>(n_components),
+                                                 Functions::ZeroFunction<dim>(dim),
                                                  constraints,
                                                  fe.component_mask(z_displacement));
       }
@@ -774,7 +756,7 @@ namespace IFEM
         const int boundary_id = 6;
         VectorTools::interpolate_boundary_values(dofHandler,
                                                  boundary_id,
-                                                 Functions::ZeroFunction<dim>(n_components),
+                                                 Functions::ZeroFunction<dim>(dim),
                                                  constraints,
                                                  (fe.component_mask(x_displacement) |
                                                   fe.component_mask(z_displacement)));
@@ -786,7 +768,7 @@ namespace IFEM
         const int boundary_id = 3;
         VectorTools::interpolate_boundary_values(dofHandler,
                                                  boundary_id,
-                                                 Functions::ZeroFunction<dim>(n_components),
+                                                 Functions::ZeroFunction<dim>(dim),
                                                  constraints,
                                                  fe.component_mask(x_displacement));
       }
@@ -794,7 +776,7 @@ namespace IFEM
         const int boundary_id = 6;
         VectorTools::interpolate_boundary_values(dofHandler,
                                                  boundary_id,
-                                                 Functions::ZeroFunction<dim>(n_components),
+                                                 Functions::ZeroFunction<dim>(dim),
                                                  constraints,
                                                  fe.component_mask(x_displacement));
       }
@@ -811,15 +793,15 @@ namespace IFEM
 
     timer.enter_subsection("Linear solver");
     std::cout << " SLV " << std::flush;
-    if (parameters.type_lin == "CG")
+    if (parameters.typeLin == "CG")
     {
-      const int solver_its = tangentMatrix.m()*parameters.max_iterations_lin;
-      const double tol_sol = parameters.tol_lin*sysRHS.l2_norm();
+      const int solver_its = tangentMatrix.m()*parameters.maxItrLin;
+      const double tol_sol = parameters.tolLin*sysRHS.l2_norm();
       SolverControl solver_control(solver_its, tol_sol);
       GrowingVectorMemory<Vector<double>> GVM;
       SolverCG<Vector<double>> solver_CG(solver_control, GVM);
       PreconditionSelector<SparseMatrix<double>, Vector<double>>
-      preconditioner(parameters.preconditioner_type, parameters.preconditioner_relaxation);
+        preconditioner(parameters.typePre, parameters.relaxPre);
       preconditioner.use_matrix(tangentMatrix);
       solver_CG.solve(tangentMatrix, newton_update, sysRHS, preconditioner);
       lin_it = solver_control.last_step();
@@ -848,8 +830,9 @@ namespace IFEM
     Vector<double> soln(solution.size());
     for (unsigned int i = 0; i < soln.size(); ++i)
     {
-      soln(i) = solution_n(i);
+      soln(i) = solution(i);
     }
+    // Map the solution to the deformed mesh
     MappingQEulerian<dim> q_mapping(degree, dofHandler, soln);
     data_out.build_patches(q_mapping, degree);
     std::ostringstream filename;

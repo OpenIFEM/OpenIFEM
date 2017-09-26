@@ -19,7 +19,6 @@ SET(TARGET_SRC
   linearElasticSolver.cpp
   parameters.cpp
   hyperelasticMaterial.cpp
-  pointHistory.cpp
   material.h
   linearElasticMaterial.h
   solverBase.h
@@ -27,7 +26,6 @@ SET(TARGET_SRC
   parameters.h
   hyperelasticMaterial.h
   neoHookean.h
-  pointHistory.h
   )
 
 # Usually, you will not need to modify anything beyond this point...
