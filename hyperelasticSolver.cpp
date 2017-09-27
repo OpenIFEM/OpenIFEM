@@ -48,6 +48,25 @@ namespace IFEM
 {
   using namespace dealii;
   template <int dim>
+  HyperelasticSolver<dim>::HyperelasticSolver(
+    const IFEM::Parameters::AllParameters &params)
+    : parameters(params),
+      vol(0.),
+      time(parameters.endTime, parameters.deltaTime),
+      timer(std::cout, TimerOutput::summary, TimerOutput::wall_times),
+      degree(parameters.polyDegree),
+      fe(FE_Q<dim>(parameters.polyDegree), dim),
+      dofHandler(tria),
+      dofsPerCell(fe.dofs_per_cell),
+      quadFormula(parameters.quadOrder),
+      quadFaceFormula(parameters.quadOrder),
+      numQuadPts(quadFormula.size()),
+      numFaceQuadPts(quadFaceFormula.size()),
+      uFe(0)
+  {
+  }
+
+  template <int dim>
   HyperelasticSolver<dim>::HyperelasticSolver(const std::string &infile)
     : parameters(infile),
       vol(0.),
@@ -736,26 +755,40 @@ namespace IFEM
     for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
          ++face)
       {
-        if (cell->face(face)->at_boundary() == true &&
-            cell->face(face)->boundary_id() == 6)
+        if (cell->face(face)->at_boundary())
           {
-            scratch.feFaceValues.reinit(cell, face);
-            for (unsigned int q = 0; q < numFaceQuadPts; ++q)
+            if (parameters.applyPressure)
               {
-                const Tensor<1, dim> &N = scratch.feFaceValues.normal_vector(q);
-                static const double p0 =
-                  -400.0 / (parameters.scale * parameters.scale);
-                const double time_ramp = (time.getCurrent() / time.getEnd());
-                const double pressure = p0 * time_ramp;
-                const Tensor<1, dim> traction = pressure * N;
-                for (unsigned int i = 0; i < dofsPerCell; ++i)
+                for (unsigned int i = 0; i < parameters.pressureIDs.size(); ++i)
                   {
-                    const unsigned int component_i =
-                      fe.system_to_component_index(i).first;
-                    const double Ni = scratch.feFaceValues.shape_value(i, q);
-                    const double JxW = scratch.feFaceValues.JxW(q);
-                    data.cellRHS(i) +=
-                      (Ni * traction[component_i]) * JxW; // +external force
+                    if (cell->face(face)->boundary_id() ==
+                        parameters.pressureIDs[i])
+                      {
+                        const double p0 = -parameters.pressureValues[i] /
+                                          (parameters.scale * parameters.scale);
+                        const double time_ramp =
+                          (time.getCurrent() / time.getEnd());
+                        const double pressure = p0 * time_ramp;
+                        scratch.feFaceValues.reinit(cell, face);
+                        for (unsigned int q = 0; q < numFaceQuadPts; ++q)
+                          {
+                            const Tensor<1, dim> &N =
+                              scratch.feFaceValues.normal_vector(q);
+                            const Tensor<1, dim> traction = pressure * N;
+                            for (unsigned int j = 0; j < dofsPerCell; ++j)
+                              {
+                                const unsigned int component_j =
+                                  fe.system_to_component_index(j).first;
+                                const double Ni =
+                                  scratch.feFaceValues.shape_value(j, q);
+                                const double JxW = scratch.feFaceValues.JxW(q);
+                                data.cellRHS(j) +=
+                                  (Ni * traction[component_j]) *
+                                  JxW; // +external force
+                              }
+                          }
+                        break;
+                      }
                   }
               }
           }

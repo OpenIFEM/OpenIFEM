@@ -12,8 +12,21 @@ int main()
 {
   try
     {
-      IFEM::HyperelasticSolver<3> solver;
-      solver.runStatics();
+      IFEM::Parameters::AllParameters params("parameters.prm");
+      if (params.dimension == 2)
+        {
+          IFEM::HyperelasticSolver<2> solver(params);
+          solver.runStatics();
+        }
+      else if (params.dimension == 3)
+        {
+          IFEM::HyperelasticSolver<3> solver(params);
+          solver.runStatics();
+        }
+      else
+        {
+          Assert(false, dealii::ExcNotImplemented());
+        }
     }
   catch (std::exception &exc)
     {

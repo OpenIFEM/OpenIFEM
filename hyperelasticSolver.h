@@ -148,6 +148,7 @@ namespace IFEM
   {
   public:
     HyperelasticSolver(const std::string &infile = "parameters.prm");
+    HyperelasticSolver(const IFEM::Parameters::AllParameters &);
     ~HyperelasticSolver() { this->dofHandler.clear(); }
     void runStatics();
 
