@@ -20,6 +20,7 @@ namespace IFEM
 
     struct Geometry
     {
+      int dimension;
       unsigned int globalRefinement;
       double scale;
       static void declareParameters(dealii::ParameterHandler &);
@@ -65,12 +66,26 @@ namespace IFEM
       void parseParameters(dealii::ParameterHandler &);
     };
 
+    struct BoundaryConditions
+    {
+      bool applyDisplacement;
+      std::vector<int> displacementIDs;
+      std::vector<int> displacementFlags;
+      std::vector<double> displacementValues;
+      bool applyPressure;
+      std::vector<int> pressureIDs;
+      std::vector<double> pressureValues;
+      static void declareParameters(dealii::ParameterHandler &);
+      void parseParameters(dealii::ParameterHandler &);
+    };
+
     struct AllParameters : public FESystem,
                            public Geometry,
                            public LinearSolver,
                            public NonlinearSolver,
                            public Material,
-                           public Time
+                           public Time,
+                           public BoundaryConditions
     {
       AllParameters(const std::string &);
       static void declareParameters(dealii::ParameterHandler &prm);

@@ -34,6 +34,10 @@ namespace IFEM
     {
       prm.enter_subsection("Geometry");
       {
+        prm.declare_entry("Dimension",
+                          "2",
+                          dealii::Patterns::Integer(0),
+                          "Dimension of the problem");
         prm.declare_entry("Global refinement",
                           "2",
                           dealii::Patterns::Integer(0),
@@ -50,6 +54,7 @@ namespace IFEM
     {
       prm.enter_subsection("Geometry");
       {
+        dimension = prm.get_integer("Dimension");
         globalRefinement = prm.get_integer("Global refinement");
         scale = prm.get_double("Grid scale");
       }
@@ -171,8 +176,8 @@ namespace IFEM
         rho = prm.get_double("Density");
         if (typeMat == "LinearElastic")
           {
-            this->E = prm.get_double("Young's modulus");
-            this->nu = prm.get_double("Poisson's ratio");
+            E = prm.get_double("Young's modulus");
+            nu = prm.get_double("Poisson's ratio");
           }
         else if (typeMat == "NeoHookean")
           {
@@ -209,12 +214,96 @@ namespace IFEM
       prm.leave_subsection();
     }
 
+    void BoundaryConditions::declareParameters(dealii::ParameterHandler &prm)
+    {
+      prm.enter_subsection("Boundary conditions");
+      {
+        prm.declare_entry("Apply displacement",
+                          "true",
+                          dealii::Patterns::Bool(),
+                          "Apply displacement boundary conditions");
+        prm.declare_entry("Displacement IDs",
+                          "",
+                          dealii::Patterns::List(dealii::Patterns::Integer()),
+                          "IDs of boundaries to specify displacements");
+        prm.declare_entry("Displacement flags",
+                          "",
+                          dealii::Patterns::List(dealii::Patterns::Integer()),
+                          "Displacement components to constrain");
+        prm.declare_entry("Displacement values",
+                          "",
+                          dealii::Patterns::List(dealii::Patterns::Double()),
+                          "Displacement values");
+        prm.declare_entry("Apply pressure",
+                          "true",
+                          dealii::Patterns::Bool(),
+                          "Apply external pressure");
+        prm.declare_entry("Pressure IDs",
+                          "",
+                          dealii::Patterns::List(dealii::Patterns::Integer()),
+                          "IDs of boundaries to apply pressure on");
+        prm.declare_entry("Pressure values",
+                          "",
+                          dealii::Patterns::List(dealii::Patterns::Double()),
+                          "Values of external pressure");
+      }
+      prm.leave_subsection();
+    }
+
+    void BoundaryConditions::parseParameters(dealii::ParameterHandler &prm)
+    {
+      prm.enter_subsection("Boundary conditions");
+      {
+        applyDisplacement = prm.get_bool("Apply displacement");
+        if (applyDisplacement)
+          {
+            std::string raw_input = prm.get("Displacement IDs");
+            std::vector<std::string> parsed_input =
+              dealii::Utilities::split_string_list(raw_input);
+            displacementIDs = dealii::Utilities::string_to_int(parsed_input);
+            AssertThrow(
+              !displacementIDs.empty(),
+              dealii::ExcMessage("Displacement IDs should be non-empty!"));
+
+            raw_input = prm.get("Displacement flags");
+            parsed_input = dealii::Utilities::split_string_list(raw_input);
+            displacementFlags = dealii::Utilities::string_to_int(parsed_input);
+
+            raw_input = prm.get("Displacement values");
+            parsed_input = dealii::Utilities::split_string_list(raw_input);
+            displacementValues =
+              dealii::Utilities::string_to_double(parsed_input);
+          }
+
+        applyPressure = prm.get_bool("Apply pressure");
+        if (applyPressure)
+          {
+            std::string raw_input = prm.get("Pressure IDs");
+            std::vector<std::string> parsed_input =
+              dealii::Utilities::split_string_list(raw_input);
+            pressureIDs = dealii::Utilities::string_to_int(parsed_input);
+            AssertThrow(
+              !pressureIDs.empty(),
+              dealii::ExcMessage("Pressure IDs should be non-empty!"));
+
+            raw_input = prm.get("Pressure values");
+            parsed_input = dealii::Utilities::split_string_list(raw_input);
+            pressureValues = dealii::Utilities::string_to_double(parsed_input);
+            AssertThrow(
+              pressureValues.size() == pressureIDs.size(),
+              dealii::ExcMessage(
+                "Pressure values should have the same size as pressure IDs!"));
+          }
+      }
+      prm.leave_subsection();
+    }
+
     AllParameters::AllParameters(const std::string &infile)
     {
       dealii::ParameterHandler prm;
-      this->declareParameters(prm);
+      declareParameters(prm);
       prm.parse_input(infile);
-      this->parseParameters(prm);
+      parseParameters(prm);
       prm.print_parameters(std::cout, dealii::ParameterHandler::Text);
     }
 
@@ -226,6 +315,7 @@ namespace IFEM
       NonlinearSolver::declareParameters(prm);
       Material::declareParameters(prm);
       Time::declareParameters(prm);
+      BoundaryConditions::declareParameters(prm);
     }
 
     void AllParameters::parseParameters(dealii::ParameterHandler &prm)
@@ -236,6 +326,16 @@ namespace IFEM
       NonlinearSolver::parseParameters(prm);
       Material::parseParameters(prm);
       Time::parseParameters(prm);
+      BoundaryConditions::parseParameters(prm);
+
+      AssertThrow(
+        displacementFlags.size() == dimension * displacementIDs.size(),
+        dealii::ExcMessage("Size of displacement flags should equal dimension "
+                           "times size of displacement IDs!"));
+      AssertThrow(
+        displacementValues.size() == dimension * displacementIDs.size(),
+        dealii::ExcMessage("Size of displacement values should equal dimension "
+                           "times size of displacement IDs!"));
     }
   }
 }
