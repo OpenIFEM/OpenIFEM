@@ -222,6 +222,18 @@ namespace IFEM
                           "true",
                           dealii::Patterns::Bool(),
                           "Apply displacement boundary conditions");
+        prm.declare_entry("Displacement IDs",
+                          "",
+                          dealii::Patterns::List(dealii::Patterns::Integer()),
+                          "IDs of boundaries to specify displacements");
+        prm.declare_entry("Displacement flags",
+                          "",
+                          dealii::Patterns::List(dealii::Patterns::Integer()),
+                          "Displacement components to constrain");
+        prm.declare_entry("Displacement values",
+                          "",
+                          dealii::Patterns::List(dealii::Patterns::Double()),
+                          "Displacement values");
         prm.declare_entry("Apply pressure",
                           "true",
                           dealii::Patterns::Bool(),
@@ -243,6 +255,26 @@ namespace IFEM
       prm.enter_subsection("Boundary conditions");
       {
         applyDisplacement = prm.get_bool("Apply displacement");
+        if (applyDisplacement)
+          {
+            std::string raw_input = prm.get("Displacement IDs");
+            std::vector<std::string> parsed_input =
+              dealii::Utilities::split_string_list(raw_input);
+            displacementIDs = dealii::Utilities::string_to_int(parsed_input);
+            AssertThrow(
+              !displacementIDs.empty(),
+              dealii::ExcMessage("Displacement IDs should be non-empty!"));
+
+            raw_input = prm.get("Displacement flags");
+            parsed_input = dealii::Utilities::split_string_list(raw_input);
+            displacementFlags = dealii::Utilities::string_to_int(parsed_input);
+
+            raw_input = prm.get("Displacement values");
+            parsed_input = dealii::Utilities::split_string_list(raw_input);
+            displacementValues =
+              dealii::Utilities::string_to_double(parsed_input);
+          }
+
         applyPressure = prm.get_bool("Apply pressure");
         if (applyPressure)
           {
@@ -295,6 +327,15 @@ namespace IFEM
       Material::parseParameters(prm);
       Time::parseParameters(prm);
       BoundaryConditions::parseParameters(prm);
+
+      AssertThrow(
+        displacementFlags.size() == dimension * displacementIDs.size(),
+        dealii::ExcMessage("Size of displacement flags should equal dimension "
+                           "times size of displacement IDs!"));
+      AssertThrow(
+        displacementValues.size() == dimension * displacementIDs.size(),
+        dealii::ExcMessage("Size of displacement values should equal dimension "
+                           "times size of displacement IDs!"));
     }
   }
 }

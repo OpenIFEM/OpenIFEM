@@ -69,6 +69,9 @@ namespace IFEM
     struct BoundaryConditions
     {
       bool applyDisplacement;
+      std::vector<int> displacementIDs;
+      std::vector<int> displacementFlags;
+      std::vector<double> displacementValues;
       bool applyPressure;
       std::vector<int> pressureIDs;
       std::vector<double> pressureValues;

@@ -762,7 +762,7 @@ namespace IFEM
                 for (unsigned int i = 0; i < parameters.pressureIDs.size(); ++i)
                   {
                     if (cell->face(face)->boundary_id() ==
-                        parameters.pressureIDs[i])
+                        static_cast<unsigned int>(parameters.pressureIDs[i]))
                       {
                         const double p0 = -parameters.pressureValues[i] /
                                           (parameters.scale * parameters.scale);
@@ -805,80 +805,23 @@ namespace IFEM
       }
     constraints.clear();
 
-    const FEValuesExtractors::Scalar x_displacement(0);
-    const FEValuesExtractors::Scalar y_displacement(1);
-    {
-      const int boundary_id = 0;
-      VectorTools::interpolate_boundary_values(
-        dofHandler,
-        boundary_id,
-        Functions::ZeroFunction<dim>(dim),
-        constraints,
-        fe.component_mask(x_displacement));
-    }
-    {
-      const int boundary_id = 2;
-      VectorTools::interpolate_boundary_values(
-        dofHandler,
-        boundary_id,
-        Functions::ZeroFunction<dim>(dim),
-        constraints,
-        fe.component_mask(y_displacement));
-    }
-
-    if (dim == 3)
+    for (unsigned int i = 0; i < parameters.displacementIDs.size(); ++i)
       {
-        const FEValuesExtractors::Scalar z_displacement(2);
-        {
-          const int boundary_id = 3;
-          VectorTools::interpolate_boundary_values(
-            dofHandler,
-            boundary_id,
-            Functions::ZeroFunction<dim>(dim),
-            constraints,
-            (fe.component_mask(x_displacement) |
-             fe.component_mask(z_displacement)));
-        }
-        {
-          const int boundary_id = 4;
-          VectorTools::interpolate_boundary_values(
-            dofHandler,
-            boundary_id,
-            Functions::ZeroFunction<dim>(dim),
-            constraints,
-            fe.component_mask(z_displacement));
-        }
-        {
-          const int boundary_id = 6;
-          VectorTools::interpolate_boundary_values(
-            dofHandler,
-            boundary_id,
-            Functions::ZeroFunction<dim>(dim),
-            constraints,
-            (fe.component_mask(x_displacement) |
-             fe.component_mask(z_displacement)));
-        }
-      }
-    else
-      {
-        {
-          const int boundary_id = 3;
-          VectorTools::interpolate_boundary_values(
-            dofHandler,
-            boundary_id,
-            Functions::ZeroFunction<dim>(dim),
-            constraints,
-            fe.component_mask(x_displacement));
-        }
-        {
-          const int boundary_id = 6;
-          VectorTools::interpolate_boundary_values(
-            dofHandler,
-            boundary_id,
-            Functions::ZeroFunction<dim>(dim),
-            constraints,
-            fe.component_mask(x_displacement));
-        }
+        const int boundary_id = parameters.displacementIDs[i];
+        std::vector<bool> mask;
+        std::vector<double> value;
+        for (int j = 0; j < parameters.dimension; ++j)
+          {
+            int k = parameters.dimension * i + j;
+            mask.push_back(static_cast<bool>(parameters.displacementFlags[k]));
+            value.push_back(parameters.displacementValues[k]);
+          }
+        VectorTools::interpolate_boundary_values(
+          dofHandler,
+          boundary_id,
+          Functions::ConstantFunction<dim>(value),
+          constraints,
+          mask);
       }
     constraints.close();
   }
