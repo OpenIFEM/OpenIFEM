@@ -6,92 +6,80 @@
 #include <string>
 #include <vector>
 
-namespace IFEM
+namespace Parameters
 {
-  namespace Parameters
+  struct Simulation
   {
-    struct FESystem
-    {
-      unsigned int polyDegree;
-      unsigned int quadOrder;
-      static void declareParameters(dealii::ParameterHandler &);
-      void parseParameters(dealii::ParameterHandler &);
-    };
+    int dimension;
+    double end_time;
+    double time_step;
+    double output_interval;
+    static void declareParameters(dealii::ParameterHandler &);
+    void parseParameters(dealii::ParameterHandler &);
+  };
 
-    struct Geometry
-    {
-      int dimension;
-      unsigned int globalRefinement;
-      double scale;
-      static void declareParameters(dealii::ParameterHandler &);
-      void parseParameters(dealii::ParameterHandler &);
-    };
+  struct FluidFESystem
+  {
+    unsigned int fluid_degree;
+    static void declareParameters(dealii::ParameterHandler &);
+    void parseParameters(dealii::ParameterHandler &);
+  };
 
-    struct LinearSolver
-    {
-      std::string typeLin;
-      double tolLin;
-      double maxItrLin;
-      std::string typePre;
-      double relaxPre;
-      static void declareParameters(dealii::ParameterHandler &);
-      void parseParameters(dealii::ParameterHandler &);
-    };
+  struct FluidMaterial
+  {
+    double viscosity;
+    static void declareParameters(dealii::ParameterHandler &);
+    void parseParameters(dealii::ParameterHandler &);
+  };
 
-    struct NonlinearSolver
-    {
-      unsigned int maxItrNL;
-      double tolF;
-      double tolU;
-      static void declareParameters(dealii::ParameterHandler &);
-      void parseParameters(dealii::ParameterHandler &);
-    };
+  struct FluidSolver
+  {
+    double grad_div;
+    unsigned int fluid_max_iterations;
+    double fluid_tolerance;
+    static void declareParameters(dealii::ParameterHandler &);
+    void parseParameters(dealii::ParameterHandler &);
+  };
 
-    struct Material
-    {
-      std::string typeMat;
-      double rho;
-      double E;              // Linear elastic material only
-      double nu;             // Linear elastic material only
-      std::vector<double> C; // Hyperelastic material only
-      static void declareParameters(dealii::ParameterHandler &);
-      void parseParameters(dealii::ParameterHandler &);
-    };
+  struct SolidFESystem
+  {
+    unsigned int solid_degree;
+    static void declareParameters(dealii::ParameterHandler &);
+    void parseParameters(dealii::ParameterHandler &);
+  };
 
-    struct Time
-    {
-      double endTime;
-      double deltaTime;
-      static void declareParameters(dealii::ParameterHandler &);
-      void parseParameters(dealii::ParameterHandler &);
-    };
+  struct SolidMaterial
+  {
+    std::string solid_type;
+    double rho;             //!< density, used by all types.
+    double E;               //!< Young's modulus, linear elastic material only.
+    double nu;              //!< Poisson's ratio, linear elastic material only.
+    std::vector<double> C;  //!< Hyperelastic material constants.
+    static void declareParameters(dealii::ParameterHandler &);
+    void parseParameters(dealii::ParameterHandler &);
+  };
 
-    struct BoundaryConditions
-    {
-      bool applyDisplacement;
-      std::vector<int> displacementIDs;
-      std::vector<int> displacementFlags;
-      std::vector<double> displacementValues;
-      bool applyPressure;
-      std::vector<int> pressureIDs;
-      std::vector<double> pressureValues;
-      static void declareParameters(dealii::ParameterHandler &);
-      void parseParameters(dealii::ParameterHandler &);
-    };
+  struct SolidSolver
+  {
+    unsigned int solid_max_iterations; //!< Max number of Newton iterations, hyperelastic only.
+    double tol_f;                      //!< Force tolerance
+    double tol_d;                      //!< Displacement tolerance, hyperelastic only.
+    static void declareParameters(dealii::ParameterHandler &);
+    void parseParameters(dealii::ParameterHandler &);
+  };
 
-    struct AllParameters : public FESystem,
-                           public Geometry,
-                           public LinearSolver,
-                           public NonlinearSolver,
-                           public Material,
-                           public Time,
-                           public BoundaryConditions
-    {
-      AllParameters(const std::string &);
-      static void declareParameters(dealii::ParameterHandler &prm);
-      void parseParameters(dealii::ParameterHandler &prm);
-    };
-  }
+  struct AllParameters: public Simulation,
+                        public FluidFESystem,
+                        public FluidMaterial,
+                        public FluidSolver,
+                        public SolidFESystem,
+                        public SolidMaterial,
+                        public SolidSolver
+  {
+    AllParameters(const std::string &);
+    static void declareParameters(dealii::ParameterHandler &);
+    void parseParameters(dealii::ParameterHandler &);
+  };
 }
 
 #endif

@@ -1,5 +1,5 @@
 # Set the name of the project and target:
-SET(TARGET "main")
+SET(TARGET "ifem")
 
 # Declare all source files the target consists of. Here, this is only
 # the one step-X.cc file, but as you expand your project you may wish
@@ -14,20 +14,15 @@ SET(TARGET "main")
 
 SET(TARGET_SRC
   main.cpp
-  solverBase.cpp
-  linearElasticMaterial.cpp
-  linearElasticSolver.cpp
+  parameters.h
   parameters.cpp
-  hyperelasticMaterial.cpp
-  hyperelasticSolver.cpp
+  utilities.h
+  utilities.cpp
+  navierstokes.h
+  navierstokes.cpp
   material.h
   linearElasticMaterial.h
-  solverBase.h
-  linearElasticSolver.h
-  parameters.h
-  hyperelasticMaterial.h
-  neoHookean.h
-  hyperelasticSolver.h
+  linearElasticMaterial.cpp
   )
 
 # Usually, you will not need to modify anything beyond this point...

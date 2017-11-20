@@ -1,10 +1,9 @@
 #ifndef MATERIAL
 #define MATERIAL
 
-namespace IFEM
+namespace Solid
 {
-  /*! \brief An abstract class for all materials.
-   *  It has density as the only member.
+  /*! \brief An abstract class for all solid materials.
    */
   template <int dim>
   class Material
@@ -13,7 +12,7 @@ namespace IFEM
     Material() : density(0.0) {}
     Material(double rho) : density(rho) {}
     virtual ~Material() {}
-    double getDensity() { return this->density; }
+    double get_density() { return density; }
 
   protected:
     double density;

@@ -1,31 +1,34 @@
 #include <iostream>
 
-#include "hyperelasticSolver.h"
-#include "linearElasticSolver.h"
+#include "parameters.h"
+#include "utilities.h"
+#include "navierstokes.h"
 
-extern template class IFEM::LinearElasticSolver<2>;
-extern template class IFEM::LinearElasticSolver<3>;
-extern template class IFEM::HyperelasticSolver<2>;
-extern template class IFEM::HyperelasticSolver<3>;
+extern template class Fluid::NavierStokes<2>;
+extern template class Fluid::NavierStokes<3>;
 
 int main()
 {
   try
     {
-      IFEM::Parameters::AllParameters params("parameters.prm");
+      Parameters::AllParameters params("parameters.prm");
       if (params.dimension == 2)
         {
-          IFEM::HyperelasticSolver<2> solver(params);
-          solver.runStatics();
+          dealii::Triangulation<2> triangulation;
+          Utils::GridCreator::flow_around_cylinder(triangulation);
+          Fluid::NavierStokes<2> flow(triangulation, params);
+          flow.run();
         }
       else if (params.dimension == 3)
         {
-          IFEM::HyperelasticSolver<3> solver(params);
-          solver.runStatics();
+          dealii::Triangulation<3> triangulation;
+          Utils::GridCreator::flow_around_cylinder(triangulation);
+          Fluid::NavierStokes<3> flow(triangulation, params);
+          flow.run();
         }
       else
         {
-          Assert(false, dealii::ExcNotImplemented());
+          AssertThrow(false, dealii::ExcNotImplemented());
         }
     }
   catch (std::exception &exc)

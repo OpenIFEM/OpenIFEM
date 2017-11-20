@@ -1,6 +1,6 @@
 #include "linearElasticMaterial.h"
 
-namespace IFEM
+namespace Solid
 {
   template <int dim>
   LinearElasticMaterial<dim>::LinearElasticMaterial(double young,
