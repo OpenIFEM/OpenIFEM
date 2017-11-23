@@ -1,44 +1,44 @@
 #ifndef NAVIER_STOKES
 #define NAVIER_STOKES
 
-#include <deal.II/base/quadrature_lib.h>
 #include <deal.II/base/function.h>
 #include <deal.II/base/logstream.h>
-#include <deal.II/base/utilities.h>
+#include <deal.II/base/quadrature_lib.h>
 #include <deal.II/base/tensor.h>
 #include <deal.II/base/timer.h>
+#include <deal.II/base/utilities.h>
 
-#include <deal.II/lac/block_vector.h>
-#include <deal.II/lac/full_matrix.h>
 #include <deal.II/lac/block_sparse_matrix.h>
+#include <deal.II/lac/block_vector.h>
+#include <deal.II/lac/constraint_matrix.h>
 #include <deal.II/lac/dynamic_sparsity_pattern.h>
+#include <deal.II/lac/full_matrix.h>
+#include <deal.II/lac/precondition.h>
 #include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/solver_gmres.h>
-#include <deal.II/lac/precondition.h>
-#include <deal.II/lac/constraint_matrix.h>
 #include <deal.II/lac/sparse_direct.h>
 
-#include <deal.II/grid/tria.h>
 #include <deal.II/grid/grid_generator.h>
-#include <deal.II/grid/tria_accessor.h>
-#include <deal.II/grid/tria_iterator.h>
-#include <deal.II/grid/manifold_lib.h>
 #include <deal.II/grid/grid_refinement.h>
 #include <deal.II/grid/grid_tools.h>
+#include <deal.II/grid/manifold_lib.h>
+#include <deal.II/grid/tria.h>
+#include <deal.II/grid/tria_accessor.h>
+#include <deal.II/grid/tria_iterator.h>
 
+#include <deal.II/dofs/dof_accessor.h>
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/dofs/dof_renumbering.h>
-#include <deal.II/dofs/dof_accessor.h>
 #include <deal.II/dofs/dof_tools.h>
 
 #include <deal.II/fe/fe_q.h>
 #include <deal.II/fe/fe_system.h>
 #include <deal.II/fe/fe_values.h>
 
-#include <deal.II/numerics/vector_tools.h>
-#include <deal.II/numerics/matrix_tools.h>
 #include <deal.II/numerics/data_out.h>
 #include <deal.II/numerics/error_estimator.h>
+#include <deal.II/numerics/matrix_tools.h>
+#include <deal.II/numerics/vector_tools.h>
 
 // To transfer solutions between meshes, this file is included:
 #include <deal.II/numerics/solution_transfer.h>
@@ -49,13 +49,12 @@
 // And the one for ILU preconditioner:
 #include <deal.II/lac/sparse_ilu.h>
 
-
 #include <fstream>
 #include <iostream>
 #include <sstream>
 
-#include "utilities.h"
 #include "parameters.h"
+#include "utilities.h"
 
 namespace Fluid
 {
@@ -81,9 +80,11 @@ namespace Fluid
 
   /** \brief Inverse of a symmetric matrix.
    *
-   * The inverse of symmetric matrices are required for both \f$\tilde{S_M}^{-1}\f$
+   * The inverse of symmetric matrices are required for both
+   * \f$\tilde{S_M}^{-1}\f$
    * and \f$M_p^{-1}\f$, so we define a class to compute it.
-   * However, instead of computing it explicitly, we only define its matrix-vector 
+   * However, instead of computing it explicitly, we only define its
+   * matrix-vector
    * multiplication operation through solving a linear system.
    * CG solver is used because symmetric matrices are expected.
    */
@@ -119,33 +120,41 @@ namespace Fluid
   /** \brief The inverse matrix of the system Schur complement.
    *
    * The inverse of the total Schur complement can be decomposed as the sum of
-   * the inverse of the diffusion plus Grad-Div Schur complement, 
+   * the inverse of the diffusion plus Grad-Div Schur complement,
    * and the inverse of the mass Schur complement.
    * The inverse of the convection Schur complement is ignored because it is
-   * unknown how to treat it. But the block preconditioner is good enough even without it.
+   * unknown how to treat it. But the block preconditioner is good enough even
+   * without it.
    * For our time-dependent problem,
    * \f[
-   *   \tilde{S}^{-1} = -(\nu + \gamma)M_p^{-1} - \frac{1}{\Delta{t}}{[B(diag(M))^{-1}B^T]}^{-1}
+   *   \tilde{S}^{-1} = -(\nu + \gamma)M_p^{-1} -
+   * \frac{1}{\Delta{t}}{[B(diag(M))^{-1}B^T]}^{-1}
    * \f]
-   * where $M_p$ is the pressure mass, and ${[B(diag(M))^{-1}B^T]}$ is ApproximateMassSchur.
+   * where $M_p$ is the pressure mass, and ${[B(diag(M))^{-1}B^T]}$ is
+   * ApproximateMassSchur.
    */
   template <class PreconditionerSm, class PreconditionerMp>
   class SchurComplementInverse : public Subscriptor
   {
   public:
     SchurComplementInverse(
-      double gamma, double viscosity, double dt,
+      double gamma,
+      double viscosity,
+      double dt,
       const InverseMatrix<ApproximateMassSchur, PreconditionerSm> &Sm_inv,
       const InverseMatrix<SparseMatrix<double>, PreconditionerMp> &Mp_inv);
     void vmult(Vector<double> &dst, const Vector<double> &src) const;
+
   private:
     const double gamma;
     const double viscosity;
     const double dt;
-    const SmartPointer<const InverseMatrix<ApproximateMassSchur,
-      PreconditionerSm>> Sm_inverse;
-    const SmartPointer<const InverseMatrix<SparseMatrix<double>,
-      PreconditionerMp>> Mp_inverse;
+    const SmartPointer<
+      const InverseMatrix<ApproximateMassSchur, PreconditionerSm>>
+      Sm_inverse;
+    const SmartPointer<
+      const InverseMatrix<SparseMatrix<double>, PreconditionerMp>>
+      Mp_inverse;
   };
 
   /** \brief Block preconditioner for the system
@@ -158,7 +167,8 @@ namespace Fluid
    * \f}
    * \f$\tilde{S}^{-1}\f$ is defined by SchurComplementInverse,
    * \f$\tilde{A}^{-1}\f$ is unsymmetric thanks to the convection term,
-   * which we do not have a nice way to deal with other than using a direct solver.
+   * which we do not have a nice way to deal with other than using a direct
+   * solver.
    * (Geometric multigrid is the right way to go if only you are brave enough
    * to implement it.)
    * The template arguments are the same as SchurComplementInverse.
@@ -167,22 +177,23 @@ namespace Fluid
   class BlockSchurPreconditioner : public Subscriptor
   {
   public:
-    BlockSchurPreconditioner (const BlockSparseMatrix<double> &system,
-      const SchurComplementInverse<PreconditionerSm, PreconditionerMp> &S_inv );
+    BlockSchurPreconditioner(
+      const BlockSparseMatrix<double> &system,
+      const SchurComplementInverse<PreconditionerSm, PreconditionerMp> &S_inv);
 
-    void vmult (BlockVector<double>       &dst,
-                const BlockVector<double> &src) const;
+    void vmult(BlockVector<double> &dst, const BlockVector<double> &src) const;
 
   private:
     const SmartPointer<const BlockSparseMatrix<double>> system_matrix;
     const SmartPointer<
-      const SchurComplementInverse<PreconditionerSm, PreconditionerMp>> S_inverse;
+      const SchurComplementInverse<PreconditionerSm, PreconditionerMp>>
+      S_inverse;
     SparseDirectUMFPACK A_inverse;
   };
 
-  /** The incompressible Navier Stokes equation solver.
+  /** \brief The incompressible Navier Stokes equation solver.
    *
-   * This is the main function and its member functions.
+   * This program is built upon dealii tutorials step-57, step-22, step-20.
    * We use fully implicit scheme for time stepping.
    * At each time step, Newton's method is used to solve for the update,
    * so we define two variables: the present solution and the update.
@@ -196,6 +207,12 @@ namespace Fluid
   {
   public:
     /** \brief Constructor.
+     *
+     * We do not want to modify the solver every time we change the
+     * triangulation.
+     * So we pass in a Triangulation<dim> that is either generated using dealii
+     * functions or by reading Abaqus input file. Also, a parameter handler is
+     * required to specify all the input parameters.
      */
     NavierStokes(Triangulation<dim> &, const Parameters::AllParameters &);
     /**
@@ -206,7 +223,7 @@ namespace Fluid
 
   private:
     /**
-     * This function initializes the DoFHandler, constraints, matrices and vectors. 
+     * This function initializes the DoFHandler and constraints.
      */
     void setup_dofs();
     /**
@@ -223,8 +240,7 @@ namespace Fluid
      * assemble the whole system or only the right hand side vector,
      * respectively.
      */
-    void assemble(const bool initial_step,
-                  const bool assemble_matrix);
+    void assemble(const bool initial_step, const bool assemble_matrix);
     void assemble_system(const bool initial_step);
     void assemble_rhs(const bool initial_step);
     /**
@@ -244,47 +260,49 @@ namespace Fluid
      * refinement based on the Kelly estimator on the velocity only.
      * We also need to transfer the current solution to the
      * next mesh using the SolutionTransfer class.
+     * NOTE: this function has not been tested.
      */
     void refine_mesh();
     /**
-     * Write a vtu file for the current solution, as well as a pvtu file to organize them.
+     * Write a vtu file for the current solution, as well as a pvtu file to
+     * organize them.
      */
-    void output_results (const unsigned int output_index) const;
+    void output_results(const unsigned int) const;
 
     double viscosity;
     double gamma;
-    const unsigned int           degree;
+    const unsigned int degree;
     std::vector<types::global_dof_index> dofs_per_block;
 
-    Triangulation<dim>&          triangulation;
-    FESystem<dim>                fe;
-    DoFHandler<dim>              dof_handler;
-    QGauss<dim>                  volume_quad_formula;
-    QGauss<dim-1>                face_quad_formula;
+    Triangulation<dim> &triangulation;
+    FESystem<dim> fe;
+    DoFHandler<dim> dof_handler;
+    QGauss<dim> volume_quad_formula;
+    QGauss<dim - 1> face_quad_formula;
 
-    ConstraintMatrix             zero_constraints;
-    ConstraintMatrix             nonzero_constraints;
+    ConstraintMatrix zero_constraints;
+    ConstraintMatrix nonzero_constraints;
 
-    BlockSparsityPattern         sparsity_pattern;
-    BlockSparseMatrix<double>    system_matrix;
-    BlockSparseMatrix<double>    mass_matrix;
+    BlockSparsityPattern sparsity_pattern;
+    BlockSparseMatrix<double> system_matrix;
+    BlockSparseMatrix<double> mass_matrix;
 
     /// The latest known solution.
-    BlockVector<double>          present_solution;
+    BlockVector<double> present_solution;
     /// The increment at a certain Newton iteration.
-    BlockVector<double>          newton_update;
+    BlockVector<double> newton_update;
     /**
-     * The latest know solution plus the cumulation of all newton_updates 
+     * The latest know solution plus the cumulation of all newton_updates
      * in the current time step, which approaches to the new present_solution.
      */
-    BlockVector<double>          evaluation_point;
-    BlockVector<double>          system_rhs;
+    BlockVector<double> evaluation_point;
+    BlockVector<double> system_rhs;
 
     const double tolerance;
     const unsigned int max_iteration;
 
-    Utils::Time                  time;
-    mutable TimerOutput          timer;
+    Utils::Time time;
+    mutable TimerOutput timer;
 
     /**
      * The first building block of \f$\tilde{S}^{-1}\f$:
@@ -292,22 +310,27 @@ namespace Fluid
      */
     std::shared_ptr<ApproximateMassSchur> approximate_Sm;
     std::shared_ptr<PreconditionIdentity> preconditioner_Sm;
-    std::shared_ptr<InverseMatrix<ApproximateMassSchur, PreconditionIdentity>> Sm_inverse;
+    std::shared_ptr<InverseMatrix<ApproximateMassSchur, PreconditionIdentity>>
+      Sm_inverse;
 
     /**
      * The second building block of the \f$\tilde{S}^{-1}\f$:
-     * inverse of the pressure mass matrix, which is used for diffusion and Grad-Div.
+     * inverse of the pressure mass matrix, which is used for diffusion and
+     * Grad-Div.
      */
     std::shared_ptr<SparseILU<double>> preconditioner_Mp;
-    std::shared_ptr<InverseMatrix<SparseMatrix<double>, SparseILU<double>>> Mp_inverse;
+    std::shared_ptr<InverseMatrix<SparseMatrix<double>, SparseILU<double>>>
+      Mp_inverse;
 
     /// The SchurComplementInverse \f$\tilde{S}^{-1}\f$.
-    std::shared_ptr<SchurComplementInverse<PreconditionIdentity,
-      SparseILU<double>>> S_inverse;
+    std::shared_ptr<
+      SchurComplementInverse<PreconditionIdentity, SparseILU<double>>>
+      S_inverse;
 
     /// The BlockSchurPreconditioner for the whole system:
-    std::shared_ptr<BlockSchurPreconditioner
-      <PreconditionIdentity, SparseILU<double>>> preconditioner;
+    std::shared_ptr<
+      BlockSchurPreconditioner<PreconditionIdentity, SparseILU<double>>>
+      preconditioner;
   };
 }
 

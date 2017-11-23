@@ -6,7 +6,8 @@ namespace Utils
   // (https://github.com/kronbichler/adaflo/blob/master/tests/flow_past_cylinder.cc)
   // with very few modifications.
   // Helper function used in both 2d and 3d:
-  void Utils::GridCreator::flow_around_cylinder_2d(Triangulation<2> &tria, bool compute_in_2d)
+  void Utils::GridCreator::flow_around_cylinder_2d(Triangulation<2> &tria,
+                                                   bool compute_in_2d)
   {
     SphericalManifold<2> boundary(Point<2>(0.5, 0.2));
     Triangulation<2> left, middle, right, tmp, tmp2;
@@ -84,45 +85,47 @@ namespace Utils
 
     // Left domain is requred in 3d only.
     if (compute_in_2d)
-    {
-      GridGenerator::merge_triangulations(tmp2, right, tria);
-    }
+      {
+        GridGenerator::merge_triangulations(tmp2, right, tria);
+      }
     else
-    {
-      GridGenerator::merge_triangulations(left, tmp2, tmp);
-      GridGenerator::merge_triangulations(tmp, right, tria);
-    }
+      {
+        GridGenerator::merge_triangulations(left, tmp2, tmp);
+        GridGenerator::merge_triangulations(tmp, right, tria);
+      }
   }
 
   // Create 2D triangulation:
   void GridCreator::flow_around_cylinder(Triangulation<2> &tria)
   {
     flow_around_cylinder_2d(tria);
-    // Set the cylinder boundary to 1, the right boundary (outflow) to 2, the rest to 0.
+    // Set the cylinder boundary to 1, the right boundary (outflow) to 2, the
+    // rest to 0.
     for (Triangulation<2>::active_cell_iterator cell = tria.begin();
          cell != tria.end();
          ++cell)
-    {
-      for (unsigned int f = 0; f < GeometryInfo<2>::faces_per_cell; ++f)
       {
-        if (cell->face(f)->at_boundary())
+        for (unsigned int f = 0; f < GeometryInfo<2>::faces_per_cell; ++f)
           {
-            if (std::abs(cell->face(f)->center()[0] - 2.5) < 1e-12)
-            {
-              cell->face(f)->set_all_boundary_ids(2);
-            }
-            else if (Point<2>(0.5, 0.2).distance(cell->face(f)->center()) <= 0.05)
+            if (cell->face(f)->at_boundary())
               {
-                cell->face(f)->set_all_manifold_ids(10);
-                cell->face(f)->set_all_boundary_ids(1);
+                if (std::abs(cell->face(f)->center()[0] - 2.5) < 1e-12)
+                  {
+                    cell->face(f)->set_all_boundary_ids(2);
+                  }
+                else if (Point<2>(0.5, 0.2).distance(cell->face(f)->center()) <=
+                         0.05)
+                  {
+                    cell->face(f)->set_all_manifold_ids(10);
+                    cell->face(f)->set_all_boundary_ids(1);
+                  }
+                else
+                  {
+                    cell->face(f)->set_all_boundary_ids(0);
+                  }
               }
-            else
-            {
-              cell->face(f)->set_all_boundary_ids(0);
-            }
           }
       }
-    }
   }
 
   // Create 3D triangulation:
@@ -131,30 +134,32 @@ namespace Utils
     Triangulation<2> tria_2d;
     flow_around_cylinder_2d(tria_2d, false);
     GridGenerator::extrude_triangulation(tria_2d, 5, 0.41, tria);
-    // Set the cylinder boundary to 1, the right boundary (outflow) to 2, the rest to 0.
+    // Set the cylinder boundary to 1, the right boundary (outflow) to 2, the
+    // rest to 0.
     for (Triangulation<3>::active_cell_iterator cell = tria.begin();
-        cell != tria.end(); ++cell)
-    {
-      for (unsigned int f = 0; f<GeometryInfo<3>::faces_per_cell; ++f)
+         cell != tria.end();
+         ++cell)
       {
-        if (cell->face(f)->at_boundary())
-        {
-          if (std::abs(cell->face(f)->center()[0]-2.5) < 1e-12)
+        for (unsigned int f = 0; f < GeometryInfo<3>::faces_per_cell; ++f)
           {
-            cell->face(f)->set_all_boundary_ids(2);
+            if (cell->face(f)->at_boundary())
+              {
+                if (std::abs(cell->face(f)->center()[0] - 2.5) < 1e-12)
+                  {
+                    cell->face(f)->set_all_boundary_ids(2);
+                  }
+                else if (Point<3>(0.5, 0.2, cell->face(f)->center()[2])
+                           .distance(cell->face(f)->center()) <= 0.05)
+                  {
+                    cell->face(f)->set_all_manifold_ids(10);
+                    cell->face(f)->set_all_boundary_ids(1);
+                  }
+                else
+                  {
+                    cell->face(f)->set_all_boundary_ids(0);
+                  }
+              }
           }
-          else if (Point<3>(0.5, 0.2, cell->face(f)->center()[2]).distance
-            (cell->face(f)->center()) <= 0.05)
-          {
-            cell->face(f)->set_all_manifold_ids(10);
-            cell->face(f)->set_all_boundary_ids(1);
-          }
-          else
-          {
-            cell->face(f)->set_all_boundary_ids(0);
-          }
-        }
       }
-    }
   }
 }

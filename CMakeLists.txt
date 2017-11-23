@@ -23,6 +23,8 @@ SET(TARGET_SRC
   material.h
   linearElasticMaterial.h
   linearElasticMaterial.cpp
+  linearElasticSolver.h
+  linearElasticSolver.cpp
   )
 
 # Usually, you will not need to modify anything beyond this point...

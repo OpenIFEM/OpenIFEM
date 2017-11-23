@@ -14,7 +14,7 @@ namespace Solid
 
   template <int dim>
   dealii::SymmetricTensor<4, dim>
-  LinearElasticMaterial<dim>::getElasticityTensor() const
+  LinearElasticMaterial<dim>::get_elasticity() const
   {
     dealii::SymmetricTensor<4, dim> elasticity;
     for (unsigned int i = 0; i < dim; ++i)
@@ -35,6 +35,7 @@ namespace Solid
       }
     return elasticity;
   }
+
   // explicit instantiation
   template class LinearElasticMaterial<2>;
   template class LinearElasticMaterial<3>;

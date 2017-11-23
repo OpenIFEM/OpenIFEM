@@ -10,10 +10,8 @@ namespace Parameters
                         "2",
                         dealii::Patterns::Integer(0),
                         "Dimension of the problem");
-      prm.declare_entry("End time",
-                        "1",
-                        dealii::Patterns::Double(0.0),
-                        "End time");
+      prm.declare_entry(
+        "End time", "1", dealii::Patterns::Double(0.0), "End time");
       prm.declare_entry("Time step size",
                         "0.1",
                         dealii::Patterns::Double(0.0),
@@ -92,10 +90,11 @@ namespace Parameters
                         "8",
                         dealii::Patterns::Integer(8),
                         "Maximum number of Newton iterations");
-      prm.declare_entry("Nonlinear system tolerance",
-                        "1e-10",
-                        dealii::Patterns::Double(0.0),
-                        "The absolute tolerance of the nonlinear system residual");
+      prm.declare_entry(
+        "Nonlinear system tolerance",
+        "1e-10",
+        dealii::Patterns::Double(0.0),
+        "The absolute tolerance of the nonlinear system residual");
     }
     prm.leave_subsection();
   }
@@ -136,23 +135,20 @@ namespace Parameters
   {
     prm.enter_subsection("Solid material properties");
     {
-      prm.declare_entry(
-        "Solid type",
-        "LinearElastic",
-        dealii::Patterns::Selection("LinearElastic|NeoHookean"),
-        "Type of solid material");
+      prm.declare_entry("Solid type",
+                        "LinearElastic",
+                        dealii::Patterns::Selection("LinearElastic|NeoHookean"),
+                        "Type of solid material");
       prm.declare_entry(
         "Density", "1.0", dealii::Patterns::Double(0.0), "Density");
-      prm.declare_entry(
-        "Young's modulus",
-        "0.0",
-        dealii::Patterns::Double(0.0),
-        "Young's modulus, only used by linear elastic solver");
-      prm.declare_entry(
-        "Poisson's ratio",
-        "0.0",
-        dealii::Patterns::Double(0.0, 0.5),
-        "Poisson's ratio, only used by linear elastic solver");
+      prm.declare_entry("Young's modulus",
+                        "0.0",
+                        dealii::Patterns::Double(0.0),
+                        "Young's modulus, only used by linear elastic solver");
+      prm.declare_entry("Poisson's ratio",
+                        "0.0",
+                        dealii::Patterns::Double(0.0, 0.5),
+                        "Poisson's ratio, only used by linear elastic solver");
       const char *text = "A list of material constants separated by comma, "
                          "only used by hyperelastic materials."
                          "NeoHookean requires C1, kappa;";
@@ -171,17 +167,17 @@ namespace Parameters
       solid_type = prm.get("Solid type");
       rho = prm.get_double("Density");
       if (solid_type == "LinearElastic")
-      {
-        E = prm.get_double("Young's modulus");
-        nu = prm.get_double("Poisson's ratio");
-      }
+        {
+          E = prm.get_double("Young's modulus");
+          nu = prm.get_double("Poisson's ratio");
+        }
       else if (solid_type == "NeoHookean")
-      {
-        std::string raw_input = prm.get("Hyperelastic parameters");
-        std::vector<std::string> parsed_input =
-          dealii::Utilities::split_string_list(raw_input);
-        C = dealii::Utilities::string_to_double(parsed_input);
-      }
+        {
+          std::string raw_input = prm.get("Hyperelastic parameters");
+          std::vector<std::string> parsed_input =
+            dealii::Utilities::split_string_list(raw_input);
+          C = dealii::Utilities::string_to_double(parsed_input);
+        }
     }
     prm.leave_subsection();
   }
@@ -190,14 +186,19 @@ namespace Parameters
   {
     prm.enter_subsection("Solid solver control");
     {
+      prm.declare_entry("Damping",
+                        "0.0",
+                        dealii::Patterns::Double(0.0),
+                        "The artifical damping in Newmark-beta method");
       prm.declare_entry("Max Newton iterations",
                         "8",
                         dealii::Patterns::Integer(8),
                         "Maximum number of Newton iterations");
-      prm.declare_entry("Displacement tolerance",
-                        "1e-10",
-                        dealii::Patterns::Double(0.0),
-                        "The tolerance of the displacement increment at each iteration");
+      prm.declare_entry(
+        "Displacement tolerance",
+        "1e-10",
+        dealii::Patterns::Double(0.0),
+        "The tolerance of the displacement increment at each iteration");
       prm.declare_entry("Force tolerance",
                         "1e-10",
                         dealii::Patterns::Double(0.0),
@@ -210,6 +211,7 @@ namespace Parameters
   {
     prm.enter_subsection("Solid solver control");
     {
+      damping = prm.get_double("Damping");
       solid_max_iterations = prm.get_integer("Max Newton iterations");
       tol_d = prm.get_double("Displacement tolerance");
       tol_f = prm.get_double("Force tolerance");

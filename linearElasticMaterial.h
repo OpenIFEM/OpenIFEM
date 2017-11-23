@@ -21,7 +21,7 @@ namespace Solid
      * Constructor using Young's modulus and Poisson's ratio.
      */
     LinearElasticMaterial(double, double, double);
-    dealii::SymmetricTensor<4, dim> getElasticityTensor() const;
+    dealii::SymmetricTensor<4, dim> get_elasticity() const;
 
   protected:
     double E;      //!< Young's modulus
