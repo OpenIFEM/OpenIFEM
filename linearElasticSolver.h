@@ -93,27 +93,21 @@ namespace Solid
     void initialize_system();
 
     /**
-     * Assembles the system rhs and optionally the lhs.
+     * Assembles three matrices.
      */
-    void assemble_system(const bool, const bool);
+    void assemble_system();
 
     /**
      * Solve the linear system. Returns the number of
      * CG iterations and the final residual.
      */
-    std::pair<unsigned int, double> solve();
+    std::pair<unsigned int, double> solve(const SparseMatrix<double>&,
+      Vector<double>&, const Vector<double>&);
 
     /**
      * Output the time-dependent solution in vtu format.
      */
     void output_results(const unsigned int) const;
-
-    /**
-     * In a steady simulation, we simply refine the mesh and solve the problem
-     * again from beginning. In time-dependent simulation, however,
-     * solution must be transfered during the refinement.
-     */
-    void refine_mesh();
 
     LinearElasticMaterial<dim> material;
 
@@ -135,10 +129,28 @@ namespace Solid
     const QGauss<dim - 1>
       face_quad_formula; //!< Quadrature formula for face integration.
 
-    ConstraintMatrix constraints;
+    ConstraintMatrix hanging_node_constraints; //!< constraints to handle hanging nodes
+
+    /**
+     * Map to store the Dirichlet boundary conditions.
+     * This is used in apply_boundary_values, which will then modify both the
+     * lhs and rhs of the equation to solve.
+     *
+     * This is not the optimal solution because the modification is expensive.
+     * I tried to use a ConstraintMatrix to handle the Dirichlet boudary conditions
+     * which allows the modification to be done during assembly. But something
+     * went wrong when assembling the rhs term \f$ K(u_n + \cdots) \f$.
+     */
+    std::map<types::global_dof_index, double> boundary_values;
+
     SparsityPattern pattern;
-    SparseMatrix<double>
-      system_matrix; //!< System matrix including both stiffness and mass.
+
+    // Storing these three matrices looks awkward, but this is necessary
+    // if we do not deal with the rhs during assembly.
+    SparseMatrix<double> system_matrix; //!< \f$ M + \beta{\Delta{t}}^2K \f$.
+    SparseMatrix<double> stiffness_matrix;
+    SparseMatrix<double> mass_matrix;
+
     Vector<double> system_rhs;
 
     /**

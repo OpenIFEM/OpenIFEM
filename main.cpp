@@ -36,7 +36,12 @@ int main()
       else if (params.dimension == 3)
         {
           Triangulation<3> triangulation;
-          GridGenerator::hyper_cube(triangulation, -1, 1);
+          GridGenerator::subdivided_hyper_rectangle(
+            triangulation,
+            std::vector<unsigned int>{16, 2, 2},
+            Point<3>(0, 0, 0),
+            Point<3>(8, 1, 1),
+            true);
           Solid::LinearElasticSolver<3> solid(triangulation, params);
           solid.run();
           /*
