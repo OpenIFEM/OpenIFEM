@@ -38,14 +38,13 @@ namespace Solid
     // Note that ZeroFunction is used here for convenience. In more
     // complicated applications, write a BoundaryValue class to replace it.
 
-    hanging_node_constraints.clear();
-    DoFTools::make_hanging_node_constraints(dof_handler, hanging_node_constraints);
-    hanging_node_constraints.close();
-
+    constraints.clear();
+    DoFTools::make_hanging_node_constraints(dof_handler, constraints);
     VectorTools::interpolate_boundary_values(dof_handler,
                                              0,
                                              Functions::ZeroFunction<dim>(dim),
-                                             boundary_values);
+                                             constraints);
+    constraints.close();
 
     std::cout << "  Number of active solid cells: "
               << triangulation.n_active_cells() << std::endl
@@ -57,12 +56,11 @@ namespace Solid
   void LinearElasticSolver<dim>::initialize_system()
   {
     DynamicSparsityPattern dsp(dof_handler.n_dofs(), dof_handler.n_dofs());
-    DoFTools::make_sparsity_pattern(dof_handler, dsp, hanging_node_constraints);
+    DoFTools::make_sparsity_pattern(dof_handler, dsp, constraints);
     pattern.copy_from(dsp);
 
     system_matrix.reinit(pattern);
     stiffness_matrix.reinit(pattern);
-    mass_matrix.reinit(pattern);
     system_rhs.reinit(dof_handler.n_dofs());
     current_acceleration.reinit(dof_handler.n_dofs());
     current_velocity.reinit(dof_handler.n_dofs());
@@ -73,12 +71,12 @@ namespace Solid
   }
 
   template <int dim>
-  void LinearElasticSolver<dim>::assemble_system()
+  void LinearElasticSolver<dim>::assemble_system(const bool is_initial)
   {
     TimerOutput::Scope timer_section(timer, "Assemble system");
 
+    system_matrix = 0;
     stiffness_matrix = 0;
-    mass_matrix = 0;
     system_rhs = 0;
 
     FEValues<dim> fe_values(fe,
@@ -94,13 +92,14 @@ namespace Solid
 
     const SymmetricTensor<4, dim> elasticity = material.get_elasticity();
     const double rho = material.get_density();
+    const double dt = time.get_delta_t();
 
     const unsigned int dofs_per_cell = fe.dofs_per_cell;
     const unsigned int n_q_points = volume_quad_formula.size();
     const unsigned int n_f_q_points = face_quad_formula.size();
 
+    FullMatrix<double> local_matrix (dofs_per_cell, dofs_per_cell);
     FullMatrix<double> local_stiffness (dofs_per_cell, dofs_per_cell);
-    FullMatrix<double> local_mass (dofs_per_cell, dofs_per_cell);
     Vector<double> local_rhs (dofs_per_cell);
 
     std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
@@ -118,7 +117,7 @@ namespace Solid
     for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
          ++cell)
       {
-        local_mass = 0;
+        local_matrix = 0;
         local_stiffness = 0;
         local_rhs = 0;
 
@@ -139,11 +138,20 @@ namespace Solid
               {
                 for (unsigned int j = 0; j < dofs_per_cell; ++j)
                   {
-                    local_mass[i][j] += rho * phi[i] * phi[j] * fe_values.JxW(q);
-                    local_stiffness[i][j] += symmetric_grad_phi[i] * elasticity *
-                      symmetric_grad_phi[j] * fe_values.JxW(q);
+                    if (is_initial)
+                      {
+                        local_matrix[i][j] += rho * phi[i] * phi[j] * fe_values.JxW(q);
+                      }
+                    else
+                      {
+                        local_matrix[i][j] += ( rho * phi[i] * phi[j] +
+                          symmetric_grad_phi[i] * elasticity * symmetric_grad_phi[j] *
+                            beta * dt * dt ) * fe_values.JxW(q);
+                        local_stiffness[i][j] += symmetric_grad_phi[i] * elasticity *
+                          symmetric_grad_phi[j] * fe_values.JxW(q);
+                      }
                   }
-                  // body force
+                  // zero body force
                   Tensor<1, dim> gravity;
                   local_rhs[i] += phi[i] * gravity * rho * fe_values.JxW(q);
               }
@@ -152,9 +160,8 @@ namespace Solid
         cell->get_dof_indices(local_dof_indices);
 
         // traction
-        // TODO: use FEValueExtractors
         Tensor<1, dim> traction;
-        traction[1] = -1e-5;
+        traction[1] = -1e-4;
         for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
           {
             if (cell->face(f)->at_boundary() &&
@@ -165,6 +172,7 @@ namespace Solid
                   {
                     for (unsigned int i = 0; i < dofs_per_cell; ++i)
                       {
+
                         const unsigned int component_i =
                           fe.system_to_component_index(i).first;
                         local_rhs[i] += traction[component_i] *
@@ -177,14 +185,14 @@ namespace Solid
 
         // Now distribute local data to the system, and apply the
         // hanging node constraints at the same time.
-        hanging_node_constraints.distribute_local_to_global(local_stiffness,
-                                                            local_rhs,
-                                                            local_dof_indices,
-                                                            stiffness_matrix,
-                                                            system_rhs);
-        hanging_node_constraints.distribute_local_to_global(local_mass,
-                                                            local_dof_indices,
-                                                            mass_matrix);
+        constraints.distribute_local_to_global(local_matrix,
+                                               local_rhs,
+                                               local_dof_indices,
+                                               system_matrix,
+                                               system_rhs);
+        constraints.distribute_local_to_global(local_stiffness,
+                                               local_dof_indices,
+                                               stiffness_matrix);
       }
   }
 
@@ -202,7 +210,7 @@ namespace Solid
     preconditioner.initialize(A, 1.2);
 
     cg.solve(A, x, b, preconditioner);
-    hanging_node_constraints.distribute(x);
+    constraints.distribute(x);
 
     return {solver_control.last_step(), solver_control.last_value()};
   }
@@ -250,26 +258,13 @@ namespace Solid
     std::cout.precision(6);
     std::cout.width(12);
 
-    // Assemble system only once
-    assemble_system();
-
     // Neet to compute the initial acceleration, \f$ Ma_n = F \f$, 
     // at this point set system_matrix to mass_matrix.
-    system_matrix.copy_from(mass_matrix);
-    // apply Dirichlet boundary conditions
-    MatrixTools::apply_boundary_values(boundary_values, 
-                                       system_matrix,
-                                       previous_acceleration,
-                                       system_rhs);
+    assemble_system(true);
     solve(system_matrix, previous_acceleration, system_rhs);
+    Vector<double> tmp1 (system_rhs); // Cache system_rhs
     
-    // Next add the stiffness to the system_matrix
     const double dt = time.get_delta_t();
-    system_matrix.add(beta*dt*dt, stiffness_matrix);
-
-    Vector<double> tmp1 (dof_handler.n_dofs());
-    Vector<double> tmp2 (dof_handler.n_dofs());
-    Vector<double> tmp3 (system_rhs); // Cache the system_rhs
 
     // Time loop
     output_results(time.get_timestep());
@@ -281,24 +276,20 @@ namespace Solid
                   << ", at t = " << std::scientific << time.current()
                   << std::endl;
 
-        // Modify the rhs to account for the time discretization
-        tmp1 = 0;
-        tmp1 += previous_displacement;
-        tmp1.add(dt, previous_velocity, dt*dt*(0.5-beta), previous_acceleration);
+        if (time.get_timestep() == 1)
+          {
+            assemble_system(false);
+          }
 
-        tmp2 = 0;
-        stiffness_matrix.vmult(tmp2, tmp1);
-        system_rhs -= tmp2;
+        // Modify the RHS
+        system_rhs = tmp1;
+        auto tmp2 = previous_displacement;
+        tmp2.add (dt, previous_velocity, (0.5-beta)*dt*dt, previous_acceleration);
+        Vector<double> tmp3 (dof_handler.n_dofs());
+        stiffness_matrix.vmult(tmp3, tmp2);
+        system_rhs -= tmp3;
 
-        // Solve for the new acceleration, namely current_acceleration
-        // apply Dirichlet boundary conditions, again, this is inefficient.
-        MatrixTools::apply_boundary_values(boundary_values, 
-                                           system_matrix,
-                                           current_acceleration,
-                                           system_rhs);
         auto state = solve(system_matrix, current_acceleration, system_rhs);
-        // Reset system_rhs
-        system_rhs = tmp3;
 
         // update the current velocity
         // \f$ v_{n+1} = v_n + (1-\gamma)\Delta{t}a_n + \gamma\Delta{t}a_{n+1}

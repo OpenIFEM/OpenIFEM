@@ -93,9 +93,10 @@ namespace Solid
     void initialize_system();
 
     /**
-     * Assembles three matrices.
+     * Assembles lhs and rhs. At time step 0, the lhs is the mass matrix;
+     * at all the following steps, it is \f$ M + \beta{\Delta{t}}^2K \f$.
      */
-    void assemble_system();
+    void assemble_system(bool is_initial);
 
     /**
      * Solve the linear system. Returns the number of
@@ -129,28 +130,15 @@ namespace Solid
     const QGauss<dim - 1>
       face_quad_formula; //!< Quadrature formula for face integration.
 
-    ConstraintMatrix hanging_node_constraints; //!< constraints to handle hanging nodes
-
     /**
-     * Map to store the Dirichlet boundary conditions.
-     * This is used in apply_boundary_values, which will then modify both the
-     * lhs and rhs of the equation to solve.
-     *
-     * This is not the optimal solution because the modification is expensive.
-     * I tried to use a ConstraintMatrix to handle the Dirichlet boudary conditions
-     * which allows the modification to be done during assembly. But something
-     * went wrong when assembling the rhs term \f$ K(u_n + \cdots) \f$.
+     * Constraints to handle both hanging nodes and Dirichlet boundary conditions.
      */
-    std::map<types::global_dof_index, double> boundary_values;
+    ConstraintMatrix constraints;
 
     SparsityPattern pattern;
 
-    // Storing these three matrices looks awkward, but this is necessary
-    // if we do not deal with the rhs during assembly.
     SparseMatrix<double> system_matrix; //!< \f$ M + \beta{\Delta{t}}^2K \f$.
-    SparseMatrix<double> stiffness_matrix;
-    SparseMatrix<double> mass_matrix;
-
+    SparseMatrix<double> stiffness_matrix; //!< The stiffness is used in the rhs.
     Vector<double> system_rhs;
 
     /**
