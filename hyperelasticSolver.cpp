@@ -4,12 +4,12 @@ namespace
 {
   template <int dim>
   void
-  PointHistory<dim>::setup(const IFEM::Parameters::AllParameters &parameters)
+  PointHistory<dim>::setup(const Parameters::AllParameters &parameters)
   {
-    if (parameters.typeMat == "NeoHookean")
+    if (parameters.solid_type == "NeoHookean")
       {
         Assert(parameters.C.size() >= 2, dealii::ExcInternalError());
-        material.reset(new IFEM::NeoHookean<dim>(
+        material.reset(new Solid::NeoHookean<dim>(
           parameters.C[0], parameters.C[1], parameters.rho));
         update(parameters, dealii::Tensor<2, dim>());
       }
@@ -21,16 +21,16 @@ namespace
 
   template <int dim>
   void
-  PointHistory<dim>::update(const IFEM::Parameters::AllParameters &parameters,
+  PointHistory<dim>::update(const Parameters::AllParameters &parameters,
                             const dealii::Tensor<2, dim> &Grad_u)
   {
     const dealii::Tensor<2, dim> F =
       dealii::Physics::Elasticity::Kinematics::F(Grad_u);
     material->updateData(F);
     FInv = dealii::invert(F);
-    if (parameters.typeMat == "NeoHookean")
+    if (parameters.solid_type == "NeoHookean")
       {
-        auto nh = std::dynamic_pointer_cast<IFEM::NeoHookean<dim>>(material);
+        auto nh = std::dynamic_pointer_cast<Solid::NeoHookean<dim>>(material);
         Assert(nh, dealii::ExcInternalError());
         tau = nh->getTau();
         Jc = nh->getJc();
@@ -44,22 +44,24 @@ namespace
   }
 }
 
-namespace IFEM
+namespace Solid
 {
   using namespace dealii;
+
   template <int dim>
-  HyperelasticSolver<dim>::HyperelasticSolver(
-    const IFEM::Parameters::AllParameters &params)
+  HyperelasticSolver<dim>::HyperelasticSolver(Triangulation<dim> &tria,
+    const Parameters::AllParameters &params)
     : parameters(params),
       vol(0.),
-      time(parameters.endTime, parameters.deltaTime),
+      time(parameters.end_time, parameters.time_step),
       timer(std::cout, TimerOutput::summary, TimerOutput::wall_times),
-      degree(parameters.polyDegree),
-      fe(FE_Q<dim>(parameters.polyDegree), dim),
-      dofHandler(tria),
+      degree(parameters.solid_degree),
+      fe(FE_Q<dim>(degree), dim),
+      triangulation(tria),
+      dofHandler(triangulation),
       dofsPerCell(fe.dofs_per_cell),
-      quadFormula(parameters.quadOrder),
-      quadFaceFormula(parameters.quadOrder),
+      quadFormula(degree+1),
+      quadFaceFormula(degree+1),
       numQuadPts(quadFormula.size()),
       numFaceQuadPts(quadFaceFormula.size()),
       uFe(0)
@@ -67,27 +69,43 @@ namespace IFEM
   }
 
   template <int dim>
-  HyperelasticSolver<dim>::HyperelasticSolver(const std::string &infile)
-    : parameters(infile),
-      vol(0.),
-      time(parameters.endTime, parameters.deltaTime),
-      timer(std::cout, TimerOutput::summary, TimerOutput::wall_times),
-      degree(parameters.polyDegree),
-      fe(FE_Q<dim>(parameters.polyDegree), dim),
-      dofHandler(tria),
-      dofsPerCell(fe.dofs_per_cell),
-      quadFormula(parameters.quadOrder),
-      quadFaceFormula(parameters.quadOrder),
-      numQuadPts(quadFormula.size()),
-      numFaceQuadPts(quadFaceFormula.size()),
-      uFe(0)
+  void HyperelasticSolver<dim>::run()
   {
-  }
+    triangulation.refine_global(3);
+    vol = GridTools::volume(triangulation);
+    std::cout << "Grid:\n\t Reference volume: " << vol << std::endl;
 
-  template <int dim>
-  void HyperelasticSolver<dim>::runStatics()
-  {
-    generateMesh();
+    // The boundary id is hardcoded for now
+    // TODO: 0.001 is the scaling factor, should I implement it as an input variable?
+    // if so, I should scale all the force, velocity, length...
+    for (auto cell = triangulation.begin_active(); cell != triangulation.end(); ++cell)
+      {
+        for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
+             ++face)
+          {
+            if (cell->face(face)->at_boundary() &&
+                cell->face(face)->center()[1] == 1.0 * 0.001)
+              {
+                if (dim == 3)
+                  {
+                    if (cell->face(face)->center()[0] <
+                          0.5 * 0.001 &&
+                        cell->face(face)->center()[2] < 0.5 * 0.001)
+                      {
+                        cell->face(face)->set_boundary_id(6);
+                      }
+                  }
+                else
+                  {
+                    if (cell->face(face)->center()[0] < 0.5 * 0.001)
+                      {
+                        cell->face(face)->set_boundary_id(6);
+                      }
+                  }
+              }
+          }
+      }
+
     systemSetup();
     output();
     time.increment();
@@ -287,48 +305,6 @@ namespace IFEM
   };
 
   template <int dim>
-  void HyperelasticSolver<dim>::generateMesh()
-  {
-    GridGenerator::hyper_rectangle(
-      tria,
-      (dim == 3 ? Point<dim>(0.0, 0.0, 0.0) : Point<dim>(0.0, 0.0)),
-      (dim == 3 ? Point<dim>(1.0, 1.0, 1.0) : Point<dim>(1.0, 1.0)),
-      true);
-    GridTools::scale(parameters.scale, tria);
-    tria.refine_global(std::max(1U, parameters.globalRefinement));
-    vol = GridTools::volume(tria);
-    std::cout << "Grid:\n\t Reference volume: " << vol << std::endl;
-    // The boundary id is hardcoded for now
-    for (auto cell = tria.begin_active(); cell != tria.end(); ++cell)
-      {
-        for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
-             ++face)
-          {
-            if (cell->face(face)->at_boundary() &&
-                cell->face(face)->center()[1] == 1.0 * parameters.scale)
-              {
-                if (dim == 3)
-                  {
-                    if (cell->face(face)->center()[0] <
-                          0.5 * parameters.scale &&
-                        cell->face(face)->center()[2] < 0.5 * parameters.scale)
-                      {
-                        cell->face(face)->set_boundary_id(6);
-                      }
-                  }
-                else
-                  {
-                    if (cell->face(face)->center()[0] < 0.5 * parameters.scale)
-                      {
-                        cell->face(face)->set_boundary_id(6);
-                      }
-                  }
-              }
-          }
-      }
-  }
-
-  template <int dim>
   void HyperelasticSolver<dim>::systemSetup()
   {
     timer.enter_subsection("Setup system");
@@ -336,7 +312,7 @@ namespace IFEM
     DoFRenumbering::Cuthill_McKee(dofHandler);
 
     std::cout << "Triangulation:"
-              << "\n\t Number of active cells: " << tria.n_active_cells()
+              << "\n\t Number of active cells: " << triangulation.n_active_cells()
               << "\n\t Number of degrees of freedom: " << dofHandler.n_dofs()
               << std::endl;
 
@@ -357,8 +333,8 @@ namespace IFEM
     std::cout << "    Setting up quadrature point data..." << std::endl;
 
     quadraturePointHistory.initialize(
-      tria.begin_active(), tria.end(), numQuadPts);
-    for (auto cell = tria.begin_active(); cell != tria.end(); ++cell)
+      triangulation.begin_active(), triangulation.end(), numQuadPts);
+    for (auto cell = triangulation.begin_active(); cell != triangulation.end(); ++cell)
       {
         const std::vector<std::shared_ptr<PointHistory<dim>>> lqph =
           quadraturePointHistory.get_data(cell);
@@ -433,7 +409,7 @@ namespace IFEM
     printConvHeader();
 
     unsigned int newton_iteration = 0;
-    for (; newton_iteration < parameters.maxItrNL; ++newton_iteration)
+    for (; newton_iteration < parameters.solid_max_iterations; ++newton_iteration)
       {
         std::cout << " " << std::setw(2) << newton_iteration << " "
                   << std::flush;
@@ -451,8 +427,8 @@ namespace IFEM
         errorResidualNorm = errorResidual;
         errorResidualNorm.normalize(errorResidual0);
 
-        if (newton_iteration > 0 && errorUpdateNorm.norm <= parameters.tolU &&
-            errorResidualNorm.norm <= parameters.tolF)
+        if (newton_iteration > 0 && errorUpdateNorm.norm <= parameters.tol_d &&
+            errorResidualNorm.norm <= parameters.tol_f)
           {
             std::cout << " CONVERGED! " << std::endl;
             printConvFooter();
@@ -486,7 +462,7 @@ namespace IFEM
                   << "  " << std::endl;
       }
 
-    AssertThrow(newton_iteration < parameters.maxItrNL,
+    AssertThrow(newton_iteration < parameters.solid_max_iterations,
                 ExcMessage("No convergence in nonlinear solver!"));
   }
 
@@ -521,7 +497,7 @@ namespace IFEM
   {
     double volume = 0.0;
     FEValues<dim> feVals(fe, quadFormula, update_JxW_values);
-    for (auto cell = tria.begin_active(); cell != tria.end(); ++cell)
+    for (auto cell = triangulation.begin_active(); cell != triangulation.end(); ++cell)
       {
         feVals.reinit(cell);
         const std::vector<std::shared_ptr<const PointHistory<dim>>> lqph =
@@ -755,42 +731,32 @@ namespace IFEM
     for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
          ++face)
       {
-        if (cell->face(face)->at_boundary())
+        // apply pressure
+        if (cell->face(face)->at_boundary() && cell->face(face)->boundary_id() == 6)
           {
-            if (parameters.applyPressure)
+            scratch.feFaceValues.reinit(cell, face);
+            const double p0 = -400.0 / (0.001 * 0.001);
+            const double time_ramp =
+              (time.getCurrent() / time.getEnd());
+            const double pressure = p0 * time_ramp;
+            for (unsigned int q = 0; q < numFaceQuadPts; ++q)
               {
-                for (unsigned int i = 0; i < parameters.pressureIDs.size(); ++i)
+                const Tensor<1, dim> &N =
+                  scratch.feFaceValues.normal_vector(q);
+                const Tensor<1, dim> traction = pressure * N;
+                for (unsigned int j = 0; j < dofsPerCell; ++j)
                   {
-                    if (cell->face(face)->boundary_id() ==
-                        static_cast<unsigned int>(parameters.pressureIDs[i]))
-                      {
-                        const double p0 = -parameters.pressureValues[i] /
-                                          (parameters.scale * parameters.scale);
-                        const double time_ramp =
-                          (time.getCurrent() / time.getEnd());
-                        const double pressure = p0 * time_ramp;
-                        scratch.feFaceValues.reinit(cell, face);
-                        for (unsigned int q = 0; q < numFaceQuadPts; ++q)
-                          {
-                            const Tensor<1, dim> &N =
-                              scratch.feFaceValues.normal_vector(q);
-                            const Tensor<1, dim> traction = pressure * N;
-                            for (unsigned int j = 0; j < dofsPerCell; ++j)
-                              {
-                                const unsigned int component_j =
-                                  fe.system_to_component_index(j).first;
-                                const double Ni =
-                                  scratch.feFaceValues.shape_value(j, q);
-                                const double JxW = scratch.feFaceValues.JxW(q);
-                                data.cellRHS(j) +=
-                                  (Ni * traction[component_j]) *
-                                  JxW; // +external force
-                              }
-                          }
-                        break;
-                      }
+                    const unsigned int component_j =
+                      fe.system_to_component_index(j).first;
+                    const double Ni =
+                      scratch.feFaceValues.shape_value(j, q);
+                    const double JxW = scratch.feFaceValues.JxW(q);
+                    data.cellRHS(j) +=
+                      (Ni * traction[component_j]) *
+                      JxW; // +external force
                   }
               }
+            break;
           }
       }
   }
@@ -803,26 +769,69 @@ namespace IFEM
       {
         return; // only need to apply constraints at the first iteration
       }
+
     constraints.clear();
 
-    for (unsigned int i = 0; i < parameters.displacementIDs.size(); ++i)
-      {
-        const int boundary_id = parameters.displacementIDs[i];
-        std::vector<bool> mask;
-        std::vector<double> value;
-        for (int j = 0; j < parameters.dimension; ++j)
-          {
-            int k = parameters.dimension * i + j;
-            mask.push_back(static_cast<bool>(parameters.displacementFlags[k]));
-            value.push_back(parameters.displacementValues[k]);
-          }
-        VectorTools::interpolate_boundary_values(
-          dofHandler,
-          boundary_id,
-          Functions::ConstantFunction<dim>(value),
-          constraints,
-          mask);
-      }
+    const FEValuesExtractors::Scalar x_displacement(0);
+    const FEValuesExtractors::Scalar y_displacement(1);
+    const FEValuesExtractors::Scalar z_displacement(2);
+
+    VectorTools::interpolate_boundary_values(
+      dofHandler,
+      0,
+      Functions::ZeroFunction<dim>(dim),
+      constraints,
+      fe.component_mask(x_displacement));
+
+    VectorTools::interpolate_boundary_values(
+      dofHandler,
+      2,
+      Functions::ZeroFunction<dim>(dim),
+      constraints,
+      fe.component_mask(y_displacement));
+
+    if (dim == 2) // 2D case: 0-x, 2-y, 3-x, 6-x
+    {
+      VectorTools::interpolate_boundary_values(
+        dofHandler,
+        3,
+        Functions::ZeroFunction<dim>(dim),
+        constraints,
+        fe.component_mask(x_displacement));
+
+      VectorTools::interpolate_boundary_values(
+        dofHandler,
+        6,
+        Functions::ZeroFunction<dim>(dim),
+        constraints,
+        fe.component_mask(x_displacement));
+    }
+    else // 3D case: 0-x, 2-y, 4-z, 3-xz, 6-xz
+    {
+      VectorTools::interpolate_boundary_values(
+        dofHandler,
+        4,
+        Functions::ZeroFunction<dim>(dim),
+        constraints,
+        fe.component_mask(z_displacement));
+
+      VectorTools::interpolate_boundary_values(
+        dofHandler,
+        3,
+        Functions::ZeroFunction<dim>(dim),
+        constraints,
+        (fe.component_mask(x_displacement) |
+          fe.component_mask(z_displacement)));
+
+      VectorTools::interpolate_boundary_values(
+        dofHandler,
+        6,
+        Functions::ZeroFunction<dim>(dim),
+        constraints,
+        (fe.component_mask(x_displacement) |
+          fe.component_mask(z_displacement)));
+    }
+
     constraints.close();
   }
 
@@ -830,30 +839,24 @@ namespace IFEM
   std::pair<unsigned int, double>
   HyperelasticSolver<dim>::solveLinearSystem(Vector<double> &newton_update)
   {
+    timer.enter_subsection("Linear solver");
+    std::cout << " SLV " << std::flush;
+
     unsigned int lin_it = 0;
     double lin_res = 0.0;
 
-    timer.enter_subsection("Linear solver");
-    std::cout << " SLV " << std::flush;
-    if (parameters.typeLin == "CG")
-      {
-        const int solver_its = tangentMatrix.m() * parameters.maxItrLin;
-        const double tol_sol = parameters.tolLin * systemRHS.l2_norm();
-        SolverControl solver_control(solver_its, tol_sol);
-        GrowingVectorMemory<Vector<double>> GVM;
-        SolverCG<Vector<double>> solver_CG(solver_control, GVM);
-        PreconditionSelector<SparseMatrix<double>, Vector<double>>
-          preconditioner(parameters.typePre, parameters.relaxPre);
-        preconditioner.use_matrix(tangentMatrix);
-        solver_CG.solve(
-          tangentMatrix, newton_update, systemRHS, preconditioner);
-        lin_it = solver_control.last_step();
-        lin_res = solver_control.last_value();
-      }
-    else
-      {
-        Assert(false, ExcMessage("Linear solver type not implemented"));
-      }
+    const int solver_its = tangentMatrix.m() * parameters.solid_max_iterations;
+    const double tol_sol = 1e-6 * systemRHS.l2_norm();
+    SolverControl solver_control(solver_its, tol_sol);
+    GrowingVectorMemory<Vector<double>> GVM;
+    SolverCG<Vector<double>> solver_CG(solver_control, GVM);
+    PreconditionSSOR<> preconditioner;
+    preconditioner.initialize(tangentMatrix, 1.2);
+    solver_CG.solve(
+      tangentMatrix, newton_update, systemRHS, preconditioner);
+    lin_it = solver_control.last_step();
+    lin_res = solver_control.last_value();
+
     timer.leave_subsection();
     constraints.distribute(newton_update);
     return std::make_pair(lin_it, lin_res);
@@ -877,11 +880,11 @@ namespace IFEM
       {
         soln(i) = solution(i);
       }
-    // Map the solution to the deformed mesh
+    // Map the solution to the deformed mesh, not necessary!
     MappingQEulerian<dim> q_mapping(degree, dofHandler, soln);
     data_out.build_patches(q_mapping, degree);
     std::ostringstream filename;
-    filename << "solution-" << dim << "d-" << time.getTimestep() << ".vtk";
+    filename << "hyperelastic-" << dim << "d-" << time.getTimestep() << ".vtk";
     std::ofstream output(filename.str().c_str());
     data_out.write_vtk(output);
   }

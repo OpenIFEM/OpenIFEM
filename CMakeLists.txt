@@ -25,6 +25,11 @@ SET(TARGET_SRC
   linearElasticMaterial.cpp
   linearElasticSolver.h
   linearElasticSolver.cpp
+  hyperelasticMaterial.h
+  hyperelasticMaterial.cpp
+  neoHookean.h
+  hyperelasticSolver.h
+  hyperelasticSolver.cpp
   )
 
 # Usually, you will not need to modify anything beyond this point...
@@ -39,6 +44,19 @@ IF(NOT ${deal.II_FOUND})
     "*** Could not locate a (sufficiently recent) version of deal.II. ***\n\n"
     "You may want to either pass a flag -DDEAL_II_DIR=/path/to/deal.II to cmake\n"
     "or set an environment variable \"DEAL_II_DIR\" that contains this path."
+    )
+ENDIF()
+
+#
+# Are all dependencies fulfilled?
+#
+IF(NOT DEAL_II_WITH_UMFPACK) # keep in one line
+  MESSAGE(FATAL_ERROR "
+Error! This tutorial requires a deal.II library that was configured with the following options:
+    DEAL_II_WITH_UMFPACK = ON
+However, the deal.II library found at ${DEAL_II_PATH} was configured with these options
+    DEAL_II_WITH_UMFPACK = ${DEAL_II_WITH_UMFPACK}
+which conflict with the requirements."
     )
 ENDIF()
 

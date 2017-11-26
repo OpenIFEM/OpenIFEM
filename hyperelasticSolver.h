@@ -21,8 +21,6 @@
 #include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/grid_in.h>
 #include <deal.II/grid/grid_tools.h>
-#include <deal.II/grid/tria.h>
-#include <deal.II/grid/tria_boundary_lib.h>
 #include <deal.II/lac/constraint_matrix.h>
 #include <deal.II/lac/dynamic_sparsity_pattern.h>
 #include <deal.II/lac/full_matrix.h>
@@ -43,9 +41,14 @@
 #include "neoHookean.h"
 #include "parameters.h"
 
+// TODO: I think it would be the best if Parameters is only used in the constructor,
+// so that later on if we change the format of the input file, they can be easily fixed.
+
 namespace
 {
-  /** This struct will be more useful if
+  /** \brief A simple struct to normalize errors.
+   *
+   * This struct will be more useful if
    * mixed formulation is used.
    */
   struct Errors
@@ -87,13 +90,13 @@ namespace
     const double delta;
   };
 
-  /*! Data to store at the quadrature points.
-   *  We cache the kinematics information at quadrature points
-   *  by storing a PointHistory at each cell,
-   *  so that they can be conveniently accessed in the assembly
-   *  or post processing. We also store a material pointer
-   *  in case different material properties are used at
-   *  different locations.
+  /** \brief Data to store at the quadrature points.
+   * We cache the kinematics information at quadrature points
+   * by storing a PointHistory at each cell,
+   * so that they can be conveniently accessed in the assembly
+   * or post processing. We also store a material pointer
+   * in case different material properties are used at
+   * different locations.
    */
   template <int dim>
   class PointHistory
@@ -111,12 +114,12 @@ namespace
     }
     virtual ~PointHistory() {}
     /** Initialize the members with the input parameters */
-    void setup(const IFEM::Parameters::AllParameters &);
+    void setup(const Parameters::AllParameters &);
     /**
      * Update the state with the displacement gradient
      * in the reference configuration.
      */
-    void update(const IFEM::Parameters::AllParameters &,
+    void update(const Parameters::AllParameters &,
                 const dealii::Tensor<2, dim> &);
     double getDetF() const { return material->getDetF(); }
     const dealii::Tensor<2, dim> &getFInv() const { return FInv; }
@@ -126,7 +129,7 @@ namespace
     double get_d2Psi_vol_dJ2() const { return d2Psi_vol_dJ2; }
 
   private:
-    std::shared_ptr<IFEM::HyperelasticMaterial<dim>> material;
+    std::shared_ptr<Solid::HyperelasticMaterial<dim>> material;
     dealii::Tensor<2, dim> FInv;
     dealii::SymmetricTensor<2, dim> tau;
     dealii::SymmetricTensor<4, dim> Jc;
@@ -135,22 +138,25 @@ namespace
   };
 }
 
-namespace IFEM
+namespace Solid
 {
+  using namespace dealii;
+
+  extern template class HyperelasticMaterial<2>;
+  extern template class HyperelasticMaterial<3>;
+
   /*! \brief Solver for hyperelastic materials
    *
-   *  Unlike LinearElasticSolver, we do not store material in this solver.
-   *  Reference: http://www.dealii.org/8.5.0/doxygen/deal.II/step_44.html
+   * Unlike LinearElasticSolver, we do not store material in this solver.
+   * Reference: http://www.dealii.org/8.5.0/doxygen/deal.II/step_44.html
    */
-  // FIXME: It should be derived from SolverBase
   template <int dim>
   class HyperelasticSolver
   {
   public:
-    HyperelasticSolver(const std::string &infile = "parameters.prm");
-    HyperelasticSolver(const IFEM::Parameters::AllParameters &);
+    HyperelasticSolver(Triangulation<dim> &, const Parameters::AllParameters &);
     ~HyperelasticSolver() { this->dofHandler.clear(); }
-    void runStatics();
+    void run();
 
   private:
     /**
@@ -165,7 +171,6 @@ namespace IFEM
     struct PerTaskDataQPH; // QPH: Quadrature PointHistory
     struct ScratchDataQPH;
 
-    void generateMesh();
     void systemSetup();
 
     // Tangent matrix
@@ -213,7 +218,6 @@ namespace IFEM
 
     Parameters::AllParameters parameters;
     double vol;
-    dealii::Triangulation<dim> tria;
     Time time;
     mutable dealii::TimerOutput timer; // Record the time profile of the program
 
@@ -228,6 +232,7 @@ namespace IFEM
 
     const unsigned int degree;
     const dealii::FESystem<dim> fe;
+    dealii::Triangulation<dim>& triangulation;
     dealii::DoFHandler<dim> dofHandler;
     const unsigned int dofsPerCell;
     const dealii::QGauss<dim> quadFormula;

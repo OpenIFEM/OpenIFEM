@@ -2,6 +2,7 @@
 
 #include "linearElasticSolver.h"
 #include "navierstokes.h"
+#include "hyperelasticSolver.h"
 #include "parameters.h"
 #include "utilities.h"
 
@@ -9,16 +10,25 @@ extern template class Fluid::NavierStokes<2>;
 extern template class Fluid::NavierStokes<3>;
 extern template class Solid::LinearElasticSolver<2>;
 extern template class Solid::LinearElasticSolver<3>;
+extern template class Solid::HyperelasticSolver<2>;
+extern template class Solid::HyperelasticSolver<3>;
 
 int main()
 {
   using namespace dealii;
+
   try
     {
       Parameters::AllParameters params("parameters.prm");
       if (params.dimension == 2)
         {
           Triangulation<2> triangulation;
+          GridGenerator::hyper_rectangle(triangulation,
+            Point<2>(0.0, 0.0), Point<2>(1.0, 1.0), true);
+          GridTools::scale(0.001, triangulation);
+          Solid::HyperelasticSolver<2> solid(triangulation, params);
+          solid.run();
+          /*
           GridGenerator::subdivided_hyper_rectangle(
             triangulation,
             std::vector<unsigned int>{16, 2},
@@ -27,7 +37,7 @@ int main()
             true);
           Solid::LinearElasticSolver<2> solid(triangulation, params);
           solid.run();
-          /*
+
           Utils::GridCreator::flow_around_cylinder(triangulation);
           Fluid::NavierStokes<2> flow(triangulation, params);
           flow.run();
@@ -36,6 +46,12 @@ int main()
       else if (params.dimension == 3)
         {
           Triangulation<3> triangulation;
+          GridGenerator::hyper_rectangle(triangulation,
+            Point<3>(0.0, 0.0, 0.0), Point<3>(1.0, 1.0, 1.0), true);
+          GridTools::scale(0.001, triangulation);
+          Solid::HyperelasticSolver<3> solid(triangulation, params);
+          solid.run();
+          /*
           GridGenerator::subdivided_hyper_rectangle(
             triangulation,
             std::vector<unsigned int>{16, 2, 2},
@@ -44,7 +60,7 @@ int main()
             true);
           Solid::LinearElasticSolver<3> solid(triangulation, params);
           solid.run();
-          /*
+
           Utils::GridCreator::flow_around_cylinder(triangulation);
           Fluid::NavierStokes<3> flow(triangulation, params);
           flow.run();

@@ -3,8 +3,11 @@
 
 #include "hyperelasticMaterial.h"
 
-namespace IFEM
+namespace Solid
 {
+  extern template class HyperelasticMaterial<2>;
+  extern template class HyperelasticMaterial<3>;
+
   /*! \brief Neo-Hookean material.
    *  This is written for Displacement-based formulation
    */
@@ -17,6 +20,7 @@ namespace IFEM
       : HyperelasticMaterial<dim>(param2, rho), c1(param1)
     {
     }
+
     virtual dealii::SymmetricTensor<2, dim> getTauBar() const override
     {
       return 2 * this->c1 * this->bbar;

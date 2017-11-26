@@ -1,6 +1,6 @@
 #include "hyperelasticMaterial.h"
 
-namespace IFEM
+namespace Solid
 {
   using namespace dealii;
 
