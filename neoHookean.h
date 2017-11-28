@@ -21,12 +21,12 @@ namespace Solid
     {
     }
 
-    virtual dealii::SymmetricTensor<2, dim> getTauBar() const override
+    virtual dealii::SymmetricTensor<2, dim> get_tau_bar() const override
     {
-      return 2 * this->c1 * this->bbar;
+      return 2 * this->c1 * this->b_bar;
     }
 
-    virtual dealii::SymmetricTensor<4, dim> getCcBar() const override
+    virtual dealii::SymmetricTensor<4, dim> get_cc_bar() const override
     {
       return dealii::SymmetricTensor<4, dim>();
     }

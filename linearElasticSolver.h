@@ -102,8 +102,9 @@ namespace Solid
      * Solve the linear system. Returns the number of
      * CG iterations and the final residual.
      */
-    std::pair<unsigned int, double> solve(const SparseMatrix<double>&,
-      Vector<double>&, const Vector<double>&);
+    std::pair<unsigned int, double> solve(const SparseMatrix<double> &,
+                                          Vector<double> &,
+                                          const Vector<double> &);
 
     /**
      * Output the time-dependent solution in vtu format.
@@ -131,14 +132,16 @@ namespace Solid
       face_quad_formula; //!< Quadrature formula for face integration.
 
     /**
-     * Constraints to handle both hanging nodes and Dirichlet boundary conditions.
+     * Constraints to handle both hanging nodes and Dirichlet boundary
+     * conditions.
      */
     ConstraintMatrix constraints;
 
     SparsityPattern pattern;
 
     SparseMatrix<double> system_matrix; //!< \f$ M + \beta{\Delta{t}}^2K \f$.
-    SparseMatrix<double> stiffness_matrix; //!< The stiffness is used in the rhs.
+    SparseMatrix<double>
+      stiffness_matrix; //!< The stiffness is used in the rhs.
     Vector<double> system_rhs;
 
     /**

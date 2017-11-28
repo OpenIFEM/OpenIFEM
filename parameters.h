@@ -63,7 +63,7 @@ namespace Parameters
   {
     double damping; //!< The artifial damping in Newmark-beta method.
     unsigned int solid_max_iterations; //!< Max number of Newton iterations,
-                                       //!hyperelastic only.
+                                       //! hyperelastic only.
     double tol_f;                      //!< Force tolerance
     double tol_d; //!< Displacement tolerance, hyperelastic only.
     static void declareParameters(dealii::ParameterHandler &);

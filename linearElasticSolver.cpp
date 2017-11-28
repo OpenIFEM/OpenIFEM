@@ -40,10 +40,8 @@ namespace Solid
 
     constraints.clear();
     DoFTools::make_hanging_node_constraints(dof_handler, constraints);
-    VectorTools::interpolate_boundary_values(dof_handler,
-                                             0,
-                                             Functions::ZeroFunction<dim>(dim),
-                                             constraints);
+    VectorTools::interpolate_boundary_values(
+      dof_handler, 0, Functions::ZeroFunction<dim>(dim), constraints);
     constraints.close();
 
     std::cout << "  Number of active solid cells: "
@@ -98,9 +96,9 @@ namespace Solid
     const unsigned int n_q_points = volume_quad_formula.size();
     const unsigned int n_f_q_points = face_quad_formula.size();
 
-    FullMatrix<double> local_matrix (dofs_per_cell, dofs_per_cell);
-    FullMatrix<double> local_stiffness (dofs_per_cell, dofs_per_cell);
-    Vector<double> local_rhs (dofs_per_cell);
+    FullMatrix<double> local_matrix(dofs_per_cell, dofs_per_cell);
+    FullMatrix<double> local_stiffness(dofs_per_cell, dofs_per_cell);
+    Vector<double> local_rhs(dofs_per_cell);
 
     std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
@@ -140,20 +138,24 @@ namespace Solid
                   {
                     if (is_initial)
                       {
-                        local_matrix[i][j] += rho * phi[i] * phi[j] * fe_values.JxW(q);
+                        local_matrix[i][j] +=
+                          rho * phi[i] * phi[j] * fe_values.JxW(q);
                       }
                     else
                       {
-                        local_matrix[i][j] += ( rho * phi[i] * phi[j] +
-                          symmetric_grad_phi[i] * elasticity * symmetric_grad_phi[j] *
-                            beta * dt * dt ) * fe_values.JxW(q);
-                        local_stiffness[i][j] += symmetric_grad_phi[i] * elasticity *
+                        local_matrix[i][j] +=
+                          (rho * phi[i] * phi[j] +
+                           symmetric_grad_phi[i] * elasticity *
+                             symmetric_grad_phi[j] * beta * dt * dt) *
+                          fe_values.JxW(q);
+                        local_stiffness[i][j] +=
+                          symmetric_grad_phi[i] * elasticity *
                           symmetric_grad_phi[j] * fe_values.JxW(q);
                       }
                   }
-                  // zero body force
-                  Tensor<1, dim> gravity;
-                  local_rhs[i] += phi[i] * gravity * rho * fe_values.JxW(q);
+                // zero body force
+                Tensor<1, dim> gravity;
+                local_rhs[i] += phi[i] * gravity * rho * fe_values.JxW(q);
               }
           }
 
@@ -176,8 +178,8 @@ namespace Solid
                         const unsigned int component_i =
                           fe.system_to_component_index(i).first;
                         local_rhs[i] += traction[component_i] *
-                                       fe_face_values.shape_value(i, q) *
-                                       fe_face_values.JxW(q);
+                                        fe_face_values.shape_value(i, q) *
+                                        fe_face_values.JxW(q);
                       }
                   }
               }
@@ -190,9 +192,8 @@ namespace Solid
                                                local_dof_indices,
                                                system_matrix,
                                                system_rhs);
-        constraints.distribute_local_to_global(local_stiffness,
-                                               local_dof_indices,
-                                               stiffness_matrix);
+        constraints.distribute_local_to_global(
+          local_stiffness, local_dof_indices, stiffness_matrix);
       }
   }
 
@@ -258,12 +259,12 @@ namespace Solid
     std::cout.precision(6);
     std::cout.width(12);
 
-    // Neet to compute the initial acceleration, \f$ Ma_n = F \f$, 
+    // Neet to compute the initial acceleration, \f$ Ma_n = F \f$,
     // at this point set system_matrix to mass_matrix.
     assemble_system(true);
     solve(system_matrix, previous_acceleration, system_rhs);
-    Vector<double> tmp1 (system_rhs); // Cache system_rhs
-    
+    Vector<double> tmp1(system_rhs); // Cache system_rhs
+
     const double dt = time.get_delta_t();
 
     // Time loop
@@ -284,8 +285,9 @@ namespace Solid
         // Modify the RHS
         system_rhs = tmp1;
         auto tmp2 = previous_displacement;
-        tmp2.add (dt, previous_velocity, (0.5-beta)*dt*dt, previous_acceleration);
-        Vector<double> tmp3 (dof_handler.n_dofs());
+        tmp2.add(
+          dt, previous_velocity, (0.5 - beta) * dt * dt, previous_acceleration);
+        Vector<double> tmp3(dof_handler.n_dofs());
         stiffness_matrix.vmult(tmp3, tmp2);
         system_rhs -= tmp3;
 

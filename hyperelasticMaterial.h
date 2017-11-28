@@ -31,38 +31,39 @@ namespace Solid
     using ST = typename dealii::Physics::Elasticity::StandardTensors<dim>;
 
   public:
-    HyperelasticMaterial() : Material<dim>(), kappa(0.0), detF(1.0), bbar(ST::I)
+    HyperelasticMaterial()
+      : Material<dim>(), kappa(0.0), det_F(1.0), b_bar(ST::I)
     {
     }
 
     HyperelasticMaterial(double k, double rho = 0.0)
-      : Material<dim>(rho), kappa(k), detF(1.0), bbar(ST::I)
+      : Material<dim>(rho), kappa(k), det_F(1.0), b_bar(ST::I)
     {
     }
 
     virtual ~HyperelasticMaterial() {}
 
     /** Update the material model with deformation data. */
-    virtual void updateData(const dealii::Tensor<2, dim> &);
+    virtual void update_data(const dealii::Tensor<2, dim> &);
 
     /** Return the Kirchhoff stress */
-    virtual dealii::SymmetricTensor<2, dim> getTau() const
+    virtual dealii::SymmetricTensor<2, dim> get_tau() const
     {
-      return getTauIso() + getTauVol();
+      return get_tau_iso() + get_tau_vol();
     }
 
     /** Return the spatial elasticity tensor multiplied with J */
-    virtual dealii::SymmetricTensor<4, dim> getJc() const
+    virtual dealii::SymmetricTensor<4, dim> get_Jc() const
     {
-      return getJcIso() + getJcVol();
+      return get_Jc_iso() + get_Jc_vol();
     }
 
     /** Return the J. */
-    double getDetF() { return detF; }
+    double get_det_F() { return det_F; }
 
     /* Return the derivative of the volumetric part of the energy potential
      * w.r.t the J. */
-    virtual double get_dPsi_vol_dJ() const { return kappa * (detF - 1); }
+    virtual double get_dPsi_vol_dJ() const { return kappa * (det_F - 1); }
 
     /* Return the second order derivative of the volumetric part of the energy
      * potential w.r.t the J. */
@@ -71,37 +72,38 @@ namespace Solid
   protected:
     const double kappa; //!< every hyperelastic material should have kappa
 
-    // bbar and detF are not material properties,
+    // b_bar and det_F are not material properties,
     // they are stored just for convenience.
 
-    double detF; //!< determinant of the Jacobian matrix
-    dealii::SymmetricTensor<2, dim> bbar; //!< modified left Cauchy-Green tensor
+    double det_F; //!< determinant of the Jacobian matrix
+    dealii::SymmetricTensor<2, dim>
+      b_bar; //!< modified left Cauchy-Green tensor
 
     /** Return the isochoric part of the Kirchhoff stress. */
-    virtual dealii::SymmetricTensor<2, dim> getTauIso() const
+    virtual dealii::SymmetricTensor<2, dim> get_tau_iso() const
     {
-      return ST::dev_P * getTauBar();
+      return ST::dev_P * get_tau_bar();
     }
 
     /** Return the volumetric part of the Kirchhoff stress. tau_{vol} = pI */
-    virtual dealii::SymmetricTensor<2, dim> getTauVol() const
+    virtual dealii::SymmetricTensor<2, dim> get_tau_vol() const
     {
-      return detF * get_dPsi_vol_dJ() * ST::I;
+      return det_F * get_dPsi_vol_dJ() * ST::I;
     }
 
     /** Return the volumetric part of the spatial elasticity tensor multiplied
      * with J */
-    virtual dealii::SymmetricTensor<4, dim> getJcVol() const;
+    virtual dealii::SymmetricTensor<4, dim> get_Jc_vol() const;
 
     /** Return the isochoric part of the spatial elasticity tensor multiplied
      * with J */
-    virtual dealii::SymmetricTensor<4, dim> getJcIso() const;
+    virtual dealii::SymmetricTensor<4, dim> get_Jc_iso() const;
 
     /** Return the fictitious Kirchhoff stress. Model-dependent. */
-    virtual dealii::SymmetricTensor<2, dim> getTauBar() const = 0;
+    virtual dealii::SymmetricTensor<2, dim> get_tau_bar() const = 0;
 
     /** Return the fictitious spatial elasticity tensor. Model-dependent. */
-    virtual dealii::SymmetricTensor<4, dim> getCcBar() const = 0;
+    virtual dealii::SymmetricTensor<4, dim> get_cc_bar() const = 0;
   };
 }
 

@@ -40,9 +40,7 @@
 
 #include "neoHookean.h"
 #include "parameters.h"
-
-// TODO: I think it would be the best if Parameters is only used in the constructor,
-// so that later on if we change the format of the input file, they can be easily fixed.
+#include "utilities.h"
 
 namespace
 {
@@ -65,32 +63,8 @@ namespace
     double norm;
   };
 
-  class Time
-  {
-  public:
-    Time(const double time_end, const double delta_t)
-      : timestep(0), current(0.0), end(time_end), delta(delta_t)
-    {
-    }
-    virtual ~Time() {}
-    double getCurrent() const { return current; }
-    double getEnd() const { return end; }
-    double getDelta() const { return delta; }
-    unsigned int getTimestep() const { return timestep; }
-    void increment()
-    {
-      current += delta;
-      ++timestep;
-    }
-
-  private:
-    unsigned int timestep;
-    double current;
-    const double end;
-    const double delta;
-  };
-
   /** \brief Data to store at the quadrature points.
+   *
    * We cache the kinematics information at quadrature points
    * by storing a PointHistory at each cell,
    * so that they can be conveniently accessed in the assembly
@@ -105,7 +79,7 @@ namespace
 
   public:
     PointHistory()
-      : FInv(ST::I),
+      : F_inv(ST::I),
         tau(dealii::SymmetricTensor<2, dim>()),
         Jc(dealii::SymmetricTensor<4, dim>()),
         dPsi_vol_dJ(0.0),
@@ -121,16 +95,18 @@ namespace
      */
     void update(const Parameters::AllParameters &,
                 const dealii::Tensor<2, dim> &);
-    double getDetF() const { return material->getDetF(); }
-    const dealii::Tensor<2, dim> &getFInv() const { return FInv; }
-    const dealii::SymmetricTensor<2, dim> &getTau() const { return tau; }
-    const dealii::SymmetricTensor<4, dim> &getJc() const { return Jc; }
+    double get_det_F() const { return material->get_det_F(); }
+    const dealii::Tensor<2, dim> &get_F_inv() const { return F_inv; }
+    const dealii::SymmetricTensor<2, dim> &get_tau() const { return tau; }
+    const dealii::SymmetricTensor<4, dim> &get_Jc() const { return Jc; }
     double get_dPsi_vol_dJ() const { return dPsi_vol_dJ; }
     double get_d2Psi_vol_dJ2() const { return d2Psi_vol_dJ2; }
 
   private:
+    /** The specific hyperelastic material to use. */
     std::shared_ptr<Solid::HyperelasticMaterial<dim>> material;
-    dealii::Tensor<2, dim> FInv;
+
+    dealii::Tensor<2, dim> F_inv;
     dealii::SymmetricTensor<2, dim> tau;
     dealii::SymmetricTensor<4, dim> Jc;
     double dPsi_vol_dJ;
@@ -145,7 +121,7 @@ namespace Solid
   extern template class HyperelasticMaterial<2>;
   extern template class HyperelasticMaterial<3>;
 
-  /*! \brief Solver for hyperelastic materials
+  /** \brief Solver for hyperelastic materials
    *
    * Unlike LinearElasticSolver, we do not store material in this solver.
    * Reference: http://www.dealii.org/8.5.0/doxygen/deal.II/step_44.html
@@ -155,70 +131,51 @@ namespace Solid
   {
   public:
     HyperelasticSolver(Triangulation<dim> &, const Parameters::AllParameters &);
-    ~HyperelasticSolver() { this->dofHandler.clear(); }
+    ~HyperelasticSolver() { this->dof_handler.clear(); }
     void run();
 
   private:
+    void setup_dofs();
+
     /**
-     * Forward-declare some structures for assembly using WorkStream
-     * ScratchData* are used to store the inputs for the WorkStream,
-     * and PerTaskData* are used to store the results.
+     * Assemble the lhs and rhs at the same time.
      */
-    struct PerTaskDataK;
-    struct ScratchDataK;
-    struct PerTaskDataRHS;
-    struct ScratchDataRHS;
-    struct PerTaskDataQPH; // QPH: Quadrature PointHistory
-    struct ScratchDataQPH;
-
-    void systemSetup();
-
-    // Tangent matrix
-    void assembleGlobalK();
-    void assembleLocalK(
-      const typename dealii::DoFHandler<dim>::active_cell_iterator &cell,
-      ScratchDataK &scratch,
-      PerTaskDataK &data) const;
-    void copyLocalToGlobalK(const PerTaskDataK &);
-
-    // System RHS
-    void assembleGlobalRHS();
-    void assembleLocalRHS(
-      const typename dealii::DoFHandler<dim>::active_cell_iterator &cell,
-      ScratchDataRHS &scratch,
-      PerTaskDataRHS &data) const;
-    void copyLocalToGlobalRHS(const PerTaskDataRHS &);
-
-    // Apply boundary conditions
-    void makeConstraints(const int &);
+    void assemble(bool);
 
     // Set up the quadrature point history
-    void setupQPH();
+    void setup_qph();
+
     /**
-     * update the quadrature point history
-     * This is also done in a WorkStream manner.
-     * Although in this case we don't need to copy anything from
-     * local to global - everything is local, we still need
-     * write an empty function to make the WorkStream happy.
+     * Initialize matrices and vectors, this process
+     * is separate from setup_dofs because if we refine
+     * mesh in time-dependent simulation, we must
+     * transfer solution after setup_dofs, and then
+     * initialize.
      */
-    void updateGlobalQPH(const dealii::Vector<double> &);
-    void updateLocalQPH(
-      const typename dealii::DoFHandler<dim>::active_cell_iterator &,
-      ScratchDataQPH &,
-      PerTaskDataQPH &);
-    void copyLocalToGlobalQPH(const PerTaskDataQPH &) {}
+    void initialize_system();
+
+    /** update the quadrature point history
+     * The displacement is incremented at every iteration, so we have to
+     * update the strain, stress etc. stored at quadrature points.
+     */
+    void update_qph(const dealii::Vector<double> &);
 
     // Using Newton iteration to solve for a nonlinear timestep.
-    void solveNonlinearTimestep(dealii::Vector<double> &);
+    void solve_nonlinear_step(dealii::Vector<double> &);
+
     /* Solve a linear equation, return the number of iterations and residual. */
-    std::pair<unsigned int, double> solveLinearSystem(dealii::Vector<double> &);
+    std::pair<unsigned int, double>
+    solve_linear_system(dealii::Vector<double> &);
+
     // Given the increment of the solution, return the current solution.
-    dealii::Vector<double> getSolution(const dealii::Vector<double> &) const;
-    void output() const;
+    dealii::Vector<double>
+    get_total_solution(const dealii::Vector<double> &) const;
+
+    void output_results(const unsigned int) const;
 
     Parameters::AllParameters parameters;
     double vol;
-    Time time;
+    Utils::Time time;
     mutable dealii::TimerOutput timer; // Record the time profile of the program
 
     /**
@@ -228,24 +185,24 @@ namespace Solid
      */
     dealii::CellDataStorage<typename dealii::Triangulation<dim>::cell_iterator,
                             PointHistory<dim>>
-      quadraturePointHistory;
+      quad_point_history;
 
     const unsigned int degree;
     const dealii::FESystem<dim> fe;
-    dealii::Triangulation<dim>& triangulation;
-    dealii::DoFHandler<dim> dofHandler;
-    const unsigned int dofsPerCell;
-    const dealii::QGauss<dim> quadFormula;
-    const dealii::QGauss<dim - 1> quadFaceFormula;
-    const unsigned int numQuadPts;
-    const unsigned int numFaceQuadPts;
+    dealii::Triangulation<dim> &triangulation;
+    dealii::DoFHandler<dim> dof_handler;
+    const unsigned int dofs_per_cell;
+    const dealii::QGauss<dim> volume_quad_formula;
+    const dealii::QGauss<dim - 1> face_quad_formula;
+    const unsigned int n_q_points;
+    const unsigned int n_f_q_points;
     // Tells dealii to view the dofs as a vector when necessary
-    const dealii::FEValuesExtractors::Vector uFe;
+    const dealii::FEValuesExtractors::Vector displacement;
 
     dealii::ConstraintMatrix constraints;
     dealii::SparsityPattern pattern;
-    dealii::SparseMatrix<double> tangentMatrix;
-    dealii::Vector<double> systemRHS;
+    dealii::SparseMatrix<double> system_matrix;
+    dealii::Vector<double> system_rhs;
     dealii::Vector<double> solution;
 
     /**
@@ -260,16 +217,16 @@ namespace Solid
       errorUpdate0, errorUpdateNorm;
 
     // Reture the residual in the Newton iteration
-    void getErrorResidual(Errors &);
+    void get_error_residual(Errors &);
     // Compute the l2 norm of the solution increment
-    void getErrorUpdate(const dealii::Vector<double> &, Errors &);
+    void get_error_update(const dealii::Vector<double> &, Errors &);
 
     // Return the current volume of the geometry
-    double computeVolume() const;
+    double compute_volume() const;
 
     // Print the header and footer of the output table
-    static void printConvHeader();
-    void printConvFooter();
+    void print_conv_header();
+    void print_conv_footer();
   };
 }
 

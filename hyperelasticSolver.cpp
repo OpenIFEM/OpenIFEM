@@ -3,8 +3,7 @@
 namespace
 {
   template <int dim>
-  void
-  PointHistory<dim>::setup(const Parameters::AllParameters &parameters)
+  void PointHistory<dim>::setup(const Parameters::AllParameters &parameters)
   {
     if (parameters.solid_type == "NeoHookean")
       {
@@ -20,20 +19,19 @@ namespace
   }
 
   template <int dim>
-  void
-  PointHistory<dim>::update(const Parameters::AllParameters &parameters,
-                            const dealii::Tensor<2, dim> &Grad_u)
+  void PointHistory<dim>::update(const Parameters::AllParameters &parameters,
+                                 const dealii::Tensor<2, dim> &Grad_u)
   {
     const dealii::Tensor<2, dim> F =
       dealii::Physics::Elasticity::Kinematics::F(Grad_u);
-    material->updateData(F);
-    FInv = dealii::invert(F);
+    material->update_data(F);
+    F_inv = dealii::invert(F);
     if (parameters.solid_type == "NeoHookean")
       {
         auto nh = std::dynamic_pointer_cast<Solid::NeoHookean<dim>>(material);
         Assert(nh, dealii::ExcInternalError());
-        tau = nh->getTau();
-        Jc = nh->getJc();
+        tau = nh->get_tau();
+        Jc = nh->get_Jc();
       }
     else
       {
@@ -49,22 +47,23 @@ namespace Solid
   using namespace dealii;
 
   template <int dim>
-  HyperelasticSolver<dim>::HyperelasticSolver(Triangulation<dim> &tria,
-    const Parameters::AllParameters &params)
+  HyperelasticSolver<dim>::HyperelasticSolver(
+    Triangulation<dim> &tria, const Parameters::AllParameters &params)
     : parameters(params),
       vol(0.),
-      time(parameters.end_time, parameters.time_step),
+      time(
+        parameters.end_time, parameters.time_step, parameters.output_interval),
       timer(std::cout, TimerOutput::summary, TimerOutput::wall_times),
       degree(parameters.solid_degree),
       fe(FE_Q<dim>(degree), dim),
       triangulation(tria),
-      dofHandler(triangulation),
-      dofsPerCell(fe.dofs_per_cell),
-      quadFormula(degree+1),
-      quadFaceFormula(degree+1),
-      numQuadPts(quadFormula.size()),
-      numFaceQuadPts(quadFaceFormula.size()),
-      uFe(0)
+      dof_handler(triangulation),
+      dofs_per_cell(fe.dofs_per_cell),
+      volume_quad_formula(degree + 1),
+      face_quad_formula(degree + 1),
+      n_q_points(volume_quad_formula.size()),
+      n_f_q_points(face_quad_formula.size()),
+      displacement(0)
   {
   }
 
@@ -76,9 +75,8 @@ namespace Solid
     std::cout << "Grid:\n\t Reference volume: " << vol << std::endl;
 
     // The boundary id is hardcoded for now
-    // TODO: 0.001 is the scaling factor, should I implement it as an input variable?
-    // if so, I should scale all the force, velocity, length...
-    for (auto cell = triangulation.begin_active(); cell != triangulation.end(); ++cell)
+    for (auto cell = triangulation.begin_active(); cell != triangulation.end();
+         ++cell)
       {
         for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
              ++face)
@@ -88,8 +86,7 @@ namespace Solid
               {
                 if (dim == 3)
                   {
-                    if (cell->face(face)->center()[0] <
-                          0.5 * 0.001 &&
+                    if (cell->face(face)->center()[0] < 0.5 * 0.001 &&
                         cell->face(face)->center()[2] < 0.5 * 0.001)
                       {
                         cell->face(face)->set_boundary_id(6);
@@ -106,240 +103,129 @@ namespace Solid
           }
       }
 
-    systemSetup();
-    output();
+    setup_dofs();
+    initialize_system();
+    output_results(time.get_timestep());
     time.increment();
-    Vector<double> solution_delta(dofHandler.n_dofs());
-    while (time.getCurrent() < time.getEnd())
+    Vector<double> solution_delta(dof_handler.n_dofs());
+    while (time.current() < time.end())
       {
         solution_delta = 0.0;
-        solveNonlinearTimestep(solution_delta);
+        solve_nonlinear_step(solution_delta);
         solution += solution_delta;
-        output();
+        if (time.time_to_output())
+          {
+            output_results(time.get_timestep());
+          }
         time.increment();
       }
   }
 
   template <int dim>
-  struct HyperelasticSolver<dim>::PerTaskDataK
-  {
-    // cellMatrix and localDofIndices are needed to
-    // assemble the global matrix
-    FullMatrix<double> cellMatrix;
-    std::vector<types::global_dof_index> localDofIndices;
-
-    PerTaskDataK(const unsigned int dofsPerCell)
-      : cellMatrix(dofsPerCell, dofsPerCell), localDofIndices(dofsPerCell)
-    {
-    }
-
-    void reset() { cellMatrix = 0.0; }
-  };
-
-  template <int dim>
-  struct HyperelasticSolver<dim>::ScratchDataK
-  {
-    // These are needed to compute local matrices
-    FEValues<dim> feValues;
-    std::vector<std::vector<double>> Nx;
-    std::vector<std::vector<Tensor<2, dim>>> gradNx;
-    std::vector<std::vector<SymmetricTensor<2, dim>>> symGradNx;
-
-    ScratchDataK(const FiniteElement<dim> &fe_cell,
-                 const QGauss<dim> &qf_cell,
-                 const UpdateFlags uf_cell)
-      : feValues(fe_cell, qf_cell, uf_cell),
-        Nx(qf_cell.size(), std::vector<double>(fe_cell.dofs_per_cell)),
-        gradNx(qf_cell.size(),
-               std::vector<Tensor<2, dim>>(fe_cell.dofs_per_cell)),
-        symGradNx(qf_cell.size(),
-                  std::vector<SymmetricTensor<2, dim>>(fe_cell.dofs_per_cell))
-    {
-    }
-
-    ScratchDataK(const ScratchDataK &rhs)
-      : feValues(rhs.feValues.get_fe(),
-                 rhs.feValues.get_quadrature(),
-                 rhs.feValues.get_update_flags()),
-        Nx(rhs.Nx),
-        gradNx(rhs.gradNx),
-        symGradNx(rhs.symGradNx)
-    {
-    }
-
-    void reset()
-    {
-      Assert(!Nx.empty(), ExcInternalError());
-      const unsigned int n_q_points = Nx.size();
-      const unsigned int n_dofs_per_cell = Nx[0].size();
-      for (unsigned int q = 0; q < n_q_points; ++q)
-        {
-          Assert(Nx[q].size() == n_dofs_per_cell, ExcInternalError());
-          Assert(gradNx[q].size() == n_dofs_per_cell, ExcInternalError());
-          Assert(symGradNx[q].size() == n_dofs_per_cell, ExcInternalError());
-          for (unsigned int k = 0; k < n_dofs_per_cell; ++k)
-            {
-              Nx[q][k] = 0.0;
-              gradNx[q][k] = 0.0;
-              symGradNx[q][k] = 0.0;
-            }
-        }
-    }
-  };
-
-  template <int dim>
-  struct HyperelasticSolver<dim>::PerTaskDataRHS
-  {
-    // cellRhs and localDofIndices are needed in assembly
-    Vector<double> cellRHS;
-    std::vector<types::global_dof_index> localDofIndices;
-
-    PerTaskDataRHS(const unsigned int dofs_per_cell)
-      : cellRHS(dofs_per_cell), localDofIndices(dofs_per_cell)
-    {
-    }
-
-    void reset() { cellRHS = 0.0; }
-  };
-
-  template <int dim>
-  struct HyperelasticSolver<dim>::ScratchDataRHS
-  {
-    // Theses are needed to compute local RHS
-    FEValues<dim> feValues;
-    FEFaceValues<dim> feFaceValues;
-    std::vector<std::vector<double>> Nx;
-    std::vector<std::vector<SymmetricTensor<2, dim>>> symGradNx;
-
-    ScratchDataRHS(const FiniteElement<dim> &fe_cell,
-                   const QGauss<dim> &qf_cell,
-                   const UpdateFlags uf_cell,
-                   const QGauss<dim - 1> &qf_face,
-                   const UpdateFlags uf_face)
-      : feValues(fe_cell, qf_cell, uf_cell),
-        feFaceValues(fe_cell, qf_face, uf_face),
-        Nx(qf_cell.size(), std::vector<double>(fe_cell.dofs_per_cell)),
-        symGradNx(qf_cell.size(),
-                  std::vector<SymmetricTensor<2, dim>>(fe_cell.dofs_per_cell))
-    {
-    }
-
-    ScratchDataRHS(const ScratchDataRHS &rhs)
-      : feValues(rhs.feValues.get_fe(),
-                 rhs.feValues.get_quadrature(),
-                 rhs.feValues.get_update_flags()),
-        feFaceValues(rhs.feFaceValues.get_fe(),
-                     rhs.feFaceValues.get_quadrature(),
-                     rhs.feFaceValues.get_update_flags()),
-        Nx(rhs.Nx),
-        symGradNx(rhs.symGradNx)
-    {
-    }
-
-    void reset()
-    {
-      Assert(!Nx.empty(), ExcInternalError());
-      const unsigned int n_q_points = Nx.size();
-      const unsigned int n_dofs_per_cell = Nx[0].size();
-      for (unsigned int q = 0; q < n_q_points; ++q)
-        {
-          Assert(Nx[q].size() == n_dofs_per_cell, ExcInternalError());
-          Assert(symGradNx[q].size() == n_dofs_per_cell, ExcInternalError());
-          for (unsigned int k = 0; k < n_dofs_per_cell; ++k)
-            {
-              Nx[q][k] = 0.0;
-              symGradNx[q][k] = 0.0;
-            }
-        }
-    }
-  };
-
-  template <int dim>
-  struct HyperelasticSolver<dim>::PerTaskDataQPH
-  {
-    // Updating quadrature point history is purely local
-    // No need to write out anything so this structure is empty
-    void reset() {}
-  };
-
-  template <int dim>
-  struct HyperelasticSolver<dim>::ScratchDataQPH
-  {
-    /**
-     * In order to update PointHistory, we need access to the
-     * displacement to compute its gradient at current quadrature point,
-     * which is saved to feValues.
-     * To avoid copy, use a reference.
-     */
-    const Vector<double> &solution;
-    std::vector<Tensor<2, dim>> gradU; // displacement gradient at quad points
-    FEValues<dim> feValues;
-
-    ScratchDataQPH(const FiniteElement<dim> &fe_cell,
-                   const QGauss<dim> &qf_cell,
-                   const UpdateFlags uf_cell,
-                   const Vector<double> &soln)
-      : solution(soln),
-        gradU(qf_cell.size()),
-        feValues(fe_cell, qf_cell, uf_cell)
-    {
-    }
-
-    ScratchDataQPH(const ScratchDataQPH &rhs)
-      : solution(rhs.solution),
-        gradU(rhs.gradU),
-        feValues(rhs.feValues.get_fe(),
-                 rhs.feValues.get_quadrature(),
-                 rhs.feValues.get_update_flags())
-    {
-    }
-
-    void reset()
-    {
-      const unsigned int n_q_points = gradU.size();
-      for (unsigned int q = 0; q < n_q_points; ++q)
-        {
-          gradU[q] = 0.0;
-        }
-    }
-  };
-
-  template <int dim>
-  void HyperelasticSolver<dim>::systemSetup()
+  void HyperelasticSolver<dim>::setup_dofs()
   {
     timer.enter_subsection("Setup system");
-    dofHandler.distribute_dofs(fe);
-    DoFRenumbering::Cuthill_McKee(dofHandler);
+    dof_handler.distribute_dofs(fe);
+    DoFRenumbering::Cuthill_McKee(dof_handler);
 
     std::cout << "Triangulation:"
-              << "\n\t Number of active cells: " << triangulation.n_active_cells()
-              << "\n\t Number of degrees of freedom: " << dofHandler.n_dofs()
+              << "\n\t Number of active cells: "
+              << triangulation.n_active_cells()
+              << "\n\t Number of degrees of freedom: " << dof_handler.n_dofs()
               << std::endl;
 
-    tangentMatrix.clear();
-    DynamicSparsityPattern dsp(dofHandler.n_dofs(), dofHandler.n_dofs());
-    DoFTools::make_sparsity_pattern(dofHandler, dsp, constraints, false);
-    pattern.copy_from(dsp);
-    tangentMatrix.reinit(pattern);
-    systemRHS.reinit(dofHandler.n_dofs());
-    solution.reinit(dofHandler.n_dofs());
-    setupQPH();
+    constraints.clear();
+    DoFTools::make_hanging_node_constraints(dof_handler, constraints);
+
+    const FEValuesExtractors::Scalar x_displacement(0);
+    const FEValuesExtractors::Scalar y_displacement(1);
+    const FEValuesExtractors::Scalar z_displacement(2);
+
+    VectorTools::interpolate_boundary_values(dof_handler,
+                                             0,
+                                             Functions::ZeroFunction<dim>(dim),
+                                             constraints,
+                                             fe.component_mask(x_displacement));
+
+    VectorTools::interpolate_boundary_values(dof_handler,
+                                             2,
+                                             Functions::ZeroFunction<dim>(dim),
+                                             constraints,
+                                             fe.component_mask(y_displacement));
+
+    if (dim == 2) // 2D case: 0-x, 2-y, 3-x, 6-x
+      {
+        VectorTools::interpolate_boundary_values(
+          dof_handler,
+          3,
+          Functions::ZeroFunction<dim>(dim),
+          constraints,
+          fe.component_mask(x_displacement));
+
+        VectorTools::interpolate_boundary_values(
+          dof_handler,
+          6,
+          Functions::ZeroFunction<dim>(dim),
+          constraints,
+          fe.component_mask(x_displacement));
+      }
+    else // 3D case: 0-x, 2-y, 4-z, 3-xz, 6-xz
+      {
+        VectorTools::interpolate_boundary_values(
+          dof_handler,
+          4,
+          Functions::ZeroFunction<dim>(dim),
+          constraints,
+          fe.component_mask(z_displacement));
+
+        VectorTools::interpolate_boundary_values(
+          dof_handler,
+          3,
+          Functions::ZeroFunction<dim>(dim),
+          constraints,
+          (fe.component_mask(x_displacement) |
+           fe.component_mask(z_displacement)));
+
+        VectorTools::interpolate_boundary_values(
+          dof_handler,
+          6,
+          Functions::ZeroFunction<dim>(dim),
+          constraints,
+          (fe.component_mask(x_displacement) |
+           fe.component_mask(z_displacement)));
+      }
+    constraints.close();
+
     timer.leave_subsection();
   }
 
   template <int dim>
-  void HyperelasticSolver<dim>::setupQPH()
+  void HyperelasticSolver<dim>::initialize_system()
+  {
+    system_matrix.clear();
+    DynamicSparsityPattern dsp(dof_handler.n_dofs(), dof_handler.n_dofs());
+    DoFTools::make_sparsity_pattern(dof_handler, dsp, constraints, false);
+    pattern.copy_from(dsp);
+    system_matrix.reinit(pattern);
+    system_rhs.reinit(dof_handler.n_dofs());
+    solution.reinit(dof_handler.n_dofs());
+    setup_qph();
+  }
+
+  template <int dim>
+  void HyperelasticSolver<dim>::setup_qph()
   {
     std::cout << "    Setting up quadrature point data..." << std::endl;
 
-    quadraturePointHistory.initialize(
-      triangulation.begin_active(), triangulation.end(), numQuadPts);
-    for (auto cell = triangulation.begin_active(); cell != triangulation.end(); ++cell)
+    quad_point_history.initialize(
+      triangulation.begin_active(), triangulation.end(), n_q_points);
+    for (auto cell = triangulation.begin_active(); cell != triangulation.end();
+         ++cell)
       {
         const std::vector<std::shared_ptr<PointHistory<dim>>> lqph =
-          quadraturePointHistory.get_data(cell);
-        Assert(lqph.size() == numQuadPts, ExcInternalError());
-        for (unsigned int q = 0; q < numQuadPts; ++q)
+          quad_point_history.get_data(cell);
+        Assert(lqph.size() == n_q_points, ExcInternalError());
+        for (unsigned int q = 0; q < n_q_points; ++q)
           {
             lqph[q]->setup(parameters);
           }
@@ -347,57 +233,45 @@ namespace Solid
   }
 
   template <int dim>
-  void
-  HyperelasticSolver<dim>::updateGlobalQPH(const Vector<double> &solution_delta)
+  void HyperelasticSolver<dim>::update_qph(const Vector<double> &solution_delta)
   {
     timer.enter_subsection("Update QPH data");
     std::cout << " UQPH " << std::flush;
 
-    const Vector<double> solution_total(getSolution(solution_delta));
-    const UpdateFlags uf_QPH(update_values | update_gradients);
-    PerTaskDataQPH per_task_data_QPH;
-    ScratchDataQPH scratch_data_QPH(fe, quadFormula, uf_QPH, solution_total);
+    const Vector<double> solution_total(get_total_solution(solution_delta));
 
-    WorkStream::run(dofHandler.begin_active(),
-                    dofHandler.end(),
-                    *this,
-                    &HyperelasticSolver::updateLocalQPH,
-                    &HyperelasticSolver::copyLocalToGlobalQPH,
-                    scratch_data_QPH,
-                    per_task_data_QPH);
+    // displacement gradient at quad points
+    std::vector<Tensor<2, dim>> grad_u(volume_quad_formula.size());
+    FEValues<dim> fe_values(
+      fe, volume_quad_formula, update_values | update_gradients);
 
+    for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+         ++cell)
+      {
+        const std::vector<std::shared_ptr<PointHistory<dim>>> lqph =
+          quad_point_history.get_data(cell);
+        Assert(lqph.size() == n_q_points, ExcInternalError());
+
+        fe_values.reinit(cell);
+        fe_values[displacement].get_function_gradients(solution_total, grad_u);
+
+        for (unsigned int q = 0; q < n_q_points; ++q)
+          {
+            lqph[q]->update(parameters, grad_u[q]);
+          }
+      }
     timer.leave_subsection();
   }
 
   template <int dim>
-  void HyperelasticSolver<dim>::updateLocalQPH(
-    const typename DoFHandler<dim>::active_cell_iterator &cell,
-    ScratchDataQPH &scratch,
-    PerTaskDataQPH & /*data*/)
-  {
-    const std::vector<std::shared_ptr<PointHistory<dim>>> lqph =
-      quadraturePointHistory.get_data(cell);
-    Assert(lqph.size() == numQuadPts, ExcInternalError());
-    Assert(scratch.gradU.size() == numQuadPts, ExcInternalError());
-    scratch.reset();
-    scratch.feValues.reinit(cell);
-    scratch.feValues[uFe].get_function_gradients(scratch.solution,
-                                                 scratch.gradU);
-    for (unsigned int q = 0; q < numQuadPts; ++q)
-      {
-        lqph[q]->update(parameters, scratch.gradU[q]);
-      }
-  }
-
-  template <int dim>
-  void HyperelasticSolver<dim>::solveNonlinearTimestep(
-    Vector<double> &solution_delta)
+  void
+  HyperelasticSolver<dim>::solve_nonlinear_step(Vector<double> &solution_delta)
   {
     std::cout << std::endl
-              << "Timestep " << time.getTimestep() << " @ " << time.getCurrent()
+              << "Timestep " << time.get_timestep() << " @ " << time.current()
               << "s" << std::endl;
 
-    Vector<double> newton_update(dofHandler.n_dofs());
+    Vector<double> newton_update(dof_handler.n_dofs());
 
     errorResidual.reset();
     errorResidual0.reset();
@@ -406,18 +280,19 @@ namespace Solid
     errorUpdate0.reset();
     errorUpdateNorm.reset();
 
-    printConvHeader();
+    print_conv_header();
 
     unsigned int newton_iteration = 0;
-    for (; newton_iteration < parameters.solid_max_iterations; ++newton_iteration)
+    for (; newton_iteration < parameters.solid_max_iterations;
+         ++newton_iteration)
       {
         std::cout << " " << std::setw(2) << newton_iteration << " "
                   << std::flush;
 
-        tangentMatrix = 0.0;
-        systemRHS = 0.0;
-        assembleGlobalRHS();
-        getErrorResidual(errorResidual);
+        system_matrix = 0.0;
+        system_rhs = 0.0;
+        assemble(false);
+        get_error_residual(errorResidual);
 
         if (newton_iteration == 0)
           {
@@ -431,18 +306,16 @@ namespace Solid
             errorResidualNorm.norm <= parameters.tol_f)
           {
             std::cout << " CONVERGED! " << std::endl;
-            printConvFooter();
+            print_conv_footer();
             break;
           }
 
-        assembleGlobalK();
-        makeConstraints(newton_iteration);
-        constraints.condense(tangentMatrix, systemRHS);
+        assemble(true);
 
         const std::pair<unsigned int, double> lin_solver_output =
-          solveLinearSystem(newton_update);
+          solve_linear_system(newton_update);
 
-        getErrorUpdate(newton_update, errorUpdate);
+        get_error_update(newton_update, errorUpdate);
         if (newton_iteration == 0)
           {
             errorUpdate0 = errorUpdate;
@@ -452,7 +325,7 @@ namespace Solid
         errorUpdateNorm.normalize(errorUpdate0);
 
         solution_delta += newton_update;
-        updateGlobalQPH(solution_delta);
+        update_qph(solution_delta);
 
         std::cout << " | " << std::fixed << std::setprecision(3) << std::setw(7)
                   << std::scientific << lin_solver_output.first << "  "
@@ -467,12 +340,12 @@ namespace Solid
   }
 
   template <int dim>
-  void HyperelasticSolver<dim>::printConvHeader()
+  void HyperelasticSolver<dim>::print_conv_header()
   {
     static const unsigned int width = 100;
     std::string splitter(width, '_');
     std::cout << splitter << std::endl;
-    std::cout << "           SOLVER STEP            "
+    std::cout << "           SOLVER STEP       "
               << " |  LIN_IT   LIN_RES    RES_NORM    "
               << " RES_U     NU_NORM     "
               << " NU_U       " << std::endl;
@@ -480,7 +353,7 @@ namespace Solid
   }
 
   template <int dim>
-  void HyperelasticSolver<dim>::printConvFooter()
+  void HyperelasticSolver<dim>::print_conv_footer()
   {
     static const unsigned int width = 100;
     std::string splitter(width, '_');
@@ -493,20 +366,21 @@ namespace Solid
   }
 
   template <int dim>
-  double HyperelasticSolver<dim>::computeVolume() const
+  double HyperelasticSolver<dim>::compute_volume() const
   {
     double volume = 0.0;
-    FEValues<dim> feVals(fe, quadFormula, update_JxW_values);
-    for (auto cell = triangulation.begin_active(); cell != triangulation.end(); ++cell)
+    FEValues<dim> fe_values(fe, volume_quad_formula, update_JxW_values);
+    for (auto cell = triangulation.begin_active(); cell != triangulation.end();
+         ++cell)
       {
-        feVals.reinit(cell);
+        fe_values.reinit(cell);
         const std::vector<std::shared_ptr<const PointHistory<dim>>> lqph =
-          quadraturePointHistory.get_data(cell);
-        Assert(lqph.size() == numQuadPts, ExcInternalError());
-        for (unsigned int q = 0; q < numQuadPts; ++q)
+          quad_point_history.get_data(cell);
+        Assert(lqph.size() == n_q_points, ExcInternalError());
+        for (unsigned int q = 0; q < n_q_points; ++q)
           {
-            const double det = lqph[q]->getDetF();
-            const double JxW = feVals.JxW(q);
+            const double det = lqph[q]->get_det_F();
+            const double JxW = fe_values.JxW(q);
             volume += det * JxW;
           }
       }
@@ -515,14 +389,14 @@ namespace Solid
   }
 
   template <int dim>
-  void HyperelasticSolver<dim>::getErrorResidual(Errors &residual)
+  void HyperelasticSolver<dim>::get_error_residual(Errors &residual)
   {
-    Vector<double> res(dofHandler.n_dofs());
-    for (unsigned int i = 0; i < dofHandler.n_dofs(); ++i)
+    Vector<double> res(dof_handler.n_dofs());
+    for (unsigned int i = 0; i < dof_handler.n_dofs(); ++i)
       {
         if (!constraints.is_constrained(i))
           {
-            res(i) = systemRHS(i);
+            res(i) = system_rhs(i);
           }
       }
     residual.norm = res.l2_norm();
@@ -530,11 +404,11 @@ namespace Solid
 
   template <int dim>
   void
-  HyperelasticSolver<dim>::getErrorUpdate(const Vector<double> &newton_update,
-                                          Errors &error_update)
+  HyperelasticSolver<dim>::get_error_update(const Vector<double> &newton_update,
+                                            Errors &error_update)
   {
-    Vector<double> error(dofHandler.n_dofs());
-    for (unsigned int i = 0; i < dofHandler.n_dofs(); ++i)
+    Vector<double> error(dof_handler.n_dofs());
+    for (unsigned int i = 0; i < dof_handler.n_dofs(); ++i)
       {
         if (!constraints.is_constrained(i))
           {
@@ -545,7 +419,7 @@ namespace Solid
   }
 
   template <int dim>
-  Vector<double> HyperelasticSolver<dim>::getSolution(
+  Vector<double> HyperelasticSolver<dim>::get_total_solution(
     const Vector<double> &solution_delta) const
   {
     Vector<double> solution_total(solution);
@@ -554,290 +428,148 @@ namespace Solid
   }
 
   template <int dim>
-  void HyperelasticSolver<dim>::assembleGlobalK()
+  void HyperelasticSolver<dim>::assemble(bool assemble_lhs)
   {
     timer.enter_subsection("Assemble tangent matrix");
     std::cout << " ASM_K " << std::flush;
-    tangentMatrix = 0.0;
-    const UpdateFlags uf_cell(update_values | update_gradients |
+
+    if (assemble_lhs)
+      {
+        system_matrix = 0.0;
+      }
+    system_rhs = 0.0;
+
+    FEValues<dim> fe_values(fe,
+                            volume_quad_formula,
+                            update_values | update_gradients |
                               update_JxW_values);
-    PerTaskDataK per_task_data(dofsPerCell);
-    ScratchDataK scratch_data(fe, quadFormula, uf_cell);
-    WorkStream::run(dofHandler.begin_active(),
-                    dofHandler.end(),
-                    std::bind(&HyperelasticSolver<dim>::assembleLocalK,
-                              this,
-                              std::placeholders::_1,
-                              std::placeholders::_2,
-                              std::placeholders::_3),
-                    std::bind(&HyperelasticSolver<dim>::copyLocalToGlobalK,
-                              this,
-                              std::placeholders::_1),
-                    scratch_data,
-                    per_task_data);
-    timer.leave_subsection();
-  }
+    FEFaceValues<dim> fe_face_values(fe,
+                                     face_quad_formula,
+                                     update_values | update_normal_vectors |
+                                       update_JxW_values);
 
-  template <int dim>
-  void HyperelasticSolver<dim>::copyLocalToGlobalK(const PerTaskDataK &data)
-  {
-    for (unsigned int i = 0; i < dofsPerCell; ++i)
+    std::vector<std::vector<double>> phi(n_q_points,
+                                         std::vector<double>(dofs_per_cell));
+    std::vector<std::vector<Tensor<2, dim>>> grad_phi(
+      n_q_points, std::vector<Tensor<2, dim>>(dofs_per_cell));
+    std::vector<std::vector<SymmetricTensor<2, dim>>> sym_grad_phi(
+      n_q_points, std::vector<SymmetricTensor<2, dim>>(dofs_per_cell));
+
+    FullMatrix<double> local_matrix(dofs_per_cell, dofs_per_cell);
+    Vector<double> local_rhs(dofs_per_cell);
+    std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+
+    for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+         ++cell)
       {
-        for (unsigned int j = 0; j < dofsPerCell; ++j)
+        fe_values.reinit(cell);
+        cell->get_dof_indices(local_dof_indices);
+
+        local_matrix = 0;
+        local_rhs = 0;
+
+        const std::vector<std::shared_ptr<PointHistory<dim>>> lqph =
+          quad_point_history.get_data(cell);
+        Assert(lqph.size() == n_q_points, ExcInternalError());
+
+        for (unsigned int q = 0; q < n_q_points; ++q)
           {
-            tangentMatrix.add(data.localDofIndices[i],
-                              data.localDofIndices[j],
-                              data.cellMatrix(i, j));
-          }
-      }
-  }
-
-  template <int dim>
-  void HyperelasticSolver<dim>::assembleLocalK(
-    const typename DoFHandler<dim>::active_cell_iterator &cell,
-    ScratchDataK &scratch,
-    PerTaskDataK &data) const
-  {
-    data.reset();
-    scratch.reset();
-    scratch.feValues.reinit(cell);
-    cell->get_dof_indices(data.localDofIndices);
-
-    const std::vector<std::shared_ptr<const PointHistory<dim>>> lqph =
-      quadraturePointHistory.get_data(cell);
-    Assert(lqph.size() == numQuadPts, ExcInternalError());
-
-    for (unsigned int q = 0; q < numQuadPts; ++q)
-      {
-        const Tensor<2, dim> F_inv = lqph[q]->getFInv();
-        for (unsigned int k = 0; k < dofsPerCell; ++k)
-          {
-            scratch.gradNx[q][k] = scratch.feValues[uFe].gradient(k, q) * F_inv;
-            scratch.symGradNx[q][k] = symmetrize(scratch.gradNx[q][k]);
-          }
-      }
-
-    for (unsigned int q = 0; q < numQuadPts; ++q)
-      {
-        const Tensor<2, dim> tau = lqph[q]->getTau();
-        const SymmetricTensor<4, dim> Jc = lqph[q]->getJc();
-        const std::vector<SymmetricTensor<2, dim>> &symm_grad_Nx =
-          scratch.symGradNx[q];
-        const std::vector<Tensor<2, dim>> &grad_Nx = scratch.gradNx[q];
-        const double JxW = scratch.feValues.JxW(q);
-
-        for (unsigned int i = 0; i < dofsPerCell; ++i)
-          {
-            const unsigned int component_i =
-              fe.system_to_component_index(i).first;
-            for (unsigned int j = 0; j <= i; ++j)
+            const Tensor<2, dim> F_inv = lqph[q]->get_F_inv();
+            for (unsigned int k = 0; k < dofs_per_cell; ++k)
               {
-                const unsigned int component_j =
-                  fe.system_to_component_index(j).first;
-                data.cellMatrix(i, j) +=
-                  symm_grad_Nx[i] * Jc * symm_grad_Nx[j] * JxW;
-                if (component_i == component_j)
-                  {
-                    data.cellMatrix(i, j) += grad_Nx[i][component_i] * tau *
-                                             grad_Nx[j][component_j] * JxW;
-                  }
+                grad_phi[q][k] = fe_values[displacement].gradient(k, q) * F_inv;
+                sym_grad_phi[q][k] = symmetrize(grad_phi[q][k]);
               }
           }
-      }
 
-    for (unsigned int i = 0; i < dofsPerCell; ++i)
-      {
-        for (unsigned int j = i + 1; j < dofsPerCell; ++j)
+        for (unsigned int q = 0; q < n_q_points; ++q)
           {
-            data.cellMatrix(i, j) = data.cellMatrix(j, i);
-          }
-      }
-  }
+            const SymmetricTensor<2, dim> tau = lqph[q]->get_tau();
+            const SymmetricTensor<4, dim> Jc = lqph[q]->get_Jc();
+            const double JxW = fe_values.JxW(q);
 
-  template <int dim>
-  void HyperelasticSolver<dim>::assembleGlobalRHS()
-  {
-    timer.enter_subsection("Assemble system right-hand side");
-    std::cout << " ASM_R " << std::flush;
-    systemRHS = 0.0;
-    const UpdateFlags uf_cell(update_values | update_gradients |
-                              update_JxW_values);
-    const UpdateFlags uf_face(update_values | update_normal_vectors |
-                              update_JxW_values);
-    PerTaskDataRHS per_task_data(dofsPerCell);
-    ScratchDataRHS scratch_data(
-      fe, quadFormula, uf_cell, quadFaceFormula, uf_face);
-    WorkStream::run(dofHandler.begin_active(),
-                    dofHandler.end(),
-                    std::bind(&HyperelasticSolver<dim>::assembleLocalRHS,
-                              this,
-                              std::placeholders::_1,
-                              std::placeholders::_2,
-                              std::placeholders::_3),
-                    std::bind(&HyperelasticSolver<dim>::copyLocalToGlobalRHS,
-                              this,
-                              std::placeholders::_1),
-                    scratch_data,
-                    per_task_data);
-    timer.leave_subsection();
-  }
-
-  template <int dim>
-  void HyperelasticSolver<dim>::copyLocalToGlobalRHS(const PerTaskDataRHS &data)
-  {
-    for (unsigned int i = 0; i < dofsPerCell; ++i)
-      {
-        systemRHS(data.localDofIndices[i]) += data.cellRHS(i);
-      }
-  }
-
-  template <int dim>
-  void HyperelasticSolver<dim>::assembleLocalRHS(
-    const typename DoFHandler<dim>::active_cell_iterator &cell,
-    ScratchDataRHS &scratch,
-    PerTaskDataRHS &data) const
-  {
-    data.reset();
-    scratch.reset();
-    scratch.feValues.reinit(cell);
-    cell->get_dof_indices(data.localDofIndices);
-
-    const std::vector<std::shared_ptr<const PointHistory<dim>>> lqph =
-      quadraturePointHistory.get_data(cell);
-    Assert(lqph.size() == numQuadPts, ExcInternalError());
-
-    for (unsigned int q = 0; q < numQuadPts; ++q)
-      {
-        const Tensor<2, dim> F_inv = lqph[q]->getFInv();
-        for (unsigned int k = 0; k < dofsPerCell; ++k)
-          {
-            scratch.symGradNx[q][k] =
-              symmetrize(scratch.feValues[uFe].gradient(k, q) * F_inv);
-          }
-      }
-
-    for (unsigned int q = 0; q < numQuadPts; ++q)
-      {
-        const SymmetricTensor<2, dim> tau = lqph[q]->getTau();
-        const std::vector<SymmetricTensor<2, dim>> &symm_grad_Nx =
-          scratch.symGradNx[q];
-        const double JxW = scratch.feValues.JxW(q);
-        for (unsigned int i = 0; i < dofsPerCell; ++i)
-          {
-            data.cellRHS(i) -= (symm_grad_Nx[i] * tau) * JxW; // -internal force
-          }
-      }
-
-    for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
-         ++face)
-      {
-        // apply pressure
-        if (cell->face(face)->at_boundary() && cell->face(face)->boundary_id() == 6)
-          {
-            scratch.feFaceValues.reinit(cell, face);
-            const double p0 = -400.0 / (0.001 * 0.001);
-            const double time_ramp =
-              (time.getCurrent() / time.getEnd());
-            const double pressure = p0 * time_ramp;
-            for (unsigned int q = 0; q < numFaceQuadPts; ++q)
+            for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
-                const Tensor<1, dim> &N =
-                  scratch.feFaceValues.normal_vector(q);
-                const Tensor<1, dim> traction = pressure * N;
-                for (unsigned int j = 0; j < dofsPerCell; ++j)
+                if (assemble_lhs)
                   {
-                    const unsigned int component_j =
-                      fe.system_to_component_index(j).first;
-                    const double Ni =
-                      scratch.feFaceValues.shape_value(j, q);
-                    const double JxW = scratch.feFaceValues.JxW(q);
-                    data.cellRHS(j) +=
-                      (Ni * traction[component_j]) *
-                      JxW; // +external force
+                    const unsigned int component_i =
+                      fe.system_to_component_index(i).first;
+                    for (unsigned int j = 0; j <= i; ++j)
+                      {
+                        const unsigned int component_j =
+                          fe.system_to_component_index(j).first;
+                        local_matrix(i, j) +=
+                          sym_grad_phi[q][i] * Jc * sym_grad_phi[q][j] * JxW;
+                        if (component_i == component_j)
+                          {
+                            local_matrix(i, j) +=
+                              grad_phi[q][i][component_i] * tau *
+                              grad_phi[q][j][component_j] * JxW;
+                          }
+                      }
                   }
+                local_rhs(i) -= sym_grad_phi[q][i] * tau * JxW;
               }
-            break;
+          }
+
+        for (unsigned int i = 0; i < dofs_per_cell; ++i)
+          {
+            for (unsigned int j = i + 1; j < dofs_per_cell; ++j)
+              {
+                local_matrix(i, j) = local_matrix(j, i);
+              }
+          }
+
+        for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
+             ++face)
+          {
+            // apply pressure
+            if (cell->face(face)->at_boundary() &&
+                cell->face(face)->boundary_id() == 6)
+              {
+                fe_face_values.reinit(cell, face);
+                const double p0 = -400.0 / (0.001 * 0.001);
+                const double time_ramp = (time.current() / time.end());
+                const double pressure = p0 * time_ramp;
+                for (unsigned int q = 0; q < n_f_q_points; ++q)
+                  {
+                    const Tensor<1, dim> &N = fe_face_values.normal_vector(q);
+                    const Tensor<1, dim> traction = pressure * N;
+                    for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                      {
+                        const unsigned int component_j =
+                          fe.system_to_component_index(j).first;
+                        const double Ni = fe_face_values.shape_value(j, q);
+                        const double JxW = fe_face_values.JxW(q);
+                        local_rhs(j) +=
+                          (Ni * traction[component_j]) * JxW; // +external force
+                      }
+                  }
+                break;
+              }
+          }
+
+        if (assemble_lhs)
+          {
+            constraints.distribute_local_to_global(local_matrix,
+                                                   local_rhs,
+                                                   local_dof_indices,
+                                                   system_matrix,
+                                                   system_rhs);
+          }
+        else
+          {
+            constraints.distribute_local_to_global(
+              local_rhs, local_dof_indices, system_rhs);
           }
       }
-  }
 
-  template <int dim>
-  void HyperelasticSolver<dim>::makeConstraints(const int &it_nr)
-  {
-    std::cout << " CST " << std::flush;
-    if (it_nr > 0)
-      {
-        return; // only need to apply constraints at the first iteration
-      }
-
-    constraints.clear();
-
-    const FEValuesExtractors::Scalar x_displacement(0);
-    const FEValuesExtractors::Scalar y_displacement(1);
-    const FEValuesExtractors::Scalar z_displacement(2);
-
-    VectorTools::interpolate_boundary_values(
-      dofHandler,
-      0,
-      Functions::ZeroFunction<dim>(dim),
-      constraints,
-      fe.component_mask(x_displacement));
-
-    VectorTools::interpolate_boundary_values(
-      dofHandler,
-      2,
-      Functions::ZeroFunction<dim>(dim),
-      constraints,
-      fe.component_mask(y_displacement));
-
-    if (dim == 2) // 2D case: 0-x, 2-y, 3-x, 6-x
-    {
-      VectorTools::interpolate_boundary_values(
-        dofHandler,
-        3,
-        Functions::ZeroFunction<dim>(dim),
-        constraints,
-        fe.component_mask(x_displacement));
-
-      VectorTools::interpolate_boundary_values(
-        dofHandler,
-        6,
-        Functions::ZeroFunction<dim>(dim),
-        constraints,
-        fe.component_mask(x_displacement));
-    }
-    else // 3D case: 0-x, 2-y, 4-z, 3-xz, 6-xz
-    {
-      VectorTools::interpolate_boundary_values(
-        dofHandler,
-        4,
-        Functions::ZeroFunction<dim>(dim),
-        constraints,
-        fe.component_mask(z_displacement));
-
-      VectorTools::interpolate_boundary_values(
-        dofHandler,
-        3,
-        Functions::ZeroFunction<dim>(dim),
-        constraints,
-        (fe.component_mask(x_displacement) |
-          fe.component_mask(z_displacement)));
-
-      VectorTools::interpolate_boundary_values(
-        dofHandler,
-        6,
-        Functions::ZeroFunction<dim>(dim),
-        constraints,
-        (fe.component_mask(x_displacement) |
-          fe.component_mask(z_displacement)));
-    }
-
-    constraints.close();
+    timer.leave_subsection();
   }
 
   template <int dim>
   std::pair<unsigned int, double>
-  HyperelasticSolver<dim>::solveLinearSystem(Vector<double> &newton_update)
+  HyperelasticSolver<dim>::solve_linear_system(Vector<double> &newton_update)
   {
     timer.enter_subsection("Linear solver");
     std::cout << " SLV " << std::flush;
@@ -845,15 +577,14 @@ namespace Solid
     unsigned int lin_it = 0;
     double lin_res = 0.0;
 
-    const int solver_its = tangentMatrix.m() * parameters.solid_max_iterations;
-    const double tol_sol = 1e-6 * systemRHS.l2_norm();
+    const int solver_its = system_matrix.m() * parameters.solid_max_iterations;
+    const double tol_sol = 1e-6 * system_rhs.l2_norm();
     SolverControl solver_control(solver_its, tol_sol);
     GrowingVectorMemory<Vector<double>> GVM;
     SolverCG<Vector<double>> solver_CG(solver_control, GVM);
     PreconditionSSOR<> preconditioner;
-    preconditioner.initialize(tangentMatrix, 1.2);
-    solver_CG.solve(
-      tangentMatrix, newton_update, systemRHS, preconditioner);
+    preconditioner.initialize(system_matrix, 1.2);
+    solver_CG.solve(system_matrix, newton_update, system_rhs, preconditioner);
     lin_it = solver_control.last_step();
     lin_res = solver_control.last_value();
 
@@ -863,14 +594,15 @@ namespace Solid
   }
 
   template <int dim>
-  void HyperelasticSolver<dim>::output() const
+  void
+  HyperelasticSolver<dim>::output_results(const unsigned int output_index) const
   {
     DataOut<dim> data_out;
     std::vector<DataComponentInterpretation::DataComponentInterpretation>
       data_component_interpretation(
         dim, DataComponentInterpretation::component_is_part_of_vector);
     std::vector<std::string> solution_name(dim, "displacement");
-    data_out.attach_dof_handler(dofHandler);
+    data_out.attach_dof_handler(dof_handler);
     data_out.add_data_vector(solution,
                              solution_name,
                              DataOut<dim>::type_dof_data,
@@ -881,12 +613,20 @@ namespace Solid
         soln(i) = solution(i);
       }
     // Map the solution to the deformed mesh, not necessary!
-    MappingQEulerian<dim> q_mapping(degree, dofHandler, soln);
+    MappingQEulerian<dim> q_mapping(degree, dof_handler, soln);
     data_out.build_patches(q_mapping, degree);
-    std::ostringstream filename;
-    filename << "hyperelastic-" << dim << "d-" << time.getTimestep() << ".vtk";
-    std::ofstream output(filename.str().c_str());
-    data_out.write_vtk(output);
+
+    std::string basename = "hyperelastic";
+    std::string filename =
+      basename + "-" + Utilities::int_to_string(output_index, 6) + ".vtu";
+
+    std::ofstream output(filename);
+    data_out.write_vtu(output);
+
+    static std::vector<std::pair<double, std::string>> times_and_names;
+    times_and_names.push_back({time.current(), filename});
+    std::ofstream pvd_output(basename + ".pvd");
+    DataOutBase::write_pvd_record(pvd_output, times_and_names);
   }
 
   template class HyperelasticSolver<2>;

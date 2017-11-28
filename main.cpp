@@ -1,8 +1,8 @@
 #include <iostream>
 
+#include "hyperelasticSolver.h"
 #include "linearElasticSolver.h"
 #include "navierstokes.h"
-#include "hyperelasticSolver.h"
 #include "parameters.h"
 #include "utilities.h"
 
@@ -23,8 +23,8 @@ int main()
       if (params.dimension == 2)
         {
           Triangulation<2> triangulation;
-          GridGenerator::hyper_rectangle(triangulation,
-            Point<2>(0.0, 0.0), Point<2>(1.0, 1.0), true);
+          GridGenerator::hyper_rectangle(
+            triangulation, Point<2>(0.0, 0.0), Point<2>(1.0, 1.0), true);
           GridTools::scale(0.001, triangulation);
           Solid::HyperelasticSolver<2> solid(triangulation, params);
           solid.run();
@@ -47,7 +47,9 @@ int main()
         {
           Triangulation<3> triangulation;
           GridGenerator::hyper_rectangle(triangulation,
-            Point<3>(0.0, 0.0, 0.0), Point<3>(1.0, 1.0, 1.0), true);
+                                         Point<3>(0.0, 0.0, 0.0),
+                                         Point<3>(1.0, 1.0, 1.0),
+                                         true);
           GridTools::scale(0.001, triangulation);
           Solid::HyperelasticSolver<3> solid(triangulation, params);
           solid.run();
