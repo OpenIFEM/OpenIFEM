@@ -105,19 +105,80 @@ namespace Solid
 
     setup_dofs();
     initialize_system();
+
     output_results(time.get_timestep());
-    time.increment();
-    Vector<double> solution_delta(dof_handler.n_dofs());
-    while (time.current() < time.end())
+    Vector<double> evaluation_point(dof_handler.n_dofs());
+    while (time.end() - time.current() > 1e-12)
       {
-        solution_delta = 0.0;
-        solve_nonlinear_step(solution_delta);
-        solution += solution_delta;
+        time.increment();
+
+        std::cout << std::endl
+                  << "Timestep " << time.get_timestep() << " @ "
+                  << time.current() << "s" << std::endl;
+
+        evaluation_point = solution;
+
+        Vector<double> newton_update(dof_handler.n_dofs());
+
+        error_residual = 1.0;
+        initial_error_residual = 1.0;
+        normalized_error_residual = 1.0;
+        error_update = 1.0;
+        initial_error_update = 1.0;
+        normalized_error_update = 1.0;
+
+        std::cout << std::string(100, '_') << std::endl;
+
+        unsigned int newton_iteration = 0;
+        while (normalized_error_update > parameters.tol_d ||
+               normalized_error_residual > parameters.tol_f)
+          {
+            AssertThrow(newton_iteration < parameters.solid_max_iterations,
+                        ExcMessage("Too many Newton iterations!"));
+
+            assemble();
+
+            get_error_residual(error_residual);
+            if (newton_iteration == 0)
+              {
+                initial_error_residual = error_residual;
+              }
+            normalized_error_residual = error_residual / initial_error_residual;
+
+            const std::pair<unsigned int, double> lin_solver_output =
+              solve_linear_system(newton_update);
+
+            get_error_update(newton_update, error_update);
+            if (newton_iteration == 0)
+              {
+                initial_error_update = error_update;
+              }
+            normalized_error_update = error_update / initial_error_update;
+
+            evaluation_point += newton_update;
+            update_qph(evaluation_point);
+
+            std::cout << "Newton iteration = " << newton_iteration
+                      << ", CG itr = " << lin_solver_output.first << std::fixed
+                      << std::setprecision(3) << std::setw(7) << std::scientific
+                      << ", CG res = " << lin_solver_output.second
+                      << ", res_F = " << error_residual
+                      << ", res_U = " << error_update << std::endl;
+
+            newton_iteration++;
+          }
+
+        std::cout << std::string(100, '_') << std::endl
+                  << "Relative errors:" << std::endl
+                  << "Displacement:\t" << normalized_error_update << std::endl
+                  << "Force: \t\t" << normalized_error_residual << std::endl;
+
+        solution = evaluation_point;
+
         if (time.time_to_output())
           {
             output_results(time.get_timestep());
           }
-        time.increment();
       }
   }
 
@@ -233,12 +294,10 @@ namespace Solid
   }
 
   template <int dim>
-  void HyperelasticSolver<dim>::update_qph(const Vector<double> &solution_delta)
+  void
+  HyperelasticSolver<dim>::update_qph(const Vector<double> &evaluation_point)
   {
     timer.enter_subsection("Update QPH data");
-    std::cout << " UQPH " << std::flush;
-
-    const Vector<double> solution_total(get_total_solution(solution_delta));
 
     // displacement gradient at quad points
     std::vector<Tensor<2, dim>> grad_u(volume_quad_formula.size());
@@ -253,7 +312,8 @@ namespace Solid
         Assert(lqph.size() == n_q_points, ExcInternalError());
 
         fe_values.reinit(cell);
-        fe_values[displacement].get_function_gradients(solution_total, grad_u);
+        fe_values[displacement].get_function_gradients(evaluation_point,
+                                                       grad_u);
 
         for (unsigned int q = 0; q < n_q_points; ++q)
           {
@@ -261,108 +321,6 @@ namespace Solid
           }
       }
     timer.leave_subsection();
-  }
-
-  template <int dim>
-  void
-  HyperelasticSolver<dim>::solve_nonlinear_step(Vector<double> &solution_delta)
-  {
-    std::cout << std::endl
-              << "Timestep " << time.get_timestep() << " @ " << time.current()
-              << "s" << std::endl;
-
-    Vector<double> newton_update(dof_handler.n_dofs());
-
-    errorResidual.reset();
-    errorResidual0.reset();
-    errorResidualNorm.reset();
-    errorUpdate.reset();
-    errorUpdate0.reset();
-    errorUpdateNorm.reset();
-
-    print_conv_header();
-
-    unsigned int newton_iteration = 0;
-    for (; newton_iteration < parameters.solid_max_iterations;
-         ++newton_iteration)
-      {
-        std::cout << " " << std::setw(2) << newton_iteration << " "
-                  << std::flush;
-
-        system_matrix = 0.0;
-        system_rhs = 0.0;
-        assemble(false);
-        get_error_residual(errorResidual);
-
-        if (newton_iteration == 0)
-          {
-            errorResidual0 = errorResidual;
-          }
-
-        errorResidualNorm = errorResidual;
-        errorResidualNorm.normalize(errorResidual0);
-
-        if (newton_iteration > 0 && errorUpdateNorm.norm <= parameters.tol_d &&
-            errorResidualNorm.norm <= parameters.tol_f)
-          {
-            std::cout << " CONVERGED! " << std::endl;
-            print_conv_footer();
-            break;
-          }
-
-        assemble(true);
-
-        const std::pair<unsigned int, double> lin_solver_output =
-          solve_linear_system(newton_update);
-
-        get_error_update(newton_update, errorUpdate);
-        if (newton_iteration == 0)
-          {
-            errorUpdate0 = errorUpdate;
-          }
-
-        errorUpdateNorm = errorUpdate;
-        errorUpdateNorm.normalize(errorUpdate0);
-
-        solution_delta += newton_update;
-        update_qph(solution_delta);
-
-        std::cout << " | " << std::fixed << std::setprecision(3) << std::setw(7)
-                  << std::scientific << lin_solver_output.first << "  "
-                  << lin_solver_output.second << "  " << errorResidualNorm.norm
-                  << "  " << errorResidualNorm.norm << "  "
-                  << errorUpdateNorm.norm << "  " << errorUpdateNorm.norm
-                  << "  " << std::endl;
-      }
-
-    AssertThrow(newton_iteration < parameters.solid_max_iterations,
-                ExcMessage("No convergence in nonlinear solver!"));
-  }
-
-  template <int dim>
-  void HyperelasticSolver<dim>::print_conv_header()
-  {
-    static const unsigned int width = 100;
-    std::string splitter(width, '_');
-    std::cout << splitter << std::endl;
-    std::cout << "           SOLVER STEP       "
-              << " |  LIN_IT   LIN_RES    RES_NORM    "
-              << " RES_U     NU_NORM     "
-              << " NU_U       " << std::endl;
-    std::cout << splitter << std::endl;
-  }
-
-  template <int dim>
-  void HyperelasticSolver<dim>::print_conv_footer()
-  {
-    static const unsigned int width = 100;
-    std::string splitter(width, '_');
-    std::cout << splitter << std::endl;
-    std::cout << "Relative errors:" << std::endl
-              << "Displacement:\t" << errorUpdate.norm / errorUpdate0.norm
-              << std::endl
-              << "Force: \t\t" << errorResidual.norm / errorResidual0.norm
-              << std::endl;
   }
 
   template <int dim>
@@ -389,7 +347,7 @@ namespace Solid
   }
 
   template <int dim>
-  void HyperelasticSolver<dim>::get_error_residual(Errors &residual)
+  void HyperelasticSolver<dim>::get_error_residual(double &error_residual)
   {
     Vector<double> res(dof_handler.n_dofs());
     for (unsigned int i = 0; i < dof_handler.n_dofs(); ++i)
@@ -399,13 +357,13 @@ namespace Solid
             res(i) = system_rhs(i);
           }
       }
-    residual.norm = res.l2_norm();
+    error_residual = res.l2_norm();
   }
 
   template <int dim>
   void
   HyperelasticSolver<dim>::get_error_update(const Vector<double> &newton_update,
-                                            Errors &error_update)
+                                            double &error_update)
   {
     Vector<double> error(dof_handler.n_dofs());
     for (unsigned int i = 0; i < dof_handler.n_dofs(); ++i)
@@ -415,28 +373,15 @@ namespace Solid
             error(i) = newton_update(i);
           }
       }
-    error_update.norm = error.l2_norm();
+    error_update = error.l2_norm();
   }
 
   template <int dim>
-  Vector<double> HyperelasticSolver<dim>::get_total_solution(
-    const Vector<double> &solution_delta) const
-  {
-    Vector<double> solution_total(solution);
-    solution_total += solution_delta;
-    return solution_total;
-  }
-
-  template <int dim>
-  void HyperelasticSolver<dim>::assemble(bool assemble_lhs)
+  void HyperelasticSolver<dim>::assemble()
   {
     timer.enter_subsection("Assemble tangent matrix");
-    std::cout << " ASM_K " << std::flush;
 
-    if (assemble_lhs)
-      {
-        system_matrix = 0.0;
-      }
+    system_matrix = 0.0;
     system_rhs = 0.0;
 
     FEValues<dim> fe_values(fe,
@@ -480,32 +425,26 @@ namespace Solid
                 grad_phi[q][k] = fe_values[displacement].gradient(k, q) * F_inv;
                 sym_grad_phi[q][k] = symmetrize(grad_phi[q][k]);
               }
-          }
 
-        for (unsigned int q = 0; q < n_q_points; ++q)
-          {
             const SymmetricTensor<2, dim> tau = lqph[q]->get_tau();
             const SymmetricTensor<4, dim> Jc = lqph[q]->get_Jc();
             const double JxW = fe_values.JxW(q);
 
             for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
-                if (assemble_lhs)
+                const unsigned int component_i =
+                  fe.system_to_component_index(i).first;
+                for (unsigned int j = 0; j <= i; ++j)
                   {
-                    const unsigned int component_i =
-                      fe.system_to_component_index(i).first;
-                    for (unsigned int j = 0; j <= i; ++j)
+                    const unsigned int component_j =
+                      fe.system_to_component_index(j).first;
+                    local_matrix(i, j) +=
+                      sym_grad_phi[q][i] * Jc * sym_grad_phi[q][j] * JxW;
+                    if (component_i == component_j)
                       {
-                        const unsigned int component_j =
-                          fe.system_to_component_index(j).first;
-                        local_matrix(i, j) +=
-                          sym_grad_phi[q][i] * Jc * sym_grad_phi[q][j] * JxW;
-                        if (component_i == component_j)
-                          {
-                            local_matrix(i, j) +=
-                              grad_phi[q][i][component_i] * tau *
-                              grad_phi[q][j][component_j] * JxW;
-                          }
+                        local_matrix(i, j) += grad_phi[q][i][component_i] *
+                                              tau *
+                                              grad_phi[q][j][component_j] * JxW;
                       }
                   }
                 local_rhs(i) -= sym_grad_phi[q][i] * tau * JxW;
@@ -549,19 +488,11 @@ namespace Solid
               }
           }
 
-        if (assemble_lhs)
-          {
-            constraints.distribute_local_to_global(local_matrix,
-                                                   local_rhs,
-                                                   local_dof_indices,
-                                                   system_matrix,
-                                                   system_rhs);
-          }
-        else
-          {
-            constraints.distribute_local_to_global(
-              local_rhs, local_dof_indices, system_rhs);
-          }
+        constraints.distribute_local_to_global(local_matrix,
+                                               local_rhs,
+                                               local_dof_indices,
+                                               system_matrix,
+                                               system_rhs);
       }
 
     timer.leave_subsection();
@@ -572,7 +503,6 @@ namespace Solid
   HyperelasticSolver<dim>::solve_linear_system(Vector<double> &newton_update)
   {
     timer.enter_subsection("Linear solver");
-    std::cout << " SLV " << std::flush;
 
     unsigned int lin_it = 0;
     double lin_res = 0.0;

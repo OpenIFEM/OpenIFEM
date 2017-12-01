@@ -44,25 +44,6 @@
 
 namespace
 {
-  /** \brief A simple struct to normalize errors.
-   *
-   * This struct will be more useful if
-   * mixed formulation is used.
-   */
-  struct Errors
-  {
-    Errors() : norm(1.0) {}
-    void reset() { norm = 1.0; }
-    void normalize(const Errors &rhs)
-    {
-      if (rhs.norm != 0.0)
-        {
-          norm /= rhs.norm;
-        }
-    }
-    double norm;
-  };
-
   /** \brief Data to store at the quadrature points.
    *
    * We cache the kinematics information at quadrature points
@@ -140,7 +121,7 @@ namespace Solid
     /**
      * Assemble the lhs and rhs at the same time.
      */
-    void assemble(bool);
+    void assemble();
 
     // Set up the quadrature point history
     void setup_qph();
@@ -159,9 +140,6 @@ namespace Solid
      * update the strain, stress etc. stored at quadrature points.
      */
     void update_qph(const dealii::Vector<double> &);
-
-    // Using Newton iteration to solve for a nonlinear timestep.
-    void solve_nonlinear_step(dealii::Vector<double> &);
 
     /* Solve a linear equation, return the number of iterations and residual. */
     std::pair<unsigned int, double>
@@ -205,28 +183,23 @@ namespace Solid
     dealii::Vector<double> system_rhs;
     dealii::Vector<double> solution;
 
-    /**
-     * errorResidual: norm of the residual at a Newton iteration
-     * errorResidual0: norm of the residual at the first iteration
-     * errorResidualNorm: errorResidual/errorResidual0
-     * errorUpdate: norm of the solution increment
-     * errorUpdate0: norm of the solution increment at the first iteration
-     * errorUpdateNorm: errorUpdate/errorUpdate0
-     */
-    Errors errorResidual, errorResidual0, errorResidualNorm, errorUpdate,
-      errorUpdate0, errorUpdateNorm;
+    double error_residual; //!< Norm of the residual at a Newton iteration.
+    double
+      initial_error_residual; //!< Norm of the residual at the first iteration.
+    double
+      normalized_error_residual;    //!< error_residual / initial_error_residual
+    double error_update;            //!< Norm of the solution increment.
+    double initial_error_update;    //!< Norm of the solution increment at the
+                                    //!first iteration.
+    double normalized_error_update; //!< error_update / initial_error_update
 
     // Reture the residual in the Newton iteration
-    void get_error_residual(Errors &);
+    void get_error_residual(double &);
     // Compute the l2 norm of the solution increment
-    void get_error_update(const dealii::Vector<double> &, Errors &);
+    void get_error_update(const dealii::Vector<double> &, double &);
 
     // Return the current volume of the geometry
     double compute_volume() const;
-
-    // Print the header and footer of the output table
-    void print_conv_header();
-    void print_conv_footer();
   };
 }
 

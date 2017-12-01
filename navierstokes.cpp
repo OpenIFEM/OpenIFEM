@@ -195,11 +195,12 @@ namespace Fluid
         Functions::ZeroFunction<dim>(dim + 1),
         zero_constraints,
         fe.component_mask(velocities));
-      VectorTools::interpolate_boundary_values(dof_handler,
-                                               1,
-                                               Functions::ZeroFunction<dim>(dim + 1),
-                                               zero_constraints,
-                                               fe.component_mask(velocities));
+      VectorTools::interpolate_boundary_values(
+        dof_handler,
+        1,
+        Functions::ZeroFunction<dim>(dim + 1),
+        zero_constraints,
+        fe.component_mask(velocities));
     }
     zero_constraints.close();
 
