@@ -2,40 +2,41 @@
 
 namespace
 {
+  using namespace dealii;
+
   template <int dim>
   void PointHistory<dim>::setup(const Parameters::AllParameters &parameters)
   {
     if (parameters.solid_type == "NeoHookean")
       {
-        Assert(parameters.C.size() >= 2, dealii::ExcInternalError());
+        Assert(parameters.C.size() >= 2, ExcInternalError());
         material.reset(new Solid::NeoHookean<dim>(
           parameters.C[0], parameters.C[1], parameters.rho));
-        update(parameters, dealii::Tensor<2, dim>());
+        update(parameters, Tensor<2, dim>());
       }
     else
       {
-        Assert(false, dealii::ExcNotImplemented());
+        Assert(false, ExcNotImplemented());
       }
   }
 
   template <int dim>
   void PointHistory<dim>::update(const Parameters::AllParameters &parameters,
-                                 const dealii::Tensor<2, dim> &Grad_u)
+                                 const Tensor<2, dim> &Grad_u)
   {
-    const dealii::Tensor<2, dim> F =
-      dealii::Physics::Elasticity::Kinematics::F(Grad_u);
+    const Tensor<2, dim> F = Physics::Elasticity::Kinematics::F(Grad_u);
     material->update_data(F);
-    F_inv = dealii::invert(F);
+    F_inv = invert(F);
     if (parameters.solid_type == "NeoHookean")
       {
         auto nh = std::dynamic_pointer_cast<Solid::NeoHookean<dim>>(material);
-        Assert(nh, dealii::ExcInternalError());
+        Assert(nh, ExcInternalError());
         tau = nh->get_tau();
         Jc = nh->get_Jc();
       }
     else
       {
-        Assert(false, dealii::ExcNotImplemented());
+        Assert(false, ExcNotImplemented());
       }
     dPsi_vol_dJ = material->get_dPsi_vol_dJ();
     d2Psi_vol_dJ2 = material->get_d2Psi_vol_dJ2();
@@ -63,7 +64,9 @@ namespace Solid
       face_quad_formula(degree + 1),
       n_q_points(volume_quad_formula.size()),
       n_f_q_points(face_quad_formula.size()),
-      displacement(0)
+      displacement(0),
+      gamma(0.5 + parameters.damping),
+      beta(gamma / 2)
   {
   }
 
@@ -106,8 +109,15 @@ namespace Solid
     setup_dofs();
     initialize_system();
 
+    // Solve for the initial acceleration
+    assemble(true);
+    solve_linear_system(mass_matrix, previous_acceleration, system_rhs);
     output_results(time.get_timestep());
-    Vector<double> evaluation_point(dof_handler.n_dofs());
+
+    Vector<double> predicted_displacement(dof_handler.n_dofs());
+    Vector<double> newton_update(dof_handler.n_dofs());
+    Vector<double> tmp(dof_handler.n_dofs());
+
     while (time.end() - time.current() > 1e-12)
       {
         time.increment();
@@ -116,47 +126,72 @@ namespace Solid
                   << "Timestep " << time.get_timestep() << " @ "
                   << time.current() << "s" << std::endl;
 
-        evaluation_point = solution;
-
-        Vector<double> newton_update(dof_handler.n_dofs());
-
+        // Reset the errors, iteration counter, and the solution increment
+        newton_update = 0;
+        unsigned int newton_iteration = 0;
         error_residual = 1.0;
         initial_error_residual = 1.0;
         normalized_error_residual = 1.0;
         error_update = 1.0;
         initial_error_update = 1.0;
         normalized_error_update = 1.0;
+        const double dt = time.get_delta_t();
+
+        // The prediction of the current displacement,
+        // which is what we want to solve.
+        predicted_displacement = previous_displacement;
+        predicted_displacement.add(
+          dt, previous_velocity, (0.5 - beta) * dt * dt, previous_acceleration);
 
         std::cout << std::string(100, '_') << std::endl;
 
-        unsigned int newton_iteration = 0;
         while (normalized_error_update > parameters.tol_d ||
                normalized_error_residual > parameters.tol_f)
           {
             AssertThrow(newton_iteration < parameters.solid_max_iterations,
                         ExcMessage("Too many Newton iterations!"));
 
-            assemble();
+            // Compute the displacement, velocity and acceleration
+            current_acceleration = current_displacement;
+            current_acceleration -= predicted_displacement;
+            current_acceleration /= (beta * dt * dt);
+            current_velocity = previous_velocity;
+            current_velocity.add(dt * (1 - gamma),
+                                 previous_acceleration,
+                                 dt * gamma,
+                                 current_acceleration);
 
-            get_error_residual(error_residual);
-            if (newton_iteration == 0)
-              {
-                initial_error_residual = error_residual;
-              }
-            normalized_error_residual = error_residual / initial_error_residual;
+            // Assemble the system, and modify the RHS to account for
+            // the time-discretization.
+            assemble(false);
+            mass_matrix.vmult(tmp, current_acceleration);
+            system_rhs -= tmp;
 
+            // Solve linear system
             const std::pair<unsigned int, double> lin_solver_output =
-              solve_linear_system(newton_update);
+              solve_linear_system(system_matrix, newton_update, system_rhs);
 
-            get_error_update(newton_update, error_update);
-            if (newton_iteration == 0)
-              {
-                initial_error_update = error_update;
-              }
-            normalized_error_update = error_update / initial_error_update;
+            // Error evaluation
+            {
+              get_error_residual(error_residual);
+              if (newton_iteration == 0)
+                {
+                  initial_error_residual = error_residual;
+                }
+              normalized_error_residual =
+                error_residual / initial_error_residual;
 
-            evaluation_point += newton_update;
-            update_qph(evaluation_point);
+              get_error_update(newton_update, error_update);
+              if (newton_iteration == 0)
+                {
+                  initial_error_update = error_update;
+                }
+              normalized_error_update = error_update / initial_error_update;
+            }
+
+            current_displacement += newton_update;
+            // Update the quadrature point history with the newest displacement
+            update_qph(current_displacement);
 
             std::cout << "Newton iteration = " << newton_iteration
                       << ", CG itr = " << lin_solver_output.first << std::fixed
@@ -167,13 +202,24 @@ namespace Solid
 
             newton_iteration++;
           }
+        // Once converged, update current acceleration and velocity again.
+        current_acceleration = current_displacement;
+        current_acceleration -= predicted_displacement;
+        current_acceleration /= (beta * dt * dt);
+        current_velocity = previous_velocity;
+        current_velocity.add(dt * (1 - gamma),
+                             previous_acceleration,
+                             dt * gamma,
+                             current_acceleration);
+        // Update the previous values
+        previous_acceleration = current_acceleration;
+        previous_velocity = current_velocity;
+        previous_displacement = current_displacement;
 
         std::cout << std::string(100, '_') << std::endl
                   << "Relative errors:" << std::endl
                   << "Displacement:\t" << normalized_error_update << std::endl
                   << "Force: \t\t" << normalized_error_residual << std::endl;
-
-        solution = evaluation_point;
 
         if (time.time_to_output())
           {
@@ -268,8 +314,14 @@ namespace Solid
     DoFTools::make_sparsity_pattern(dof_handler, dsp, constraints, false);
     pattern.copy_from(dsp);
     system_matrix.reinit(pattern);
+    mass_matrix.reinit(pattern);
     system_rhs.reinit(dof_handler.n_dofs());
-    solution.reinit(dof_handler.n_dofs());
+    current_acceleration.reinit(dof_handler.n_dofs());
+    current_velocity.reinit(dof_handler.n_dofs());
+    current_displacement.reinit(dof_handler.n_dofs());
+    previous_acceleration.reinit(dof_handler.n_dofs());
+    previous_velocity.reinit(dof_handler.n_dofs());
+    previous_displacement.reinit(dof_handler.n_dofs());
     setup_qph();
   }
 
@@ -377,10 +429,14 @@ namespace Solid
   }
 
   template <int dim>
-  void HyperelasticSolver<dim>::assemble()
+  void HyperelasticSolver<dim>::assemble(bool initial_step)
   {
     timer.enter_subsection("Assemble tangent matrix");
 
+    if (initial_step)
+      {
+        mass_matrix = 0.0;
+      }
     system_matrix = 0.0;
     system_rhs = 0.0;
 
@@ -393,14 +449,15 @@ namespace Solid
                                      update_values | update_normal_vectors |
                                        update_JxW_values);
 
-    std::vector<std::vector<double>> phi(n_q_points,
-                                         std::vector<double>(dofs_per_cell));
+    std::vector<std::vector<Tensor<1, dim>>> phi(
+      n_q_points, std::vector<Tensor<1, dim>>(dofs_per_cell));
     std::vector<std::vector<Tensor<2, dim>>> grad_phi(
       n_q_points, std::vector<Tensor<2, dim>>(dofs_per_cell));
     std::vector<std::vector<SymmetricTensor<2, dim>>> sym_grad_phi(
       n_q_points, std::vector<SymmetricTensor<2, dim>>(dofs_per_cell));
 
     FullMatrix<double> local_matrix(dofs_per_cell, dofs_per_cell);
+    FullMatrix<double> local_mass(dofs_per_cell, dofs_per_cell);
     Vector<double> local_rhs(dofs_per_cell);
     std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
@@ -410,6 +467,7 @@ namespace Solid
         fe_values.reinit(cell);
         cell->get_dof_indices(local_dof_indices);
 
+        local_mass = 0;
         local_matrix = 0;
         local_rhs = 0;
 
@@ -422,12 +480,15 @@ namespace Solid
             const Tensor<2, dim> F_inv = lqph[q]->get_F_inv();
             for (unsigned int k = 0; k < dofs_per_cell; ++k)
               {
+                phi[q][k] = fe_values[displacement].value(k, q);
                 grad_phi[q][k] = fe_values[displacement].gradient(k, q) * F_inv;
                 sym_grad_phi[q][k] = symmetrize(grad_phi[q][k]);
               }
 
             const SymmetricTensor<2, dim> tau = lqph[q]->get_tau();
             const SymmetricTensor<4, dim> Jc = lqph[q]->get_Jc();
+            const double rho = lqph[q]->get_density();
+            const double dt = time.get_delta_t();
             const double JxW = fe_values.JxW(q);
 
             for (unsigned int i = 0; i < dofs_per_cell; ++i)
@@ -436,18 +497,28 @@ namespace Solid
                   fe.system_to_component_index(i).first;
                 for (unsigned int j = 0; j <= i; ++j)
                   {
-                    const unsigned int component_j =
-                      fe.system_to_component_index(j).first;
-                    local_matrix(i, j) +=
-                      sym_grad_phi[q][i] * Jc * sym_grad_phi[q][j] * JxW;
-                    if (component_i == component_j)
+                    if (initial_step)
                       {
-                        local_matrix(i, j) += grad_phi[q][i][component_i] *
-                                              tau *
-                                              grad_phi[q][j][component_j] * JxW;
+                        local_mass(i, j) += rho * phi[q][i] * phi[q][j] * JxW;
+                      }
+                    else
+                      {
+                        const unsigned int component_j =
+                          fe.system_to_component_index(j).first;
+                        local_matrix(i, j) +=
+                          (phi[q][i] * phi[q][j] * rho / (beta * dt * dt) +
+                           sym_grad_phi[q][i] * Jc * sym_grad_phi[q][j]) *
+                          JxW;
+                        if (component_i == component_j)
+                          {
+                            local_matrix(i, j) +=
+                              grad_phi[q][i][component_i] * tau *
+                              grad_phi[q][j][component_j] * JxW;
+                          }
                       }
                   }
-                local_rhs(i) -= sym_grad_phi[q][i] * tau * JxW;
+                local_rhs(i) -=
+                  sym_grad_phi[q][i] * tau * JxW; // -internal force
               }
           }
 
@@ -456,6 +527,10 @@ namespace Solid
             for (unsigned int j = i + 1; j < dofs_per_cell; ++j)
               {
                 local_matrix(i, j) = local_matrix(j, i);
+                if (initial_step)
+                  {
+                    local_mass(i, j) = local_mass(j, i);
+                  }
               }
           }
 
@@ -467,60 +542,63 @@ namespace Solid
                 cell->face(face)->boundary_id() == 6)
               {
                 fe_face_values.reinit(cell, face);
-                const double p0 = -400.0 / (0.001 * 0.001);
-                const double time_ramp = (time.current() / time.end());
-                const double pressure = p0 * time_ramp;
+                const double p0 = -40 / (0.001 * 0.001);
                 for (unsigned int q = 0; q < n_f_q_points; ++q)
                   {
                     const Tensor<1, dim> &N = fe_face_values.normal_vector(q);
-                    const Tensor<1, dim> traction = pressure * N;
+                    const Tensor<1, dim> traction = p0 * N;
                     for (unsigned int j = 0; j < dofs_per_cell; ++j)
                       {
                         const unsigned int component_j =
                           fe.system_to_component_index(j).first;
-                        const double Ni = fe_face_values.shape_value(j, q);
+                        const double phi = fe_face_values.shape_value(j, q);
                         const double JxW = fe_face_values.JxW(q);
-                        local_rhs(j) +=
-                          (Ni * traction[component_j]) * JxW; // +external force
+                        local_rhs(j) += (phi * traction[component_j]) *
+                                        JxW; // +external force
                       }
                   }
                 break;
               }
           }
 
-        constraints.distribute_local_to_global(local_matrix,
-                                               local_rhs,
-                                               local_dof_indices,
-                                               system_matrix,
-                                               system_rhs);
+        if (initial_step)
+          {
+            constraints.distribute_local_to_global(local_mass,
+                                                   local_rhs,
+                                                   local_dof_indices,
+                                                   mass_matrix,
+                                                   system_rhs);
+          }
+        else
+          {
+            constraints.distribute_local_to_global(local_matrix,
+                                                   local_rhs,
+                                                   local_dof_indices,
+                                                   system_matrix,
+                                                   system_rhs);
+          }
       }
 
     timer.leave_subsection();
   }
 
   template <int dim>
-  std::pair<unsigned int, double>
-  HyperelasticSolver<dim>::solve_linear_system(Vector<double> &newton_update)
+  std::pair<unsigned int, double> HyperelasticSolver<dim>::solve_linear_system(
+    SparseMatrix<double> &A, Vector<double> &x, Vector<double> &b)
   {
     timer.enter_subsection("Linear solver");
 
-    unsigned int lin_it = 0;
-    double lin_res = 0.0;
-
-    const int solver_its = system_matrix.m() * parameters.solid_max_iterations;
-    const double tol_sol = 1e-6 * system_rhs.l2_norm();
-    SolverControl solver_control(solver_its, tol_sol);
+    SolverControl solver_control(A.m(), 1e-6 * b.l2_norm());
     GrowingVectorMemory<Vector<double>> GVM;
     SolverCG<Vector<double>> solver_CG(solver_control, GVM);
     PreconditionSSOR<> preconditioner;
-    preconditioner.initialize(system_matrix, 1.2);
-    solver_CG.solve(system_matrix, newton_update, system_rhs, preconditioner);
-    lin_it = solver_control.last_step();
-    lin_res = solver_control.last_value();
+    preconditioner.initialize(A, 1.2);
+    solver_CG.solve(A, x, b, preconditioner);
 
+    constraints.distribute(x);
     timer.leave_subsection();
-    constraints.distribute(newton_update);
-    return std::make_pair(lin_it, lin_res);
+
+    return {solver_control.last_step(), solver_control.last_value()};
   }
 
   template <int dim>
@@ -531,16 +609,18 @@ namespace Solid
     std::vector<DataComponentInterpretation::DataComponentInterpretation>
       data_component_interpretation(
         dim, DataComponentInterpretation::component_is_part_of_vector);
-    std::vector<std::string> solution_name(dim, "displacement");
+
+    std::vector<std::string> solution_names(dim, "displacement");
     data_out.attach_dof_handler(dof_handler);
-    data_out.add_data_vector(solution,
-                             solution_name,
+    data_out.add_data_vector(current_displacement,
+                             solution_names,
                              DataOut<dim>::type_dof_data,
                              data_component_interpretation);
-    Vector<double> soln(solution.size());
+
+    Vector<double> soln(current_displacement.size());
     for (unsigned int i = 0; i < soln.size(); ++i)
       {
-        soln(i) = solution(i);
+        soln(i) = current_displacement(i);
       }
     // Map the solution to the deformed mesh, not necessary!
     MappingQEulerian<dim> q_mapping(degree, dof_handler, soln);
