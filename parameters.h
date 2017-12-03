@@ -45,6 +45,21 @@ namespace Parameters
     void parseParameters(ParameterHandler &);
   };
 
+  struct FluidDirichlet
+  {
+    /** Number of fluid Dirichlet BCs. */
+    unsigned int n_fluid_dirichlet_bcs;
+    /**
+     * Fluid Dirchlet BCs are stored as a map between solid boundary id and
+     * a pair of an int which indicates the components to be constrained,
+     * and a vector of the constrained values.
+     */
+    std::map<unsigned int, std::pair<unsigned int, std::vector<double>>>
+      fluid_dirichlet_bcs;
+    static void declareParameters(ParameterHandler &);
+    void parseParameters(ParameterHandler &);
+  };
+
   struct SolidFESystem
   {
     unsigned int solid_degree;
@@ -76,11 +91,12 @@ namespace Parameters
 
   struct SolidDirichlet
   {
-    unsigned int n_solid_dirichlet_bcs; //!< Number of solid Dirichlet BCs
-                                        /**
-                                         * Solid Dirchlet BCs are stored as a map between solid boundary id and
-                                         * an int which indicates the components to be constrained.
-                                         */
+    /** Number of solid Dirichlet BCs. */
+    unsigned int n_solid_dirichlet_bcs;
+    /**
+     * Solid Dirchlet BCs are stored as a map between solid boundary id and
+     * an int which indicates the components to be constrained.
+     */
     std::map<unsigned int, unsigned int> solid_dirichlet_bcs;
     static void declareParameters(ParameterHandler &);
     void parseParameters(ParameterHandler &);
@@ -88,14 +104,16 @@ namespace Parameters
 
   struct SolidNeumann
   {
-    unsigned int n_solid_neumann_bcs;  //!< Number of solid Neumann BCs
-    std::string solid_neumann_bc_type; //!< Type of solid Neumann BC
-                                       /**
-                                        * Solid Neumann BCs are stored as a map between solid boundary id
-                                        * and a vector of prescribed values.
-                                        * If traction is given, then the vector length should be dim,
-                                        * if pressure is given, then the vector length should be 1.
-                                        */
+    /** Number of solid Neumann BCs. */
+    unsigned int n_solid_neumann_bcs;
+    /** Type of solid Neumann BC. */
+    std::string solid_neumann_bc_type;
+    /**
+     * Solid Neumann BCs are stored as a map between solid boundary id
+     * and a vector of prescribed values.
+     * If traction is given, then the vector length should be dim,
+     * if pressure is given, then the vector length should be 1.
+     */
     std::map<unsigned int, std::vector<double>> solid_neumann_bcs;
     /**
      * We have to know how many components are expected in traction vector.
@@ -113,6 +131,7 @@ namespace Parameters
                          public FluidFESystem,
                          public FluidMaterial,
                          public FluidSolver,
+                         public FluidDirichlet,
                          public SolidFESystem,
                          public SolidMaterial,
                          public SolidSolver,

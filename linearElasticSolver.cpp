@@ -318,7 +318,7 @@ namespace Solid
 
     // Time loop
     output_results(time.get_timestep());
-    while (time.current() < time.end())
+    while (time.end() - time.current() > 1e-12)
       {
         time.increment();
         std::cout << std::string(91, '*') << std::endl

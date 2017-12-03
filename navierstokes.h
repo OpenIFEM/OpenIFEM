@@ -304,6 +304,8 @@ namespace Fluid
     Utils::Time time;
     mutable TimerOutput timer;
 
+    Parameters::AllParameters parameters;
+
     /**
      * The first building block of \f$\tilde{S}^{-1}\f$:
      * inverse of mass Schur complement.

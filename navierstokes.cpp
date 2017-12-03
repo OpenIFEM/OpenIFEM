@@ -135,7 +135,8 @@ namespace Fluid
       max_iteration(parameters.fluid_max_iterations),
       time(
         parameters.end_time, parameters.time_step, parameters.output_interval),
-      timer(std::cout, TimerOutput::summary, TimerOutput::wall_times)
+      timer(std::cout, TimerOutput::summary, TimerOutput::wall_times),
+      parameters(parameters)
   {
   }
 
@@ -167,41 +168,90 @@ namespace Fluid
     // the update \f$\delta u^k\f$. Therefore we set up two different constraint
     // objects.
     // Dirichlet boundary conditions are applied to both boundaries 0 and 1.
-    FEValuesExtractors::Vector velocities(0);
+
+    // For inhomogeneous BC, only constant input values can be read from
+    // the input file. If time or space dependent Dirichlet BCs are
+    // desired, this block of code has to be modified.
     {
       nonzero_constraints.clear();
-
+      zero_constraints.clear();
       DoFTools::make_hanging_node_constraints(dof_handler, nonzero_constraints);
-      VectorTools::interpolate_boundary_values(dof_handler,
-                                               0,
-                                               BoundaryValues<dim>(),
-                                               nonzero_constraints,
-                                               fe.component_mask(velocities));
-      VectorTools::interpolate_boundary_values(dof_handler,
-                                               1,
-                                               BoundaryValues<dim>(),
-                                               nonzero_constraints,
-                                               fe.component_mask(velocities));
+      DoFTools::make_hanging_node_constraints(dof_handler, zero_constraints);
+      for (auto itr = parameters.fluid_dirichlet_bcs.begin();
+           itr != parameters.fluid_dirichlet_bcs.end();
+           ++itr)
+        {
+          // First get the id, flag and value from the input file
+          unsigned int id = itr->first;
+          unsigned int flag = itr->second.first;
+          std::vector<double> value = itr->second.second;
+
+          // To make VectorTools::interpolate_boundary_values happy,
+          // a vector of bool and a vector of double which are of size
+          // dim + 1 are required.
+          std::vector<bool> mask(dim + 1, false);
+          std::vector<double> augmented_value(dim + 1, 0.0);
+          // 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
+          switch (flag)
+            {
+            case 1:
+              mask[0] = true;
+              augmented_value[0] = value[0];
+              break;
+            case 2:
+              mask[1] = true;
+              augmented_value[1] = value[0];
+              break;
+            case 3:
+              mask[0] = true;
+              mask[1] = true;
+              augmented_value[0] = value[0];
+              augmented_value[1] = value[1];
+              break;
+            case 4:
+              mask[2] = true;
+              augmented_value[2] = value[0];
+              break;
+            case 5:
+              mask[0] = true;
+              mask[2] = true;
+              augmented_value[0] = value[0];
+              augmented_value[2] = value[1];
+              break;
+            case 6:
+              mask[1] = true;
+              mask[2] = true;
+              augmented_value[1] = value[0];
+              augmented_value[2] = value[1];
+              break;
+            case 7:
+              mask[0] = true;
+              mask[1] = true;
+              mask[2] = true;
+              augmented_value[0] = value[0];
+              augmented_value[1] = value[1];
+              augmented_value[2] = value[2];
+              break;
+            default:
+              AssertThrow(false, ExcMessage("Unrecogonized component flag!"));
+              break;
+            }
+          VectorTools::interpolate_boundary_values(
+            dof_handler,
+            id,
+            // Functions::ConstantFunction<dim>(augmented_value),
+            BoundaryValues<dim>(),
+            nonzero_constraints,
+            ComponentMask(mask));
+          VectorTools::interpolate_boundary_values(
+            dof_handler,
+            id,
+            Functions::ZeroFunction<dim>(dim + 1),
+            zero_constraints,
+            ComponentMask(mask));
+        }
     }
     nonzero_constraints.close();
-
-    {
-      zero_constraints.clear();
-
-      DoFTools::make_hanging_node_constraints(dof_handler, zero_constraints);
-      VectorTools::interpolate_boundary_values(
-        dof_handler,
-        0,
-        Functions::ZeroFunction<dim>(dim + 1),
-        zero_constraints,
-        fe.component_mask(velocities));
-      VectorTools::interpolate_boundary_values(
-        dof_handler,
-        1,
-        Functions::ZeroFunction<dim>(dim + 1),
-        zero_constraints,
-        fe.component_mask(velocities));
-    }
     zero_constraints.close();
 
     std::cout << "   Number of active fluid cells: "
@@ -506,7 +556,7 @@ namespace Fluid
     std::cout.precision(6);
     std::cout.width(12);
     output_results(time.get_timestep());
-    while (time.current() < time.end())
+    while (time.end() - time.current() > 1e-12)
       {
         time.increment();
         std::cout << std::string(91, '*') << std::endl
@@ -575,7 +625,7 @@ namespace Fluid
                              data_component_interpretation);
     data_out.build_patches();
 
-    std::string basename = "flow_around_cylinder";
+    std::string basename = "navierstokes";
     std::string filename =
       basename + "-" + Utilities::int_to_string(output_index, 6) + ".vtu";
 

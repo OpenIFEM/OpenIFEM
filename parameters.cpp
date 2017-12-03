@@ -103,6 +103,85 @@ namespace Parameters
     prm.leave_subsection();
   }
 
+  void FluidDirichlet::declareParameters(ParameterHandler &prm)
+  {
+    prm.enter_subsection("Fluid Dirichlet BCs");
+    {
+      prm.declare_entry("Number of Dirichlet BCs",
+                        "1",
+                        Patterns::Integer(),
+                        "Number of boundaries with Dirichlet BCs");
+      prm.declare_entry("Dirichlet boundary id",
+                        "",
+                        Patterns::List(dealii::Patterns::Integer()),
+                        "Ids of the boundaries with Dirichlet BCs");
+      prm.declare_entry("Dirichlet boundary components",
+                        "",
+                        Patterns::List(dealii::Patterns::Integer(1, 7)),
+                        "Boundary components to constrain");
+      prm.declare_entry("Dirichlet boundary values",
+                        "",
+                        Patterns::List(dealii::Patterns::Double()),
+                        "Boundary values to constrain");
+    }
+    prm.leave_subsection();
+  }
+
+  void FluidDirichlet::parseParameters(ParameterHandler &prm)
+  {
+    prm.enter_subsection("Fluid Dirichlet BCs");
+    {
+      n_fluid_dirichlet_bcs = prm.get_integer("Number of Dirichlet BCs");
+      std::string raw_input = prm.get("Dirichlet boundary id");
+      std::vector<std::string> parsed_input =
+        Utilities::split_string_list(raw_input);
+      std::vector<int> ids = Utilities::string_to_int(parsed_input);
+      AssertThrow(ids.size() == n_fluid_dirichlet_bcs,
+                  ExcMessage("Inconsistent boundary ids!"));
+      raw_input = prm.get("Dirichlet boundary components");
+      parsed_input = Utilities::split_string_list(raw_input);
+      std::vector<int> components = Utilities::string_to_int(parsed_input);
+      AssertThrow(components.size() == n_fluid_dirichlet_bcs,
+                  ExcMessage("Inconsistent boundary components!"));
+      raw_input = prm.get("Dirichlet boundary values");
+      parsed_input = Utilities::split_string_list(raw_input);
+      std::vector<double> values = Utilities::string_to_double(parsed_input);
+      // The size of values should be exact the same as the number of
+      // the given boundary values.
+      unsigned int n = 0;
+      for (unsigned int i = 0; i < n_fluid_dirichlet_bcs; ++i)
+        {
+          auto flag = components[i];
+          std::vector<double> value;
+          AssertThrow(n < values.size(),
+                      ExcMessage("Inconsistent boundary values!"));
+          // 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
+          if (flag == 1 || flag == 2 || flag == 4)
+            {
+              value.push_back(values[n]);
+              n += 1;
+            }
+          else if (flag == 3 || flag == 5 || flag == 6)
+            {
+              value.push_back(values[n]);
+              value.push_back(values[n + 1]);
+              n += 2;
+            }
+          else
+            {
+              value.push_back(values[n]);
+              value.push_back(values[n + 1]);
+              value.push_back(values[n + 2]);
+              n += 3;
+            }
+          fluid_dirichlet_bcs[ids[i]] = {components[i], value};
+        }
+      AssertThrow(n == values.size(),
+                  ExcMessage("Inconsistent boundary values!"));
+    }
+    prm.leave_subsection();
+  }
+
   void SolidFESystem::declareParameters(ParameterHandler &prm)
   {
     prm.enter_subsection("Solid finite element system");
@@ -219,7 +298,7 @@ namespace Parameters
                         "Ids of the boundaries with Dirichlet BCs");
       prm.declare_entry("Dirichlet boundary components",
                         "",
-                        Patterns::List(dealii::Patterns::Integer()),
+                        Patterns::List(dealii::Patterns::Integer(1, 7)),
                         "Boundary components to constrain");
     }
     prm.leave_subsection();
@@ -320,6 +399,7 @@ namespace Parameters
     FluidFESystem::declareParameters(prm);
     FluidMaterial::declareParameters(prm);
     FluidSolver::declareParameters(prm);
+    FluidDirichlet::declareParameters(prm);
     SolidFESystem::declareParameters(prm);
     SolidMaterial::declareParameters(prm);
     SolidSolver::declareParameters(prm);
@@ -333,6 +413,7 @@ namespace Parameters
     FluidFESystem::parseParameters(prm);
     FluidMaterial::parseParameters(prm);
     FluidSolver::parseParameters(prm);
+    FluidDirichlet::parseParameters(prm);
     SolidFESystem::parseParameters(prm);
     SolidMaterial::parseParameters(prm);
     SolidSolver::parseParameters(prm);
