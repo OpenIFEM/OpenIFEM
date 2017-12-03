@@ -162,6 +162,8 @@ namespace Solid
 
     Utils::Time time;
     mutable TimerOutput timer;
+
+    Parameters::AllParameters parameters;
   };
 }
 

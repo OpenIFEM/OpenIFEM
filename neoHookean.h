@@ -9,7 +9,9 @@ namespace Solid
   extern template class HyperelasticMaterial<3>;
 
   /*! \brief Neo-Hookean material.
-   *  This is written for Displacement-based formulation
+   *
+   * The isotropic part of the strain energy in the Neo-Hookean
+   * model is written as \f$ C_1(\bar{I}_1 -3) \f$.
    */
   template <int dim>
   class NeoHookean : public HyperelasticMaterial<dim>

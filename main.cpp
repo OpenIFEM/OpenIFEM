@@ -23,12 +23,6 @@ int main()
       if (params.dimension == 2)
         {
           Triangulation<2> triangulation;
-          GridGenerator::hyper_rectangle(
-            triangulation, Point<2>(0.0, 0.0), Point<2>(1.0, 1.0), true);
-          GridTools::scale(0.001, triangulation);
-          Solid::HyperelasticSolver<2> solid(triangulation, params);
-          solid.run();
-          /*
           GridGenerator::subdivided_hyper_rectangle(
             triangulation,
             std::vector<unsigned int>{16, 2},
@@ -36,8 +30,10 @@ int main()
             Point<2>(8, 1),
             true);
           Solid::LinearElasticSolver<2> solid(triangulation, params);
+          // Solid::HyperelasticSolver<2> solid(triangulation, params);
           solid.run();
 
+          /*
           Utils::GridCreator::flow_around_cylinder(triangulation);
           Fluid::NavierStokes<2> flow(triangulation, params);
           flow.run();
@@ -46,14 +42,6 @@ int main()
       else if (params.dimension == 3)
         {
           Triangulation<3> triangulation;
-          GridGenerator::hyper_rectangle(triangulation,
-                                         Point<3>(0.0, 0.0, 0.0),
-                                         Point<3>(1.0, 1.0, 1.0),
-                                         true);
-          GridTools::scale(0.001, triangulation);
-          Solid::HyperelasticSolver<3> solid(triangulation, params);
-          solid.run();
-          /*
           GridGenerator::subdivided_hyper_rectangle(
             triangulation,
             std::vector<unsigned int>{16, 2, 2},
@@ -61,8 +49,10 @@ int main()
             Point<3>(8, 1, 1),
             true);
           Solid::LinearElasticSolver<3> solid(triangulation, params);
+          // Solid::HyperelasticSolver<3> solid(triangulation, params);
           solid.run();
 
+          /*
           Utils::GridCreator::flow_around_cylinder(triangulation);
           Fluid::NavierStokes<3> flow(triangulation, params);
           flow.run();

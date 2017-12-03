@@ -11,7 +11,7 @@ namespace Solid
       gamma(0.5 + parameters.damping),
       beta(gamma / 2),
       degree(parameters.solid_degree),
-      tolerance(parameters.tol_f),
+      tolerance(1e-12),
       triangulation(tria),
       fe(FE_Q<dim>(degree), dim),
       dof_handler(triangulation),
@@ -19,7 +19,8 @@ namespace Solid
       face_quad_formula(degree + 1),
       time(
         parameters.end_time, parameters.time_step, parameters.output_interval),
-      timer(std::cout, TimerOutput::summary, TimerOutput::wall_times)
+      timer(std::cout, TimerOutput::summary, TimerOutput::wall_times),
+      parameters(parameters)
   {
   }
 
@@ -40,8 +41,36 @@ namespace Solid
 
     constraints.clear();
     DoFTools::make_hanging_node_constraints(dof_handler, constraints);
-    VectorTools::interpolate_boundary_values(
-      dof_handler, 0, Functions::ZeroFunction<dim>(dim), constraints);
+
+    // Homogeneous BC only!
+    for (auto itr = parameters.solid_dirichlet_bcs.begin();
+         itr != parameters.solid_dirichlet_bcs.end();
+         ++itr)
+      {
+        unsigned int id = itr->first;
+        unsigned int flag = itr->second;
+        std::vector<bool> mask(dim, false);
+        // 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
+        if (flag == 1 || flag == 3 || flag == 5 || flag == 7)
+          {
+            mask[0] = true;
+          }
+        if (flag == 2 || flag == 3 || flag == 6 || flag == 7)
+          {
+            mask[1] = true;
+          }
+        if (flag == 4 || flag == 5 || flag == 6 || flag == 7)
+          {
+            mask[2] = true;
+          }
+        VectorTools::interpolate_boundary_values(
+          dof_handler,
+          id,
+          Functions::ZeroFunction<dim>(dim),
+          constraints,
+          ComponentMask(mask));
+      }
+
     constraints.close();
 
     std::cout << "  Number of active solid cells: "
@@ -161,25 +190,45 @@ namespace Solid
 
         cell->get_dof_indices(local_dof_indices);
 
-        // traction
-        Tensor<1, dim> traction;
-        traction[1] = -1e-4;
-        for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+        // Traction or Pressure
+        for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
+             ++face)
           {
-            if (cell->face(f)->at_boundary() &&
-                cell->face(f)->boundary_id() == 3)
+            if (cell->face(face)->at_boundary())
               {
-                fe_face_values.reinit(cell, f);
-                for (unsigned int q = 0; q < n_f_q_points; ++q)
+                unsigned int id = cell->face(face)->boundary_id();
+                if (parameters.solid_neumann_bcs.find(id) !=
+                    parameters.solid_neumann_bcs.end())
                   {
-                    for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                    std::vector<double> value =
+                      parameters.solid_neumann_bcs[id];
+                    Tensor<1, dim> traction;
+                    if (parameters.solid_neumann_bc_type == "Traction")
                       {
+                        for (unsigned int i = 0; i < dim; ++i)
+                          {
+                            traction[i] = value[i];
+                          }
+                      }
 
-                        const unsigned int component_i =
-                          fe.system_to_component_index(i).first;
-                        local_rhs[i] += traction[component_i] *
-                                        fe_face_values.shape_value(i, q) *
-                                        fe_face_values.JxW(q);
+                    fe_face_values.reinit(cell, face);
+                    for (unsigned int q = 0; q < n_f_q_points; ++q)
+                      {
+                        if (parameters.solid_neumann_bc_type == "Pressure")
+                          {
+                            // The normal is w.r.t. reference configuration!
+                            traction = fe_face_values.normal_vector(q);
+                            traction *= value[0];
+                          }
+                        for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                          {
+                            const unsigned int component_j =
+                              fe.system_to_component_index(j).first;
+                            // +external force
+                            local_rhs(j) += fe_face_values.shape_value(j, q) *
+                                            traction[component_j] *
+                                            fe_face_values.JxW(q);
+                          }
                       }
                   }
               }
@@ -236,7 +285,7 @@ namespace Solid
                              data_component_interpretation);
     data_out.build_patches();
 
-    std::string basename = "solid";
+    std::string basename = "linearelastic";
     std::string filename =
       basename + "-" + Utilities::int_to_string(output_index, 6) + ".vtu";
 

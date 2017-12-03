@@ -73,38 +73,9 @@ namespace Solid
   template <int dim>
   void HyperelasticSolver<dim>::run()
   {
-    triangulation.refine_global(3);
+    triangulation.refine_global(2);
     vol = GridTools::volume(triangulation);
     std::cout << "Grid:\n\t Reference volume: " << vol << std::endl;
-
-    // The boundary id is hardcoded for now
-    for (auto cell = triangulation.begin_active(); cell != triangulation.end();
-         ++cell)
-      {
-        for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
-             ++face)
-          {
-            if (cell->face(face)->at_boundary() &&
-                cell->face(face)->center()[1] == 1.0 * 0.001)
-              {
-                if (dim == 3)
-                  {
-                    if (cell->face(face)->center()[0] < 0.5 * 0.001 &&
-                        cell->face(face)->center()[2] < 0.5 * 0.001)
-                      {
-                        cell->face(face)->set_boundary_id(6);
-                      }
-                  }
-                else
-                  {
-                    if (cell->face(face)->center()[0] < 0.5 * 0.001)
-                      {
-                        cell->face(face)->set_boundary_id(6);
-                      }
-                  }
-              }
-          }
-      }
 
     setup_dofs();
     initialize_system();
@@ -244,63 +215,34 @@ namespace Solid
     constraints.clear();
     DoFTools::make_hanging_node_constraints(dof_handler, constraints);
 
-    const FEValuesExtractors::Scalar x_displacement(0);
-    const FEValuesExtractors::Scalar y_displacement(1);
-    const FEValuesExtractors::Scalar z_displacement(2);
-
-    VectorTools::interpolate_boundary_values(dof_handler,
-                                             0,
-                                             Functions::ZeroFunction<dim>(dim),
-                                             constraints,
-                                             fe.component_mask(x_displacement));
-
-    VectorTools::interpolate_boundary_values(dof_handler,
-                                             2,
-                                             Functions::ZeroFunction<dim>(dim),
-                                             constraints,
-                                             fe.component_mask(y_displacement));
-
-    if (dim == 2) // 2D case: 0-x, 2-y, 3-x, 6-x
+    for (auto itr = parameters.solid_dirichlet_bcs.begin();
+         itr != parameters.solid_dirichlet_bcs.end();
+         ++itr)
       {
+        unsigned int id = itr->first;
+        unsigned int flag = itr->second;
+        std::vector<bool> mask(dim, false);
+        // 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
+        if (flag == 1 || flag == 3 || flag == 5 || flag == 7)
+          {
+            mask[0] = true;
+          }
+        if (flag == 2 || flag == 3 || flag == 6 || flag == 7)
+          {
+            mask[1] = true;
+          }
+        if (flag == 4 || flag == 5 || flag == 6 || flag == 7)
+          {
+            mask[2] = true;
+          }
         VectorTools::interpolate_boundary_values(
           dof_handler,
-          3,
+          id,
           Functions::ZeroFunction<dim>(dim),
           constraints,
-          fe.component_mask(x_displacement));
-
-        VectorTools::interpolate_boundary_values(
-          dof_handler,
-          6,
-          Functions::ZeroFunction<dim>(dim),
-          constraints,
-          fe.component_mask(x_displacement));
+          ComponentMask(mask));
       }
-    else // 3D case: 0-x, 2-y, 4-z, 3-xz, 6-xz
-      {
-        VectorTools::interpolate_boundary_values(
-          dof_handler,
-          4,
-          Functions::ZeroFunction<dim>(dim),
-          constraints,
-          fe.component_mask(z_displacement));
 
-        VectorTools::interpolate_boundary_values(
-          dof_handler,
-          3,
-          Functions::ZeroFunction<dim>(dim),
-          constraints,
-          (fe.component_mask(x_displacement) |
-           fe.component_mask(z_displacement)));
-
-        VectorTools::interpolate_boundary_values(
-          dof_handler,
-          6,
-          Functions::ZeroFunction<dim>(dim),
-          constraints,
-          (fe.component_mask(x_displacement) |
-           fe.component_mask(z_displacement)));
-      }
     constraints.close();
 
     timer.leave_subsection();
@@ -537,27 +479,44 @@ namespace Solid
         for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
              ++face)
           {
-            // apply pressure
-            if (cell->face(face)->at_boundary() &&
-                cell->face(face)->boundary_id() == 6)
+            // apply traction or pressure
+            if (cell->face(face)->at_boundary())
               {
-                fe_face_values.reinit(cell, face);
-                const double p0 = -40 / (0.001 * 0.001);
-                for (unsigned int q = 0; q < n_f_q_points; ++q)
+                unsigned int id = cell->face(face)->boundary_id();
+                if (parameters.solid_neumann_bcs.find(id) !=
+                    parameters.solid_neumann_bcs.end())
                   {
-                    const Tensor<1, dim> &N = fe_face_values.normal_vector(q);
-                    const Tensor<1, dim> traction = p0 * N;
-                    for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                    std::vector<double> value =
+                      parameters.solid_neumann_bcs[id];
+                    Tensor<1, dim> traction;
+                    if (parameters.solid_neumann_bc_type == "Traction")
                       {
-                        const unsigned int component_j =
-                          fe.system_to_component_index(j).first;
-                        const double phi = fe_face_values.shape_value(j, q);
-                        const double JxW = fe_face_values.JxW(q);
-                        local_rhs(j) += (phi * traction[component_j]) *
-                                        JxW; // +external force
+                        for (unsigned int i = 0; i < dim; ++i)
+                          {
+                            traction[i] = value[i];
+                          }
+                      }
+
+                    fe_face_values.reinit(cell, face);
+                    for (unsigned int q = 0; q < n_f_q_points; ++q)
+                      {
+                        if (parameters.solid_neumann_bc_type == "Pressure")
+                          {
+                            // The normal is w.r.t. reference configuration!
+                            traction = fe_face_values.normal_vector(q);
+                            traction *= value[0];
+                          }
+                        for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                          {
+                            const unsigned int component_j =
+                              fe.system_to_component_index(j).first;
+                            // +external force
+                            local_rhs(j) += fe_face_values.shape_value(j, q) *
+                                            traction[component_j] *
+                                            fe_face_values.JxW(q);
+                          }
                       }
                   }
-                break;
               }
           }
 

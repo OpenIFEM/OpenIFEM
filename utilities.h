@@ -51,9 +51,7 @@ namespace Utils
     const double output_interval;
   };
 
-  /** \brief A helper class to generate triangulations which are not implemented
-   * as
-   *         functions in dealii.
+  /** \brief A helper class to generate triangulations and specify boundary ids.
    *
    *  dealii::GridGenerator can be used to generate a few standard grids such as
    * hyperrectangle,

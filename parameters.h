@@ -1,35 +1,39 @@
 #ifndef PARAMETERS
 #define PARAMETERS
 
+#include <deal.II/base/exceptions.h>
 #include <deal.II/base/parameter_handler.h>
+
 #include <iostream>
 #include <string>
 #include <vector>
 
 namespace Parameters
 {
+  using namespace dealii;
+
   struct Simulation
   {
     int dimension;
     double end_time;
     double time_step;
     double output_interval;
-    static void declareParameters(dealii::ParameterHandler &);
-    void parseParameters(dealii::ParameterHandler &);
+    static void declareParameters(ParameterHandler &);
+    void parseParameters(ParameterHandler &);
   };
 
   struct FluidFESystem
   {
     unsigned int fluid_degree;
-    static void declareParameters(dealii::ParameterHandler &);
-    void parseParameters(dealii::ParameterHandler &);
+    static void declareParameters(ParameterHandler &);
+    void parseParameters(ParameterHandler &);
   };
 
   struct FluidMaterial
   {
     double viscosity;
-    static void declareParameters(dealii::ParameterHandler &);
-    void parseParameters(dealii::ParameterHandler &);
+    static void declareParameters(ParameterHandler &);
+    void parseParameters(ParameterHandler &);
   };
 
   struct FluidSolver
@@ -37,15 +41,15 @@ namespace Parameters
     double grad_div;
     unsigned int fluid_max_iterations;
     double fluid_tolerance;
-    static void declareParameters(dealii::ParameterHandler &);
-    void parseParameters(dealii::ParameterHandler &);
+    static void declareParameters(ParameterHandler &);
+    void parseParameters(ParameterHandler &);
   };
 
   struct SolidFESystem
   {
     unsigned int solid_degree;
-    static void declareParameters(dealii::ParameterHandler &);
-    void parseParameters(dealii::ParameterHandler &);
+    static void declareParameters(ParameterHandler &);
+    void parseParameters(ParameterHandler &);
   };
 
   struct SolidMaterial
@@ -55,8 +59,8 @@ namespace Parameters
     double E;              //!< Young's modulus, linear elastic material only.
     double nu;             //!< Poisson's ratio, linear elastic material only.
     std::vector<double> C; //!< Hyperelastic material constants.
-    static void declareParameters(dealii::ParameterHandler &);
-    void parseParameters(dealii::ParameterHandler &);
+    static void declareParameters(ParameterHandler &);
+    void parseParameters(ParameterHandler &);
   };
 
   struct SolidSolver
@@ -66,8 +70,43 @@ namespace Parameters
                                        //! hyperelastic only.
     double tol_f;                      //!< Force tolerance
     double tol_d; //!< Displacement tolerance, hyperelastic only.
-    static void declareParameters(dealii::ParameterHandler &);
-    void parseParameters(dealii::ParameterHandler &);
+    static void declareParameters(ParameterHandler &);
+    void parseParameters(ParameterHandler &);
+  };
+
+  struct SolidDirichlet
+  {
+    unsigned int n_solid_dirichlet_bcs; //!< Number of solid Dirichlet BCs
+                                        /**
+                                         * Solid Dirchlet BCs are stored as a map between solid boundary id and
+                                         * an int which indicates the components to be constrained.
+                                         */
+    std::map<unsigned int, unsigned int> solid_dirichlet_bcs;
+    static void declareParameters(ParameterHandler &);
+    void parseParameters(ParameterHandler &);
+  };
+
+  struct SolidNeumann
+  {
+    unsigned int n_solid_neumann_bcs;  //!< Number of solid Neumann BCs
+    std::string solid_neumann_bc_type; //!< Type of solid Neumann BC
+                                       /**
+                                        * Solid Neumann BCs are stored as a map between solid boundary id
+                                        * and a vector of prescribed values.
+                                        * If traction is given, then the vector length should be dim,
+                                        * if pressure is given, then the vector length should be 1.
+                                        */
+    std::map<unsigned int, std::vector<double>> solid_neumann_bcs;
+    /**
+     * We have to know how many components are expected in traction vector.
+     * Although the dimension is specified in the Geometry subsection,
+     * this structure is not aware of it.
+     * To resolve this issue, we add an additional member, which will be
+     * copied from the Geometry section.
+     */
+    int solid_neumann_bc_dim;
+    static void declareParameters(ParameterHandler &);
+    void parseParameters(ParameterHandler &);
   };
 
   struct AllParameters : public Simulation,
@@ -76,11 +115,13 @@ namespace Parameters
                          public FluidSolver,
                          public SolidFESystem,
                          public SolidMaterial,
-                         public SolidSolver
+                         public SolidSolver,
+                         public SolidDirichlet,
+                         public SolidNeumann
   {
     AllParameters(const std::string &);
-    static void declareParameters(dealii::ParameterHandler &);
-    void parseParameters(dealii::ParameterHandler &);
+    static void declareParameters(ParameterHandler &);
+    void parseParameters(ParameterHandler &);
   };
 }
 

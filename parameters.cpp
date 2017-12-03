@@ -2,29 +2,24 @@
 
 namespace Parameters
 {
-  void Simulation::declareParameters(dealii::ParameterHandler &prm)
+  using namespace dealii;
+
+  void Simulation::declareParameters(ParameterHandler &prm)
   {
     prm.enter_subsection("Simulation");
     {
-      prm.declare_entry("Dimension",
-                        "2",
-                        dealii::Patterns::Integer(0),
-                        "Dimension of the problem");
       prm.declare_entry(
-        "End time", "1", dealii::Patterns::Double(0.0), "End time");
-      prm.declare_entry("Time step size",
-                        "0.1",
-                        dealii::Patterns::Double(0.0),
-                        "Time step size");
-      prm.declare_entry("Output interval",
-                        "0.1",
-                        dealii::Patterns::Double(0.0),
-                        "Output interval");
+        "Dimension", "2", Patterns::Integer(2), "Dimension of the problem");
+      prm.declare_entry("End time", "1", Patterns::Double(0.0), "End time");
+      prm.declare_entry(
+        "Time step size", "0.1", Patterns::Double(0.0), "Time step size");
+      prm.declare_entry(
+        "Output interval", "0.1", Patterns::Double(0.0), "Output interval");
     }
     prm.leave_subsection();
   }
 
-  void Simulation::parseParameters(dealii::ParameterHandler &prm)
+  void Simulation::parseParameters(ParameterHandler &prm)
   {
     prm.enter_subsection("Simulation");
     {
@@ -36,19 +31,19 @@ namespace Parameters
     prm.leave_subsection();
   }
 
-  void FluidFESystem::declareParameters(dealii::ParameterHandler &prm)
+  void FluidFESystem::declareParameters(ParameterHandler &prm)
   {
     prm.enter_subsection("Fluid finite element system");
     {
       prm.declare_entry("Degree",
                         "1",
-                        dealii::Patterns::Integer(1),
+                        Patterns::Integer(1),
                         "Pressure element polynomial order");
     }
     prm.leave_subsection();
   }
 
-  void FluidFESystem::parseParameters(dealii::ParameterHandler &prm)
+  void FluidFESystem::parseParameters(ParameterHandler &prm)
   {
     prm.enter_subsection("Fluid finite element system");
     {
@@ -57,19 +52,17 @@ namespace Parameters
     prm.leave_subsection();
   }
 
-  void FluidMaterial::declareParameters(dealii::ParameterHandler &prm)
+  void FluidMaterial::declareParameters(ParameterHandler &prm)
   {
     prm.enter_subsection("Fluid material properties");
     {
-      prm.declare_entry("Viscosity",
-                        "1e-3",
-                        dealii::Patterns::Double(0.0),
-                        "Kinematic viscosity");
+      prm.declare_entry(
+        "Viscosity", "1e-3", Patterns::Double(0.0), "Kinematic viscosity");
     }
     prm.leave_subsection();
   }
 
-  void FluidMaterial::parseParameters(dealii::ParameterHandler &prm)
+  void FluidMaterial::parseParameters(ParameterHandler &prm)
   {
     prm.enter_subsection("Fluid material properties");
     {
@@ -78,28 +71,28 @@ namespace Parameters
     prm.leave_subsection();
   }
 
-  void FluidSolver::declareParameters(dealii::ParameterHandler &prm)
+  void FluidSolver::declareParameters(ParameterHandler &prm)
   {
     prm.enter_subsection("Fluid solver control");
     {
       prm.declare_entry("Grad-Div stabilization",
                         "1.0",
-                        dealii::Patterns::Double(1.0),
+                        Patterns::Double(0.0),
                         "Grad-Div stabilization");
       prm.declare_entry("Max Newton iterations",
                         "8",
-                        dealii::Patterns::Integer(8),
+                        Patterns::Integer(1),
                         "Maximum number of Newton iterations");
       prm.declare_entry(
         "Nonlinear system tolerance",
         "1e-10",
-        dealii::Patterns::Double(0.0),
+        Patterns::Double(0.0),
         "The absolute tolerance of the nonlinear system residual");
     }
     prm.leave_subsection();
   }
 
-  void FluidSolver::parseParameters(dealii::ParameterHandler &prm)
+  void FluidSolver::parseParameters(ParameterHandler &prm)
   {
     prm.enter_subsection("Fluid solver control");
     {
@@ -110,19 +103,19 @@ namespace Parameters
     prm.leave_subsection();
   }
 
-  void SolidFESystem::declareParameters(dealii::ParameterHandler &prm)
+  void SolidFESystem::declareParameters(ParameterHandler &prm)
   {
     prm.enter_subsection("Solid finite element system");
     {
       prm.declare_entry("Degree",
                         "1",
-                        dealii::Patterns::Integer(1),
+                        Patterns::Integer(1),
                         "Polynomial degree of solid element");
     }
     prm.leave_subsection();
   }
 
-  void SolidFESystem::parseParameters(dealii::ParameterHandler &prm)
+  void SolidFESystem::parseParameters(ParameterHandler &prm)
   {
     prm.enter_subsection("Solid finite element system");
     {
@@ -131,83 +124,76 @@ namespace Parameters
     prm.leave_subsection();
   }
 
-  void SolidMaterial::declareParameters(dealii::ParameterHandler &prm)
+  void SolidMaterial::declareParameters(ParameterHandler &prm)
   {
     prm.enter_subsection("Solid material properties");
     {
       prm.declare_entry("Solid type",
                         "LinearElastic",
-                        dealii::Patterns::Selection("LinearElastic|NeoHookean"),
+                        Patterns::Selection("LinearElastic|NeoHookean"),
                         "Type of solid material");
-      prm.declare_entry(
-        "Density", "1.0", dealii::Patterns::Double(0.0), "Density");
+      prm.declare_entry("Density", "1.0", Patterns::Double(0.0), "Density");
       prm.declare_entry("Young's modulus",
                         "0.0",
-                        dealii::Patterns::Double(0.0),
+                        Patterns::Double(0.0),
                         "Young's modulus, only used by linear elastic solver");
       prm.declare_entry("Poisson's ratio",
                         "0.0",
-                        dealii::Patterns::Double(0.0, 0.5),
+                        Patterns::Double(0.0, 0.5),
                         "Poisson's ratio, only used by linear elastic solver");
       const char *text = "A list of material constants separated by comma, "
                          "only used by hyperelastic materials."
                          "NeoHookean requires C1, kappa;";
       prm.declare_entry("Hyperelastic parameters",
                         "",
-                        dealii::Patterns::List(dealii::Patterns::Double()),
+                        Patterns::List(dealii::Patterns::Double()),
                         text);
     }
     prm.leave_subsection();
   }
 
-  void SolidMaterial::parseParameters(dealii::ParameterHandler &prm)
+  void SolidMaterial::parseParameters(ParameterHandler &prm)
   {
     prm.enter_subsection("Solid material properties");
     {
       solid_type = prm.get("Solid type");
       rho = prm.get_double("Density");
-      if (solid_type == "LinearElastic")
-        {
-          E = prm.get_double("Young's modulus");
-          nu = prm.get_double("Poisson's ratio");
-        }
-      else if (solid_type == "NeoHookean")
-        {
-          std::string raw_input = prm.get("Hyperelastic parameters");
-          std::vector<std::string> parsed_input =
-            dealii::Utilities::split_string_list(raw_input);
-          C = dealii::Utilities::string_to_double(parsed_input);
-        }
+      E = prm.get_double("Young's modulus");
+      nu = prm.get_double("Poisson's ratio");
+      std::string raw_input = prm.get("Hyperelastic parameters");
+      std::vector<std::string> parsed_input =
+        Utilities::split_string_list(raw_input);
+      C = Utilities::string_to_double(parsed_input);
     }
     prm.leave_subsection();
   }
 
-  void SolidSolver::declareParameters(dealii::ParameterHandler &prm)
+  void SolidSolver::declareParameters(ParameterHandler &prm)
   {
     prm.enter_subsection("Solid solver control");
     {
       prm.declare_entry("Damping",
                         "0.0",
-                        dealii::Patterns::Double(0.0),
+                        Patterns::Double(0.0),
                         "The artifical damping in Newmark-beta method");
       prm.declare_entry("Max Newton iterations",
                         "8",
-                        dealii::Patterns::Integer(8),
+                        Patterns::Integer(1),
                         "Maximum number of Newton iterations");
       prm.declare_entry(
         "Displacement tolerance",
         "1e-10",
-        dealii::Patterns::Double(0.0),
+        Patterns::Double(0.0),
         "The tolerance of the displacement increment at each iteration");
       prm.declare_entry("Force tolerance",
                         "1e-10",
-                        dealii::Patterns::Double(0.0),
+                        Patterns::Double(0.0),
                         "The tolerance of the force equilibrium");
     }
     prm.leave_subsection();
   }
 
-  void SolidSolver::parseParameters(dealii::ParameterHandler &prm)
+  void SolidSolver::parseParameters(ParameterHandler &prm)
   {
     prm.enter_subsection("Solid solver control");
     {
@@ -219,16 +205,116 @@ namespace Parameters
     prm.leave_subsection();
   }
 
+  void SolidDirichlet::declareParameters(ParameterHandler &prm)
+  {
+    prm.enter_subsection("Solid Dirichlet BCs");
+    {
+      prm.declare_entry("Number of Dirichlet BCs",
+                        "1",
+                        Patterns::Integer(),
+                        "Number of boundaries with Dirichlet BCs");
+      prm.declare_entry("Dirichlet boundary id",
+                        "",
+                        Patterns::List(dealii::Patterns::Integer()),
+                        "Ids of the boundaries with Dirichlet BCs");
+      prm.declare_entry("Dirichlet boundary components",
+                        "",
+                        Patterns::List(dealii::Patterns::Integer()),
+                        "Boundary components to constrain");
+    }
+    prm.leave_subsection();
+  }
+
+  void SolidDirichlet::parseParameters(ParameterHandler &prm)
+  {
+    prm.enter_subsection("Solid Dirichlet BCs");
+    {
+      n_solid_dirichlet_bcs = prm.get_integer("Number of Dirichlet BCs");
+      std::string raw_input = prm.get("Dirichlet boundary id");
+      std::vector<std::string> parsed_input =
+        Utilities::split_string_list(raw_input);
+      std::vector<int> ids = Utilities::string_to_int(parsed_input);
+      AssertThrow(ids.size() == n_solid_dirichlet_bcs,
+                  ExcMessage("Inconsistent boundary ids!"));
+      raw_input = prm.get("Dirichlet boundary components");
+      parsed_input = Utilities::split_string_list(raw_input);
+      std::vector<int> components = Utilities::string_to_int(parsed_input);
+      AssertThrow(components.size() == n_solid_dirichlet_bcs,
+                  ExcMessage("Inconsistent boundary components!"));
+      for (unsigned int i = 0; i < n_solid_dirichlet_bcs; ++i)
+        {
+          solid_dirichlet_bcs[ids[i]] = components[i];
+        }
+    }
+    prm.leave_subsection();
+  }
+
+  void SolidNeumann::declareParameters(ParameterHandler &prm)
+  {
+    prm.enter_subsection("Solid Neumann BCs");
+    {
+      prm.declare_entry("Number of Neumann BCs",
+                        "1",
+                        Patterns::Integer(0),
+                        "Number of boundaries with Neumann BCs");
+      prm.declare_entry("Neumann boundary id",
+                        "",
+                        Patterns::List(dealii::Patterns::Integer(0)),
+                        "Ids of the boundaries with Neumann BCs");
+      prm.declare_entry("Neumann boundary type",
+                        "Traction",
+                        Patterns::Selection("Traction|Pressure"),
+                        "Type of Neumann BC");
+      prm.declare_entry("Neumann boundary values",
+                        "",
+                        Patterns::List(dealii::Patterns::Double()),
+                        "Neumann boundary values");
+    }
+    prm.leave_subsection();
+  }
+
+  void SolidNeumann::parseParameters(ParameterHandler &prm)
+  {
+    prm.enter_subsection("Solid Neumann BCs");
+    {
+      n_solid_neumann_bcs = prm.get_integer("Number of Neumann BCs");
+      std::string raw_input = prm.get("Neumann boundary id");
+      std::vector<std::string> parsed_input =
+        Utilities::split_string_list(raw_input);
+      std::vector<int> ids = Utilities::string_to_int(parsed_input);
+      AssertThrow(ids.size() == n_solid_neumann_bcs,
+                  ExcMessage("Inconsistent boundary ids!"));
+      solid_neumann_bc_type = prm.get("Neumann boundary type");
+      unsigned int tmp =
+        (solid_neumann_bc_type == "Traction" ? solid_neumann_bc_dim : 1);
+      raw_input = prm.get("Neumann boundary values");
+      parsed_input = Utilities::split_string_list(raw_input);
+      std::vector<double> values = Utilities::string_to_double(parsed_input);
+      AssertThrow(values.size() == tmp * n_solid_neumann_bcs,
+                  ExcMessage("Inconsistent boundary values!"));
+      for (unsigned int i = 0; i < n_solid_neumann_bcs; ++i)
+        {
+          std::vector<double> value;
+          for (unsigned int j = 0; j < tmp; ++j)
+            {
+              value.push_back(values[i * tmp + j]);
+            }
+          solid_neumann_bcs[ids[i]] = value;
+        }
+    }
+    prm.leave_subsection();
+  }
+
   AllParameters::AllParameters(const std::string &infile)
   {
-    dealii::ParameterHandler prm;
+    ParameterHandler prm;
     declareParameters(prm);
     prm.parse_input(infile);
     parseParameters(prm);
-    prm.print_parameters(std::cout, dealii::ParameterHandler::Text);
+    prm.print_parameters(std::cout, ParameterHandler::Text);
   }
 
-  void AllParameters::declareParameters(dealii::ParameterHandler &prm)
+  void AllParameters::declareParameters(ParameterHandler &prm)
   {
     Simulation::declareParameters(prm);
     FluidFESystem::declareParameters(prm);
@@ -237,9 +323,11 @@ namespace Parameters
     SolidFESystem::declareParameters(prm);
     SolidMaterial::declareParameters(prm);
     SolidSolver::declareParameters(prm);
+    SolidDirichlet::declareParameters(prm);
+    SolidNeumann::declareParameters(prm);
   }
 
-  void AllParameters::parseParameters(dealii::ParameterHandler &prm)
+  void AllParameters::parseParameters(ParameterHandler &prm)
   {
     Simulation::parseParameters(prm);
     FluidFESystem::parseParameters(prm);
@@ -248,5 +336,9 @@ namespace Parameters
     SolidFESystem::parseParameters(prm);
     SolidMaterial::parseParameters(prm);
     SolidSolver::parseParameters(prm);
+    SolidDirichlet::parseParameters(prm);
+    // Set the dummy member in Solid Neumann BCs subsection
+    solid_neumann_bc_dim = dimension;
+    SolidNeumann::parseParameters(prm);
   }
 }
