@@ -25,13 +25,6 @@ namespace Fluid
       values(c) = BoundaryValues<dim>::value(p, c);
   }
 
-  template <int dim>
-  double PressureBoundaryValues<dim>::value(const Point<dim> &p,
-                         const unsigned int component) const
-  {
-      return pressure;
-  }
-
   template <class MatrixType, class PreconditionerType>
   InverseMatrix<MatrixType, PreconditionerType>::InverseMatrix(
     const MatrixType &m, const PreconditionerType &preconditioner)
@@ -247,7 +240,7 @@ namespace Fluid
             dof_handler,
             id,
             Functions::ConstantFunction<dim>(augmented_value),
-            //BoundaryValues<dim>(),
+            // BoundaryValues<dim>(),
             nonzero_constraints,
             ComponentMask(mask));
           VectorTools::interpolate_boundary_values(
@@ -304,7 +297,8 @@ namespace Fluid
     FEFaceValues<dim> fe_face_values(fe,
                                      face_quad_formula,
                                      update_values | update_normal_vectors |
-                                     update_quadrature_points | update_JxW_values);
+                                       update_quadrature_points |
+                                       update_JxW_values);
 
     const unsigned int dofs_per_cell = fe.dofs_per_cell;
     const unsigned int n_q_points = volume_quad_formula.size();
@@ -316,18 +310,6 @@ namespace Fluid
     FullMatrix<double> local_matrix(dofs_per_cell, dofs_per_cell);
     FullMatrix<double> local_mass_matrix(dofs_per_cell, dofs_per_cell);
     Vector<double> local_rhs(dofs_per_cell);
-
-    //local vector to store pressure boundary values
-    std::vector<double> boundary_values_p(n_face_q_points);
-    //a map to store boundary id and corresponding pressure interpolation function
-    std::map<unsigned int, PressureBoundaryValues<dim> > pressure_boundary_values;
-    for (auto itr = parameters.fluid_neumann_bcs.begin();
-         itr != parameters.fluid_neumann_bcs.end();
-         itr++)
-    {
-      pressure_boundary_values.insert(std::make_pair(itr->first,
-                                      PressureBoundaryValues<dim>(itr->second)));
-    }
 
     std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
@@ -433,32 +415,33 @@ namespace Fluid
               }
           }
 
-        //Impose pressure boundary here, loop over faces on the cell
-        //and apply pressure boundary conditions
+        // Impose pressure boundary here, loop over faces on the cell
+        // and apply pressure boundary conditions
         for (unsigned int face_n = 0;
              face_n < GeometryInfo<dim>::faces_per_cell;
              ++face_n)
-        {
-          if (cell->at_boundary(face_n) &&
-              parameters.fluid_neumann_bcs.find(cell->face(face_n)->boundary_id()) !=
-              parameters.fluid_neumann_bcs.end())
           {
-            fe_face_values.reinit(cell,face_n);
-            unsigned int p_bc_id = cell->face(face_n)->boundary_id();
-            pressure_boundary_values[p_bc_id].value_list (fe_face_values.get_quadrature_points(),
-                                                 boundary_values_p);
-            for (unsigned int q = 0; q < n_face_q_points; ++q)
-            {
-              for (unsigned int i = 0; i < dofs_per_cell; ++i)
+            if (cell->at_boundary(face_n) &&
+                parameters.fluid_neumann_bcs.find(
+                  cell->face(face_n)->boundary_id()) !=
+                  parameters.fluid_neumann_bcs.end())
               {
-                local_rhs(i) += -(fe_face_values[velocities].value (i,q) *
-                               fe_face_values.normal_vector(q) *
-                               boundary_values_p[q] *
-                               fe_face_values.JxW(q));
+                fe_face_values.reinit(cell, face_n);
+                unsigned int p_bc_id = cell->face(face_n)->boundary_id();
+                double boundary_values_p =
+                  parameters.fluid_neumann_bcs[p_bc_id];
+                for (unsigned int q = 0; q < n_face_q_points; ++q)
+                  {
+                    for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                      {
+                        local_rhs(i) +=
+                          -(fe_face_values[velocities].value(i, q) *
+                            fe_face_values.normal_vector(q) *
+                            boundary_values_p * fe_face_values.JxW(q));
+                      }
+                  }
               }
-            }
           }
-        }
 
         cell->get_dof_indices(local_dof_indices);
 

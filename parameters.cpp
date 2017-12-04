@@ -182,7 +182,8 @@ namespace Parameters
     prm.leave_subsection();
   }
 
-  void FluidNeumann::declareParameters(ParameterHandler &prm){
+  void FluidNeumann::declareParameters(ParameterHandler &prm)
+  {
     prm.enter_subsection("Fluid Neumann BCs");
     {
       prm.declare_entry("Number of Neumann BCs",
@@ -217,6 +218,8 @@ namespace Parameters
       std::vector<double> values = Utilities::string_to_double(parsed_input);
       // The size of values should be exact the same as the number of
       // the given boundary values.
+      AssertThrow(values.size() == n_fluid_neumann_bcs,
+                  ExcMessage("Inconsistent boundary values!"));
       for (unsigned int i = 0; i < n_fluid_neumann_bcs; ++i)
         {
           fluid_neumann_bcs[ids[i]] = values[i];
