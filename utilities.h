@@ -75,6 +75,7 @@ namespace Utils
      */
     static void flow_around_cylinder(Triangulation<2> &);
     static void flow_around_cylinder(Triangulation<3> &);
+    static void pipe_flow(Triangulation<2> &);
 
   private:
     /** \brief A helper function used by flow_around_cylinder.

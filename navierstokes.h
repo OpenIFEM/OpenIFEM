@@ -78,6 +78,23 @@ namespace Fluid
                               Vector<double> &values) const;
   };
 
+  /** \brief Helper functiont to specify Pressure boundary conditions.
+  */
+  template <int dim>
+  class PressureBoundaryValues : public Function<dim>
+  {
+  public:
+    PressureBoundaryValues (double p) : 
+                        Function<dim>(1),
+                        pressure(p)  {}
+    PressureBoundaryValues () : Function<dim>(1), pressure(0) {}
+
+    virtual double value(const Point<dim> &p,
+                         const unsigned int component) const;
+  private:
+    double pressure;
+  };
+
   /** \brief Inverse of a symmetric matrix.
    *
    * The inverse of symmetric matrices are required for both

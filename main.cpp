@@ -34,8 +34,9 @@ int main()
           // Solid::HyperelasticSolver<2> solid(triangulation, params);
           solid.run();
           */
-
-          Utils::GridCreator::flow_around_cylinder(triangulation);
+          
+          //Utils::GridCreator::flow_around_cylinder(triangulation);
+          Utils::GridCreator::pipe_flow(triangulation);
           Fluid::NavierStokes<2> flow(triangulation, params);
           flow.run();
         }

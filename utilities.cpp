@@ -160,4 +160,16 @@ namespace Utils
           }
       }
   }
+
+  // A simple pipe triangulation to test pressure inlet BC:
+  void GridCreator::pipe_flow(Triangulation<2> &tria)
+  {
+    //by switch the colorized to be true, left boundary is 0, right boundary is 1
+    //lower boundary is 2 and upper is 3.
+    GridGenerator::subdivided_hyper_rectangle(tria,
+      std::vector<unsigned int>({16U, 4U}),
+      Point<2>(),
+      Point<2>(8.0, 2.0),
+      true);
+  }
 }
