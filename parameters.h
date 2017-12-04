@@ -18,6 +18,7 @@ namespace Parameters
     double end_time;
     double time_step;
     double output_interval;
+    double refinement_interval;
     static void declareParameters(ParameterHandler &);
     void parseParameters(ParameterHandler &);
   };

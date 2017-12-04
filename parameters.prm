@@ -18,6 +18,9 @@ subsection Simulation
 
   # The output interval in second
   set Output interval = 1e-2
+
+  # Mesh refinement interval in second
+  set Refinement interval = 10
 end
 
 # --------------------------------------------------------------------------------

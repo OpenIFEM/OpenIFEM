@@ -133,8 +133,10 @@ namespace Fluid
       face_quad_formula(degree + 2),
       tolerance(parameters.fluid_tolerance),
       max_iteration(parameters.fluid_max_iterations),
-      time(
-        parameters.end_time, parameters.time_step, parameters.output_interval),
+      time(parameters.end_time,
+           parameters.time_step,
+           parameters.output_interval,
+           parameters.refinement_interval),
       timer(std::cout, TimerOutput::summary, TimerOutput::wall_times),
       parameters(parameters)
   {

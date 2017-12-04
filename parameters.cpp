@@ -10,11 +10,15 @@ namespace Parameters
     {
       prm.declare_entry(
         "Dimension", "2", Patterns::Integer(2), "Dimension of the problem");
-      prm.declare_entry("End time", "1", Patterns::Double(0.0), "End time");
+      prm.declare_entry("End time", "1.0", Patterns::Double(0.0), "End time");
       prm.declare_entry(
-        "Time step size", "0.1", Patterns::Double(0.0), "Time step size");
+        "Time step size", "1.0", Patterns::Double(0.0), "Time step size");
       prm.declare_entry(
-        "Output interval", "0.1", Patterns::Double(0.0), "Output interval");
+        "Output interval", "1.0", Patterns::Double(0.0), "Output interval");
+      prm.declare_entry("Refinement interval",
+                        "1.0",
+                        Patterns::Double(0.0),
+                        "Refinement interval");
     }
     prm.leave_subsection();
   }
@@ -27,6 +31,7 @@ namespace Parameters
       end_time = prm.get_double("End time");
       time_step = prm.get_double("Time step size");
       output_interval = prm.get_double("Output interval");
+      refinement_interval = prm.get_double("Refinement interval");
     }
     prm.leave_subsection();
   }

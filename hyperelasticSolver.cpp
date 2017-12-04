@@ -52,8 +52,10 @@ namespace Solid
     Triangulation<dim> &tria, const Parameters::AllParameters &params)
     : parameters(params),
       vol(0.),
-      time(
-        parameters.end_time, parameters.time_step, parameters.output_interval),
+      time(parameters.end_time,
+           parameters.time_step,
+           parameters.output_interval,
+           parameters.refinement_interval),
       timer(std::cout, TimerOutput::summary, TimerOutput::wall_times),
       degree(parameters.solid_degree),
       fe(FE_Q<dim>(degree), dim),
