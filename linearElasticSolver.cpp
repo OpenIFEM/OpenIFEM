@@ -17,8 +17,10 @@ namespace Solid
       dof_handler(triangulation),
       volume_quad_formula(degree + 1),
       face_quad_formula(degree + 1),
-      time(
-        parameters.end_time, parameters.time_step, parameters.output_interval),
+      time(parameters.end_time,
+           parameters.time_step,
+           parameters.output_interval,
+           parameters.refinement_interval),
       timer(std::cout, TimerOutput::summary, TimerOutput::wall_times),
       parameters(parameters)
   {
@@ -299,9 +301,64 @@ namespace Solid
   }
 
   template <int dim>
+  void LinearElasticSolver<dim>::refine_mesh(const unsigned int min_grid_level,
+                                             const unsigned int max_grid_level)
+  {
+    Vector<float> estimated_error_per_cell(triangulation.n_active_cells());
+    KellyErrorEstimator<dim>::estimate(dof_handler,
+                                       face_quad_formula,
+                                       typename FunctionMap<dim>::type(),
+                                       current_displacement,
+                                       estimated_error_per_cell);
+    GridRefinement::refine_and_coarsen_fixed_fraction(
+      triangulation, estimated_error_per_cell, 0.6, 0.4);
+    if (triangulation.n_levels() > max_grid_level)
+      {
+        for (auto cell = triangulation.begin_active(max_grid_level);
+             cell != triangulation.end();
+             ++cell)
+          {
+            cell->clear_refine_flag();
+          }
+      }
+
+    for (auto cell = triangulation.begin_active(min_grid_level);
+         cell != triangulation.end_active(min_grid_level);
+         ++cell)
+      {
+        cell->clear_coarsen_flag();
+      }
+
+    std::vector<SolutionTransfer<dim>> solution_trans(
+      3, SolutionTransfer<dim>(dof_handler));
+    std::vector<Vector<double>> buffer{
+      previous_displacement, previous_velocity, previous_acceleration};
+
+    triangulation.prepare_coarsening_and_refinement();
+
+    for (unsigned int i = 0; i < 3; ++i)
+      {
+        solution_trans[i].prepare_for_coarsening_and_refinement(buffer[i]);
+      }
+
+    triangulation.execute_coarsening_and_refinement();
+
+    setup_dofs();
+    initialize_system();
+
+    solution_trans[0].interpolate(buffer[0], previous_displacement);
+    solution_trans[1].interpolate(buffer[1], previous_velocity);
+    solution_trans[2].interpolate(buffer[2], previous_acceleration);
+
+    constraints.distribute(previous_displacement);
+    constraints.distribute(previous_velocity);
+    constraints.distribute(previous_acceleration);
+  }
+
+  template <int dim>
   void LinearElasticSolver<dim>::run()
   {
-    triangulation.refine_global(2);
+    triangulation.refine_global(1);
     setup_dofs();
     initialize_system();
 
@@ -312,7 +369,9 @@ namespace Solid
     // at this point set system_matrix to mass_matrix.
     assemble_system(true);
     solve(system_matrix, previous_acceleration, system_rhs);
-    Vector<double> tmp1(system_rhs); // Cache system_rhs
+
+    // Update the system_matrix
+    assemble_system(false);
 
     const double dt = time.get_delta_t();
 
@@ -326,21 +385,16 @@ namespace Solid
                   << ", at t = " << std::scientific << time.current()
                   << std::endl;
 
-        if (time.get_timestep() == 1)
-          {
-            assemble_system(false);
-          }
-
         // Modify the RHS
-        system_rhs = tmp1;
+        Vector<double> tmp1(system_rhs);
         auto tmp2 = previous_displacement;
         tmp2.add(
           dt, previous_velocity, (0.5 - beta) * dt * dt, previous_acceleration);
         Vector<double> tmp3(dof_handler.n_dofs());
         stiffness_matrix.vmult(tmp3, tmp2);
-        system_rhs -= tmp3;
+        tmp1 -= tmp3;
 
-        auto state = solve(system_matrix, current_acceleration, system_rhs);
+        auto state = solve(system_matrix, current_acceleration, tmp1);
 
         // update the current velocity
         // \f$ v_{n+1} = v_n + (1-\gamma)\Delta{t}a_n + \gamma\Delta{t}a_{n+1}
@@ -367,6 +421,12 @@ namespace Solid
         if (time.time_to_output())
           {
             output_results(time.get_timestep());
+          }
+
+        if (time.time_to_refine())
+          {
+            refine_mesh(1, 4);
+            assemble_system(false);
           }
       }
   }
