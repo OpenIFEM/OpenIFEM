@@ -32,7 +32,14 @@ int main()
           Solid::HyperelasticSolver<2> solid(triangulation, params);
           solid.run();
           */
-          Utils::GridCreator::flow_around_cylinder(triangulation);
+
+          // Utils::GridCreator::flow_around_cylinder(triangulation);
+          GridGenerator::subdivided_hyper_rectangle(
+            triangulation,
+            std::vector<unsigned int>({16U, 4U}),
+            Point<2>(),
+            Point<2>(8.0, 2.0),
+            true);
           Fluid::NavierStokes<2> flow(triangulation, params);
           flow.run();
         }

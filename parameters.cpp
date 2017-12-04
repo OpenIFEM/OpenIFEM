@@ -187,6 +187,52 @@ namespace Parameters
     prm.leave_subsection();
   }
 
+  void FluidNeumann::declareParameters(ParameterHandler &prm)
+  {
+    prm.enter_subsection("Fluid Neumann BCs");
+    {
+      prm.declare_entry("Number of Neumann BCs",
+                        "1",
+                        Patterns::Integer(),
+                        "Number of boundaries with Neumann BCs");
+      prm.declare_entry("Neumann boundary id",
+                        "",
+                        Patterns::List(dealii::Patterns::Integer()),
+                        "Ids of the boundaries with Neumann BCs");
+      prm.declare_entry("Neumann boundary values",
+                        "",
+                        Patterns::List(dealii::Patterns::Double()),
+                        "Boundary values to specify");
+    }
+    prm.leave_subsection();
+  }
+
+  void FluidNeumann::parseParameters(ParameterHandler &prm)
+  {
+    prm.enter_subsection("Fluid Neumann BCs");
+    {
+      n_fluid_neumann_bcs = prm.get_integer("Number of Neumann BCs");
+      std::string raw_input = prm.get("Neumann boundary id");
+      std::vector<std::string> parsed_input =
+        Utilities::split_string_list(raw_input);
+      std::vector<int> ids = Utilities::string_to_int(parsed_input);
+      AssertThrow(ids.size() == n_fluid_neumann_bcs,
+                  ExcMessage("Inconsistent boundary ids!"));
+      raw_input = prm.get("Neumann boundary values");
+      parsed_input = Utilities::split_string_list(raw_input);
+      std::vector<double> values = Utilities::string_to_double(parsed_input);
+      // The size of values should be exact the same as the number of
+      // the given boundary values.
+      AssertThrow(values.size() == n_fluid_neumann_bcs,
+                  ExcMessage("Inconsistent boundary values!"));
+      for (unsigned int i = 0; i < n_fluid_neumann_bcs; ++i)
+        {
+          fluid_neumann_bcs[ids[i]] = values[i];
+        }
+    }
+    prm.leave_subsection();
+  }
+
   void SolidFESystem::declareParameters(ParameterHandler &prm)
   {
     prm.enter_subsection("Solid finite element system");
@@ -405,6 +451,7 @@ namespace Parameters
     FluidMaterial::declareParameters(prm);
     FluidSolver::declareParameters(prm);
     FluidDirichlet::declareParameters(prm);
+    FluidNeumann::declareParameters(prm);
     SolidFESystem::declareParameters(prm);
     SolidMaterial::declareParameters(prm);
     SolidSolver::declareParameters(prm);
@@ -419,6 +466,7 @@ namespace Parameters
     FluidMaterial::parseParameters(prm);
     FluidSolver::parseParameters(prm);
     FluidDirichlet::parseParameters(prm);
+    FluidNeumann::parseParameters(prm);
     SolidFESystem::parseParameters(prm);
     SolidMaterial::parseParameters(prm);
     SolidSolver::parseParameters(prm);

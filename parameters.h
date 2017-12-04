@@ -61,6 +61,20 @@ namespace Parameters
     void parseParameters(ParameterHandler &);
   };
 
+  struct FluidNeumann
+  {
+    /** Number of inhomogeneous fluid Neumann BCs. */
+    unsigned int n_fluid_neumann_bcs;
+    /**
+     * Same as Fluid Dirichelet BCs, Neumann BCs are also stored as a map, but
+     * no component is needed to specify, since we only have a scalar pressure
+     * inlet.
+     */
+    std::map<unsigned int, double> fluid_neumann_bcs;
+    static void declareParameters(ParameterHandler &);
+    void parseParameters(ParameterHandler &);
+  };
+
   struct SolidFESystem
   {
     unsigned int solid_degree;
@@ -133,6 +147,7 @@ namespace Parameters
                          public FluidMaterial,
                          public FluidSolver,
                          public FluidDirichlet,
+                         public FluidNeumann,
                          public SolidFESystem,
                          public SolidMaterial,
                          public SolidSolver,
