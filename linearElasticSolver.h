@@ -111,6 +111,11 @@ namespace Solid
      */
     void output_results(const unsigned int) const;
 
+    /**
+     * Refine mesh and transfer solution.
+     */
+    void refine_mesh(const unsigned int, const unsigned int);
+
     LinearElasticMaterial<dim> material;
 
     const double gamma; //!< Newton-beta parameter

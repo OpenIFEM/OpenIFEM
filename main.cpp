@@ -1,5 +1,3 @@
-#include <iostream>
-
 #include "hyperelasticSolver.h"
 #include "linearElasticSolver.h"
 #include "navierstokes.h"
@@ -30,8 +28,8 @@ int main()
             Point<2>(0, 0),
             Point<2>(8, 1),
             true);
-          Solid::LinearElasticSolver<2> solid(triangulation, params);
-          // Solid::HyperelasticSolver<2> solid(triangulation, params);
+          // Solid::LinearElasticSolver<2> solid(triangulation, params);
+          Solid::HyperelasticSolver<2> solid(triangulation, params);
           solid.run();
           */
 
@@ -48,6 +46,7 @@ int main()
       else if (params.dimension == 3)
         {
           Triangulation<3> triangulation;
+          /*
           GridGenerator::subdivided_hyper_rectangle(
             triangulation,
             std::vector<unsigned int>{16, 2, 2},
@@ -57,12 +56,10 @@ int main()
           Solid::LinearElasticSolver<3> solid(triangulation, params);
           // Solid::HyperelasticSolver<3> solid(triangulation, params);
           solid.run();
-
-          /*
+          */
           Utils::GridCreator::flow_around_cylinder(triangulation);
           Fluid::NavierStokes<3> flow(triangulation, params);
           flow.run();
-          */
         }
       else
         {

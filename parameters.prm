@@ -17,7 +17,10 @@ subsection Simulation
   set Time step size = 1e-2
 
   # The output interval in second
-  set Output interval = 5e-2
+  set Output interval = 1e-2
+
+  # Mesh refinement interval in second
+  set Refinement interval = 10
 end
 
 # --------------------------------------------------------------------------------
