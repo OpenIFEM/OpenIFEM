@@ -418,7 +418,8 @@ namespace Fluid
           }
 
         // Impose pressure boundary here, loop over faces on the cell
-        // and apply pressure boundary conditions
+        // and apply pressure boundary conditions: 
+        // \f$\int_{\Gamma_n} -p\bold{n}d\Gamma\f$
         for (unsigned int face_n = 0;
              face_n < GeometryInfo<dim>::faces_per_cell;
              ++face_n)
