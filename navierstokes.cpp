@@ -583,7 +583,7 @@ namespace Fluid
   template <int dim>
   void NavierStokes<dim>::run()
   {
-    triangulation.refine_global(2);
+    triangulation.refine_global(parameters.global_refinement);
     setup_dofs();
     initialize_system();
 

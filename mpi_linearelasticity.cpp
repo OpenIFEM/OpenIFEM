@@ -445,7 +445,7 @@ namespace Solid
           << Utilities::MPI::n_mpi_processes(mpi_communicator)
           << " MPI rank(s)..." << std::endl;
 
-    triangulation.refine_global(4);
+    triangulation.refine_global(parameters.global_refinement);
     setup_dofs();
     initialize_system();
 

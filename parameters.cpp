@@ -10,6 +10,8 @@ namespace Parameters
     {
       prm.declare_entry(
         "Dimension", "2", Patterns::Integer(2), "Dimension of the problem");
+      prm.declare_entry(
+        "Global refinement", "0", Patterns::Integer(0), "Level of global refinement");
       prm.declare_entry("End time", "1.0", Patterns::Double(0.0), "End time");
       prm.declare_entry(
         "Time step size", "1.0", Patterns::Double(0.0), "Time step size");
@@ -28,6 +30,7 @@ namespace Parameters
     prm.enter_subsection("Simulation");
     {
       dimension = prm.get_integer("Dimension");
+      global_refinement = prm.get_integer("Global refinement");
       end_time = prm.get_double("End time");
       time_step = prm.get_double("Time step size");
       output_interval = prm.get_double("Output interval");

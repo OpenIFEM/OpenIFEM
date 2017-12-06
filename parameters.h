@@ -15,6 +15,7 @@ namespace Parameters
   struct Simulation
   {
     int dimension;
+    unsigned int global_refinement;
     double end_time;
     double time_step;
     double output_interval;
