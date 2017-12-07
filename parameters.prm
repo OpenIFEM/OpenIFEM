@@ -66,13 +66,13 @@ end
 
 subsection Fluid Neumann BCs
   # Number of boundaries with Neumann BCs (specificaly, pressure BC)
-  # (Note: 0 pressure outlet is not needed to explicitly write out!)
+  # Note: do-nothing (zero pressure) boundary do not need to be explicitly specified!)
   set Number of Neumann BCs = 1
 
   # List all the boundaries with Neumann BCs
   set Neumann boundary id = 0
 
-  #Specify the values of the pressure of the Neumann BCs. (inhomogeneous only)
+  #Specify the values of the pressure of the Neumann BCs
   set Neumann boundary values = 10
 end
 

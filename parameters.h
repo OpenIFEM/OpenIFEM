@@ -67,7 +67,7 @@ namespace Parameters
     unsigned int n_fluid_neumann_bcs;
     /**
      * Same as Fluid Dirichelet BCs, Neumann BCs are also stored as a map, but
-     * no component is needed to specify, since we only have a scalar pressure
+     * no component needs to be specified, since we only have a scalar pressure
      * inlet.
      */
     std::map<unsigned int, double> fluid_neumann_bcs;

@@ -221,7 +221,7 @@ namespace Parameters
       raw_input = prm.get("Neumann boundary values");
       parsed_input = Utilities::split_string_list(raw_input);
       std::vector<double> values = Utilities::string_to_double(parsed_input);
-      // The size of values should be exact the same as the number of
+      // The size of values should be exactly the same as the number of
       // the given boundary values.
       AssertThrow(values.size() == n_fluid_neumann_bcs,
                   ExcMessage("Inconsistent boundary values!"));
