@@ -25,7 +25,7 @@ namespace Utils
   // with very few modifications.
   // Helper function used in both 2d and 3d:
   void GridCreator::flow_around_cylinder_2d(Triangulation<2> &tria,
-                                                   bool compute_in_2d)
+                                            bool compute_in_2d)
   {
     SphericalManifold<2> boundary(Point<2>(0.5, 0.2));
     Triangulation<2> left, middle, right, tmp, tmp2;

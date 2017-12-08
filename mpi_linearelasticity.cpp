@@ -6,7 +6,8 @@ namespace Solid
 
   template <int dim>
   ParallelLinearElasticity<dim>::ParallelLinearElasticity(
-    parallel::distributed::Triangulation<dim> &tria, const Parameters::AllParameters &parameters)
+    parallel::distributed::Triangulation<dim> &tria,
+    const Parameters::AllParameters &parameters)
     : material(parameters.E, parameters.nu, parameters.rho),
       gamma(0.5 + parameters.damping),
       beta(gamma / 2),
@@ -24,9 +25,9 @@ namespace Solid
       parameters(parameters),
       mpi_communicator(MPI_COMM_WORLD),
       pcout(std::cout,
-        (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)),
-      timer(mpi_communicator, pcout,
-        TimerOutput::summary, TimerOutput::wall_times)
+            (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)),
+      timer(
+        mpi_communicator, pcout, TimerOutput::summary, TimerOutput::wall_times)
   {
   }
 
@@ -40,8 +41,7 @@ namespace Solid
 
     // Extract the locally owned and relevant dofs
     locally_owned_dofs = dof_handler.locally_owned_dofs();
-    DoFTools::extract_locally_relevant_dofs(dof_handler,
-                                            locally_relevant_dofs);
+    DoFTools::extract_locally_relevant_dofs(dof_handler, locally_relevant_dofs);
 
     // The Dirichlet boundary conditions are stored in the ConstraintMatrix
     // object. It does not need to modify the sparse matrix after assembly,
@@ -86,9 +86,9 @@ namespace Solid
     constraints.close();
 
     pcout << "  Number of active solid cells: "
-              << triangulation.n_global_active_cells() << std::endl
-              << "  Number of degrees of freedom: " << dof_handler.n_dofs()
-              << std::endl;
+          << triangulation.n_global_active_cells() << std::endl
+          << "  Number of degrees of freedom: " << dof_handler.n_dofs()
+          << std::endl;
   }
 
   template <int dim>
@@ -96,42 +96,33 @@ namespace Solid
   {
     DynamicSparsityPattern dsp(locally_relevant_dofs);
 
-    DoFTools::make_sparsity_pattern(dof_handler, dsp,
-                                    constraints, false);
+    DoFTools::make_sparsity_pattern(dof_handler, dsp, constraints, false);
 
-    SparsityTools::distribute_sparsity_pattern(dsp,
+    SparsityTools::distribute_sparsity_pattern(
+      dsp,
       dof_handler.n_locally_owned_dofs_per_processor(),
-      mpi_communicator, locally_relevant_dofs);
+      mpi_communicator,
+      locally_relevant_dofs);
 
-    system_matrix.reinit(locally_owned_dofs, locally_owned_dofs,
-      dsp, mpi_communicator);
+    system_matrix.reinit(
+      locally_owned_dofs, locally_owned_dofs, dsp, mpi_communicator);
 
-    stiffness_matrix.reinit(locally_owned_dofs, locally_owned_dofs,
-      dsp, mpi_communicator);
+    stiffness_matrix.reinit(
+      locally_owned_dofs, locally_owned_dofs, dsp, mpi_communicator);
 
     system_rhs.reinit(locally_owned_dofs, mpi_communicator);
 
-    current_acceleration.reinit(locally_owned_dofs,
-      mpi_communicator);
+    current_acceleration.reinit(locally_owned_dofs, mpi_communicator);
 
-    current_velocity.reinit(locally_owned_dofs,
-      mpi_communicator);
+    current_velocity.reinit(locally_owned_dofs, mpi_communicator);
 
-    current_displacement.reinit(locally_owned_dofs,
-      mpi_communicator);
+    current_displacement.reinit(locally_owned_dofs, mpi_communicator);
 
-    previous_acceleration.reinit(locally_owned_dofs,
-      mpi_communicator);
+    previous_acceleration.reinit(locally_owned_dofs, mpi_communicator);
 
-    previous_velocity.reinit(locally_owned_dofs,
-      mpi_communicator);
+    previous_velocity.reinit(locally_owned_dofs, mpi_communicator);
 
-    previous_displacement.reinit(locally_owned_dofs,
-      mpi_communicator);
-
-    tmp1.reinit(locally_owned_dofs, mpi_communicator);
-    tmp2.reinit(locally_owned_dofs, mpi_communicator);
-    tmp3.reinit(locally_owned_dofs, mpi_communicator);
+    previous_displacement.reinit(locally_owned_dofs, mpi_communicator);
   }
 
   template <int dim>
@@ -214,8 +205,8 @@ namespace Solid
                           {
                             local_matrix[i][j] +=
                               (rho * phi[i] * phi[j] +
-                              symmetric_grad_phi[i] * elasticity *
-                                symmetric_grad_phi[j] * beta * dt * dt) *
+                               symmetric_grad_phi[i] * elasticity *
+                                 symmetric_grad_phi[j] * beta * dt * dt) *
                               fe_values.JxW(q);
                             local_stiffness[i][j] +=
                               symmetric_grad_phi[i] * elasticity *
@@ -231,8 +222,9 @@ namespace Solid
             cell->get_dof_indices(local_dof_indices);
 
             // Traction or Pressure
-            for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
-                ++face)
+            for (unsigned int face = 0;
+                 face < GeometryInfo<dim>::faces_per_cell;
+                 ++face)
               {
                 if (cell->face(face)->at_boundary())
                   {
@@ -265,9 +257,9 @@ namespace Solid
                                 const unsigned int component_j =
                                   fe.system_to_component_index(j).first;
                                 // +external force
-                                local_rhs(j) += fe_face_values.shape_value(j, q) *
-                                                traction[component_j] *
-                                                fe_face_values.JxW(q);
+                                local_rhs(j) +=
+                                  fe_face_values.shape_value(j, q) *
+                                  traction[component_j] * fe_face_values.JxW(q);
                               }
                           }
                       }
@@ -287,14 +279,16 @@ namespace Solid
       }
     // Synchronize with other processors.
     system_matrix.compress(VectorOperation::add);
-    system_rhs.compress (VectorOperation::add);
+    system_rhs.compress(VectorOperation::add);
     stiffness_matrix.compress(VectorOperation::add);
   }
 
   // Solve linear system \f$Ax = b\f$ using CG solver.
   template <int dim>
   std::pair<unsigned int, double> ParallelLinearElasticity<dim>::solve(
-    const PETScWrappers::MPI::SparseMatrix &A, PETScWrappers::MPI::Vector &x, const PETScWrappers::MPI::Vector &b)
+    const PETScWrappers::MPI::SparseMatrix &A,
+    PETScWrappers::MPI::Vector &x,
+    const PETScWrappers::MPI::Vector &b)
   {
     TimerOutput::Scope timer_section(timer, "Solve linear system");
 
@@ -315,19 +309,19 @@ namespace Solid
     const unsigned int output_index) const
   {
     TimerOutput::Scope timer_section(timer, "Output results");
-
     pcout << "Writing solid results..." << std::endl;
-    std::vector<std::string> solution_names(dim, "displacements");
 
+    std::vector<std::string> solution_names(dim, "displacements");
     std::vector<DataComponentInterpretation::DataComponentInterpretation>
       data_component_interpretation(
         dim, DataComponentInterpretation::component_is_part_of_vector);
     DataOut<dim> data_out;
     data_out.attach_dof_handler(dof_handler);
 
-    PETScWrappers::MPI::Vector solution;
-    solution.reinit(locally_owned_dofs,
-      locally_relevant_dofs, mpi_communicator);
+    // DataOut needs more than locally owned dofs, so we have to construct a
+    // ghosted vector to store the solution.
+    PETScWrappers::MPI::Vector solution(
+      locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
     solution = current_displacement;
 
     data_out.add_data_vector(solution,
@@ -340,28 +334,32 @@ namespace Solid
       {
         subdomain(i) = triangulation.locally_owned_subdomain();
       }
-    data_out.add_data_vector (subdomain, "subdomain");
+    data_out.add_data_vector(subdomain, "subdomain");
 
     data_out.build_patches();
 
-    std::string basename = "linearelasticity-" +
-      Utilities::int_to_string(output_index, 6) + "-";
+    std::string basename =
+      "linearelasticity-" + Utilities::int_to_string(output_index, 6) + "-";
 
-    std::string filename = basename +
-      Utilities::int_to_string(triangulation.locally_owned_subdomain(), 4) 
-      + ".vtu";
+    std::string filename =
+      basename +
+      Utilities::int_to_string(triangulation.locally_owned_subdomain(), 4) +
+      ".vtu";
 
     std::ofstream output(filename);
     data_out.write_vtu(output);
 
+    // Processor 0 writes the pvd file that tells ParaView filenames and time.
     static std::vector<std::pair<double, std::string>> times_and_names;
     if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
       {
         for (unsigned int i = 0;
-          i < Utilities::MPI::n_mpi_processes(mpi_communicator); ++i)
+             i < Utilities::MPI::n_mpi_processes(mpi_communicator);
+             ++i)
           {
-            times_and_names.push_back({time.current(), basename +
-              Utilities::int_to_string(i, 4) + ".vtu"});
+            times_and_names.push_back(
+              {time.current(),
+               basename + Utilities::int_to_string(i, 4) + ".vtu"});
           }
         std::ofstream pvd_output("linearelasticity.pvd");
         DataOutBase::write_pvd_record(pvd_output, times_and_names);
@@ -369,16 +367,19 @@ namespace Solid
   }
 
   template <int dim>
-  void ParallelLinearElasticity<dim>::refine_mesh(const unsigned int min_grid_level,
+  void
+  ParallelLinearElasticity<dim>::refine_mesh(const unsigned int min_grid_level,
                                              const unsigned int max_grid_level)
   {
     TimerOutput::Scope timer_section(timer, "Refine mesh");
+    pcout << "Refining mesh..." << std::endl;
 
     Vector<float> estimated_error_per_cell(triangulation.n_active_cells());
 
-    // In order to estimate error, the parallel vector must be ghosted.
+    // In order to estimate error, the distributed vector must be ghosted.
     PETScWrappers::MPI::Vector solution;
-    solution.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
+    solution.reinit(
+      locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
     solution = current_displacement;
     KellyErrorEstimator<dim>::estimate(dof_handler,
                                        face_quad_formula,
@@ -386,31 +387,36 @@ namespace Solid
                                        solution,
                                        estimated_error_per_cell);
 
+    // Set the refine and coarsen flag
     parallel::distributed::GridRefinement::refine_and_coarsen_fixed_fraction(
       triangulation, estimated_error_per_cell, 0.6, 0.4);
-
     if (triangulation.n_levels() > max_grid_level)
       {
         for (auto cell = triangulation.begin_active(max_grid_level);
-          cell != triangulation.end(); ++cell)
+             cell != triangulation.end();
+             ++cell)
           {
             cell->clear_refine_flag();
           }
       }
-
     for (auto cell = triangulation.begin_active(min_grid_level);
-      cell != triangulation.end_active(min_grid_level); ++cell)
+         cell != triangulation.end_active(min_grid_level);
+         ++cell)
       {
         cell->clear_coarsen_flag();
       }
 
-    std::vector<parallel::distributed::SolutionTransfer<dim, PETScWrappers::MPI::Vector>>
-      trans(3, parallel::distributed::SolutionTransfer<dim,
-        PETScWrappers::MPI::Vector>(dof_handler));
-
-    std::vector<PETScWrappers::MPI::Vector> buffers(3,
-      PETScWrappers::MPI::Vector(locally_owned_dofs, locally_relevant_dofs,
-        mpi_communicator));
+    // Prepare to transfer previous solutions
+    std::vector<
+      parallel::distributed::SolutionTransfer<dim, PETScWrappers::MPI::Vector>>
+      trans(3,
+            parallel::distributed::SolutionTransfer<dim,
+                                                    PETScWrappers::MPI::Vector>(
+              dof_handler));
+    std::vector<PETScWrappers::MPI::Vector> buffers(
+      3,
+      PETScWrappers::MPI::Vector(
+        locally_owned_dofs, locally_relevant_dofs, mpi_communicator));
     buffers[0] = previous_displacement;
     buffers[1] = previous_velocity;
     buffers[2] = previous_acceleration;
@@ -422,13 +428,14 @@ namespace Solid
         trans[i].prepare_for_coarsening_and_refinement(buffers[i]);
       }
 
-    pcout << "OK, execute_coarsening_and_refinement" << std::endl;
-
+    // Refine the mesh
     triangulation.execute_coarsening_and_refinement();
 
+    // Reinitialize the system
     setup_dofs();
     initialize_system();
 
+    // Transfer the previous solutions and handle the constraints
     trans[0].interpolate(previous_displacement);
     trans[1].interpolate(previous_velocity);
     trans[2].interpolate(previous_acceleration);
@@ -462,15 +469,19 @@ namespace Solid
 
     const double dt = time.get_delta_t();
 
+    // Temporary vectors used to solve the system
+    PETScWrappers::MPI::Vector tmp1(locally_owned_dofs, mpi_communicator);
+    PETScWrappers::MPI::Vector tmp2(locally_owned_dofs, mpi_communicator);
+    PETScWrappers::MPI::Vector tmp3(locally_owned_dofs, mpi_communicator);
+
     // Time loop
     output_results(time.get_timestep());
     while (time.end() - time.current() > 1e-12)
       {
         time.increment();
         pcout << std::string(91, '*') << std::endl
-                  << "Time step = " << time.get_timestep()
-                  << ", at t = " << std::scientific << time.current()
-                  << std::endl;
+              << "Time step = " << time.get_timestep()
+              << ", at t = " << std::scientific << time.current() << std::endl;
 
         // Modify the RHS
         tmp1 = system_rhs;
@@ -486,14 +497,18 @@ namespace Solid
         // \f$ v_{n+1} = v_n + (1-\gamma)\Delta{t}a_n + \gamma\Delta{t}a_{n+1}
         // \f$
         current_velocity = previous_velocity;
-        current_velocity.add(dt * (1 - gamma), previous_acceleration,
-          dt * gamma, current_acceleration);
+        current_velocity.add(dt * (1 - gamma),
+                             previous_acceleration,
+                             dt * gamma,
+                             current_acceleration);
 
         // update the current displacement
         current_displacement = previous_displacement;
         current_displacement.add(dt, previous_velocity);
-        current_displacement.add(dt * dt * (0.5 - beta), previous_acceleration,
-          dt * dt * beta, current_acceleration);
+        current_displacement.add(dt * dt * (0.5 - beta),
+                                 previous_acceleration,
+                                 dt * dt * beta,
+                                 current_acceleration);
 
         // update the previous values
         previous_acceleration = current_acceleration;
@@ -501,8 +516,8 @@ namespace Solid
         previous_displacement = current_displacement;
 
         pcout << std::scientific << std::left
-                  << " CG iteration: " << std::setw(3) << state.first
-                  << " CG residual: " << state.second << std::endl;
+              << " CG iteration: " << std::setw(3) << state.first
+              << " CG residual: " << state.second << std::endl;
 
         if (time.time_to_output())
           {
@@ -512,6 +527,9 @@ namespace Solid
         if (time.time_to_refine())
           {
             refine_mesh(1, 4);
+            tmp1.reinit(locally_owned_dofs, mpi_communicator);
+            tmp2.reinit(locally_owned_dofs, mpi_communicator);
+            tmp3.reinit(locally_owned_dofs, mpi_communicator);
             assemble_system(false);
           }
       }

@@ -1,13 +1,13 @@
 #ifndef MPI_LINEAR_ELASTICITY
 #define MPI_LINEAR_ELASTICITY
 
+#include <deal.II/base/conditional_ostream.h>
 #include <deal.II/base/function.h>
+#include <deal.II/base/index_set.h>
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/base/tensor.h>
 #include <deal.II/base/timer.h>
 #include <deal.II/base/utilities.h>
-#include <deal.II/base/conditional_ostream.h>
-#include <deal.II/base/index_set.h>
 
 #include <deal.II/dofs/dof_accessor.h>
 #include <deal.II/dofs/dof_handler.h>
@@ -34,13 +34,13 @@
 #include <deal.II/lac/precondition.h>
 #include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/sparse_matrix.h>
-#include <deal.II/lac/vector.h>
 #include <deal.II/lac/sparsity_tools.h>
+#include <deal.II/lac/vector.h>
 
 #include <deal.II/lac/petsc_parallel_sparse_matrix.h>
 #include <deal.II/lac/petsc_parallel_vector.h>
-#include <deal.II/lac/petsc_solver.h>
 #include <deal.II/lac/petsc_precondition.h>
+#include <deal.II/lac/petsc_solver.h>
 
 #include <deal.II/numerics/data_out.h>
 #include <deal.II/numerics/data_postprocessor.h>
@@ -48,9 +48,9 @@
 #include <deal.II/numerics/matrix_tools.h>
 #include <deal.II/numerics/vector_tools.h>
 
+#include <deal.II/distributed/grid_refinement.h>
 #include <deal.II/distributed/solution_transfer.h>
 #include <deal.II/distributed/tria.h>
-#include <deal.II/distributed/grid_refinement.h>
 
 #include <fstream>
 #include <iostream>
@@ -66,12 +66,28 @@ namespace Solid
   extern template class LinearElasticMaterial<2>;
   extern template class LinearElasticMaterial<3>;
 
-  /*! \brief A time-dependent solver for linear elasticity.
+  /*! \brief A fully distributed parallel time-dependent solver for linear
+   * elasticity.
    *
-   * We use Newmark-beta method for time-stepping which can be either
-   * explicit or implicit, first order accurate or second order accurate.
-   * We fix \f$\beta = \frac{1}{2}\gamma\f$, which corresponds to
-   * average acceleration method.
+   * Both the triangulation and the dofs are fully distributed, the algebraic
+   * operations are done using PETSc wrappers offered by deal.II.
+   * The output is also parallelized: every processor writes its own output,
+   * ParaView is able to group them together.
+   * The mesh refinement is parallelized too.
+   *
+   * The solution vectors, for example displacement, are declared as non-ghosted
+   * vectors.
+   * There are two reasons for this: 1. we do not need the dofs not owned by the
+   * current
+   * processor in assembly since the system matrix is not dependent on the dofs
+   * at all;
+   * 2. we need to do matrix/vector operations on these vectors, for example add
+   * and vmult,
+   * this requires the vectors to be non-ghosted.
+   *
+   * Algorithm-wise, this class is not different from the serial version,
+   * Newmark-beta method is used for time-discretization and displacement-based
+   * finite element is used for space-discretization.
    */
   template <int dim>
   class ParallelLinearElasticity
@@ -80,11 +96,11 @@ namespace Solid
     /*! \brief Constructor.
      *
      * The triangulation can either be generated using dealii functions or
-     * from Abaqus input file.
+     * from Abaqus input file. It is fully distributed.
      * Also we use a parameter handler to specify all the input parameters.
      */
     ParallelLinearElasticity(parallel::distributed::Triangulation<dim> &,
-                        const Parameters::AllParameters &);
+                             const Parameters::AllParameters &);
     /*! \brief Destructor. */
     ~ParallelLinearElasticity() { dof_handler.clear(); }
     void run();
@@ -96,9 +112,7 @@ namespace Solid
     void setup_dofs();
 
     /**
-     * Initialize the matrix, solution, and rhs. This is separated from
-     * setup_dofs because if we may want to transfer solution from one grid
-     * to another in the refine_mesh.
+     * Initialize the matrix, solution, and rhs.
      */
     void initialize_system();
 
@@ -112,9 +126,10 @@ namespace Solid
      * Solve the linear system. Returns the number of
      * CG iterations and the final residual.
      */
-    std::pair<unsigned int, double> solve(const PETScWrappers::MPI::SparseMatrix &,
-                                          PETScWrappers::MPI::Vector &,
-                                          const PETScWrappers::MPI::Vector &);
+    std::pair<unsigned int, double>
+    solve(const PETScWrappers::MPI::SparseMatrix &,
+          PETScWrappers::MPI::Vector &,
+          const PETScWrappers::MPI::Vector &);
 
     /**
      * Output the time-dependent solution in vtu format.
@@ -123,6 +138,7 @@ namespace Solid
 
     /**
      * Refine mesh and transfer solution.
+     * Max and min levels of refinement are required.
      */
     void refine_mesh(const unsigned int, const unsigned int);
 
@@ -152,9 +168,10 @@ namespace Solid
      */
     ConstraintMatrix constraints;
 
-    PETScWrappers::MPI::SparseMatrix system_matrix; //!< \f$ M + \beta{\Delta{t}}^2K \f$.
-    PETScWrappers::MPI::SparseMatrix stiffness_matrix; //!< The stiffness is used in the rhs.
-    PETScWrappers::MPI::Vector system_rhs;
+    PETScWrappers::MPI::SparseMatrix
+      system_matrix; //!< \f$ M + \beta{\Delta{t}}^2K \f$.
+    PETScWrappers::MPI::SparseMatrix stiffness_matrix; //!< System stiffness
+    PETScWrappers::MPI::Vector system_rhs; //!< The rhs due to external load
 
     /**
      * In the Newmark-beta method, acceleration is the variable to solve at
@@ -164,7 +181,7 @@ namespace Solid
      * For the sake of clarity, we explicitly store two sets of accleration,
      * velocity
      * and displacement.
-     * NOTO: these vectors only store locally relevant information.
+     * As explained before, these are going to be non-ghosted vectors.
      */
     PETScWrappers::MPI::Vector current_acceleration;
     PETScWrappers::MPI::Vector current_velocity;
@@ -172,10 +189,6 @@ namespace Solid
     PETScWrappers::MPI::Vector previous_acceleration;
     PETScWrappers::MPI::Vector previous_velocity;
     PETScWrappers::MPI::Vector previous_displacement;
-
-    PETScWrappers::MPI::Vector tmp1;
-    PETScWrappers::MPI::Vector tmp2;
-    PETScWrappers::MPI::Vector tmp3;
 
     Utils::Time time;
 

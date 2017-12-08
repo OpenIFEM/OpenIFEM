@@ -10,8 +10,10 @@ namespace Parameters
     {
       prm.declare_entry(
         "Dimension", "2", Patterns::Integer(2), "Dimension of the problem");
-      prm.declare_entry(
-        "Global refinement", "0", Patterns::Integer(0), "Level of global refinement");
+      prm.declare_entry("Global refinement",
+                        "0",
+                        Patterns::Integer(0),
+                        "Level of global refinement");
       prm.declare_entry("End time", "1.0", Patterns::Double(0.0), "End time");
       prm.declare_entry(
         "Time step size", "1.0", Patterns::Double(0.0), "Time step size");
