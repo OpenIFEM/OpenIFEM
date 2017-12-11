@@ -33,6 +33,7 @@ namespace Parameters
   struct FluidMaterial
   {
     double viscosity;
+    double fluid_rho;
     static void declareParameters(ParameterHandler &);
     void parseParameters(ParameterHandler &);
   };
@@ -85,7 +86,7 @@ namespace Parameters
   struct SolidMaterial
   {
     std::string solid_type;
-    double rho;            //!< density, used by all types.
+    double solid_rho;      //!< density, used by all types.
     double E;              //!< Young's modulus, linear elastic material only.
     double nu;             //!< Poisson's ratio, linear elastic material only.
     std::vector<double> C; //!< Hyperelastic material constants.

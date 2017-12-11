@@ -140,6 +140,7 @@ namespace Fluid
     SchurComplementInverse(
       double gamma,
       double viscosity,
+      double rho,
       double dt,
       const InverseMatrix<ApproximateMassSchur, PreconditionerSm> &Sm_inv,
       const InverseMatrix<SparseMatrix<double>, PreconditionerMp> &Mp_inv);
@@ -148,6 +149,7 @@ namespace Fluid
   private:
     const double gamma;
     const double viscosity;
+    const double rho;
     const double dt;
     const SmartPointer<
       const InverseMatrix<ApproximateMassSchur, PreconditionerSm>>
@@ -270,6 +272,7 @@ namespace Fluid
     void output_results(const unsigned int) const;
 
     double viscosity;
+    double rho; // density
     double gamma;
     const unsigned int degree;
     std::vector<types::global_dof_index> dofs_per_block;

@@ -31,8 +31,10 @@ subsection Fluid finite element system
 end
 
 subsection Fluid material properties
-  # The kinematic viscosity
+  # The dynamic viscosity
   set Viscosity = 1
+  # The density
+  set Fluid Density = 2
 end
 
 subsection Fluid solver control

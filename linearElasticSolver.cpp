@@ -7,7 +7,7 @@ namespace Solid
   template <int dim>
   LinearElasticSolver<dim>::LinearElasticSolver(
     Triangulation<dim> &tria, const Parameters::AllParameters &parameters)
-    : material(parameters.E, parameters.nu, parameters.rho),
+    : material(parameters.E, parameters.nu, parameters.solid_rho),
       gamma(0.5 + parameters.damping),
       beta(gamma / 2),
       degree(parameters.solid_degree),
