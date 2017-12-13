@@ -221,14 +221,15 @@ namespace Parameters
       std::vector<std::string> parsed_input =
         Utilities::split_string_list(raw_input);
       std::vector<int> ids = Utilities::string_to_int(parsed_input);
-      AssertThrow(ids.size() == n_fluid_neumann_bcs,
+      // Assert only when the user wants to impose Neumann BC
+      AssertThrow(!n_fluid_neumann_bcs || ids.size() == n_fluid_neumann_bcs,
                   ExcMessage("Inconsistent boundary ids!"));
       raw_input = prm.get("Neumann boundary values");
       parsed_input = Utilities::split_string_list(raw_input);
       std::vector<double> values = Utilities::string_to_double(parsed_input);
       // The size of values should be exactly the same as the number of
       // the given boundary values.
-      AssertThrow(values.size() == n_fluid_neumann_bcs,
+      AssertThrow(!n_fluid_neumann_bcs || values.size() == n_fluid_neumann_bcs,
                   ExcMessage("Inconsistent boundary values!"));
       for (unsigned int i = 0; i < n_fluid_neumann_bcs; ++i)
         {
@@ -417,7 +418,8 @@ namespace Parameters
       std::vector<std::string> parsed_input =
         Utilities::split_string_list(raw_input);
       std::vector<int> ids = Utilities::string_to_int(parsed_input);
-      AssertThrow(ids.size() == n_solid_neumann_bcs,
+      // Assert only when the user wants to impose Neumann BC
+      AssertThrow(!n_solid_neumann_bcs || ids.size() == n_solid_neumann_bcs,
                   ExcMessage("Inconsistent boundary ids!"));
       solid_neumann_bc_type = prm.get("Neumann boundary type");
       unsigned int tmp =
@@ -425,7 +427,8 @@ namespace Parameters
       raw_input = prm.get("Neumann boundary values");
       parsed_input = Utilities::split_string_list(raw_input);
       std::vector<double> values = Utilities::string_to_double(parsed_input);
-      AssertThrow(values.size() == tmp * n_solid_neumann_bcs,
+      AssertThrow(!n_solid_neumann_bcs ||
+                    values.size() == tmp * n_solid_neumann_bcs,
                   ExcMessage("Inconsistent boundary values!"));
       for (unsigned int i = 0; i < n_solid_neumann_bcs; ++i)
         {

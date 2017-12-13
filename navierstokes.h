@@ -56,7 +56,7 @@
 #include "parameters.h"
 #include "utilities.h"
 
-namespace Fluid
+namespace
 {
   using namespace dealii;
 
@@ -190,7 +190,10 @@ namespace Fluid
       S_inverse;
     SparseDirectUMFPACK A_inverse;
   };
+}
 
+namespace Fluid
+{
   /** \brief The incompressible Navier Stokes equation solver.
    *
    * This program is built upon dealii tutorials step-57, step-22, step-20.
