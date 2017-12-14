@@ -60,11 +60,13 @@ namespace
     SchurComplementInverse(
       double gamma,
       double viscosity,
+      double rho,
       double dt,
       const InverseMatrix<ApproximateMassSchur, PreconditionerSm> &Sm_inv,
       const InverseMatrix<SparseMatrix<double>, PreconditionerMp> &Mp_inv)
     : gamma(gamma),
       viscosity(viscosity),
+      rho(rho),
       dt(dt),
       Sm_inverse(&Sm_inv),
       Mp_inverse(&Mp_inv)
@@ -77,7 +79,7 @@ namespace
   {
     Vector<double> tmp(src.size());
     Mp_inverse->vmult(tmp, src);
-    tmp *= -(viscosity + gamma);
+    tmp *= -(viscosity / rho + gamma);
     Sm_inverse->vmult(dst, src);
     dst *= -1 / dt;
     dst += tmp;
@@ -127,6 +129,7 @@ namespace Fluid
   NavierStokes<dim>::NavierStokes(Triangulation<dim> &tria,
                                   const Parameters::AllParameters &parameters)
     : viscosity(parameters.viscosity),
+      rho(parameters.fluid_rho),
       gamma(parameters.grad_div),
       degree(parameters.fluid_degree),
       triangulation(tria),
@@ -385,7 +388,7 @@ namespace Fluid
                         // \f$M = m(\delta{u}, \delta{v})$, then LHS is: $(A +
                         // C) + M/{\Delta{t}}\f$
                         local_matrix(i, j) +=
-                          ((viscosity *
+                          ((viscosity / rho *
                               scalar_product(grad_phi_u[j], grad_phi_u[i]) +
                             current_velocity_gradients[q] * phi_u[j] *
                               phi_u[i] +
@@ -407,8 +410,9 @@ namespace Fluid
                 double current_velocity_divergence =
                   trace(current_velocity_gradients[q]);
                 local_rhs(i) +=
-                  ((-viscosity * scalar_product(current_velocity_gradients[q],
-                                                grad_phi_u[i]) -
+                  ((-viscosity / rho *
+                      scalar_product(current_velocity_gradients[q],
+                                     grad_phi_u[i]) -
                     current_velocity_gradients[q] * current_velocity_values[q] *
                       phi_u[i] +
                     current_pressure_values[q] * div_phi_u[i] +
@@ -446,7 +450,7 @@ namespace Fluid
                             local_rhs(i) +=
                               -(fe_face_values[velocities].value(i, q) *
                                 fe_face_values.normal_vector(q) *
-                                boundary_values_p * fe_face_values.JxW(q));
+                                boundary_values_p / rho * fe_face_values.JxW(q));
                           }
                       }
                   }
@@ -520,7 +524,7 @@ namespace Fluid
           mass_matrix.block(1, 1), *preconditioner_Mp));
       S_inverse.reset(
         new SchurComplementInverse<PreconditionIdentity, SparseILU<double>>(
-          gamma, viscosity, time.get_delta_t(), *Sm_inverse, *Mp_inverse));
+          gamma, viscosity, rho, time.get_delta_t(), *Sm_inverse, *Mp_inverse));
       preconditioner.reset(
         new BlockSchurPreconditioner<PreconditionIdentity, SparseILU<double>>(
           system_matrix, *S_inverse));
@@ -656,6 +660,12 @@ namespace Fluid
     std::vector<std::string> solution_names(dim, "velocity");
     solution_names.push_back("pressure");
 
+    //Because the pressure in the solution is not the true pressure
+    //but pressure / rho, so we want to scale the pressure solution
+    //before output.  
+    BlockVector<double> output_solution(present_solution);
+    output_solution.block(1) *= rho;
+
     std::vector<DataComponentInterpretation::DataComponentInterpretation>
       data_component_interpretation(
         dim, DataComponentInterpretation::component_is_part_of_vector);
@@ -663,7 +673,7 @@ namespace Fluid
       DataComponentInterpretation::component_is_scalar);
     DataOut<dim> data_out;
     data_out.attach_dof_handler(dof_handler);
-    data_out.add_data_vector(present_solution,
+    data_out.add_data_vector(output_solution,
                              solution_names,
                              DataOut<dim>::type_dof_data,
                              data_component_interpretation);

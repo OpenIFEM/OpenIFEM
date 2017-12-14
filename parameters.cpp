@@ -68,6 +68,8 @@ namespace Parameters
     {
       prm.declare_entry(
         "Viscosity", "1e-3", Patterns::Double(0.0), "Kinematic viscosity");
+      prm.declare_entry(
+        "Fluid Density", "1.0", Patterns::Double(0.0), "Fluid Density");
     }
     prm.leave_subsection();
   }
@@ -77,6 +79,7 @@ namespace Parameters
     prm.enter_subsection("Fluid material properties");
     {
       viscosity = prm.get_double("Viscosity");
+      fluid_rho = prm.get_double("Fluid Density");
     }
     prm.leave_subsection();
   }
@@ -293,7 +296,7 @@ namespace Parameters
     prm.enter_subsection("Solid material properties");
     {
       solid_type = prm.get("Solid type");
-      rho = prm.get_double("Density");
+      solid_rho = prm.get_double("Density");
       E = prm.get_double("Young's modulus");
       nu = prm.get_double("Poisson's ratio");
       std::string raw_input = prm.get("Hyperelastic parameters");

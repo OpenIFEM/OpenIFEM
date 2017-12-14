@@ -31,4 +31,5 @@
 *.out
 *.app
 
-compile_commands.json
+# include path files
+*.json
