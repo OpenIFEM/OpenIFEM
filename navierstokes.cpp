@@ -1,6 +1,6 @@
 #include "navierstokes.h"
 
-namespace Fluid
+namespace
 {
   template <int dim>
   double BoundaryValues<dim>::value(const Point<dim> &p,
@@ -121,7 +121,10 @@ namespace Fluid
 
     A_inverse.vmult(dst.block(0), utmp);
   }
+}
 
+namespace Fluid
+{
   template <int dim>
   NavierStokes<dim>::NavierStokes(Triangulation<dim> &tria,
                                   const Parameters::AllParameters &parameters)
@@ -244,8 +247,8 @@ namespace Fluid
           VectorTools::interpolate_boundary_values(
             dof_handler,
             id,
-            Functions::ConstantFunction<dim>(augmented_value),
-            // BoundaryValues<dim>(),
+            // Functions::ConstantFunction<dim>(augmented_value),
+            BoundaryValues<dim>(),
             nonzero_constraints,
             ComponentMask(mask));
           VectorTools::interpolate_boundary_values(
@@ -421,30 +424,34 @@ namespace Fluid
               }
           }
 
-        // Impose pressure boundary here, loop over faces on the cell
+        // Impose pressure boundary here if specified, loop over faces on the
+        // cell
         // and apply pressure boundary conditions:
         // \f$\int_{\Gamma_n} -p\bold{n}d\Gamma\f$
-        for (unsigned int face_n = 0;
-             face_n < GeometryInfo<dim>::faces_per_cell;
-             ++face_n)
+        if (parameters.n_fluid_neumann_bcs != 0)
           {
-            if (cell->at_boundary(face_n) &&
-                parameters.fluid_neumann_bcs.find(
-                  cell->face(face_n)->boundary_id()) !=
-                  parameters.fluid_neumann_bcs.end())
+            for (unsigned int face_n = 0;
+                 face_n < GeometryInfo<dim>::faces_per_cell;
+                 ++face_n)
               {
-                fe_face_values.reinit(cell, face_n);
-                unsigned int p_bc_id = cell->face(face_n)->boundary_id();
-                double boundary_values_p =
-                  parameters.fluid_neumann_bcs[p_bc_id];
-                for (unsigned int q = 0; q < n_face_q_points; ++q)
+                if (cell->at_boundary(face_n) &&
+                    parameters.fluid_neumann_bcs.find(
+                      cell->face(face_n)->boundary_id()) !=
+                      parameters.fluid_neumann_bcs.end())
                   {
-                    for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                    fe_face_values.reinit(cell, face_n);
+                    unsigned int p_bc_id = cell->face(face_n)->boundary_id();
+                    double boundary_values_p =
+                      parameters.fluid_neumann_bcs[p_bc_id];
+                    for (unsigned int q = 0; q < n_face_q_points; ++q)
                       {
-                        local_rhs(i) +=
-                          -(fe_face_values[velocities].value(i, q) *
-                            fe_face_values.normal_vector(q) *
-                            boundary_values_p / rho * fe_face_values.JxW(q));
+                        for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                          {
+                            local_rhs(i) +=
+                              -(fe_face_values[velocities].value(i, q) *
+                                fe_face_values.normal_vector(q) *
+                                boundary_values_p / rho * fe_face_values.JxW(q));
+                          }
                       }
                   }
               }
@@ -587,7 +594,7 @@ namespace Fluid
   template <int dim>
   void NavierStokes<dim>::run()
   {
-    triangulation.refine_global(2);
+    triangulation.refine_global(parameters.global_refinement);
     setup_dofs();
     initialize_system();
 

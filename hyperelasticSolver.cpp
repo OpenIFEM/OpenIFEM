@@ -75,7 +75,7 @@ namespace Solid
   template <int dim>
   void HyperelasticSolver<dim>::run()
   {
-    triangulation.refine_global(2);
+    triangulation.refine_global(parameters.global_refinement);
     vol = GridTools::volume(triangulation);
     std::cout << "Grid:\n\t Reference volume: " << vol << std::endl;
 

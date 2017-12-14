@@ -34,24 +34,9 @@ namespace Utils
     double end() const { return time_end; }
     double get_delta_t() const { return delta_t; }
     unsigned int get_timestep() const { return timestep; }
-    bool time_to_output() const
-    {
-      return (time_current > output_interval &&
-              timestep % static_cast<unsigned int>(output_interval / delta_t) ==
-                0);
-    }
-    bool time_to_refine() const
-    {
-      return (time_current > refinement_interval &&
-              timestep %
-                  static_cast<unsigned int>(refinement_interval / delta_t) ==
-                0);
-    }
-    void increment()
-    {
-      time_current += delta_t;
-      ++timestep;
-    }
+    bool time_to_output() const;
+    bool time_to_refine() const;
+    void increment();
 
   private:
     unsigned int timestep;

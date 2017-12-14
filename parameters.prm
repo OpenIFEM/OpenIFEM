@@ -10,6 +10,10 @@ subsection Simulation
   # The dimension of the simulation
   set Dimension = 2
 
+  # Level of global refinement before running,
+  # which applies to all the solvers
+  set Global refinement = 3
+
   # The end time of the simulation in second
   set End time = 20
 

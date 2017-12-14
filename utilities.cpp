@@ -2,12 +2,30 @@
 
 namespace Utils
 {
+  bool Time::time_to_output() const
+  {
+    unsigned int delta = output_interval / delta_t;
+    return (timestep >= delta && timestep % delta == 0);
+  }
+
+  bool Time::time_to_refine() const
+  {
+    unsigned int delta = refinement_interval / delta_t;
+    return (timestep >= delta && timestep % delta == 0);
+  }
+
+  void Time::increment()
+  {
+    time_current += delta_t;
+    ++timestep;
+  }
+
   // The code to create triangulation is copied from [Martin Kronbichler's code]
   // (https://github.com/kronbichler/adaflo/blob/master/tests/flow_past_cylinder.cc)
   // with very few modifications.
   // Helper function used in both 2d and 3d:
-  void Utils::GridCreator::flow_around_cylinder_2d(Triangulation<2> &tria,
-                                                   bool compute_in_2d)
+  void GridCreator::flow_around_cylinder_2d(Triangulation<2> &tria,
+                                            bool compute_in_2d)
   {
     SphericalManifold<2> boundary(Point<2>(0.5, 0.2));
     Triangulation<2> left, middle, right, tmp, tmp2;

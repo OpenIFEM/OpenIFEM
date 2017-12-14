@@ -358,7 +358,7 @@ namespace Solid
   template <int dim>
   void LinearElasticSolver<dim>::run()
   {
-    triangulation.refine_global(1);
+    triangulation.refine_global(parameters.global_refinement);
     setup_dofs();
     initialize_system();
 

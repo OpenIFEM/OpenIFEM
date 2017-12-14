@@ -10,6 +10,10 @@ namespace Parameters
     {
       prm.declare_entry(
         "Dimension", "2", Patterns::Integer(2), "Dimension of the problem");
+      prm.declare_entry("Global refinement",
+                        "0",
+                        Patterns::Integer(0),
+                        "Level of global refinement");
       prm.declare_entry("End time", "1.0", Patterns::Double(0.0), "End time");
       prm.declare_entry(
         "Time step size", "1.0", Patterns::Double(0.0), "Time step size");
@@ -28,6 +32,7 @@ namespace Parameters
     prm.enter_subsection("Simulation");
     {
       dimension = prm.get_integer("Dimension");
+      global_refinement = prm.get_integer("Global refinement");
       end_time = prm.get_double("End time");
       time_step = prm.get_double("Time step size");
       output_interval = prm.get_double("Output interval");
@@ -219,14 +224,15 @@ namespace Parameters
       std::vector<std::string> parsed_input =
         Utilities::split_string_list(raw_input);
       std::vector<int> ids = Utilities::string_to_int(parsed_input);
-      AssertThrow(ids.size() == n_fluid_neumann_bcs,
+      // Assert only when the user wants to impose Neumann BC
+      AssertThrow(!n_fluid_neumann_bcs || ids.size() == n_fluid_neumann_bcs,
                   ExcMessage("Inconsistent boundary ids!"));
       raw_input = prm.get("Neumann boundary values");
       parsed_input = Utilities::split_string_list(raw_input);
       std::vector<double> values = Utilities::string_to_double(parsed_input);
       // The size of values should be exactly the same as the number of
       // the given boundary values.
-      AssertThrow(values.size() == n_fluid_neumann_bcs,
+      AssertThrow(!n_fluid_neumann_bcs || values.size() == n_fluid_neumann_bcs,
                   ExcMessage("Inconsistent boundary values!"));
       for (unsigned int i = 0; i < n_fluid_neumann_bcs; ++i)
         {
@@ -415,7 +421,8 @@ namespace Parameters
       std::vector<std::string> parsed_input =
         Utilities::split_string_list(raw_input);
       std::vector<int> ids = Utilities::string_to_int(parsed_input);
-      AssertThrow(ids.size() == n_solid_neumann_bcs,
+      // Assert only when the user wants to impose Neumann BC
+      AssertThrow(!n_solid_neumann_bcs || ids.size() == n_solid_neumann_bcs,
                   ExcMessage("Inconsistent boundary ids!"));
       solid_neumann_bc_type = prm.get("Neumann boundary type");
       unsigned int tmp =
@@ -423,7 +430,8 @@ namespace Parameters
       raw_input = prm.get("Neumann boundary values");
       parsed_input = Utilities::split_string_list(raw_input);
       std::vector<double> values = Utilities::string_to_double(parsed_input);
-      AssertThrow(values.size() == tmp * n_solid_neumann_bcs,
+      AssertThrow(!n_solid_neumann_bcs ||
+                    values.size() == tmp * n_solid_neumann_bcs,
                   ExcMessage("Inconsistent boundary values!"));
       for (unsigned int i = 0; i < n_solid_neumann_bcs; ++i)
         {
