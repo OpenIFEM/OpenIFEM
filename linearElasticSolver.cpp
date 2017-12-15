@@ -304,6 +304,8 @@ namespace Solid
   void LinearElasticSolver<dim>::refine_mesh(const unsigned int min_grid_level,
                                              const unsigned int max_grid_level)
   {
+    TimerOutput::Scope timer_section(timer, "Refine mesh");
+
     Vector<float> estimated_error_per_cell(triangulation.n_active_cells());
     KellyErrorEstimator<dim>::estimate(dof_handler,
                                        face_quad_formula,

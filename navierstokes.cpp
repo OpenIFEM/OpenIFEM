@@ -1,10 +1,11 @@
 #include "navierstokes.h"
 
-namespace
+namespace Fluid
 {
   template <int dim>
-  double BoundaryValues<dim>::value(const Point<dim> &p,
-                                    const unsigned int component) const
+  double
+  NavierStokes<dim>::BoundaryValues::value(const Point<dim> &p,
+                                           const unsigned int component) const
   {
     Assert(component < this->n_components,
            ExcIndexRange(component, 0, this->n_components));
@@ -18,111 +19,115 @@ namespace
   }
 
   template <int dim>
-  void BoundaryValues<dim>::vector_value(const Point<dim> &p,
-                                         Vector<double> &values) const
+  void
+  NavierStokes<dim>::BoundaryValues::vector_value(const Point<dim> &p,
+                                                  Vector<double> &values) const
   {
     for (unsigned int c = 0; c < this->n_components; ++c)
-      values(c) = BoundaryValues<dim>::value(p, c);
+      values(c) = BoundaryValues::value(p, c);
   }
 
-  template <class MatrixType, class PreconditionerType>
-  InverseMatrix<MatrixType, PreconditionerType>::InverseMatrix(
-    const MatrixType &m, const PreconditionerType &preconditioner)
-    : matrix(&m), preconditioner(&preconditioner)
+  /**
+   * Initialize tmp1 and tmp2 in the constructor.
+   */
+  template <int dim>
+  NavierStokes<dim>::BlockSchurPreconditioner::ApproximateMassSchur::
+    ApproximateMassSchur(const BlockSparseMatrix<double> &M)
+    : mass_matrix(&M), tmp1(mass_matrix->block(0, 0).m()), tmp2(tmp1)
   {
   }
 
-  template <class MatrixType, class PreconditionerType>
-  void InverseMatrix<MatrixType, PreconditionerType>::vmult(
+  /**
+   * ApproximateMassSchur is nested in BlockSchurPreconditioner so it
+   * can use mass_matrix directly.
+   */
+  template <int dim>
+  void NavierStokes<dim>::BlockSchurPreconditioner::ApproximateMassSchur::vmult(
     Vector<double> &dst, const Vector<double> &src) const
   {
-    SolverControl solver_control(src.size(), 1e-6 * src.l2_norm());
-    SolverCG<> cg(solver_control);
-    dst = 0;
-    cg.solve(*matrix, dst, src, *preconditioner);
-  }
-
-  ApproximateMassSchur::ApproximateMassSchur(const BlockSparseMatrix<double> &M)
-    : mass_matrix(&M), tmp1(M.block(0, 0).m()), tmp2(M.block(0, 0).m())
-  {
-  }
-
-  void ApproximateMassSchur::vmult(Vector<double> &dst,
-                                   const Vector<double> &src) const
-  {
+    tmp1 = 0;
+    tmp2 = 0;
     mass_matrix->block(0, 1).vmult(tmp1, src);
+    // Jacobi preconditioner of matrix A is by definition inverse diag(A),
+    // this is exactly what we want to compute.
     mass_matrix->block(0, 0).precondition_Jacobi(tmp2, tmp1);
     mass_matrix->block(1, 0).vmult(dst, tmp2);
   }
 
-  template <class PreconditionerSm, class PreconditionerMp>
-  SchurComplementInverse<PreconditionerSm, PreconditionerMp>::
-    SchurComplementInverse(
-      double gamma,
-      double viscosity,
-      double dt,
-      const InverseMatrix<ApproximateMassSchur, PreconditionerSm> &Sm_inv,
-      const InverseMatrix<SparseMatrix<double>, PreconditionerMp> &Mp_inv)
+  /**
+   * The initialization of the direct solver is expensive as it allocates
+   * a lot of memory. The preconditioner is going to be applied several
+   * times before it is re-initialized. Therefore initializing the direct
+   * solver in the constructor saves time. However, it is pointless to do
+   * this to iterative solvers.
+   */
+  template <int dim>
+  NavierStokes<dim>::BlockSchurPreconditioner::BlockSchurPreconditioner(
+    double gamma,
+    double viscosity,
+    double dt,
+    const BlockSparseMatrix<double> &system,
+    const BlockSparseMatrix<double> &mass)
     : gamma(gamma),
       viscosity(viscosity),
       dt(dt),
-      Sm_inverse(&Sm_inv),
-      Mp_inverse(&Mp_inv)
-  {
-  }
-
-  template <class PreconditionerSm, class PreconditionerMp>
-  void SchurComplementInverse<PreconditionerSm, PreconditionerMp>::vmult(
-    Vector<double> &dst, const Vector<double> &src) const
-  {
-    Vector<double> tmp(src.size());
-    Mp_inverse->vmult(tmp, src);
-    tmp *= -(viscosity + gamma);
-    Sm_inverse->vmult(dst, src);
-    dst *= -1 / dt;
-    dst += tmp;
-  }
-
-  /**
-   * We can notice that the initialization of the inverse of the matrix at (0,0)
-   * corner
-   * is completed in the constructor. Thus the initialization of this class is
-   * expensive,
-   * but every application of the preconditioner then no longer requires
-   * the computation of the matrix factors.
-   */
-  template <class PreconditionerSm, class PreconditionerMp>
-  BlockSchurPreconditioner<PreconditionerSm, PreconditionerMp>::
-    BlockSchurPreconditioner(
-      const BlockSparseMatrix<double> &system,
-      const SchurComplementInverse<PreconditionerSm, PreconditionerMp> &S_inv)
-    : system_matrix(&system), S_inverse(&S_inv)
+      system_matrix(&system),
+      mass_matrix(&mass),
+      mass_schur(mass)
   {
     A_inverse.initialize(system_matrix->block(0, 0));
   }
 
-  template <class PreconditionerSm, class PreconditionerMp>
-  void BlockSchurPreconditioner<PreconditionerSm, PreconditionerMp>::vmult(
+  /**
+   * The vmult operation strictly follows the definition of
+   * BlockSchurPreconditioner. Conceptually it computes \f$u = P^{-1}v\f$.
+   */
+  template <int dim>
+  void NavierStokes<dim>::BlockSchurPreconditioner::vmult(
     BlockVector<double> &dst, const BlockVector<double> &src) const
   {
+    // First, buffer the velocity block of src vector (\f$v_0\f$).
     Vector<double> utmp(src.block(0));
 
+    // This block computes \f$u_1 = \tilde{S}^{-1} v_1\f$.
     {
-      S_inverse->vmult(dst.block(1), src.block(1));
+      // CG solver used for \f$M_p^{-1}\f$ and \f$S_m^{-1}\f$.
+      SolverControl solver_control(src.block(1).size(),
+                                   1e-6 * src.block(1).l2_norm());
+      SolverCG<> cg(solver_control);
+
+      // \f$-(\nu + \gamma)M_p^{-1}v_1\f$
+      // We choose to use SparseILU as a preconditioner.
+      Vector<double> tmp(src.block(1).size());
+      SparseILU<double> Mp_preconditioner;
+      Mp_preconditioner.initialize(mass_matrix->block(1, 1),
+                                   SparseILU<double>::AdditionalData());
+      cg.solve(mass_matrix->block(1, 1), tmp, src.block(1), Mp_preconditioner);
+      tmp *= -(viscosity + gamma);
+
+      // \f$-\frac{1}{dt}S_m^{-1}v_1\f$
+      // We cannot use any standard built-in here because mass_schur is
+      // not a built-in matrix.
+      PreconditionIdentity Sm_preconditioner;
+      cg.solve(mass_schur, dst.block(1), src.block(1), Sm_preconditioner);
+      dst.block(1) *= -1 / dt;
+
+      // Adding up these two, we get \f$\tilde{S}^{-1}v_1\f$.
+      dst.block(1) += tmp;
     }
 
+    // This block computes \f$v_0 - B^T\tilde{S}^{-1}v_1\f$ based on \f$u_1\f$.
     {
       system_matrix->block(0, 1).vmult(utmp, dst.block(1));
       utmp *= -1.0;
       utmp += src.block(0);
     }
 
+    // Finally, compute the product of \f$\tilde{A}^{-1}\f$ and utmp with
+    // the direct solver.
     A_inverse.vmult(dst.block(0), utmp);
   }
-}
 
-namespace Fluid
-{
   template <int dim>
   NavierStokes<dim>::NavierStokes(Triangulation<dim> &tria,
                                   const Parameters::AllParameters &parameters)
@@ -245,7 +250,7 @@ namespace Fluid
             dof_handler,
             id,
             // Functions::ConstantFunction<dim>(augmented_value),
-            BoundaryValues<dim>(),
+            BoundaryValues(),
             nonzero_constraints,
             ComponentMask(mask));
           VectorTools::interpolate_boundary_values(
@@ -268,6 +273,10 @@ namespace Fluid
   template <int dim>
   void NavierStokes<dim>::initialize_system()
   {
+    preconditioner.reset();
+    system_matrix.clear();
+    mass_matrix.clear();
+
     BlockDynamicSparsityPattern dsp(dofs_per_block, dofs_per_block);
     DoFTools::make_sparsity_pattern(dof_handler, dsp, nonzero_constraints);
     sparsity_pattern.copy_from(dsp);
@@ -499,31 +508,8 @@ namespace Fluid
     {
       TimerOutput::Scope timer_section(timer, "Initialize preconditioners");
 
-      preconditioner.reset();
-      S_inverse.reset();
-      Mp_inverse.reset();
-      preconditioner_Mp.reset();
-      Sm_inverse.reset();
-      preconditioner.reset();
-      approximate_Sm.reset();
-
-      approximate_Sm.reset(new ApproximateMassSchur(mass_matrix));
-      preconditioner_Sm.reset(new PreconditionIdentity());
-      Sm_inverse.reset(
-        new InverseMatrix<ApproximateMassSchur, PreconditionIdentity>(
-          *approximate_Sm, *preconditioner_Sm));
-      preconditioner_Mp.reset(new SparseILU<double>());
-      preconditioner_Mp->initialize(mass_matrix.block(1, 1),
-                                    SparseILU<double>::AdditionalData());
-      Mp_inverse.reset(
-        new InverseMatrix<SparseMatrix<double>, SparseILU<double>>(
-          mass_matrix.block(1, 1), *preconditioner_Mp));
-      S_inverse.reset(
-        new SchurComplementInverse<PreconditionIdentity, SparseILU<double>>(
-          gamma, viscosity, time.get_delta_t(), *Sm_inverse, *Mp_inverse));
-      preconditioner.reset(
-        new BlockSchurPreconditioner<PreconditionIdentity, SparseILU<double>>(
-          system_matrix, *S_inverse));
+      preconditioner.reset(new BlockSchurPreconditioner(
+        gamma, viscosity, time.get_delta_t(), system_matrix, mass_matrix));
     }
 
     // NOTE: SolverFGMRES only applies the preconditioner from the right,
@@ -547,7 +533,8 @@ namespace Fluid
   }
 
   template <int dim>
-  void NavierStokes<dim>::refine_mesh()
+  void NavierStokes<dim>::refine_mesh(const unsigned int min_grid_level,
+                                      const unsigned int max_grid_level)
   {
     TimerOutput::Scope timer_section(timer, "Refine mesh");
 
@@ -559,32 +546,38 @@ namespace Fluid
                                        present_solution,
                                        estimated_error_per_cell,
                                        fe.component_mask(velocity));
+    GridRefinement::refine_and_coarsen_fixed_fraction(
+      triangulation, estimated_error_per_cell, 0.6, 0.4);
+    if (triangulation.n_levels() > max_grid_level)
+      {
+        for (auto cell = triangulation.begin_active(max_grid_level);
+             cell != triangulation.end();
+             ++cell)
+          {
+            cell->clear_refine_flag();
+          }
+      }
 
-    GridRefinement::refine_and_coarsen_fixed_number(
-      triangulation, estimated_error_per_cell, 0.3, 0.0);
+    for (auto cell = triangulation.begin_active(min_grid_level);
+         cell != triangulation.end_active(min_grid_level);
+         ++cell)
+      {
+        cell->clear_coarsen_flag();
+      }
+
+    BlockVector<double> buffer(present_solution);
+    SolutionTransfer<dim, BlockVector<double>> solution_transfer(dof_handler);
 
     triangulation.prepare_coarsening_and_refinement();
-    SolutionTransfer<dim, BlockVector<double>> solution_transfer(dof_handler);
-    solution_transfer.prepare_for_coarsening_and_refinement(present_solution);
+    solution_transfer.prepare_for_coarsening_and_refinement(buffer);
+
     triangulation.execute_coarsening_and_refinement();
 
-    // First the DoFHandler is set up and constraints are generated. Then we
-    // create a temporary vector whose size is according with the
-    // solution on the new mesh.
     setup_dofs();
-
-    BlockVector<double> tmp(dofs_per_block);
-
-    // Transfer solution from coarse to fine mesh and apply boundary value
-    // constraints to the new transfered solution. Note that present_solution
-    // is still a vector corresponding to the old mesh.
-    solution_transfer.interpolate(present_solution, tmp);
-    nonzero_constraints.distribute(tmp);
-
-    // Finally set up matrix and vectors and set the present_solution to the
-    // interpolated data.
     initialize_system();
-    present_solution = tmp;
+
+    solution_transfer.interpolate(buffer, present_solution);
+    nonzero_constraints.distribute(present_solution);
   }
 
   template <int dim>
@@ -603,25 +596,30 @@ namespace Fluid
     while (time.end() - time.current() > 1e-12)
       {
         time.increment();
-        std::cout << std::string(91, '*') << std::endl
+        std::cout << std::string(96, '*') << std::endl
                   << "Time step = " << time.get_timestep()
                   << ", at t = " << std::scientific << time.current()
                   << std::endl;
 
-        // Resetting current_res to a number greater than tolerance.
-        double current_res = 1.0;
+        // Resetting
+        double current_residual = 1.0;
+        double initial_residual = 1.0;
+        double relative_residual = 1.0;
         unsigned int outer_iteration = 0;
-        while (first_step || current_res > tolerance)
+        evaluation_point = present_solution;
+        while (first_step || relative_residual > tolerance)
           {
             AssertThrow(outer_iteration < max_iteration,
                         ExcMessage("Too many Newton iterations!"));
+
+            newton_update = 0.0;
 
             // Since evaluation_point changes at every iteration,
             // we have to reassemble both the lhs and rhs of the system
             // before solving it.
             assemble_system(first_step);
             auto state = solve(first_step);
-            current_res = system_rhs.l2_norm();
+            current_residual = system_rhs.l2_norm();
 
             // Update evaluation_point and do not forget to modify it
             // with constraints.
@@ -629,11 +627,19 @@ namespace Fluid
             nonzero_constraints.distribute(evaluation_point);
             first_step = false;
 
+            // Update the relative residual
+            if (outer_iteration == 0)
+              {
+                initial_residual = current_residual;
+              }
+            relative_residual = current_residual / initial_residual;
+
             std::cout << std::scientific << std::left
-                      << " Iteration = " << std::setw(2) << outer_iteration
-                      << " Residual = " << current_res
-                      << " FGMRES iteration: " << std::setw(3) << state.first
-                      << " FGMRES residual: " << state.second << std::endl;
+                      << " ITR = " << std::setw(2) << outer_iteration
+                      << " ABS_RES = " << current_residual
+                      << " REL_RES = " << relative_residual
+                      << " GMRES_ITR = " << std::setw(3) << state.first
+                      << " GMRES_RES = " << state.second << std::endl;
 
             outer_iteration++;
           }
@@ -643,6 +649,10 @@ namespace Fluid
         if (time.time_to_output())
           {
             output_results(time.get_timestep());
+          }
+        if (time.time_to_refine())
+          {
+            refine_mesh(1, 3);
           }
       }
   }

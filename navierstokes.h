@@ -56,144 +56,10 @@
 #include "parameters.h"
 #include "utilities.h"
 
-namespace
+namespace Fluid
 {
   using namespace dealii;
 
-  /** \brief Helper function to specify Dirchlet boundary conditions.
-   *
-   *  It specifies a parabolic velocity profile at the left side boundary,
-   *  and all the remaining boundaries are considered as walls
-   *  except for the right side one.
-   */
-  template <int dim>
-  class BoundaryValues : public Function<dim>
-  {
-  public:
-    BoundaryValues() : Function<dim>(dim + 1) {}
-    virtual double value(const Point<dim> &p,
-                         const unsigned int component) const;
-
-    virtual void vector_value(const Point<dim> &p,
-                              Vector<double> &values) const;
-  };
-
-  /** \brief Inverse of a symmetric matrix.
-   *
-   * The inverse of symmetric matrices are required for both
-   * \f$\tilde{S_M}^{-1}\f$
-   * and \f$M_p^{-1}\f$, so we define a class to compute it.
-   * However, instead of computing it explicitly, we only define its
-   * matrix-vector
-   * multiplication operation through solving a linear system.
-   * CG solver is used because symmetric matrices are expected.
-   */
-  template <class MatrixType, class PreconditionerType>
-  class InverseMatrix : public Subscriptor
-  {
-  public:
-    InverseMatrix(const MatrixType &m,
-                  const PreconditionerType &preconditioner);
-    void vmult(Vector<double> &dst, const Vector<double> &src) const;
-
-  private:
-    const SmartPointer<const MatrixType> matrix;
-    const SmartPointer<const PreconditionerType> preconditioner;
-  };
-
-  /** \brief Approximate Schur complement of mass matrix
-   *
-   * The Schur complement of mass matrix is written as \f$S_M = BM^{-1}B^T\f$,
-   * we use \f$B(diag(M))^{-1}B^T\f$ to approximate it.
-   */
-  class ApproximateMassSchur : public Subscriptor
-  {
-  public:
-    ApproximateMassSchur(const BlockSparseMatrix<double> &M);
-    void vmult(Vector<double> &dst, const Vector<double> &src) const;
-
-  private:
-    const SmartPointer<const BlockSparseMatrix<double>> mass_matrix;
-    mutable Vector<double> tmp1, tmp2;
-  };
-
-  /** \brief The inverse matrix of the system Schur complement.
-   *
-   * The inverse of the total Schur complement can be decomposed as the sum of
-   * the inverse of the diffusion plus Grad-Div Schur complement,
-   * and the inverse of the mass Schur complement.
-   * The inverse of the convection Schur complement is ignored because it is
-   * unknown how to treat it. But the block preconditioner is good enough even
-   * without it.
-   * For our time-dependent problem,
-   * \f[
-   *   \tilde{S}^{-1} = -(\nu + \gamma)M_p^{-1} -
-   * \frac{1}{\Delta{t}}{[B(diag(M))^{-1}B^T]}^{-1}
-   * \f]
-   * where $M_p$ is the pressure mass, and ${[B(diag(M))^{-1}B^T]}$ is
-   * ApproximateMassSchur.
-   */
-  template <class PreconditionerSm, class PreconditionerMp>
-  class SchurComplementInverse : public Subscriptor
-  {
-  public:
-    SchurComplementInverse(
-      double gamma,
-      double viscosity,
-      double dt,
-      const InverseMatrix<ApproximateMassSchur, PreconditionerSm> &Sm_inv,
-      const InverseMatrix<SparseMatrix<double>, PreconditionerMp> &Mp_inv);
-    void vmult(Vector<double> &dst, const Vector<double> &src) const;
-
-  private:
-    const double gamma;
-    const double viscosity;
-    const double dt;
-    const SmartPointer<
-      const InverseMatrix<ApproximateMassSchur, PreconditionerSm>>
-      Sm_inverse;
-    const SmartPointer<
-      const InverseMatrix<SparseMatrix<double>, PreconditionerMp>>
-      Mp_inverse;
-  };
-
-  /** \brief Block preconditioner for the system
-   *
-   * A right block preconditioner is defined here:
-   * \f{eqnarray*}{
-   *      P^{-1} = \begin{pmatrix} \tilde{A}^{-1} & 0\\ 0 & I\end{pmatrix}
-   *               \begin{pmatrix} I & -B^T\\ 0 & I\end{pmatrix}
-   *               \begin{pmatrix} I & 0\\ 0 & \tilde{S}^{-1}\end{pmatrix}
-   * \f}
-   * \f$\tilde{S}^{-1}\f$ is defined by SchurComplementInverse,
-   * \f$\tilde{A}^{-1}\f$ is unsymmetric thanks to the convection term,
-   * which we do not have a nice way to deal with other than using a direct
-   * solver.
-   * (Geometric multigrid is the right way to go if only you are brave enough
-   * to implement it.)
-   * The template arguments are the same as SchurComplementInverse.
-   */
-  template <class PreconditionerSm, class PreconditionerMp>
-  class BlockSchurPreconditioner : public Subscriptor
-  {
-  public:
-    BlockSchurPreconditioner(
-      const BlockSparseMatrix<double> &system,
-      const SchurComplementInverse<PreconditionerSm, PreconditionerMp> &S_inv);
-
-    void vmult(BlockVector<double> &dst, const BlockVector<double> &src) const;
-
-  private:
-    const SmartPointer<const BlockSparseMatrix<double>> system_matrix;
-    const SmartPointer<
-      const SchurComplementInverse<PreconditionerSm, PreconditionerMp>>
-      S_inverse;
-    SparseDirectUMFPACK A_inverse;
-  };
-}
-
-namespace Fluid
-{
   /** \brief The incompressible Navier Stokes equation solver.
    *
    * This program is built upon dealii tutorials step-57, step-22, step-20.
@@ -225,6 +91,17 @@ namespace Fluid
     void run();
 
   private:
+    /**
+     * Currently the Dirichlet BCs in the input file can only be constant
+     * values.
+     * Space/time-dependent Dirichlet BCs are hard-coded in this class.
+     */
+    class BoundaryValues;
+    /**
+     * The blcok preconditioner for the whole linear system.
+     * It is a private member of NavierStokes<dim>.
+     */
+    class BlockSchurPreconditioner;
     /**
      * This function initializes the DoFHandler and constraints.
      */
@@ -265,7 +142,7 @@ namespace Fluid
      * next mesh using the SolutionTransfer class.
      * NOTE: this function has not been tested.
      */
-    void refine_mesh();
+    void refine_mesh(const unsigned int, const unsigned int);
     /**
      * Write a vtu file for the current solution, as well as a pvtu file to
      * organize them.
@@ -309,33 +186,110 @@ namespace Fluid
 
     Parameters::AllParameters parameters;
 
-    /**
-     * The first building block of \f$\tilde{S}^{-1}\f$:
-     * inverse of mass Schur complement.
-     */
-    std::shared_ptr<ApproximateMassSchur> approximate_Sm;
-    std::shared_ptr<PreconditionIdentity> preconditioner_Sm;
-    std::shared_ptr<InverseMatrix<ApproximateMassSchur, PreconditionIdentity>>
-      Sm_inverse;
+    /// The BlockSchurPreconditioner for the whole system.
+    std::shared_ptr<BlockSchurPreconditioner> preconditioner;
 
-    /**
-     * The second building block of the \f$\tilde{S}^{-1}\f$:
-     * inverse of the pressure mass matrix, which is used for diffusion and
-     * Grad-Div.
-     */
-    std::shared_ptr<SparseILU<double>> preconditioner_Mp;
-    std::shared_ptr<InverseMatrix<SparseMatrix<double>, SparseILU<double>>>
-      Mp_inverse;
+    /** \brief Helper function to specify Dirchlet boundary conditions.
+    *
+    *  It specifies a parabolic velocity profile at the left side boundary,
+    *  and all the remaining boundaries are considered as walls
+    *  except for the right side one.
+    */
+    class BoundaryValues : public Function<dim>
+    {
+    public:
+      BoundaryValues() : Function<dim>(dim + 1) {}
+      virtual double value(const Point<dim> &p,
+                           const unsigned int component) const;
 
-    /// The SchurComplementInverse \f$\tilde{S}^{-1}\f$.
-    std::shared_ptr<
-      SchurComplementInverse<PreconditionIdentity, SparseILU<double>>>
-      S_inverse;
+      virtual void vector_value(const Point<dim> &p,
+                                Vector<double> &values) const;
+    };
 
-    /// The BlockSchurPreconditioner for the whole system:
-    std::shared_ptr<
-      BlockSchurPreconditioner<PreconditionIdentity, SparseILU<double>>>
-      preconditioner;
+    /** \brief Block preconditioner for the system
+    *
+    * A right block preconditioner is defined here:
+    * \f{eqnarray*}{
+    *      P^{-1} = \begin{pmatrix} \tilde{A}^{-1} & 0\\ 0 & I\end{pmatrix}
+    *               \begin{pmatrix} I & -B^T\\ 0 & I\end{pmatrix}
+    *               \begin{pmatrix} I & 0\\ 0 & \tilde{S}^{-1}\end{pmatrix}
+    * \f}
+    *
+    * \f$\tilde{A}\f$ is unsymmetric thanks to the convection term.
+    * We do not have a nice way to deal with other than using a direct
+    * solver. (Geometric multigrid is the right way to go if only you are
+    * brave enough to implement it.)
+    *
+    * \f$\tilde{S}^{-1}\f$ is the inverse of the total Schur complement,
+    * which consists of a reaction term, a diffusion term, a Grad-Div term
+    * and a convection term.
+    * In practice, the convection contribution is ignored because it is not
+    * clear how to treat it. But the block preconditioner is good enough even
+    * without it. Namely,
+    *
+    * \f[
+    *   \tilde{S}^{-1} = -(\nu + \gamma)M_p^{-1} -
+    * \frac{1}{\Delta{t}}{[B(diag(M_u))^{-1}B^T]}^{-1}
+    * \f]
+    * where \f$M_p\f$ is the pressure mass, and \f${[B(diag(M_u))^{-1}B^T]}\f$
+    * is an
+    * approximation to the Schur complement of (velocity) mass matrix
+    * \f$BM_u^{-1}B^T\f$.
+    *
+    * In summary, in order to form the BlockSchurPreconditioner for our system,
+    * we need to compute \f$M_u^{-1}\f$, \f$M_p^{-1}\f$, \f$\tilde{A}^{-1}\f$
+    * and them operate on them.
+    * The first two matrices can be easily defined indirectly with CG solver,
+    * and the last one is going to be solved with direct solver.
+    */
+    class BlockSchurPreconditioner : public Subscriptor
+    {
+    public:
+      /// Constructor.
+      BlockSchurPreconditioner(double gamma,
+                               double viscosity,
+                               double dt,
+                               const BlockSparseMatrix<double> &system,
+                               const BlockSparseMatrix<double> &mass);
+
+      /// The matrix-vector multiplication must be defined.
+      void vmult(BlockVector<double> &dst,
+                 const BlockVector<double> &src) const;
+
+    private:
+      const double gamma;
+      const double viscosity;
+      const double dt;
+
+      /// dealii smart pointer checks if an object is still being referenced
+      /// when it is destructed therefore is safer than plain reference.
+      const SmartPointer<const BlockSparseMatrix<double>> system_matrix;
+      const SmartPointer<const BlockSparseMatrix<double>> mass_matrix;
+
+      /// The direct solver used for \f$\tilde{A}\f$. We declare it as a member
+      /// so that it can be initialized only once for many applications of the
+      /// preconditioner.
+      SparseDirectUMFPACK A_inverse;
+
+      /// As discussed, \f${[B(diag(M_u))^{-1}B^T]}\f$ and its inverse
+      /// need to be computed.
+      /// Instead of computing it as a matrix, we define a class with vmult
+      /// operation. After all, the CG solver only needs the matrix-like object
+      /// has a vmult operation
+      class ApproximateMassSchur
+      {
+      public:
+        ApproximateMassSchur(const BlockSparseMatrix<double> &M);
+        /// Both src and dst have size dof_p
+        void vmult(Vector<double> &dst, const Vector<double> &src) const;
+
+      private:
+        /// This class needs access to mass_matrix
+        const SmartPointer<const BlockSparseMatrix<double>> mass_matrix;
+        /// Both tmp1 and tmp2 have size dof_u
+        mutable Vector<double> tmp1, tmp2;
+      } mass_schur;
+    };
   };
 }
 
