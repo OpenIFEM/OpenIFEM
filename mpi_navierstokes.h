@@ -1,5 +1,5 @@
-#ifndef NAVIER_STOKES
-#define NAVIER_STOKES
+#ifndef PARALLEL_NAVIER_STOKES
+#define PARALLEL_NAVIER_STOKES
 
 #include <deal.II/base/function.h>
 #include <deal.II/base/logstream.h>
@@ -17,6 +17,13 @@
 #include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/solver_gmres.h>
 #include <deal.II/lac/sparse_direct.h>
+#include <deal.II/lac/sparsity_tools.h>
+
+#include <deal.II/lac/petsc_parallel_block_sparse_matrix.h>
+#include <deal.II/lac/petsc_parallel_sparse_matrix.h>
+#include <deal.II/lac/petsc_parallel_vector.h>
+#include <deal.II/lac/petsc_precondition.h>
+#include <deal.II/lac/petsc_solver.h>
 
 #include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/grid_refinement.h>
@@ -40,14 +47,9 @@
 #include <deal.II/numerics/matrix_tools.h>
 #include <deal.II/numerics/vector_tools.h>
 
-// To transfer solutions between meshes, this file is included:
-#include <deal.II/numerics/solution_transfer.h>
-
-// This file includes UMFPACK: the direct solver:
-#include <deal.II/lac/sparse_direct.h>
-
-// And the one for ILU preconditioner:
-#include <deal.II/lac/sparse_ilu.h>
+#include <deal.II/distributed/grid_refinement.h>
+#include <deal.II/distributed/solution_transfer.h>
+#include <deal.II/distributed/tria.h>
 
 #include <fstream>
 #include <iostream>
@@ -72,7 +74,7 @@ namespace Fluid
    * at the initial step and a zero ConstraintMatrix for the rest steps.
    */
   template <int dim>
-  class NavierStokes
+  class ParallelNavierStokes
   {
   public:
     /** \brief Constructor.
@@ -83,7 +85,10 @@ namespace Fluid
      * functions or by reading Abaqus input file. Also, a parameter handler is
      * required to specify all the input parameters.
      */
-    NavierStokes(Triangulation<dim> &, const Parameters::AllParameters &);
+    ParallelNavierStokes(parallel::distributed::Triangulation<dim> &,
+                         const Parameters::AllParameters &);
+    /*! \brief Destructor. */
+    ~ParallelNavierStokes() { dof_handler.clear(); };
     /**
      * This function implements the Newton iteration with given tolerance
      * and maximum number of iterations.
@@ -120,27 +125,25 @@ namespace Fluid
      * assemble the whole system or only the right hand side vector,
      * respectively.
      */
-    void assemble(const bool initial_step, const bool assemble_matrix);
-    void assemble_system(const bool initial_step);
-    void assemble_rhs(const bool initial_step);
+    void assemble(const bool, const bool);
+    void assemble_system(const bool);
+    void assemble_rhs(const bool);
     /**
-     * In this function, we use FGMRES together with the block preconditioner,
+     * In this function, we use GMRES solver with the block preconditioner,
      * which is defined at the beginning of the program, to solve the linear
-     * system. What we obtain at this step is the solution vector. If this is
-     * the initial step, the solution vector gives us an initial guess for the
-     * Navier Stokes equations. For the initial step, nonzero constraints are
-     * applied in order to make sure boundary conditions are satisfied. In the
-     * following steps, we will solve for the Newton update so zero
+     * system. What we obtain at this step is the solution update.
+     * For the initial step, nonzero constraints are applied in order to
+     * make sure boundary conditions are satisfied.
+     * In the following steps, we will solve for the Newton update so zero
      * constraints are used.
      */
-    std::pair<unsigned int, double> solve(const bool initial_step);
+    std::pair<unsigned int, double> solve(const bool);
     /**
      * After finding a good initial guess on the coarse mesh, we hope to
      * decrease the error through refining the mesh. Here we do adaptive
      * refinement based on the Kelly estimator on the velocity only.
      * We also need to transfer the current solution to the
      * next mesh using the SolutionTransfer class.
-     * NOTE: this function has not been tested.
      */
     void refine_mesh(const unsigned int, const unsigned int);
     /**
@@ -154,7 +157,7 @@ namespace Fluid
     const unsigned int degree;
     std::vector<types::global_dof_index> dofs_per_block;
 
-    Triangulation<dim> &triangulation;
+    parallel::distributed::Triangulation<dim> &triangulation;
     FESystem<dim> fe;
     DoFHandler<dim> dof_handler;
     QGauss<dim> volume_quad_formula;
@@ -164,30 +167,43 @@ namespace Fluid
     ConstraintMatrix nonzero_constraints;
 
     BlockSparsityPattern sparsity_pattern;
-    BlockSparseMatrix<double> system_matrix;
-    BlockSparseMatrix<double> mass_matrix;
+    PETScWrappers::MPI::BlockSparseMatrix system_matrix;
+    PETScWrappers::MPI::BlockSparseMatrix mass_matrix;
 
     /// The latest known solution.
-    BlockVector<double> present_solution;
+    PETScWrappers::MPI::BlockVector present_solution;
     /// The increment at a certain Newton iteration.
-    BlockVector<double> newton_update;
+    PETScWrappers::MPI::BlockVector newton_update;
     /**
      * The latest know solution plus the cumulation of all newton_updates
      * in the current time step, which approaches to the new present_solution.
      */
-    BlockVector<double> evaluation_point;
-    BlockVector<double> system_rhs;
+    PETScWrappers::MPI::BlockVector evaluation_point;
+    PETScWrappers::MPI::BlockVector system_rhs;
 
     const double tolerance;
     const unsigned int max_iteration;
 
-    Utils::Time time;
-    mutable TimerOutput timer;
-
     Parameters::AllParameters parameters;
 
-    /// The BlockSchurPreconditioner for the whole system.
+    MPI_Comm mpi_communicator;
+
+    ConditionalOStream pcout;
+
+    /// The IndexSets of owned velocity and pressure respectively.
+    std::vector<IndexSet> owned_partitioning;
+
+    /// The IndexSets of relevant velocity and pressure respectively.
+    std::vector<IndexSet> relevant_partitioning;
+
+    /// The IndexSet of all relevant dofs. This seems to be redundant but handy.
+    IndexSet locally_relevant_dofs;
+
+    /// The BlockSchurPreconditioner for the whole system:
     std::shared_ptr<BlockSchurPreconditioner> preconditioner;
+
+    Utils::Time time;
+    mutable TimerOutput timer;
 
     /** \brief Helper function to specify Dirchlet boundary conditions.
     *
@@ -232,7 +248,8 @@ namespace Fluid
     * \frac{1}{\Delta{t}}{[B(diag(M_u))^{-1}B^T]}^{-1}
     * \f]
     * where \f$M_p\f$ is the pressure mass, and \f${[B(diag(M_u))^{-1}B^T]}\f$
-    * is an
+    * is
+    * an
     * approximation to the Schur complement of (velocity) mass matrix
     * \f$BM_u^{-1}B^T\f$.
     *
@@ -246,18 +263,21 @@ namespace Fluid
     {
     public:
       /// Constructor.
-      BlockSchurPreconditioner(TimerOutput &timer,
-                               double gamma,
-                               double viscosity,
-                               double dt,
-                               const BlockSparseMatrix<double> &system,
-                               const BlockSparseMatrix<double> &mass);
+      BlockSchurPreconditioner(
+        TimerOutput &timer,
+        double gamma,
+        double viscosity,
+        double dt,
+        const std::vector<IndexSet> &owned_partitioning,
+        const PETScWrappers::MPI::BlockSparseMatrix &system,
+        const PETScWrappers::MPI::BlockSparseMatrix &mass);
 
       /// The matrix-vector multiplication must be defined.
-      void vmult(BlockVector<double> &dst,
-                 const BlockVector<double> &src) const;
+      void vmult(PETScWrappers::MPI::BlockVector &dst,
+                 const PETScWrappers::MPI::BlockVector &src) const;
 
     private:
+      /// We would like to time the BlockSchuPreconditioner in detail.
       TimerOutput &timer;
       const double gamma;
       const double viscosity;
@@ -265,13 +285,20 @@ namespace Fluid
 
       /// dealii smart pointer checks if an object is still being referenced
       /// when it is destructed therefore is safer than plain reference.
-      const SmartPointer<const BlockSparseMatrix<double>> system_matrix;
-      const SmartPointer<const BlockSparseMatrix<double>> mass_matrix;
+      const SmartPointer<const PETScWrappers::MPI::BlockSparseMatrix>
+        system_matrix;
+      const SmartPointer<const PETScWrappers::MPI::BlockSparseMatrix>
+        mass_matrix;
 
-      /// The direct solver used for \f$\tilde{A}\f$. We declare it as a member
-      /// so that it can be initialized only once for many applications of the
-      /// preconditioner.
-      SparseDirectUMFPACK A_inverse;
+      /// A dummy solver control object for MUMPS solver
+      SolverControl dummy_sc;
+      /**
+       * Similar to the serial code, reuse the factorization.
+       * Although SparseDirectMUMPS does not have the initialize and vmult pair
+       * like UMFPACK, it reuses the factorization as long as it is not reset
+       * and the matrix does not change.
+       */
+      mutable PETScWrappers::SparseDirectMUMPS A_inverse;
 
       /// As discussed, \f${[B(diag(M_u))^{-1}B^T]}\f$ and its inverse
       /// need to be computed.
@@ -281,15 +308,18 @@ namespace Fluid
       class ApproximateMassSchur
       {
       public:
-        ApproximateMassSchur(const BlockSparseMatrix<double> &M);
+        ApproximateMassSchur(const PETScWrappers::MPI::BlockSparseMatrix &M,
+                             const std::vector<IndexSet> &owned_partitioning);
         /// Both src and dst have size dof_p
-        void vmult(Vector<double> &dst, const Vector<double> &src) const;
+        void vmult(PETScWrappers::MPI::Vector &dst,
+                   const PETScWrappers::MPI::Vector &src) const;
 
       private:
         /// This class needs access to mass_matrix
-        const SmartPointer<const BlockSparseMatrix<double>> mass_matrix;
+        const SmartPointer<const PETScWrappers::MPI::BlockSparseMatrix>
+          mass_matrix;
         /// Both tmp1 and tmp2 have size dof_u
-        mutable Vector<double> tmp1, tmp2;
+        mutable PETScWrappers::MPI::Vector tmp1, tmp2;
       } mass_schur;
     };
   };

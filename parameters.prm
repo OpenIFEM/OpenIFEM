@@ -46,8 +46,8 @@ subsection Fluid solver control
   # Maximum number of Newton iterations at a time step
   set Max Newton iterations = 8
 
-  # The absolute tolerance of the nonlinear system residual
-  set Nonlinear system tolerance = 1e-12
+  # The relative tolerance of the nonlinear system residual
+  set Nonlinear system tolerance = 1e-6
 end
 
 subsection Fluid Dirichlet BCs

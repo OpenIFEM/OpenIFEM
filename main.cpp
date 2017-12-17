@@ -1,6 +1,7 @@
 #include "hyperelasticSolver.h"
 #include "linearElasticSolver.h"
 #include "mpi_linearelasticity.h"
+#include "mpi_navierstokes.h"
 #include "navierstokes.h"
 #include "parameters.h"
 #include "utilities.h"
@@ -14,6 +15,8 @@ extern template class Solid::HyperelasticSolver<3>;
 
 extern template class Solid::ParallelLinearElasticity<2>;
 extern template class Solid::ParallelLinearElasticity<3>;
+extern template class Fluid::ParallelNavierStokes<2>;
+extern template class Fluid::ParallelNavierStokes<3>;
 
 int main(int argc, char *argv[])
 {
@@ -26,6 +29,12 @@ int main(int argc, char *argv[])
       Parameters::AllParameters params("parameters.prm");
       if (params.dimension == 2)
         {
+          /*
+          parallel::distributed::Triangulation<2> tria(MPI_COMM_WORLD);
+          Utils::GridCreator::flow_around_cylinder(tria);
+          Fluid::ParallelNavierStokes<2> flow(tria, params);
+          flow.run();
+          */
           Triangulation<2> tria;
           Utils::GridCreator::flow_around_cylinder(tria);
           Fluid::NavierStokes<2> flow(tria, params);
@@ -33,10 +42,6 @@ int main(int argc, char *argv[])
         }
       else if (params.dimension == 3)
         {
-          Triangulation<3> tria;
-          Utils::GridCreator::flow_around_cylinder(tria);
-          Fluid::NavierStokes<3> flow(tria, params);
-          flow.run();
         }
       else
         {

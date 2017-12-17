@@ -63,18 +63,22 @@ namespace Fluid
    */
   template <int dim>
   NavierStokes<dim>::BlockSchurPreconditioner::BlockSchurPreconditioner(
+    TimerOutput &timer,
     double gamma,
     double viscosity,
     double dt,
     const BlockSparseMatrix<double> &system,
     const BlockSparseMatrix<double> &mass)
-    : gamma(gamma),
+    : timer(timer),
+      gamma(gamma),
       viscosity(viscosity),
       dt(dt),
       system_matrix(&system),
       mass_matrix(&mass),
       mass_schur(mass)
   {
+    // Factoring A is also part of the direct solver.
+    TimerOutput::Scope timer_section(timer, "UMFPACK for A_inv");
     A_inverse.initialize(system_matrix->block(0, 0));
   }
 
@@ -91,6 +95,8 @@ namespace Fluid
 
     // This block computes \f$u_1 = \tilde{S}^{-1} v_1\f$.
     {
+      timer.enter_subsection("CG for Mp");
+
       // CG solver used for \f$M_p^{-1}\f$ and \f$S_m^{-1}\f$.
       SolverControl solver_control(src.block(1).size(),
                                    1e-6 * src.block(1).l2_norm());
@@ -105,6 +111,9 @@ namespace Fluid
       cg.solve(mass_matrix->block(1, 1), tmp, src.block(1), Mp_preconditioner);
       tmp *= -(viscosity + gamma);
 
+      timer.leave_subsection("CG for Mp");
+      timer.enter_subsection("CG for Sm");
+
       // \f$-\frac{1}{dt}S_m^{-1}v_1\f$
       // We cannot use any standard built-in here because mass_schur is
       // not a built-in matrix.
@@ -114,6 +123,8 @@ namespace Fluid
 
       // Adding up these two, we get \f$\tilde{S}^{-1}v_1\f$.
       dst.block(1) += tmp;
+
+      timer.leave_subsection("CG for Sm");
     }
 
     // This block computes \f$v_0 - B^T\tilde{S}^{-1}v_1\f$ based on \f$u_1\f$.
@@ -125,7 +136,10 @@ namespace Fluid
 
     // Finally, compute the product of \f$\tilde{A}^{-1}\f$ and utmp with
     // the direct solver.
-    A_inverse.vmult(dst.block(0), utmp);
+    {
+      TimerOutput::Scope timer_section(timer, "UMFPACK for A_inv");
+      A_inverse.vmult(dst.block(0), utmp);
+    }
   }
 
   template <int dim>
@@ -501,16 +515,10 @@ namespace Fluid
   std::pair<unsigned int, double>
   NavierStokes<dim>::solve(const bool initial_step)
   {
-    // The only reason that the initialization of the preconditioners is timed
-    // separately from solving the system is that it calls a direct solver
-    // to get \f$\tilde{A}^{-1}\f$ which is time-consuming. Other than that,
-    // initializing preconditioners does not do real work.
-    {
-      TimerOutput::Scope timer_section(timer, "Initialize preconditioners");
+    TimerOutput::Scope timer_section(timer, "Solve linear system");
 
-      preconditioner.reset(new BlockSchurPreconditioner(
-        gamma, viscosity, time.get_delta_t(), system_matrix, mass_matrix));
-    }
+    preconditioner.reset(new BlockSchurPreconditioner(
+      timer, gamma, viscosity, time.get_delta_t(), system_matrix, mass_matrix));
 
     // NOTE: SolverFGMRES only applies the preconditioner from the right,
     // as opposed to SolverGMRES which allows both left and right
@@ -519,15 +527,12 @@ namespace Fluid
       system_matrix.m(), 1e-8 * system_rhs.l2_norm(), true);
     GrowingVectorMemory<BlockVector<double>> vector_memory;
     SolverFGMRES<BlockVector<double>> gmres(solver_control, vector_memory);
-    {
-      TimerOutput::Scope timer_section(timer, "Solve linear system");
 
-      gmres.solve(system_matrix, newton_update, system_rhs, *preconditioner);
+    gmres.solve(system_matrix, newton_update, system_rhs, *preconditioner);
 
-      const ConstraintMatrix &constraints_used =
-        initial_step ? nonzero_constraints : zero_constraints;
-      constraints_used.distribute(newton_update);
-    }
+    const ConstraintMatrix &constraints_used =
+      initial_step ? nonzero_constraints : zero_constraints;
+    constraints_used.distribute(newton_update);
 
     return {solver_control.last_step(), solver_control.last_value()};
   }

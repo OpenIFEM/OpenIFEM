@@ -32,6 +32,8 @@ SET(TARGET_SRC
   hyperelasticSolver.cpp
   mpi_linearelasticity.h
   mpi_linearelasticity.cpp
+  mpi_navierstokes.h
+  mpi_navierstokes.cpp
   )
 
 # Usually, you will not need to modify anything beyond this point...
