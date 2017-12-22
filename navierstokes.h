@@ -140,7 +140,6 @@ namespace Fluid
      * refinement based on the Kelly estimator on the velocity only.
      * We also need to transfer the current solution to the
      * next mesh using the SolutionTransfer class.
-     * NOTE: this function has not been tested.
      */
     void refine_mesh(const unsigned int, const unsigned int);
     /**
@@ -166,6 +165,8 @@ namespace Fluid
     BlockSparsityPattern sparsity_pattern;
     BlockSparseMatrix<double> system_matrix;
     BlockSparseMatrix<double> mass_matrix;
+    SparsityPattern mass_schur_pattern;
+    SparseMatrix<double> mass_schur;
 
     /// The latest known solution.
     BlockVector<double> present_solution;
@@ -251,7 +252,8 @@ namespace Fluid
                                double viscosity,
                                double dt,
                                const BlockSparseMatrix<double> &system,
-                               const BlockSparseMatrix<double> &mass);
+                               const BlockSparseMatrix<double> &mass,
+                               SparseMatrix<double> &schur);
 
       /// The matrix-vector multiplication must be defined.
       void vmult(BlockVector<double> &dst,
@@ -267,30 +269,24 @@ namespace Fluid
       /// when it is destructed therefore is safer than plain reference.
       const SmartPointer<const BlockSparseMatrix<double>> system_matrix;
       const SmartPointer<const BlockSparseMatrix<double>> mass_matrix;
+      /**
+       * As discussed, \f${[B(diag(M_u))^{-1}B^T]}\f$ and its inverse
+       * need to be computed.
+       * We can either explicitly compute it out as a matrix, or define it as a
+       * class
+       * with a vmult operation. The second approach saves some computation to
+       * construct the matrix, but leads to slow convergence in CG solver
+       * because
+       * of the absence of preconditioner.
+       * Based on my tests, the first approach is more than 10 times faster so I
+       * go with this route.
+       */
+      const SmartPointer<SparseMatrix<double>> mass_schur;
 
       /// The direct solver used for \f$\tilde{A}\f$. We declare it as a member
       /// so that it can be initialized only once for many applications of the
       /// preconditioner.
       SparseDirectUMFPACK A_inverse;
-
-      /// As discussed, \f${[B(diag(M_u))^{-1}B^T]}\f$ and its inverse
-      /// need to be computed.
-      /// Instead of computing it as a matrix, we define a class with vmult
-      /// operation. After all, the CG solver only needs the matrix-like object
-      /// has a vmult operation
-      class ApproximateMassSchur
-      {
-      public:
-        ApproximateMassSchur(const BlockSparseMatrix<double> &M);
-        /// Both src and dst have size dof_p
-        void vmult(Vector<double> &dst, const Vector<double> &src) const;
-
-      private:
-        /// This class needs access to mass_matrix
-        const SmartPointer<const BlockSparseMatrix<double>> mass_matrix;
-        /// Both tmp1 and tmp2 have size dof_u
-        mutable Vector<double> tmp1, tmp2;
-      } mass_schur;
     };
   };
 }

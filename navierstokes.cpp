@@ -28,33 +28,6 @@ namespace Fluid
   }
 
   /**
-   * Initialize tmp1 and tmp2 in the constructor.
-   */
-  template <int dim>
-  NavierStokes<dim>::BlockSchurPreconditioner::ApproximateMassSchur::
-    ApproximateMassSchur(const BlockSparseMatrix<double> &M)
-    : mass_matrix(&M), tmp1(mass_matrix->block(0, 0).m()), tmp2(tmp1)
-  {
-  }
-
-  /**
-   * ApproximateMassSchur is nested in BlockSchurPreconditioner so it
-   * can use mass_matrix directly.
-   */
-  template <int dim>
-  void NavierStokes<dim>::BlockSchurPreconditioner::ApproximateMassSchur::vmult(
-    Vector<double> &dst, const Vector<double> &src) const
-  {
-    tmp1 = 0;
-    tmp2 = 0;
-    mass_matrix->block(0, 1).vmult(tmp1, src);
-    // Jacobi preconditioner of matrix A is by definition inverse diag(A),
-    // this is exactly what we want to compute.
-    mass_matrix->block(0, 0).precondition_Jacobi(tmp2, tmp1);
-    mass_matrix->block(1, 0).vmult(dst, tmp2);
-  }
-
-  /**
    * The initialization of the direct solver is expensive as it allocates
    * a lot of memory. The preconditioner is going to be applied several
    * times before it is re-initialized. Therefore initializing the direct
@@ -68,18 +41,34 @@ namespace Fluid
     double viscosity,
     double dt,
     const BlockSparseMatrix<double> &system,
-    const BlockSparseMatrix<double> &mass)
+    const BlockSparseMatrix<double> &mass,
+    SparseMatrix<double> &schur)
     : timer(timer),
       gamma(gamma),
       viscosity(viscosity),
       dt(dt),
       system_matrix(&system),
       mass_matrix(&mass),
-      mass_schur(mass)
+      mass_schur(&schur)
   {
-    // Factoring A is also part of the direct solver.
-    TimerOutput::Scope timer_section(timer, "UMFPACK for A_inv");
-    A_inverse.initialize(system_matrix->block(0, 0));
+    {
+      // Factoring A is also part of the direct solver.
+      TimerOutput::Scope timer_section(timer, "UMFPACK for A_inv");
+      A_inverse.initialize(system_matrix->block(0, 0));
+    }
+    {
+      TimerOutput::Scope timer_section(timer, "CG for Sm");
+      Vector<double> tmp1(mass_matrix->block(0, 0).m()), tmp2(tmp1);
+      tmp1 = 1;
+      tmp2 = 0;
+      // Jacobi preconditioner of matrix A is by definition inverse diag(A),
+      // this is exactly what we want to compute.
+      mass_matrix->block(0, 0).precondition_Jacobi(tmp2, tmp1);
+      // The sparsity pattern has already been set correctly, so explicitly
+      // tell mmult not to rebuild the sparsity pattern.
+      system_matrix->block(1, 0).mmult(
+        *mass_schur, system_matrix->block(0, 1), tmp2, false);
+    }
   }
 
   /**
@@ -106,8 +95,7 @@ namespace Fluid
       // We choose to use SparseILU as a preconditioner.
       Vector<double> tmp(src.block(1).size());
       SparseILU<double> Mp_preconditioner;
-      Mp_preconditioner.initialize(mass_matrix->block(1, 1),
-                                   SparseILU<double>::AdditionalData());
+      Mp_preconditioner.initialize(mass_matrix->block(1, 1));
       cg.solve(mass_matrix->block(1, 1), tmp, src.block(1), Mp_preconditioner);
       tmp *= -(viscosity + gamma);
 
@@ -117,8 +105,9 @@ namespace Fluid
       // \f$-\frac{1}{dt}S_m^{-1}v_1\f$
       // We cannot use any standard built-in here because mass_schur is
       // not a built-in matrix.
-      PreconditionIdentity Sm_preconditioner;
-      cg.solve(mass_schur, dst.block(1), src.block(1), Sm_preconditioner);
+      SparseILU<double> Sm_preconditioner;
+      Sm_preconditioner.initialize(*mass_schur);
+      cg.solve(*mass_schur, dst.block(1), src.block(1), Sm_preconditioner);
       dst.block(1) *= -1 / dt;
 
       // Adding up these two, we get \f$\tilde{S}^{-1}v_1\f$.
@@ -290,6 +279,7 @@ namespace Fluid
     preconditioner.reset();
     system_matrix.clear();
     mass_matrix.clear();
+    mass_schur.clear();
 
     BlockDynamicSparsityPattern dsp(dofs_per_block, dofs_per_block);
     DoFTools::make_sparsity_pattern(dof_handler, dsp, nonzero_constraints);
@@ -302,6 +292,14 @@ namespace Fluid
     newton_update.reinit(dofs_per_block);
     evaluation_point.reinit(dofs_per_block);
     system_rhs.reinit(dofs_per_block);
+
+    // Compute the sparsity pattern for mass schur in advance.
+    // It should be the same as \f$BB^T\f$.
+    DynamicSparsityPattern schur_pattern(dofs_per_block[1], dofs_per_block[1]);
+    schur_pattern.compute_mmult_pattern(sparsity_pattern.block(1, 0),
+                                        sparsity_pattern.block(0, 1));
+    mass_schur_pattern.copy_from(schur_pattern);
+    mass_schur.reinit(mass_schur_pattern);
   }
 
   template <int dim>
@@ -379,8 +377,7 @@ namespace Fluid
                                                   present_velocity_values);
 
         // Assemble the system matrix and mass matrix simultaneouly.
-        // We assemble \f$B^T\f$ and \f$B\f$ into the mass matrix for convience
-        // because they will be used in the preconditioner.
+        // The mass matrix only uses the (0, 0) and (1, 1) blocks.
         //
         for (unsigned int q = 0; q < n_q_points; ++q)
           {
@@ -419,8 +416,7 @@ namespace Fluid
                            phi_u[i] * phi_u[j] / time.get_delta_t()) *
                           fe_values.JxW(q);
                         local_mass_matrix(i, j) +=
-                          (phi_u[i] * phi_u[j] + phi_p[i] * phi_p[j] -
-                           div_phi_u[i] * phi_p[j] - phi_p[i] * div_phi_u[j]) *
+                          (phi_u[i] * phi_u[j] + phi_p[i] * phi_p[j]) *
                           fe_values.JxW(q);
                       }
                   }
@@ -517,8 +513,13 @@ namespace Fluid
   {
     TimerOutput::Scope timer_section(timer, "Solve linear system");
 
-    preconditioner.reset(new BlockSchurPreconditioner(
-      timer, gamma, viscosity, time.get_delta_t(), system_matrix, mass_matrix));
+    preconditioner.reset(new BlockSchurPreconditioner(timer,
+                                                      gamma,
+                                                      viscosity,
+                                                      time.get_delta_t(),
+                                                      system_matrix,
+                                                      mass_matrix,
+                                                      mass_schur));
 
     // NOTE: SolverFGMRES only applies the preconditioner from the right,
     // as opposed to SolverGMRES which allows both left and right
