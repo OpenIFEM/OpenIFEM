@@ -153,6 +153,7 @@ namespace Fluid
     void output_results(const unsigned int) const;
 
     double viscosity;
+    double rho;
     double gamma;
     const unsigned int degree;
     std::vector<types::global_dof_index> dofs_per_block;
@@ -267,6 +268,7 @@ namespace Fluid
         TimerOutput &timer,
         double gamma,
         double viscosity,
+        double rho,
         double dt,
         const std::vector<IndexSet> &owned_partitioning,
         const PETScWrappers::MPI::BlockSparseMatrix &system,
@@ -281,6 +283,7 @@ namespace Fluid
       TimerOutput &timer;
       const double gamma;
       const double viscosity;
+      const double rho;
       const double dt;
 
       /// dealii smart pointer checks if an object is still being referenced

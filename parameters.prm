@@ -12,10 +12,10 @@ subsection Simulation
 
   # Level of global refinement before running,
   # which applies to all the solvers
-  set Global refinement = 3
+  set Global refinement = 2
 
   # The end time of the simulation in second
-  set End time = 20
+  set End time = 1e-1
 
   # The time step in second
   set Time step size = 1e-2
@@ -35,8 +35,11 @@ subsection Fluid finite element system
 end
 
 subsection Fluid material properties
-  # The kinematic viscosity
-  set Viscosity = 1
+  # The dynamic viscosity
+  set Dynamic viscosity = 0.001
+
+  # Fluid density
+  set Fluid density = 1
 end
 
 subsection Fluid solver control
@@ -55,7 +58,7 @@ subsection Fluid Dirichlet BCs
   set Number of Dirichlet BCs = 2
 
   # List all the boundaries with Dirichlet BCs
-  set Dirichlet boundary id = 2, 3
+  set Dirichlet boundary id = 0, 1
 
   # List the constrained components of these boundaries
   # One decimal number indicates one set of constrained components:
@@ -71,7 +74,7 @@ end
 subsection Fluid Neumann BCs
   # Number of boundaries with Neumann BCs (specificaly, pressure BC)
   # Note: do-nothing (zero pressure) boundary do not need to be explicitly specified!)
-  set Number of Neumann BCs = 1
+  set Number of Neumann BCs = 0
 
   # List all the boundaries with Neumann BCs
   set Neumann boundary id = 0
@@ -91,8 +94,8 @@ subsection Solid material properties
   # Material type, currently LinearElastic and NeoHookean are available
   set Solid type = LinearElastic
 
-  # Density, required by dynamic analysis
-  set Density = 1
+  # Solid density, used by all solid solvers
+  set Solid density = 1
 
   # E and nu are only used by linearElasticMaterial
   set Young's modulus = 2.5

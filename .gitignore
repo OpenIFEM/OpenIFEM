@@ -31,4 +31,8 @@
 *.out
 *.app
 
-compile_commands.json
+# Compile commands
+*.json
+
+# Vim temporary files
+*.swp

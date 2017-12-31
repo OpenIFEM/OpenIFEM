@@ -149,6 +149,7 @@ namespace Fluid
     void output_results(const unsigned int) const;
 
     double viscosity;
+    double rho;
     double gamma;
     const unsigned int degree;
     std::vector<types::global_dof_index> dofs_per_block;
@@ -250,6 +251,7 @@ namespace Fluid
       BlockSchurPreconditioner(TimerOutput &timer,
                                double gamma,
                                double viscosity,
+                               double rho,
                                double dt,
                                const BlockSparseMatrix<double> &system,
                                const BlockSparseMatrix<double> &mass,
@@ -263,6 +265,7 @@ namespace Fluid
       TimerOutput &timer;
       const double gamma;
       const double viscosity;
+      const double rho;
       const double dt;
 
       /// dealii smart pointer checks if an object is still being referenced

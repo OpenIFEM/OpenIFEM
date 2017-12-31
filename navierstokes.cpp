@@ -39,6 +39,7 @@ namespace Fluid
     TimerOutput &timer,
     double gamma,
     double viscosity,
+    double rho,
     double dt,
     const BlockSparseMatrix<double> &system,
     const BlockSparseMatrix<double> &mass,
@@ -46,6 +47,7 @@ namespace Fluid
     : timer(timer),
       gamma(gamma),
       viscosity(viscosity),
+      rho(rho),
       dt(dt),
       system_matrix(&system),
       mass_matrix(&mass),
@@ -97,7 +99,7 @@ namespace Fluid
       SparseILU<double> Mp_preconditioner;
       Mp_preconditioner.initialize(mass_matrix->block(1, 1));
       cg.solve(mass_matrix->block(1, 1), tmp, src.block(1), Mp_preconditioner);
-      tmp *= -(viscosity + gamma);
+      tmp *= -(viscosity / rho + gamma);
 
       timer.leave_subsection("CG for Mp");
       timer.enter_subsection("CG for Sm");
@@ -135,6 +137,7 @@ namespace Fluid
   NavierStokes<dim>::NavierStokes(Triangulation<dim> &tria,
                                   const Parameters::AllParameters &parameters)
     : viscosity(parameters.viscosity),
+      rho(parameters.fluid_rho),
       gamma(parameters.grad_div),
       degree(parameters.fluid_degree),
       triangulation(tria),
@@ -405,7 +408,7 @@ namespace Fluid
                         // \f$M = m(\delta{u}, \delta{v})$, then LHS is: $(A +
                         // C) + M/{\Delta{t}}\f$
                         local_matrix(i, j) +=
-                          ((viscosity *
+                          ((viscosity / rho *
                               scalar_product(grad_phi_u[j], grad_phi_u[i]) +
                             current_velocity_gradients[q] * phi_u[j] *
                               phi_u[i] +
@@ -426,8 +429,9 @@ namespace Fluid
                 double current_velocity_divergence =
                   trace(current_velocity_gradients[q]);
                 local_rhs(i) +=
-                  ((-viscosity * scalar_product(current_velocity_gradients[q],
-                                                grad_phi_u[i]) -
+                  ((-viscosity / rho *
+                      scalar_product(current_velocity_gradients[q],
+                                     grad_phi_u[i]) -
                     current_velocity_gradients[q] * current_velocity_values[q] *
                       phi_u[i] +
                     current_pressure_values[q] * div_phi_u[i] +
@@ -462,10 +466,10 @@ namespace Fluid
                       {
                         for (unsigned int i = 0; i < dofs_per_cell; ++i)
                           {
-                            local_rhs(i) +=
-                              -(fe_face_values[velocities].value(i, q) *
-                                fe_face_values.normal_vector(q) *
-                                boundary_values_p * fe_face_values.JxW(q));
+                            local_rhs(i) += -(
+                              fe_face_values[velocities].value(i, q) *
+                              fe_face_values.normal_vector(q) *
+                              boundary_values_p / rho * fe_face_values.JxW(q));
                           }
                       }
                   }
@@ -516,6 +520,7 @@ namespace Fluid
     preconditioner.reset(new BlockSchurPreconditioner(timer,
                                                       gamma,
                                                       viscosity,
+                                                      rho,
                                                       time.get_delta_t(),
                                                       system_matrix,
                                                       mass_matrix,
@@ -672,6 +677,11 @@ namespace Fluid
     std::vector<std::string> solution_names(dim, "velocity");
     solution_names.push_back("pressure");
 
+    // We solved for the normalized pressure but want to output the original
+    // pressure
+    BlockVector<double> output_solution(present_solution);
+    output_solution.block(1) *= rho;
+
     std::vector<DataComponentInterpretation::DataComponentInterpretation>
       data_component_interpretation(
         dim, DataComponentInterpretation::component_is_part_of_vector);
@@ -679,7 +689,7 @@ namespace Fluid
       DataComponentInterpretation::component_is_scalar);
     DataOut<dim> data_out;
     data_out.attach_dof_handler(dof_handler);
-    data_out.add_data_vector(present_solution,
+    data_out.add_data_vector(output_solution,
                              solution_names,
                              DataOut<dim>::type_dof_data,
                              data_component_interpretation);
