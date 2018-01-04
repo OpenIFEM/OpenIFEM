@@ -33,6 +33,18 @@ namespace Fluid
       values(c) = BoundaryValues::value(p, c);
   }
 
+  template <int dim>
+  double NavierStokes<dim>::CellProperty::get_mu() const
+  {
+    return (indicator * solid_mu + (1 - indicator) * fluid_mu);
+  }
+
+  template <int dim>
+  double NavierStokes<dim>::CellProperty::get_rho() const
+  {
+    return (indicator * solid_rho + (1 - indicator) * fluid_rho);
+  }
+
   /**
    * The initialization of the direct solver is expensive as it allocates
    * a lot of memory. The preconditioner is going to be applied several
@@ -273,8 +285,8 @@ namespace Fluid
           VectorTools::interpolate_boundary_values(
             dof_handler,
             id,
-            // Functions::ConstantFunction<dim>(augmented_value),
-            BoundaryValues(),
+            Functions::ConstantFunction<dim>(augmented_value),
+            // BoundaryValues(),
             nonzero_constraints,
             ComponentMask(mask));
           VectorTools::interpolate_boundary_values(
@@ -292,6 +304,28 @@ namespace Fluid
               << triangulation.n_active_cells() << std::endl
               << "   Number of degrees of freedom: " << dof_handler.n_dofs()
               << " (" << dof_u << '+' << dof_p << ')' << std::endl;
+  }
+
+  template <int dim>
+  void NavierStokes<dim>::setup_cell_property()
+  {
+    std::cout << "   Setting up cell property..." << std::endl;
+    cell_property.initialize(
+      triangulation.begin_active(), triangulation.end(), 1);
+    for (auto cell = triangulation.begin_active(); cell != triangulation.end();
+         ++cell)
+      {
+        const std::vector<std::shared_ptr<CellProperty>> p =
+          cell_property.get_data(cell);
+        Assert(p.size() == 1, ExcMessage("Wrong number of cell property!"));
+        p[0]->indicator = 0;
+        p[0]->fluid_rho = parameters.fluid_rho;
+        p[0]->fluid_mu = parameters.viscosity;
+        p[0]->solid_rho = parameters.solid_rho;
+        AssertThrow(parameters.solid_type == "LinearElastic",
+                    ExcMessage("Only LinearElastic solid is allowed in FSI!"));
+        p[0]->solid_mu = parameters.E / (2 * (1 + parameters.nu));
+      }
   }
 
   template <int dim>
@@ -321,6 +355,9 @@ namespace Fluid
                                         sparsity_pattern.block(0, 1));
     mass_schur_pattern.copy_from(schur_pattern);
     mass_schur.reinit(mass_schur_pattern);
+
+    // Cell property
+    setup_cell_property();
   }
 
   template <int dim>
@@ -379,6 +416,10 @@ namespace Fluid
     for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
          ++cell)
       {
+        auto p = cell_property.get_data(cell);
+        double mu_bar = p[0]->get_mu();
+        double rho_bar = p[0]->get_rho();
+
         fe_values.reinit(cell);
 
         local_matrix = 0;
@@ -426,15 +467,15 @@ namespace Fluid
                         // \f$M = m(\delta{u}, \delta{v})$, then LHS is: $(A +
                         // C) + M/{\Delta{t}}\f$
                         local_matrix(i, j) +=
-                          ((viscosity *
+                          ((mu_bar *
                               scalar_product(grad_phi_u[j], grad_phi_u[i]) +
                             current_velocity_gradients[q] * phi_u[j] *
-                              phi_u[i] * rho +
+                              phi_u[i] * rho_bar +
                             grad_phi_u[j] * current_velocity_values[q] *
-                              phi_u[i] * rho -
+                              phi_u[i] * rho_bar -
                             div_phi_u[i] * phi_p[j] - phi_p[i] * div_phi_u[j] +
-                            gamma * div_phi_u[j] * div_phi_u[i] * rho) +
-                           phi_u[i] * phi_u[j] / time.get_delta_t() * rho) *
+                            gamma * div_phi_u[j] * div_phi_u[i] * rho_bar) +
+                           phi_u[i] * phi_u[j] / time.get_delta_t() * rho_bar) *
                           fe_values.JxW(q);
                         local_mass_matrix(i, j) +=
                           (phi_u[i] * phi_u[j] + phi_p[i] * phi_p[j]) *
@@ -447,15 +488,15 @@ namespace Fluid
                 double current_velocity_divergence =
                   trace(current_velocity_gradients[q]);
                 local_rhs(i) +=
-                  ((-viscosity * scalar_product(current_velocity_gradients[q],
+                  ((-mu_bar * scalar_product(current_velocity_gradients[q],
                                                 grad_phi_u[i]) -
                     current_velocity_gradients[q] * current_velocity_values[q] *
-                      phi_u[i] * rho +
+                      phi_u[i] * rho_bar +
                     current_pressure_values[q] * div_phi_u[i] +
                     current_velocity_divergence * phi_p[i] -
-                    gamma * current_velocity_divergence * div_phi_u[i] * rho) -
+                    gamma * current_velocity_divergence * div_phi_u[i] * rho_bar) -
                    (current_velocity_values[q] - present_velocity_values[q]) *
-                     phi_u[i] / time.get_delta_t() * rho) *
+                     phi_u[i] / time.get_delta_t() * rho_bar) *
                   fe_values.JxW(q);
               }
           }
@@ -609,6 +650,80 @@ namespace Fluid
   }
 
   template <int dim>
+  void NavierStokes<dim>::run_one_step(bool first_step)
+  {
+    std::cout.precision(6);
+    std::cout.width(12);
+
+    if (first_step)
+      {
+        setup_dofs();
+        initialize_system();
+        output_results(time.get_timestep());
+      }
+
+    // Time loop.
+    time.increment();
+    std::cout << std::string(96, '*') << std::endl
+              << "Time step = " << time.get_timestep()
+              << ", at t = " << std::scientific << time.current() << std::endl;
+
+    // Resetting
+    double current_residual = 1.0;
+    double initial_residual = 1.0;
+    double relative_residual = 1.0;
+    unsigned int outer_iteration = 0;
+    evaluation_point = present_solution;
+    while (first_step ||
+           (relative_residual > tolerance && current_residual > 1e-15))
+      {
+        AssertThrow(outer_iteration < max_iteration,
+                    ExcMessage("Too many Newton iterations!"));
+
+        newton_update = 0.0;
+
+        // Since evaluation_point changes at every iteration,
+        // we have to reassemble both the lhs and rhs of the system
+        // before solving it.
+        assemble_system(first_step);
+        auto state = solve(first_step);
+        current_residual = system_rhs.l2_norm();
+
+        // Update evaluation_point and do not forget to modify it
+        // with constraints.
+        evaluation_point.add(1.0, newton_update);
+        nonzero_constraints.distribute(evaluation_point);
+        first_step = false;
+
+        // Update the relative residual
+        if (outer_iteration == 0)
+          {
+            initial_residual = current_residual;
+          }
+        relative_residual = current_residual / initial_residual;
+
+        std::cout << std::scientific << std::left << " ITR = " << std::setw(2)
+                  << outer_iteration << " ABS_RES = " << current_residual
+                  << " REL_RES = " << relative_residual
+                  << " GMRES_ITR = " << std::setw(3) << state.first
+                  << " GMRES_RES = " << state.second << std::endl;
+
+        outer_iteration++;
+      }
+    // Newton iteration converges, update time and solution
+    present_solution = evaluation_point;
+    // Output
+    if (time.time_to_output())
+      {
+        output_results(time.get_timestep());
+      }
+    if (time.time_to_refine())
+      {
+        refine_mesh(1, 3);
+      }
+  }
+
+  template <int dim>
   void NavierStokes<dim>::run()
   {
     triangulation.refine_global(parameters.global_refinement);
@@ -705,6 +820,18 @@ namespace Fluid
                              solution_names,
                              DataOut<dim>::type_dof_data,
                              data_component_interpretation);
+
+    // Indicator
+    Vector<float> ind(triangulation.n_active_cells());
+    int i = 0;
+    for (auto cell = triangulation.begin_active(); cell != triangulation.end();
+         ++cell)
+      {
+        auto p = cell_property.get_data(cell);
+        ind[i++] = p[0]->indicator;
+      }
+    data_out.add_data_vector(ind, "Indicator");
+
     data_out.build_patches();
 
     std::string basename = "navierstokes";

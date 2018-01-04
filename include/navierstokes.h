@@ -4,6 +4,7 @@
 #include <deal.II/base/function.h>
 #include <deal.II/base/logstream.h>
 #include <deal.II/base/quadrature_lib.h>
+#include <deal.II/base/quadrature_point_data.h>
 #include <deal.II/base/tensor.h>
 #include <deal.II/base/timer.h>
 #include <deal.II/base/utilities.h>
@@ -56,6 +57,9 @@
 #include "parameters.h"
 #include "utilities.h"
 
+template <int>
+class FSI;
+
 namespace Fluid
 {
   using namespace dealii;
@@ -80,6 +84,8 @@ namespace Fluid
   class NavierStokes
   {
   public:
+    friend FSI<dim>;
+
     /** \brief Constructor.
      *
      * We do not want to modify the solver every time we change the
@@ -94,6 +100,11 @@ namespace Fluid
      * and maximum number of iterations.
      */
     void run();
+    /**
+     * In FSI application, the workflow is controled by the FSI class,
+     * as an interface, this function runs the simulation for one time step.
+     */
+    void run_one_step(bool);
 
   private:
     /**
@@ -107,10 +118,16 @@ namespace Fluid
      * It is a private member of NavierStokes<dim>.
      */
     class BlockSchurPreconditioner;
+    struct CellProperty;
+
     /**
      * This function initializes the DoFHandler and constraints.
      */
     void setup_dofs();
+    /**
+     * This function sets up the material property stored at each cell.
+     */
+    void setup_cell_property();
     /**
      * Specify the sparsity pattern and reinit matrices and vectors.
      * It is separated from setup_dofs because when we do mesh refinement
@@ -123,8 +140,7 @@ namespace Fluid
      * which set of constraints we apply (nonzero for the initial step and zero
      * for the others). The assemble_matrix flag determines whether to
      * assemble the whole system or only the right hand side vector,
-     * respectively.
-     */
+     * respectively.  */
     void assemble(const bool initial_step, const bool assemble_matrix);
     void assemble_system(const bool initial_step);
     void assemble_rhs(const bool initial_step);
@@ -195,6 +211,9 @@ namespace Fluid
 
     /// The BlockSchurPreconditioner for the whole system.
     std::shared_ptr<BlockSchurPreconditioner> preconditioner;
+
+    CellDataStorage<typename Triangulation<dim>::cell_iterator, CellProperty>
+      cell_property;
 
     /** \brief Helper function to specify Dirchlet boundary conditions.
      *
@@ -295,6 +314,33 @@ namespace Fluid
       /// so that it can be initialized only once for many applications of the
       /// preconditioner.
       SparseDirectUMFPACK A_inverse;
+    };
+
+    /**
+     * This struct tells whether a cell contains real fluid or artificial fluid,
+     * and returns the corresponding properties.
+     */
+    struct CellProperty
+    {
+      /**
+       * Material indicator: 1 for solid and 0 for fluid.
+       */
+      int indicator;
+      /**
+       * The viscosity and density of fluid and solid.
+       */
+      double fluid_mu;
+      double fluid_rho;
+      double solid_mu;
+      double solid_rho;
+      /**
+       * Return the density of the current cell.
+       */
+      double get_rho() const;
+      /**
+       * Return the viscosity of the current cell.
+       */
+      double get_mu() const;
     };
   };
 }

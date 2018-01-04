@@ -51,6 +51,9 @@
 #include "parameters.h"
 #include "utilities.h"
 
+template <int>
+class FSI;
+
 namespace Solid
 {
   using namespace dealii;
@@ -69,6 +72,8 @@ namespace Solid
   class LinearElasticSolver
   {
   public:
+    friend FSI<dim>;
+
     /*! \brief Constructor.
      *
      * The triangulation can either be generated using dealii functions or
@@ -80,6 +85,7 @@ namespace Solid
     /*! \brief Destructor. */
     ~LinearElasticSolver();
     void run();
+    void run_one_step(bool);
 
   private:
     /**

@@ -1,3 +1,4 @@
+#include "fsi.h"
 #include "hyperelasticSolver.h"
 #include "linearElasticSolver.h"
 #include "mpi_linearelasticity.h"
@@ -18,13 +19,16 @@ extern template class Solid::ParallelLinearElasticity<3>;
 extern template class Fluid::ParallelNavierStokes<2>;
 extern template class Fluid::ParallelNavierStokes<3>;
 
+extern template class FSI<2>;
+extern template class FSI<3>;
+
 int main(int argc, char *argv[])
 {
   using namespace dealii;
 
   try
     {
-      Utilities::MPI::MPI_InitFinalize mpi_initialization(argc, argv, 1);
+     Utilities::MPI::MPI_InitFinalize mpi_initialization(argc, argv, 1);
 
       std::string infile("parameters.prm");
       if (argc > 1)
@@ -35,10 +39,22 @@ int main(int argc, char *argv[])
 
       if (params.dimension == 2)
         {
-          parallel::distributed::Triangulation<2> tria(MPI_COMM_WORLD);
-          Utils::GridCreator::flow_around_cylinder(tria);
-          Fluid::ParallelNavierStokes<2> flow(tria, params);
-          flow.run();
+          Triangulation<2> fluid_tria;
+          dealii::GridGenerator::subdivided_hyper_rectangle(
+            fluid_tria, {32, 8}, Point<2>(0, 0), Point<2>(8e-2, 2e-2), true);
+          Fluid::NavierStokes<2> fluid(fluid_tria, params);
+
+          Triangulation<2> solid_tria;
+          dealii::GridGenerator::subdivided_hyper_rectangle(
+            solid_tria,
+            {4, 8},
+            Point<2>(3.75e-2, 0),
+            Point<2>(4.25e-2, 1e-2),
+            true);
+          Solid::LinearElasticSolver<2> solid(solid_tria, params);
+
+          FSI<2> fsi(fluid, solid, params);
+          fsi.run();
         }
       else if (params.dimension == 3)
         {
