@@ -100,12 +100,15 @@ namespace Solid
   }
 
   template <int dim>
-  void LinearElasticSolver<dim>::assemble_system(const bool is_initial)
+  void LinearElasticSolver<dim>::assemble(bool is_initial, bool assemble_matrix)
   {
     TimerOutput::Scope timer_section(timer, "Assemble system");
 
-    system_matrix = 0;
-    stiffness_matrix = 0;
+    if (assemble_matrix)
+      {
+        system_matrix = 0;
+        stiffness_matrix = 0;
+      }
     system_rhs = 0;
 
     FEValues<dim> fe_values(fe,
@@ -165,23 +168,26 @@ namespace Solid
             // Loop over the dofs again, to assemble
             for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
-                for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                if (assemble_matrix)
                   {
-                    if (is_initial)
+                    for (unsigned int j = 0; j < dofs_per_cell; ++j)
                       {
-                        local_matrix[i][j] +=
-                          rho * phi[i] * phi[j] * fe_values.JxW(q);
-                      }
-                    else
-                      {
-                        local_matrix[i][j] +=
-                          (rho * phi[i] * phi[j] +
-                           symmetric_grad_phi[i] * elasticity *
-                             symmetric_grad_phi[j] * beta * dt * dt) *
-                          fe_values.JxW(q);
-                        local_stiffness[i][j] +=
-                          symmetric_grad_phi[i] * elasticity *
-                          symmetric_grad_phi[j] * fe_values.JxW(q);
+                        if (is_initial)
+                          {
+                            local_matrix[i][j] +=
+                              rho * phi[i] * phi[j] * fe_values.JxW(q);
+                          }
+                        else
+                          {
+                            local_matrix[i][j] +=
+                              (rho * phi[i] * phi[j] +
+                               symmetric_grad_phi[i] * elasticity *
+                                 symmetric_grad_phi[j] * beta * dt * dt) *
+                              fe_values.JxW(q);
+                            local_stiffness[i][j] +=
+                              symmetric_grad_phi[i] * elasticity *
+                              symmetric_grad_phi[j] * fe_values.JxW(q);
+                          }
                       }
                   }
                 // zero body force
@@ -236,16 +242,37 @@ namespace Solid
               }
           }
 
-        // Now distribute local data to the system, and apply the
-        // hanging node constraints at the same time.
-        constraints.distribute_local_to_global(local_matrix,
-                                               local_rhs,
-                                               local_dof_indices,
-                                               system_matrix,
-                                               system_rhs);
-        constraints.distribute_local_to_global(
-          local_stiffness, local_dof_indices, stiffness_matrix);
+        if (assemble_matrix)
+          {
+            // Now distribute local data to the system, and apply the
+            // hanging node constraints at the same time.
+            constraints.distribute_local_to_global(local_matrix,
+                                                   local_rhs,
+                                                   local_dof_indices,
+                                                   system_matrix,
+                                                   system_rhs);
+            constraints.distribute_local_to_global(
+              local_stiffness, local_dof_indices, stiffness_matrix);
+          }
+        else
+          {
+            constraints.distribute_local_to_global(
+              local_rhs, local_dof_indices, system_rhs);
+          }
       }
+  }
+
+  template <int dim>
+  void LinearElasticSolver<dim>::assemble_system(bool is_initial)
+  {
+    assemble(is_initial, true);
+  }
+
+  template <int dim>
+  void LinearElasticSolver<dim>::assemble_rhs()
+  {
+    // In case of assembling rhs only, the first boolean does not matter.
+    assemble(false, false);
   }
 
   // Solve linear system \f$Ax = b\f$ using CG solver.

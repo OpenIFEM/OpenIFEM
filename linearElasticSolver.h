@@ -95,8 +95,20 @@ namespace Solid
     /**
      * Assembles lhs and rhs. At time step 0, the lhs is the mass matrix;
      * at all the following steps, it is \f$ M + \beta{\Delta{t}}^2K \f$.
+     * It can also be used to assemble the RHS only, in case of time-dependent
+     * Neumann boundary conditions.
+     */
+    void assemble(bool is_initial, bool assemble_matrix);
+
+    /**
+     * Assembles both the LHS and RHS of the system.
      */
     void assemble_system(bool is_initial);
+
+    /**
+     * Assembles only the RHS of the system.
+     */
+    void assemble_rhs();
 
     /**
      * Solve the linear system. Returns the number of
