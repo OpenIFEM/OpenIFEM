@@ -19,8 +19,25 @@ public:
    * test if it is in any solid cell.
    */
   void update_indicator();
+  /**
+   * Set up the initialize both fluid and solid solvers.
+   */
   void initialize_system();
+  /**
+   * Move solid triangulation either forward or backward using displacements,
+   */
   void move_solid_mesh(bool);
+  /**
+   * Solid Neumann boundary conditions are obtained from the fluid.
+   * Currently we only consider the fluid pressure instead of the full traction.
+   * The implementation is again straight-forward: loop over the faces on the
+   * solid Neumann boundary, compute the center point, find which fluid cell it
+   * is in, compute the pressure at that location by interpolation from the
+   * support
+   * points. The pressure is then applied as the boundary condition on the solid
+   * face.
+   */
+  void find_solid_bc(std::vector<double> &);
   void run();
 
 private:

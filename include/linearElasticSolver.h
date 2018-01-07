@@ -204,6 +204,11 @@ namespace Solid
     mutable TimerOutput timer;
 
     Parameters::AllParameters parameters;
+
+    /**
+     * The fluid pressure in FSI simulation, which should be set by the FSI.
+     */
+    std::vector<double> fluid_pressure;
   };
 }
 

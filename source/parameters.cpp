@@ -407,7 +407,7 @@ namespace Parameters
                         "Ids of the boundaries with Neumann BCs");
       prm.declare_entry("Neumann boundary type",
                         "Traction",
-                        Patterns::Selection("Traction|Pressure"),
+                        Patterns::Selection("Traction|Pressure|FSI"),
                         "Type of Neumann BC");
       prm.declare_entry("Neumann boundary values",
                         "",

@@ -217,48 +217,81 @@ namespace Solid
 
         cell->get_dof_indices(local_dof_indices);
 
-        // Traction or Pressure
+        // Neumann boundary conditions
+        // If this is a stand-alone solid simulation, the Neumann boundary type
+        // should be either Traction or Pressure;
+        // it this is a FSI simulation, the Neumann boundary type must be FSI.
+
+        unsigned int cnt = 0; // face counter used for FSI
         for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
              ++face)
           {
-            if (cell->face(face)->at_boundary())
-              {
-                unsigned int id = cell->face(face)->boundary_id();
-                if (parameters.solid_neumann_bcs.find(id) !=
-                    parameters.solid_neumann_bcs.end())
-                  {
-                    std::vector<double> value =
-                      parameters.solid_neumann_bcs[id];
-                    Tensor<1, dim> traction;
-                    if (parameters.solid_neumann_bc_type == "Traction")
-                      {
-                        for (unsigned int i = 0; i < dim; ++i)
-                          {
-                            traction[i] = value[i];
-                          }
-                      }
+            unsigned int id = cell->face(face)->boundary_id();
 
-                    fe_face_values.reinit(cell, face);
-                    for (unsigned int q = 0; q < n_f_q_points; ++q)
-                      {
-                        if (parameters.solid_neumann_bc_type == "Pressure")
-                          {
-                            // The normal is w.r.t. reference configuration!
-                            traction = fe_face_values.normal_vector(q);
-                            traction *= value[0];
-                          }
-                        for (unsigned int j = 0; j < dofs_per_cell; ++j)
-                          {
-                            const unsigned int component_j =
-                              fe.system_to_component_index(j).first;
-                            // +external force
-                            local_rhs(j) += fe_face_values.shape_value(j, q) *
-                                            traction[component_j] *
-                                            fe_face_values.JxW(q);
-                          }
-                      }
+            if (!cell->face(face)->at_boundary() ||
+                parameters.solid_dirichlet_bcs.find(id) !=
+                  parameters.solid_dirichlet_bcs.end())
+              {
+                // Not a Neumann boundary
+                continue;
+              }
+
+            if (parameters.solid_neumann_bc_type != "FSI" &&
+                parameters.solid_neumann_bcs.find(id) ==
+                  parameters.solid_neumann_bcs.end())
+              {
+                // Traction-free boundary, do nothing
+                continue;
+              }
+
+            fe_face_values.reinit(cell, face);
+
+            Tensor<1, dim> traction;
+            std::vector<double> prescribed_value;
+            if (parameters.solid_neumann_bc_type != "FSI")
+              {
+                // In stand-alone simulation, the boundary value is prescribed
+                // by the user.
+                prescribed_value = parameters.solid_neumann_bcs[id];
+              }
+
+            if (parameters.solid_neumann_bc_type == "Traction")
+              {
+                for (unsigned int i = 0; i < dim; ++i)
+                  {
+                    traction[i] = prescribed_value[i];
                   }
               }
+
+            for (unsigned int q = 0; q < n_f_q_points; ++q)
+              {
+                if (parameters.solid_neumann_bc_type == "Pressure")
+                  {
+                    // TODO:
+                    // here and FSI, the normal is w.r.t. reference
+                    // configuration,
+                    // should be changed to current config.
+                    traction = fe_face_values.normal_vector(q);
+                    traction *= prescribed_value[0];
+                  }
+                else if (parameters.solid_neumann_bc_type == "FSI")
+                  {
+                    traction = fe_face_values.normal_vector(q);
+                    traction *= fluid_pressure[cnt];
+                  }
+
+                for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                  {
+                    const unsigned int component_j =
+                      fe.system_to_component_index(j).first;
+                    // +external force
+                    local_rhs(j) += fe_face_values.shape_value(j, q) *
+                                    traction[component_j] *
+                                    fe_face_values.JxW(q);
+                  }
+              }
+
+            cnt++;
           }
 
         if (assemble_matrix)
@@ -449,6 +482,11 @@ namespace Solid
               << "Time step = " << time.get_timestep()
               << ", at t = " << std::scientific << time.current() << std::endl;
 
+    // In FSI application we have to update the RHS
+    if (parameters.solid_neumann_bc_type == "FSI")
+      {
+        assemble_rhs();
+      }
     // Modify the RHS
     Vector<double> tmp1(system_rhs);
     auto tmp2 = previous_displacement;

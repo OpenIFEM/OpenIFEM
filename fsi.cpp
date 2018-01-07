@@ -89,6 +89,48 @@ void FSI<dim>::update_indicator()
 }
 
 template <int dim>
+void FSI<dim>::find_solid_bc(std::vector<double> &pressure)
+{
+  pressure.clear();
+
+  // Fluid finite element extractor
+  const FEValuesExtractors::Vector v(0);
+  const FEValuesExtractors::Scalar p(dim);
+
+  // Fluid FEValue to do interpolation
+  FEValues<dim> fe_values(
+    fluid_solver.fe, fluid_solver.volume_quad_formula, update_values);
+
+  for (auto s_cell = solid_solver.dof_handler.begin_active();
+       s_cell != solid_solver.dof_handler.end();
+       ++s_cell)
+    {
+      for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+        {
+          // Current face is at boundary and without Dirichlet bc.
+          if (s_cell->face(f)->at_boundary() &&
+              parameters.solid_dirichlet_bcs.find(
+                s_cell->face(f)->boundary_id()) ==
+                parameters.solid_dirichlet_bcs.end())
+            {
+              Point<dim> center = s_cell->face(f)->center();
+              Vector<double> value(dim + 1);
+              // This function finds the fe value at an arbitrary point,
+              // if the point is not in the field, an exception will be thrown.
+              VectorTools::point_value(fluid_solver.dof_handler,
+                                       fluid_solver.present_solution,
+                                       center,
+                                       value);
+              // For solid, the pressure bc is defined as negative
+              // FIXME: I forgot the pressure we get the fluid solver has been
+              // normalized..
+              pressure.push_back(-value[dim]);
+            }
+        }
+    }
+}
+
+template <int dim>
 void FSI<dim>::run()
 {
   fluid_solver.triangulation.refine_global(parameters.global_refinement);
@@ -96,9 +138,12 @@ void FSI<dim>::run()
   bool first_step = true;
   while (time.end() - time.current() > 1e-12)
     {
-      fluid_solver.run_one_step(first_step);
-      update_indicator();
+      std::vector<double> pressure;
+      find_solid_bc(pressure);
+      solid_solver.fluid_pressure = pressure;
       solid_solver.run_one_step(first_step);
+      update_indicator();
+      fluid_solver.run_one_step(first_step);
 
       first_step = false;
       time.increment();
