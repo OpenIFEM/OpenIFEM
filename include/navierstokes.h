@@ -140,7 +140,8 @@ namespace Fluid
      * which set of constraints we apply (nonzero for the initial step and zero
      * for the others). The assemble_matrix flag determines whether to
      * assemble the whole system or only the right hand side vector,
-     * respectively.  */
+     * respectively.
+     */
     void assemble(const bool initial_step, const bool assemble_matrix);
     void assemble_system(const bool initial_step);
     void assemble_rhs(const bool initial_step);
@@ -163,6 +164,7 @@ namespace Fluid
      * next mesh using the SolutionTransfer class.
      */
     void refine_mesh(const unsigned int, const unsigned int);
+
     /**
      * Write a vtu file for the current solution, as well as a pvtu file to
      * organize them.

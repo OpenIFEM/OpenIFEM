@@ -9,17 +9,24 @@ namespace Fluid
   {
     Assert(component < this->n_components,
            ExcIndexRange(component, 0, this->n_components));
-    double left_boundary = (dim == 2 ? 0.3 : 0.0);
+    double left_boundary = (dim == 2 ? 0.0 : 0.0);
     if (component == 0 && std::abs(p[0] - left_boundary) < 1e-10)
       {
+        double U_mean = 7.39e-2;
+        double U_max = 3 * U_mean / 2;
+        double h = 2e-2;
+        double y = p[1];
+        return 4 * U_max * y * (h - y) / (h * h);
+        /*
         double U = 1.5;
         double y = p[1];
         double value = 4 * U * y * (0.41 - y) / (0.41 * 0.41);
         if (dim == 3)
-          {
-            value *= 4 * p[2] * (0.41 - p[2]);
-          }
-        return value;
+         {
+           value *= 4 * p[2] * (0.41 - p[2]);
+         }
+         return value;
+        */
       }
     return 0;
   }
@@ -285,8 +292,8 @@ namespace Fluid
           VectorTools::interpolate_boundary_values(
             dof_handler,
             id,
-            Functions::ConstantFunction<dim>(augmented_value),
-            // BoundaryValues(),
+            // Functions::ConstantFunction<dim>(augmented_value),
+            BoundaryValues(),
             nonzero_constraints,
             ComponentMask(mask));
           VectorTools::interpolate_boundary_values(
@@ -489,12 +496,13 @@ namespace Fluid
                   trace(current_velocity_gradients[q]);
                 local_rhs(i) +=
                   ((-mu_bar * scalar_product(current_velocity_gradients[q],
-                                                grad_phi_u[i]) -
+                                             grad_phi_u[i]) -
                     current_velocity_gradients[q] * current_velocity_values[q] *
                       phi_u[i] * rho_bar +
                     current_pressure_values[q] * div_phi_u[i] +
                     current_velocity_divergence * phi_p[i] -
-                    gamma * current_velocity_divergence * div_phi_u[i] * rho_bar) -
+                    gamma * current_velocity_divergence * div_phi_u[i] *
+                      rho_bar) -
                    (current_velocity_values[q] - present_velocity_values[q]) *
                      phi_u[i] / time.get_delta_t() * rho_bar) *
                   fe_values.JxW(q);
@@ -657,8 +665,6 @@ namespace Fluid
 
     if (first_step)
       {
-        setup_dofs();
-        initialize_system();
         output_results(time.get_timestep());
       }
 
@@ -675,7 +681,7 @@ namespace Fluid
     unsigned int outer_iteration = 0;
     evaluation_point = present_solution;
     while (first_step ||
-           (relative_residual > tolerance && current_residual > 1e-15))
+           (relative_residual > tolerance && current_residual > 1e-14))
       {
         AssertThrow(outer_iteration < max_iteration,
                     ExcMessage("Too many Newton iterations!"));
@@ -730,73 +736,11 @@ namespace Fluid
     setup_dofs();
     initialize_system();
 
-    bool first_step = true;
-
     // Time loop.
-    std::cout.precision(6);
-    std::cout.width(12);
-    output_results(time.get_timestep());
+    run_one_step(true);
     while (time.end() - time.current() > 1e-12)
       {
-        time.increment();
-        std::cout << std::string(96, '*') << std::endl
-                  << "Time step = " << time.get_timestep()
-                  << ", at t = " << std::scientific << time.current()
-                  << std::endl;
-
-        // Resetting
-        double current_residual = 1.0;
-        double initial_residual = 1.0;
-        double relative_residual = 1.0;
-        unsigned int outer_iteration = 0;
-        evaluation_point = present_solution;
-        while (first_step || relative_residual > tolerance)
-          {
-            AssertThrow(outer_iteration < max_iteration,
-                        ExcMessage("Too many Newton iterations!"));
-
-            newton_update = 0.0;
-
-            // Since evaluation_point changes at every iteration,
-            // we have to reassemble both the lhs and rhs of the system
-            // before solving it.
-            assemble_system(first_step);
-            auto state = solve(first_step);
-            current_residual = system_rhs.l2_norm();
-
-            // Update evaluation_point and do not forget to modify it
-            // with constraints.
-            evaluation_point.add(1.0, newton_update);
-            nonzero_constraints.distribute(evaluation_point);
-            first_step = false;
-
-            // Update the relative residual
-            if (outer_iteration == 0)
-              {
-                initial_residual = current_residual;
-              }
-            relative_residual = current_residual / initial_residual;
-
-            std::cout << std::scientific << std::left
-                      << " ITR = " << std::setw(2) << outer_iteration
-                      << " ABS_RES = " << current_residual
-                      << " REL_RES = " << relative_residual
-                      << " GMRES_ITR = " << std::setw(3) << state.first
-                      << " GMRES_RES = " << state.second << std::endl;
-
-            outer_iteration++;
-          }
-        // Newton iteration converges, update time and solution
-        present_solution = evaluation_point;
-        // Output
-        if (time.time_to_output())
-          {
-            output_results(time.get_timestep());
-          }
-        if (time.time_to_refine())
-          {
-            refine_mesh(1, 3);
-          }
+        run_one_step(false);
       }
   }
 

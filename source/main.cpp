@@ -48,10 +48,10 @@ int main(int argc, char *argv[])
           dealii::GridGenerator::subdivided_hyper_rectangle(
             solid_tria,
             {4, 8},
-            Point<2>(3.65e-2, 0),
-            Point<2>(4.15e-2, 1e-2),
-            // Point<2>(3.75e-2, 0),
-            // Point<2>(4.25e-2, 1e-2),
+            // Point<2>(3.65e-2, 0),
+            // Point<2>(4.15e-2, 1e-2),
+            Point<2>(3.75e-2, 0),
+            Point<2>(4.25e-2, 1e-2),
             true);
           Solid::LinearElasticSolver<2> solid(solid_tria, params);
 

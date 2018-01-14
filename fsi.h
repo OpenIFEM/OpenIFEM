@@ -1,6 +1,9 @@
 #ifndef FSI_H
 #define FSI_H
 
+#include <deal.II/base/table_indices.h>
+#include <deal.II/physics/elasticity/standard_tensors.h>
+
 #include "linearElasticSolver.h"
 #include "navierstokes.h"
 
@@ -37,7 +40,7 @@ public:
    * points. The pressure is then applied as the boundary condition on the solid
    * face.
    */
-  void find_solid_bc(std::vector<double> &);
+  void find_solid_bc(std::vector<Tensor<1, dim>> &);
   void run();
 
 private:

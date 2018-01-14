@@ -276,8 +276,7 @@ namespace Solid
                   }
                 else if (parameters.solid_neumann_bc_type == "FSI")
                   {
-                    traction = fe_face_values.normal_vector(q);
-                    traction *= fluid_pressure[cnt];
+                    traction = fluid_traction[cnt++];
                   }
 
                 for (unsigned int j = 0; j < dofs_per_cell; ++j)
@@ -290,8 +289,6 @@ namespace Solid
                                     fe_face_values.JxW(q);
                   }
               }
-
-            cnt++;
           }
 
         if (assemble_matrix)
@@ -463,8 +460,6 @@ namespace Solid
 
     if (first_step)
       {
-        setup_dofs();
-        initialize_system();
         // Neet to compute the initial acceleration, \f$ Ma_n = F \f$,
         // at this point set system_matrix to mass_matrix.
         assemble_system(true);
@@ -539,72 +534,11 @@ namespace Solid
     setup_dofs();
     initialize_system();
 
-    std::cout.precision(6);
-    std::cout.width(12);
-
-    // Neet to compute the initial acceleration, \f$ Ma_n = F \f$,
-    // at this point set system_matrix to mass_matrix.
-    assemble_system(true);
-    solve(system_matrix, previous_acceleration, system_rhs);
-
-    // Update the system_matrix
-    assemble_system(false);
-
-    const double dt = time.get_delta_t();
-
     // Time loop
-    output_results(time.get_timestep());
+    run_one_step(true);
     while (time.end() - time.current() > 1e-12)
       {
-        time.increment();
-        std::cout << std::string(91, '*') << std::endl
-                  << "Time step = " << time.get_timestep()
-                  << ", at t = " << std::scientific << time.current()
-                  << std::endl;
-
-        // Modify the RHS
-        Vector<double> tmp1(system_rhs);
-        auto tmp2 = previous_displacement;
-        tmp2.add(
-          dt, previous_velocity, (0.5 - beta) * dt * dt, previous_acceleration);
-        Vector<double> tmp3(dof_handler.n_dofs());
-        stiffness_matrix.vmult(tmp3, tmp2);
-        tmp1 -= tmp3;
-
-        auto state = solve(system_matrix, current_acceleration, tmp1);
-
-        // update the current velocity
-        // \f$ v_{n+1} = v_n + (1-\gamma)\Delta{t}a_n + \gamma\Delta{t}a_{n+1}
-        // \f$
-        current_velocity = previous_velocity;
-        current_velocity.add(dt * (1 - gamma), previous_acceleration);
-        current_velocity.add(dt * gamma, current_acceleration);
-
-        // update the current displacement
-        current_displacement = previous_displacement;
-        current_displacement.add(dt, previous_velocity);
-        current_displacement.add(dt * dt * (0.5 - beta), previous_acceleration);
-        current_displacement.add(dt * dt * beta, current_acceleration);
-
-        // update the previous values
-        previous_acceleration = current_acceleration;
-        previous_velocity = current_velocity;
-        previous_displacement = current_displacement;
-
-        std::cout << std::scientific << std::left
-                  << " CG iteration: " << std::setw(3) << state.first
-                  << " CG residual: " << state.second << std::endl;
-
-        if (time.time_to_output())
-          {
-            output_results(time.get_timestep());
-          }
-
-        if (time.time_to_refine())
-          {
-            refine_mesh(1, 4);
-            assemble_system(false);
-          }
+        run_one_step(false);
       }
   }
 

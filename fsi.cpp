@@ -79,6 +79,7 @@ void FSI<dim>::update_indicator()
           if (s_cell->point_inside(center))
             {
               is_solid = true;
+              break;
             }
         }
       auto p = fluid_solver.cell_property.get_data(f_cell);
@@ -89,17 +90,23 @@ void FSI<dim>::update_indicator()
 }
 
 template <int dim>
-void FSI<dim>::find_solid_bc(std::vector<double> &pressure)
+void FSI<dim>::find_solid_bc(std::vector<Tensor<1, dim>> &traction)
 {
-  pressure.clear();
+  traction.clear();
 
   // Fluid finite element extractor
   const FEValuesExtractors::Vector v(0);
   const FEValuesExtractors::Scalar p(dim);
 
-  // Fluid FEValue to do interpolation
+  // Fluid FEValues to do interpolation
   FEValues<dim> fe_values(
     fluid_solver.fe, fluid_solver.volume_quad_formula, update_values);
+  // Solid FEFaceValues to get the normal
+  FEFaceValues<dim> fe_face_values(solid_solver.fe,
+                                   solid_solver.face_quad_formula,
+                                   update_quadrature_points |
+                                     update_normal_vectors);
+  const unsigned int n_face_q_points = solid_solver.face_quad_formula.size();
 
   for (auto s_cell = solid_solver.dof_handler.begin_active();
        s_cell != solid_solver.dof_handler.end();
@@ -113,18 +120,41 @@ void FSI<dim>::find_solid_bc(std::vector<double> &pressure)
                 s_cell->face(f)->boundary_id()) ==
                 parameters.solid_dirichlet_bcs.end())
             {
-              Point<dim> center = s_cell->face(f)->center();
-              Vector<double> value(dim + 1);
-              // This function finds the fe value at an arbitrary point,
-              // if the point is not in the field, an exception will be thrown.
-              VectorTools::point_value(fluid_solver.dof_handler,
-                                       fluid_solver.present_solution,
-                                       center,
-                                       value);
-              // For solid, the pressure bc is defined as negative
-              // FIXME: I forgot the pressure we get the fluid solver has been
-              // normalized..
-              pressure.push_back(-value[dim]);
+              fe_face_values.reinit(s_cell, f);
+              for (unsigned int q = 0; q < n_face_q_points; ++q)
+                {
+                  // Note that we are using undeformed quadrature points and
+                  // normal vectors.
+                  Point<dim> q_point = fe_face_values.quadrature_point(q);
+                  Tensor<1, dim> normal = fe_face_values.normal_vector(q);
+                  Vector<double> value(dim + 1);
+                  VectorTools::point_value(fluid_solver.dof_handler,
+                                           fluid_solver.present_solution,
+                                           q_point,
+                                           value);
+                  std::vector<Tensor<1, dim>> gradient(dim + 1,
+                                                       Tensor<1, dim>());
+                  VectorTools::point_gradient(fluid_solver.dof_handler,
+                                              fluid_solver.present_solution,
+                                              q_point,
+                                              gradient);
+
+                  SymmetricTensor<2, dim> sym_deformation;
+                  for (unsigned int i = 0; i < dim; ++i)
+                    {
+                      for (unsigned int j = 0; j < dim; ++j)
+                        {
+                          sym_deformation[TableIndices<2>(i, j)] =
+                            (gradient[i][j] + gradient[j][i]) / 2;
+                        }
+                    }
+
+                  // \f$ \sigma = -p\bold{I} + \mu\nabla^S v\f$
+                  SymmetricTensor<2, dim> stress =
+                    -value[dim] * Physics::Elasticity::StandardTensors<dim>::I +
+                    parameters.viscosity * sym_deformation;
+                  traction.push_back(stress * normal);
+                }
             }
         }
     }
@@ -138,9 +168,9 @@ void FSI<dim>::run()
   bool first_step = true;
   while (time.end() - time.current() > 1e-12)
     {
-      std::vector<double> pressure;
-      find_solid_bc(pressure);
-      solid_solver.fluid_pressure = pressure;
+      std::vector<Tensor<1, dim>> traction;
+      find_solid_bc(traction);
+      solid_solver.fluid_traction = traction;
       solid_solver.run_one_step(first_step);
       update_indicator();
       fluid_solver.run_one_step(first_step);
