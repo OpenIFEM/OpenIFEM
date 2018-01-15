@@ -70,6 +70,11 @@ namespace Fluid
    * the updated solution.
    * We use one ConstraintMatrix for Dirichlet boundary conditions
    * at the initial step and a zero ConstraintMatrix for the rest steps.
+   * Although the density does not matter in the incompressible flow, we still
+   * include it in the formulation in order to be consistent with the
+   * slightly compressible flow. Correspondingly the viscosity represents
+   * the dynamic visocity \f$\mu\f$ instead of the kinetic visocity \f$\nu\f$,
+   * and the pressure block in the solution is the real pressure.
    */
   template <int dim>
   class NavierStokes
@@ -148,7 +153,7 @@ namespace Fluid
      */
     void output_results(const unsigned int) const;
 
-    double viscosity;
+    double viscosity; //!< Dynamic viscosity
     double rho;
     double gamma;
     const unsigned int degree;
