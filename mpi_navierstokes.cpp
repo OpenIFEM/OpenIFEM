@@ -26,39 +26,6 @@ namespace Fluid
   }
 
   /**
-   * Initialize tmp1 and tmp2 in the constructor.
-   */
-  template <int dim>
-  ParallelNavierStokes<dim>::BlockSchurPreconditioner::ApproximateMassSchur::
-    ApproximateMassSchur(const PETScWrappers::MPI::BlockSparseMatrix &M,
-                         const std::vector<IndexSet> &partition)
-    : mass_matrix(&M)
-  {
-    // Initialization
-    tmp1.reinit(partition[0], mass_matrix->get_mpi_communicator());
-    tmp2.reinit(partition[0], mass_matrix->get_mpi_communicator());
-  }
-
-  /**
-   * ApproximateMassSchur is nested in BlockSchurPreconditioner so it
-   * can use mass_matrix directly.
-   */
-  template <int dim>
-  void ParallelNavierStokes<dim>::BlockSchurPreconditioner::
-    ApproximateMassSchur::vmult(PETScWrappers::MPI::Vector &dst,
-                                const PETScWrappers::MPI::Vector &src) const
-  {
-    tmp1 = 0;
-    tmp2 = 0;
-    mass_matrix->block(0, 1).vmult(tmp1, src);
-    // Jacobi preconditioner of matrix A is by definition inverse diag(A),
-    // this is exactly what we want to compute.
-    PETScWrappers::PreconditionJacobi jacobi(mass_matrix->block(0, 0));
-    jacobi.vmult(tmp2, tmp1);
-    mass_matrix->block(1, 0).vmult(dst, tmp2);
-  }
-
-  /**
    * In serial code, we initialize the direct solver in the constructor
    * to avoid repeatedly allocating memory. However it seems we can't
    * do the same thing to the PETSc direct solver.
@@ -72,7 +39,8 @@ namespace Fluid
     double dt,
     const std::vector<IndexSet> &owned_partitioning,
     const PETScWrappers::MPI::BlockSparseMatrix &system,
-    const PETScWrappers::MPI::BlockSparseMatrix &mass)
+    const PETScWrappers::MPI::BlockSparseMatrix &mass,
+    PETScWrappers::MPI::BlockSparseMatrix &schur)
     : timer(timer),
       gamma(gamma),
       viscosity(viscosity),
@@ -80,9 +48,26 @@ namespace Fluid
       dt(dt),
       system_matrix(&system),
       mass_matrix(&mass),
-      A_inverse(dummy_sc, system_matrix->get_mpi_communicator()),
-      mass_schur(mass, owned_partitioning)
+      mass_schur(&schur),
+      A_inverse(dummy_sc, system_matrix->get_mpi_communicator())
   {
+    TimerOutput::Scope timer_section(timer, "CG for Sm");
+    // The sparsity pattern of mass_schur is already set,
+    // we calculate its value in the following.
+    PETScWrappers::MPI::BlockVector tmp1, tmp2;
+    tmp1.reinit(owned_partitioning, mass_matrix->get_mpi_communicator());
+    tmp2.reinit(owned_partitioning, mass_matrix->get_mpi_communicator());
+    tmp1 = 1;
+    tmp2 = 0;
+    // Jacobi preconditioner of matrix A is by definition inverse diag(A),
+    // this is exactly what we want to compute.
+    PETScWrappers::PreconditionJacobi jacobi(mass_matrix->block(0, 0));
+    jacobi.vmult(tmp2.block(0), tmp1.block(0));
+    // The mass matrix is not multiplied with density, so we need to account
+    // for it when necessary.
+    tmp2 /= rho;
+    system_matrix->block(1, 0).mmult(
+      mass_schur->block(1, 1), system_matrix->block(0, 1), tmp2.block(0));
   }
 
   /**
@@ -116,16 +101,18 @@ namespace Fluid
       PETScWrappers::PreconditionBlockJacobi Mp_preconditioner;
       Mp_preconditioner.initialize(mass_matrix->block(1, 1));
       cg.solve(mass_matrix->block(1, 1), tmp, src.block(1), Mp_preconditioner);
-      tmp *= -(viscosity / rho + gamma);
+      // In the original formulation, this is \f$\nu + \gamma\f$,
+      // pressure matrix does not contain density so multiply it with density.
+      tmp *= -(viscosity / rho + gamma) * rho;
 
       timer.leave_subsection("CG for Mp");
       timer.enter_subsection("CG for Sm");
 
       // \f$-\frac{1}{dt}S_m^{-1}v_1\f$
-      // NOTE: mass_schur is not derived from PETScWrappers::MatrixBase
-      // so PETScWrappers::SolverCG cannot be used.
-      PreconditionIdentity Sm_preconditioner;
-      cg.solve(mass_schur, dst.block(1), src.block(1), Sm_preconditioner);
+      PETScWrappers::PreconditionBlockJacobi Sm_preconditioner;
+      Sm_preconditioner.initialize(mass_schur->block(1, 1));
+      cg.solve(
+        mass_schur->block(1, 1), dst.block(1), src.block(1), Sm_preconditioner);
       dst.block(1) *= -1 / dt;
 
       // Adding up these two, we get \f$\tilde{S}^{-1}v_1\f$.
@@ -320,6 +307,7 @@ namespace Fluid
     preconditioner.reset();
     system_matrix.clear();
     mass_matrix.clear();
+    mass_schur.clear();
 
     BlockDynamicSparsityPattern dsp(dofs_per_block, dofs_per_block);
     DoFTools::make_sparsity_pattern(dof_handler, dsp, nonzero_constraints);
@@ -332,6 +320,13 @@ namespace Fluid
 
     system_matrix.reinit(owned_partitioning, dsp, mpi_communicator);
     mass_matrix.reinit(owned_partitioning, dsp, mpi_communicator);
+
+    // Compute the sparsity pattern for mass schur in advance.
+    // The only nonzero block is (1, 1), which is the same as \f$BB^T\f$.
+    BlockDynamicSparsityPattern schur_dsp(dofs_per_block, dofs_per_block);
+    schur_dsp.block(1, 1).compute_mmult_pattern(sparsity_pattern.block(1, 0),
+                                                sparsity_pattern.block(0, 1));
+    mass_schur.reinit(owned_partitioning, schur_dsp, mpi_communicator);
 
     // present_solution is ghosted because it is used in the
     // output and mesh refinement functions.
@@ -457,16 +452,16 @@ namespace Fluid
                             // +
                             // C) + M/{\Delta{t}}\f$
                             local_matrix(i, j) +=
-                              ((viscosity / rho *
+                              ((viscosity *
                                   scalar_product(grad_phi_u[j], grad_phi_u[i]) +
                                 current_velocity_gradients[q] * phi_u[j] *
-                                  phi_u[i] +
+                                  phi_u[i] * rho +
                                 grad_phi_u[j] * current_velocity_values[q] *
-                                  phi_u[i] -
+                                  phi_u[i] * rho -
                                 div_phi_u[i] * phi_p[j] -
                                 phi_p[i] * div_phi_u[j] +
-                                gamma * div_phi_u[j] * div_phi_u[i]) +
-                               phi_u[i] * phi_u[j] / time.get_delta_t()) *
+                                gamma * div_phi_u[j] * div_phi_u[i] * rho) +
+                               phi_u[i] * phi_u[j] / time.get_delta_t() * rho) *
                               fe_values.JxW(q);
                             local_mass_matrix(i, j) +=
                               (phi_u[i] * phi_u[j] + phi_p[i] * phi_p[j] -
@@ -481,17 +476,18 @@ namespace Fluid
                     double current_velocity_divergence =
                       trace(current_velocity_gradients[q]);
                     local_rhs(i) +=
-                      ((-viscosity / rho *
+                      ((-viscosity *
                           scalar_product(current_velocity_gradients[q],
                                          grad_phi_u[i]) -
                         current_velocity_gradients[q] *
-                          current_velocity_values[q] * phi_u[i] +
+                          current_velocity_values[q] * phi_u[i] * rho +
                         current_pressure_values[q] * div_phi_u[i] +
                         current_velocity_divergence * phi_p[i] -
-                        gamma * current_velocity_divergence * div_phi_u[i]) -
+                        gamma * current_velocity_divergence * div_phi_u[i] *
+                          rho) -
                        (current_velocity_values[q] -
                         present_velocity_values[q]) *
-                         phi_u[i] / time.get_delta_t()) *
+                         phi_u[i] / time.get_delta_t() * rho) *
                       fe_values.JxW(q);
                   }
               }
@@ -524,8 +520,7 @@ namespace Fluid
                                 local_rhs(i) +=
                                   -(fe_face_values[velocities].value(i, q) *
                                     fe_face_values.normal_vector(q) *
-                                    boundary_values_p / rho *
-                                    fe_face_values.JxW(q));
+                                    boundary_values_p * fe_face_values.JxW(q));
                               }
                           }
                       }
@@ -589,7 +584,8 @@ namespace Fluid
                                                       time.get_delta_t(),
                                                       owned_partitioning,
                                                       system_matrix,
-                                                      mass_matrix));
+                                                      mass_matrix,
+                                                      mass_schur));
 
     SolverControl solver_control(
       system_matrix.m(), 1e-8 * system_rhs.l2_norm(), true);
@@ -766,12 +762,6 @@ namespace Fluid
     std::vector<std::string> solution_names(dim, "velocity");
     solution_names.push_back("pressure");
 
-    // We solved for normalized pressure but want to output the original
-    PETScWrappers::MPI::BlockVector tmp;
-    tmp.reinit(owned_partitioning, mpi_communicator);
-    tmp = present_solution;
-    tmp.block(1) *= rho;
-
     std::vector<DataComponentInterpretation::DataComponentInterpretation>
       data_component_interpretation(
         dim, DataComponentInterpretation::component_is_part_of_vector);
@@ -779,11 +769,8 @@ namespace Fluid
       DataComponentInterpretation::component_is_scalar);
     DataOut<dim> data_out;
     data_out.attach_dof_handler(dof_handler);
-
     // vector to be output must be ghosted
-    PETScWrappers::MPI::BlockVector output_solution(present_solution);
-    output_solution = tmp;
-    data_out.add_data_vector(output_solution,
+    data_out.add_data_vector(present_solution,
                              solution_names,
                              DataOut<dim>::type_dof_data,
                              data_component_interpretation);

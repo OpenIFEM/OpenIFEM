@@ -72,6 +72,11 @@ namespace Fluid
    * the updated solution.
    * We use one ConstraintMatrix for Dirichlet boundary conditions
    * at the initial step and a zero ConstraintMatrix for the rest steps.
+   * Although the density does not matter in the incompressible flow, we still
+   * include it in the formulation in order to be consistent with the
+   * slightly compressible flow. Correspondingly the viscosity represents
+   * the dynamic visocity \f$\mu\f$ instead of the kinetic visocity \f$\nu\f$,
+   * and the pressure block in the solution is the real pressure.
    */
   template <int dim>
   class ParallelNavierStokes
@@ -152,7 +157,7 @@ namespace Fluid
      */
     void output_results(const unsigned int) const;
 
-    double viscosity;
+    double viscosity; //!< Dynamic viscosity
     double rho;
     double gamma;
     const unsigned int degree;
@@ -170,6 +175,7 @@ namespace Fluid
     BlockSparsityPattern sparsity_pattern;
     PETScWrappers::MPI::BlockSparseMatrix system_matrix;
     PETScWrappers::MPI::BlockSparseMatrix mass_matrix;
+    PETScWrappers::MPI::BlockSparseMatrix mass_schur;
 
     /// The latest known solution.
     PETScWrappers::MPI::BlockVector present_solution;
@@ -272,7 +278,8 @@ namespace Fluid
         double dt,
         const std::vector<IndexSet> &owned_partitioning,
         const PETScWrappers::MPI::BlockSparseMatrix &system,
-        const PETScWrappers::MPI::BlockSparseMatrix &mass);
+        const PETScWrappers::MPI::BlockSparseMatrix &mass,
+        PETScWrappers::MPI::BlockSparseMatrix &schur);
 
       /// The matrix-vector multiplication must be defined.
       void vmult(PETScWrappers::MPI::BlockVector &dst,
@@ -292,6 +299,19 @@ namespace Fluid
         system_matrix;
       const SmartPointer<const PETScWrappers::MPI::BlockSparseMatrix>
         mass_matrix;
+      /**
+       * As discussed, \f${[B(diag(M_u))^{-1}B^T]}\f$ and its inverse
+       * need to be computed.
+       * We can either explicitly compute it out as a matrix, or define it as a
+       * class
+       * with a vmult operation. The second approach saves some computation to
+       * construct the matrix, but leads to slow convergence in CG solver
+       * because
+       * of the absence of preconditioner.
+       * Based on my tests, the first approach is more than 10 times faster so I
+       * go with this route.
+       */
+      const SmartPointer<PETScWrappers::MPI::BlockSparseMatrix> mass_schur;
 
       /// A dummy solver control object for MUMPS solver
       SolverControl dummy_sc;
@@ -302,28 +322,6 @@ namespace Fluid
        * and the matrix does not change.
        */
       mutable PETScWrappers::SparseDirectMUMPS A_inverse;
-
-      /// As discussed, \f${[B(diag(M_u))^{-1}B^T]}\f$ and its inverse
-      /// need to be computed.
-      /// Instead of computing it as a matrix, we define a class with vmult
-      /// operation. After all, the CG solver only needs the matrix-like object
-      /// has a vmult operation
-      class ApproximateMassSchur
-      {
-      public:
-        ApproximateMassSchur(const PETScWrappers::MPI::BlockSparseMatrix &M,
-                             const std::vector<IndexSet> &owned_partitioning);
-        /// Both src and dst have size dof_p
-        void vmult(PETScWrappers::MPI::Vector &dst,
-                   const PETScWrappers::MPI::Vector &src) const;
-
-      private:
-        /// This class needs access to mass_matrix
-        const SmartPointer<const PETScWrappers::MPI::BlockSparseMatrix>
-          mass_matrix;
-        /// Both tmp1 and tmp2 have size dof_u
-        mutable PETScWrappers::MPI::Vector tmp1, tmp2;
-      } mass_schur;
     };
   };
 }
