@@ -9,11 +9,17 @@ namespace Fluid
   {
     Assert(component < this->n_components,
            ExcIndexRange(component, 0, this->n_components));
-    if (component == 0 && std::abs(p[0] - 0.3) < 1e-10)
+    double left_boundary = (dim == 2 ? 0.3 : 0.0);
+    if (component == 0 && std::abs(p[0] - left_boundary) < 1e-10)
       {
         double U = 1.5;
         double y = p[1];
-        return 4 * U * y * (0.41 - y) / (0.41 * 0.41);
+        double value = 4 * U * y * (0.41 - y) / (0.41 * 0.41);
+        if (dim == 3)
+          {
+            value *= 4 * p[2] * (0.41 - p[2]);
+          }
+        return value;
       }
     return 0;
   }

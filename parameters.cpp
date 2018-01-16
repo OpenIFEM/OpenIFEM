@@ -151,12 +151,13 @@ namespace Parameters
       std::vector<std::string> parsed_input =
         Utilities::split_string_list(raw_input);
       std::vector<int> ids = Utilities::string_to_int(parsed_input);
-      AssertThrow(ids.size() == n_fluid_dirichlet_bcs,
+      AssertThrow(!n_fluid_dirichlet_bcs || ids.size() == n_fluid_dirichlet_bcs,
                   ExcMessage("Inconsistent boundary ids!"));
       raw_input = prm.get("Dirichlet boundary components");
       parsed_input = Utilities::split_string_list(raw_input);
       std::vector<int> components = Utilities::string_to_int(parsed_input);
-      AssertThrow(components.size() == n_fluid_dirichlet_bcs,
+      AssertThrow(!n_fluid_dirichlet_bcs ||
+                    components.size() == n_fluid_dirichlet_bcs,
                   ExcMessage("Inconsistent boundary components!"));
       raw_input = prm.get("Dirichlet boundary values");
       parsed_input = Utilities::split_string_list(raw_input);
@@ -376,12 +377,13 @@ namespace Parameters
       std::vector<std::string> parsed_input =
         Utilities::split_string_list(raw_input);
       std::vector<int> ids = Utilities::string_to_int(parsed_input);
-      AssertThrow(ids.size() == n_solid_dirichlet_bcs,
+      AssertThrow(!n_solid_dirichlet_bcs || ids.size() == n_solid_dirichlet_bcs,
                   ExcMessage("Inconsistent boundary ids!"));
       raw_input = prm.get("Dirichlet boundary components");
       parsed_input = Utilities::split_string_list(raw_input);
       std::vector<int> components = Utilities::string_to_int(parsed_input);
-      AssertThrow(components.size() == n_solid_dirichlet_bcs,
+      AssertThrow(!n_solid_dirichlet_bcs ||
+                    components.size() == n_solid_dirichlet_bcs,
                   ExcMessage("Inconsistent boundary components!"));
       for (unsigned int i = 0; i < n_solid_dirichlet_bcs; ++i)
         {
