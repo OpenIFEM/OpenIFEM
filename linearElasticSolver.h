@@ -12,8 +12,10 @@
 #include <deal.II/dofs/dof_tools.h>
 
 #include <deal.II/fe/fe.h>
+#include <deal.II/fe/fe_dgq.h>
 #include <deal.II/fe/fe_q.h>
 #include <deal.II/fe/fe_system.h>
+#include <deal.II/fe/fe_tools.h>
 #include <deal.II/fe/fe_values.h>
 
 #include <deal.II/grid/grid_generator.h>
@@ -76,7 +78,7 @@ namespace Solid
     LinearElasticSolver(Triangulation<dim> &,
                         const Parameters::AllParameters &);
     /*! \brief Destructor. */
-    ~LinearElasticSolver() { dof_handler.clear(); }
+    ~LinearElasticSolver();
     void run();
 
   private:
@@ -128,6 +130,11 @@ namespace Solid
      */
     void refine_mesh(const unsigned int, const unsigned int);
 
+    /**
+     * Update the strain and stress, used in output_results and FSI.
+     */
+    void update_strain_and_stress() const;
+
     LinearElasticMaterial<dim> material;
 
     const double gamma; //!< Newton-beta parameter
@@ -140,7 +147,10 @@ namespace Solid
 
     Triangulation<dim> &triangulation;
     FESystem<dim> fe;
+    FE_DGQ<dim> dg_fe; //!< Discontinous Glerkin FE for the nodal strain/stress
     DoFHandler<dim> dof_handler;
+    DoFHandler<dim>
+      dg_dof_handler; //!< Dof handler for dg_fe, which has one dof per vertex.
 
     const QGauss<dim>
       volume_quad_formula; //!< Quadrature formula for volume integration.
@@ -176,6 +186,13 @@ namespace Solid
     Vector<double> previous_acceleration;
     Vector<double> previous_velocity;
     Vector<double> previous_displacement;
+
+    /**
+     * Infinitesimal strain and Cauchy stress. Each of them contains dim*dim
+     * Vectors,
+     * where every Vector has dg_dof_handler.n_dofs() components.
+     */
+    mutable std::vector<std::vector<Vector<double>>> strain, stress;
 
     Utils::Time time;
     mutable TimerOutput timer;

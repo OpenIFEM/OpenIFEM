@@ -14,7 +14,9 @@ namespace Solid
       tolerance(1e-12),
       triangulation(tria),
       fe(FE_Q<dim>(degree), dim),
+      dg_fe(FE_DGQ<dim>(degree)),
       dof_handler(triangulation),
+      dg_dof_handler(triangulation),
       volume_quad_formula(degree + 1),
       face_quad_formula(degree + 1),
       time(parameters.end_time,
@@ -27,12 +29,20 @@ namespace Solid
   }
 
   template <int dim>
+  LinearElasticSolver<dim>::~LinearElasticSolver()
+  {
+    dg_dof_handler.clear();
+    dof_handler.clear();
+  }
+
+  template <int dim>
   void LinearElasticSolver<dim>::setup_dofs()
   {
     TimerOutput::Scope timer_section(timer, "Setup system");
 
     dof_handler.distribute_dofs(fe);
     DoFRenumbering::Cuthill_McKee(dof_handler);
+    dg_dof_handler.distribute_dofs(dg_fe);
 
     // The Dirichlet boundary conditions are stored in the ConstraintMatrix
     // object. It does not need to modify the sparse matrix after assembly,
@@ -97,6 +107,15 @@ namespace Solid
     previous_acceleration.reinit(dof_handler.n_dofs());
     previous_velocity.reinit(dof_handler.n_dofs());
     previous_displacement.reinit(dof_handler.n_dofs());
+
+    strain = std::vector<std::vector<Vector<double>>>(
+      dim,
+      std::vector<Vector<double>>(dim,
+                                  Vector<double>(dg_dof_handler.n_dofs())));
+    stress = std::vector<std::vector<Vector<double>>>(
+      dim,
+      std::vector<Vector<double>>(dim,
+                                  Vector<double>(dg_dof_handler.n_dofs())));
   }
 
   template <int dim>
@@ -307,11 +326,30 @@ namespace Solid
       data_component_interpretation(
         dim, DataComponentInterpretation::component_is_part_of_vector);
     DataOut<dim> data_out;
-    data_out.attach_dof_handler(dof_handler);
-    data_out.add_data_vector(current_displacement,
+    // displacements
+    data_out.add_data_vector(dof_handler,
+                             current_displacement,
                              solution_names,
-                             DataOut<dim>::type_dof_data,
                              data_component_interpretation);
+
+    // strain and stress
+    update_strain_and_stress();
+    data_out.add_data_vector(dg_dof_handler, strain[0][0], "Exx");
+    data_out.add_data_vector(dg_dof_handler, strain[0][1], "Exy");
+    data_out.add_data_vector(dg_dof_handler, strain[1][1], "Eyy");
+    data_out.add_data_vector(dg_dof_handler, stress[0][0], "Sxx");
+    data_out.add_data_vector(dg_dof_handler, stress[0][1], "Sxy");
+    data_out.add_data_vector(dg_dof_handler, stress[1][1], "Syy");
+    if (dim == 3)
+      {
+        data_out.add_data_vector(dg_dof_handler, strain[0][2], "Exz");
+        data_out.add_data_vector(dg_dof_handler, strain[1][2], "Eyz");
+        data_out.add_data_vector(dg_dof_handler, strain[2][2], "Ezz");
+        data_out.add_data_vector(dg_dof_handler, stress[0][2], "Sxz");
+        data_out.add_data_vector(dg_dof_handler, stress[1][2], "Syz");
+        data_out.add_data_vector(dg_dof_handler, stress[2][2], "Szz");
+      }
+
     data_out.build_patches();
 
     std::string basename = "linearelastic";
@@ -456,6 +494,88 @@ namespace Solid
           {
             refine_mesh(1, 4);
             assemble_system(false);
+          }
+      }
+  }
+
+  template <int dim>
+  void LinearElasticSolver<dim>::update_strain_and_stress() const
+  {
+    // The strain and stress tensors are stored as 2D vectors of shape dim*dim
+    // at cell and quadrature point level.
+    std::vector<std::vector<Vector<double>>> cell_strain(
+      dim,
+      std::vector<Vector<double>>(dim, Vector<double>(dg_fe.dofs_per_cell)));
+    std::vector<std::vector<Vector<double>>> cell_stress(
+      dim,
+      std::vector<Vector<double>>(dim, Vector<double>(dg_fe.dofs_per_cell)));
+    std::vector<std::vector<Vector<double>>> quad_strain(
+      dim,
+      std::vector<Vector<double>>(dim,
+                                  Vector<double>(volume_quad_formula.size())));
+    std::vector<std::vector<Vector<double>>> quad_stress(
+      dim,
+      std::vector<Vector<double>>(dim,
+                                  Vector<double>(volume_quad_formula.size())));
+
+    // Displacement gradients at quadrature points.
+    std::vector<Tensor<2, dim>> current_displacement_gradients(
+      volume_quad_formula.size());
+
+    // The projection matrix from quadrature points to the dofs.
+    FullMatrix<double> qpt_to_dof(dg_fe.dofs_per_cell,
+                                  volume_quad_formula.size());
+    FETools::compute_projection_from_quadrature_points_matrix(
+      dg_fe, volume_quad_formula, volume_quad_formula, qpt_to_dof);
+
+    const SymmetricTensor<4, dim> elasticity = material.get_elasticity();
+    const FEValuesExtractors::Vector displacements(0);
+
+    FEValues<dim> fe_values(fe,
+                            volume_quad_formula,
+                            update_values | update_gradients |
+                              update_quadrature_points | update_JxW_values);
+    auto cell = dof_handler.begin_active();
+    auto dg_cell = dg_dof_handler.begin_active();
+    for (; cell != dof_handler.end(); ++cell, ++dg_cell)
+      {
+        fe_values.reinit(cell);
+        fe_values[displacements].get_function_gradients(
+          current_displacement, current_displacement_gradients);
+
+        for (unsigned int q = 0; q < volume_quad_formula.size(); ++q)
+          {
+            SymmetricTensor<2, dim> tmp_strain, tmp_stress;
+            for (unsigned int i = 0; i < dim; ++i)
+              {
+                for (unsigned int j = 0; j < dim; ++j)
+                  {
+                    tmp_strain[TableIndices<2>(i, j)] =
+                      (current_displacement_gradients[q][i][j] +
+                       current_displacement_gradients[q][j][i]) /
+                      2;
+                    quad_strain[i][j][q] = tmp_strain[TableIndices<2>(i, j)];
+                  }
+              }
+            tmp_stress = elasticity * tmp_strain;
+            for (unsigned int i = 0; i < dim; ++i)
+              {
+                for (unsigned int j = 0; j < dim; ++j)
+                  {
+                    quad_stress[i][j][q] = tmp_stress[TableIndices<2>(i, j)];
+                  }
+              }
+          }
+
+        for (unsigned int i = 0; i < dim; ++i)
+          {
+            for (unsigned int j = 0; j < dim; ++j)
+              {
+                qpt_to_dof.vmult(cell_strain[i][j], quad_strain[i][j]);
+                qpt_to_dof.vmult(cell_stress[i][j], quad_stress[i][j]);
+                dg_cell->set_dof_values(cell_strain[i][j], strain[i][j]);
+                dg_cell->set_dof_values(cell_stress[i][j], stress[i][j]);
+              }
           }
       }
   }
