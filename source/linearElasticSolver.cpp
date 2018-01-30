@@ -594,11 +594,11 @@ namespace Solid
               {
                 for (unsigned int j = 0; j < dim; ++j)
                   {
-                    tmp_strain[TableIndices<2>(i, j)] =
+                    tmp_strain[i][j] =
                       (current_displacement_gradients[q][i][j] +
                        current_displacement_gradients[q][j][i]) /
                       2;
-                    quad_strain[i][j][q] = tmp_strain[TableIndices<2>(i, j)];
+                    quad_strain[i][j][q] = tmp_strain[i][j];
                   }
               }
             tmp_stress = elasticity * tmp_strain;
@@ -606,7 +606,7 @@ namespace Solid
               {
                 for (unsigned int j = 0; j < dim; ++j)
                   {
-                    quad_stress[i][j][q] = tmp_stress[TableIndices<2>(i, j)];
+                    quad_stress[i][j][q] = tmp_stress[i][j];
                   }
               }
           }

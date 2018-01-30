@@ -353,6 +353,9 @@ namespace Fluid
     present_solution.reinit(dofs_per_block);
     newton_update.reinit(dofs_per_block);
     evaluation_point.reinit(dofs_per_block);
+    solution_increment.reinit(dofs_per_block);
+    present_solution = 0;
+    solution_increment = 0;
     system_rhs.reinit(dofs_per_block);
 
     // Compute the sparsity pattern for mass schur in advance.
@@ -392,8 +395,12 @@ namespace Fluid
                                        update_JxW_values);
 
     const unsigned int dofs_per_cell = fe.dofs_per_cell;
+    const unsigned int u_dofs = fe.base_element(0).dofs_per_cell;
+    const unsigned int p_dofs = fe.base_element(1).dofs_per_cell;
     const unsigned int n_q_points = volume_quad_formula.size();
     const unsigned int n_face_q_points = face_quad_formula.size();
+
+    Assert(u_dofs * dim + p_dofs == dofs_per_cell, ExcMessage("Wrong partitioning of dofs!"));
 
     const FEValuesExtractors::Vector velocities(0);
     const FEValuesExtractors::Scalar pressure(dim);
@@ -420,12 +427,15 @@ namespace Fluid
     std::vector<Tensor<2, dim>> grad_phi_u(dofs_per_cell);
     std::vector<double> phi_p(dofs_per_cell);
 
+    unsigned int count = 0;
+
     for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
          ++cell)
       {
         auto p = cell_property.get_data(cell);
-        double mu_bar = p[0]->get_mu();
-        double rho_bar = p[0]->get_rho();
+        const int ind = p[0]->indicator;
+        const double mu_bar = p[0]->get_mu();
+        const double rho_bar = p[0]->get_rho();
 
         fe_values.reinit(cell);
 
@@ -506,7 +516,15 @@ namespace Fluid
                    (current_velocity_values[q] - present_velocity_values[q]) *
                      phi_u[i] / time.get_delta_t() * rho_bar) *
                   fe_values.JxW(q);
+                if (ind == 1)
+                  {
+                    local_rhs(i) += (scalar_product(grad_phi_u[i], fsi_stress[count]) +
+                      (fsi_acceleration[count] * rho_bar * phi_u[i])) * fe_values.JxW(q);
+                  }
               }
+
+            if (ind == 1)
+              count++;
           }
 
         // Impose pressure boundary here if specified, loop over faces on the
@@ -563,6 +581,8 @@ namespace Fluid
               local_rhs, local_dof_indices, system_rhs);
           }
       }
+
+    AssertThrow(count == fsi_acceleration.size(), ExcMessage("FSI force size wrong!"));
   }
 
   template <int dim>
@@ -716,6 +736,9 @@ namespace Fluid
 
         outer_iteration++;
       }
+    // Update solution increment, which is used in FSI application.
+    solution_increment = evaluation_point;
+    solution_increment -= present_solution;
     // Newton iteration converges, update time and solution
     present_solution = evaluation_point;
     // Output

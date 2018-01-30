@@ -201,6 +201,14 @@ namespace Fluid
      * in the current time step, which approaches to the new present_solution.
      */
     BlockVector<double> evaluation_point;
+    /**
+     * The solution increment from the previous time step to the current time
+     * step,
+     * i.e., the summation of the newton_update at a certain time step.
+     * This is redundant in fluid stand-alone simulation, but useful in FSI
+     * application because we are interested in fluid acceleration.
+     */
+    BlockVector<double> solution_increment;
     BlockVector<double> system_rhs;
 
     const double tolerance;
@@ -216,6 +224,9 @@ namespace Fluid
 
     CellDataStorage<typename Triangulation<dim>::cell_iterator, CellProperty>
       cell_property;
+
+    std::vector<SymmetricTensor<2, dim>> fsi_stress;
+    std::vector<Tensor<1, dim>> fsi_acceleration;
 
     /** \brief Helper function to specify Dirchlet boundary conditions.
      *
