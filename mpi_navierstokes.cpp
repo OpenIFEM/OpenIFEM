@@ -114,6 +114,15 @@ namespace Fluid
       timer.leave_subsection("CG for Mp");
       timer.enter_subsection("CG for Sm");
 
+      // FIXME: There is a mysterious bug here. After refine_mesh is called,
+      // the initialization of Sm_preconditioner will complain about zero entries
+      // on the diagonal which causes division by 0 since PreconditionBlockJacobi
+      // uses ILU(0) underneath. This is similar to the serial code where SparseILU
+      // is used. However, 1. if we do not use a preconditioner here, the code
+      // runs fine, suggesting that mass_schur is correct; 2. if we do not call
+      // refine_mesh, the code also runs fine. So the question is, why would refine_mesh
+      // generate diagonal zeros?
+      //
       // \f$-\frac{1}{dt}S_m^{-1}v_1\f$
       PETScWrappers::PreconditionBlockJacobi Sm_preconditioner;
       Sm_preconditioner.initialize(mass_schur->block(1, 1));
@@ -302,7 +311,7 @@ namespace Fluid
     zero_constraints.close();
 
     pcout << "   Number of active fluid cells: "
-          << triangulation.n_active_cells() << std::endl
+          << triangulation.n_global_active_cells() << std::endl
           << "   Number of degrees of freedom: " << dof_handler.n_dofs() << " ("
           << dof_u << '+' << dof_p << ')' << std::endl;
   }
@@ -619,7 +628,6 @@ namespace Fluid
     TimerOutput::Scope timer_section(timer, "Refine mesh");
     pcout << "Refining mesh..." << std::endl;
 
-    PETScWrappers::MPI::BlockVector solution(present_solution);
     Vector<float> estimated_error_per_cell(triangulation.n_active_cells());
     FEValuesExtractors::Vector velocity(0);
 
@@ -627,7 +635,7 @@ namespace Fluid
     KellyErrorEstimator<dim>::estimate(dof_handler,
                                        face_quad_formula,
                                        typename FunctionMap<dim>::type(),
-                                       solution,
+                                       present_solution,
                                        estimated_error_per_cell,
                                        fe.component_mask(velocity));
 
@@ -657,7 +665,7 @@ namespace Fluid
 
     triangulation.prepare_coarsening_and_refinement();
 
-    trans.prepare_for_coarsening_and_refinement(solution);
+    trans.prepare_for_coarsening_and_refinement(present_solution);
 
     // Refine the mesh
     triangulation.execute_coarsening_and_refinement();
@@ -669,6 +677,7 @@ namespace Fluid
     // Transfer solution
     // Need a non-ghosted vector for interpolation
     PETScWrappers::MPI::BlockVector tmp(newton_update);
+    tmp = 0;
     trans.interpolate(tmp);
     nonzero_constraints.distribute(tmp);
     present_solution = tmp;

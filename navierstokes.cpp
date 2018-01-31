@@ -115,9 +115,16 @@ namespace Fluid
       timer.leave_subsection("CG for Mp");
       timer.enter_subsection("CG for Sm");
 
+      // FIXME: There is a mysterious bug here. After refine_mesh is called,
+      // the initialization of Sm_preconditioner will complain about zero entries
+      // on the diagonal which causes division by 0. Same thing happens to the parallel
+      // code since its block Jacobi preconditioner uses ILU underneath.
+      // However, 1. if we do not use a preconditioner here, the code
+      // runs fine, suggesting that mass_schur is correct; 2. if we do not call
+      // refine_mesh, the code also runs fine. So the question is, why would refine_mesh
+      // generate diagonal zeros?
+      //
       // \f$-\frac{1}{dt}S_m^{-1}v_1\f$
-      // We cannot use any standard built-in here because mass_schur is
-      // not a built-in matrix.
       SparseILU<double> Sm_preconditioner;
       Sm_preconditioner.initialize(*mass_schur);
       cg.solve(*mass_schur, dst.block(1), src.block(1), Sm_preconditioner);

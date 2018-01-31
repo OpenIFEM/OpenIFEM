@@ -457,7 +457,6 @@ namespace Parameters
     declareParameters(prm);
     prm.parse_input(infile);
     parseParameters(prm);
-    prm.print_parameters(std::cout, ParameterHandler::Text);
   }
 
   void AllParameters::declareParameters(ParameterHandler &prm)

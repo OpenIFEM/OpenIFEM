@@ -29,19 +29,17 @@ int main(int argc, char *argv[])
       Parameters::AllParameters params("parameters.prm");
       if (params.dimension == 2)
         {
-          /*
           parallel::distributed::Triangulation<2> tria(MPI_COMM_WORLD);
           Utils::GridCreator::flow_around_cylinder(tria);
           Fluid::ParallelNavierStokes<2> flow(tria, params);
           flow.run();
-          */
-          Triangulation<2> tria;
-          Utils::GridCreator::flow_around_cylinder(tria);
-          Fluid::NavierStokes<2> flow(tria, params);
-          flow.run();
         }
       else if (params.dimension == 3)
         {
+          parallel::distributed::Triangulation<3> tria(MPI_COMM_WORLD);
+          Utils::GridCreator::flow_around_cylinder(tria);
+          Fluid::ParallelNavierStokes<3> flow(tria, params);
+          flow.run();
         }
       else
         {
