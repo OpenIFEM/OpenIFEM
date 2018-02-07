@@ -115,13 +115,13 @@ namespace Fluid
       timer.enter_subsection("CG for Sm");
 
       // FIXME: There is a mysterious bug here. After refine_mesh is called,
-      // the initialization of Sm_preconditioner will complain about zero entries
-      // on the diagonal which causes division by 0 since PreconditionBlockJacobi
-      // uses ILU(0) underneath. This is similar to the serial code where SparseILU
-      // is used. However, 1. if we do not use a preconditioner here, the code
-      // runs fine, suggesting that mass_schur is correct; 2. if we do not call
-      // refine_mesh, the code also runs fine. So the question is, why would refine_mesh
-      // generate diagonal zeros?
+      // the initialization of Sm_preconditioner will complain about zero
+      // entries on the diagonal which causes division by 0 since
+      // PreconditionBlockJacobi uses ILU(0) underneath. This is similar to the
+      // serial code where SparseILU is used. However, 1. if we do not use a
+      // preconditioner here, the code runs fine, suggesting that mass_schur is
+      // correct; 2. if we do not call refine_mesh, the code also runs fine. So
+      // the question is, why would refine_mesh generate diagonal zeros?
       //
       // \f$-\frac{1}{dt}S_m^{-1}v_1\f$
       PETScWrappers::PreconditionBlockJacobi Sm_preconditioner;

@@ -12,7 +12,7 @@ subsection Simulation
 
   # Level of global refinement before running,
   # which applies to all the solvers
-  set Global refinement = 2
+  set Global refinement = 1
 
   # The end time of the simulation in second
   set End time = 1e-1
@@ -123,7 +123,7 @@ end
 # Only homogeneous Dirichlet BC is supported, i.e., the prescribed value is always 0.
 subsection Solid Dirichlet BCs
   # Dirichlet BCs can be applied to multiple boundaries.
-  set Number of Dirichlet BCs = 1
+  set Number of Dirichlet BCs = 0
 
   # List all the constrained boundaries here
   set Dirichlet boundary id = 0
@@ -140,7 +140,7 @@ end
 # (Original normal vectors are used to compute the traction.)
 subsection Solid Neumann BCs
   # Indicates how many sets of Neumann boundary conditions to expect.
-  set Number of Neumann BCs = 1
+  set Number of Neumann BCs = 0
 
   # The id, type, and values must appear n_neumann_bcs times.
   set Neumann boundary id = 3
