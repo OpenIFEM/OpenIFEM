@@ -1,6 +1,7 @@
 #ifndef UTILITIES
 #define UTILITIES
 
+#include <deal.II/fe/fe_values.h>
 #include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/grid_refinement.h>
 #include <deal.II/grid/grid_tools.h>
@@ -8,6 +9,7 @@
 #include <deal.II/grid/tria.h>
 #include <deal.II/grid/tria_accessor.h>
 #include <deal.II/grid/tria_iterator.h>
+#include <deal.II/numerics/vector_tools.h>
 
 namespace Utils
 {
@@ -77,6 +79,38 @@ namespace Utils
      */
     static void flow_around_cylinder_2d(Triangulation<2> &,
                                         bool compute_in_2d = true);
+  };
+
+  /** \brief Interpolate the solution value or gradient at an arbitrary point.
+   *
+   * The implementation is a combination of VectorTools::point_value and
+   * VectorTools::point_graident. However, this class avoids locating the given
+   * point
+   * for multiple times when we need to interpolate different values.
+   *
+   * Due to the floating point errors, locating a point can be undeterministic.
+   * In addition,
+   * in parallel applications, it can only be owned by one processor. In those
+   * situations
+   * zero is returned.
+   */
+  template <int dim, typename VectorType>
+  class GridInterpolator
+  {
+  public:
+    GridInterpolator(const DoFHandler<dim> &, const Point<dim> &);
+    void point_value(const VectorType &,
+                     Vector<typename VectorType::value_type> &);
+    void point_gradient(
+      const VectorType &,
+      std::vector<Tensor<1, dim, typename VectorType::value_type>> &);
+
+  private:
+    const DoFHandler<dim> &dof_handler;
+    const Point<dim> &point;
+    MappingQ1<dim> mapping;
+    std::pair<typename DoFHandler<dim>::active_cell_iterator, Point<dim>>
+      cell_point;
   };
 }
 

@@ -20,6 +20,89 @@ namespace Utils
     ++timestep;
   }
 
+  template <int dim, typename VectorType>
+  GridInterpolator<dim, VectorType>::GridInterpolator(
+    const DoFHandler<dim> &dof_handler, const Point<dim> &point)
+    : dof_handler(dof_handler), point(point)
+  {
+    // This function throws an exception of GridTools::ExcPointNotFound if the
+    // point
+    // does not lie in any cell. In this case, we set the cell pointer to null.
+    try
+      {
+        cell_point =
+          GridTools::find_active_cell_around_point(mapping, dof_handler, point);
+      }
+    catch (GridTools::ExcPointNotFound<dim> &e)
+      {
+        cell_point.first = dof_handler.end();
+        cell_point.second = point;
+      }
+  }
+
+  template <int dim, typename VectorType>
+  void GridInterpolator<dim, VectorType>::point_value(
+    const VectorType &fe_function,
+    Vector<typename VectorType::value_type> &value)
+  {
+    typedef typename VectorType::value_type Number;
+    const FiniteElement<dim> &fe = dof_handler.get_fe();
+    Assert(value.size() == fe.n_components(),
+           ExcDimensionMismatch(value.size(), fe.n_components()));
+    // If for some reason, the point is not found in any cell,
+    // or it is on a cell that is not locally owned, return 0.
+    if (cell_point.first == dof_handler.end() ||
+        !cell_point.first->is_locally_owned())
+      {
+        value = 0;
+      }
+    Assert(GeometryInfo<dim>::distance_to_unit_cell(cell_point.second) < 1e-10,
+           ExcInternalError());
+
+    const Quadrature<dim> quadrature(
+      GeometryInfo<dim>::project_to_unit_cell(cell_point.second));
+    FEValues<dim> fe_values(mapping, fe, quadrature, update_values);
+    fe_values.reinit(cell_point.first);
+    std::vector<Vector<Number>> u_value(1, Vector<Number>(fe.n_components()));
+    fe_values.get_function_values(fe_function, u_value);
+    value = u_value[0];
+  }
+
+  template <int dim, typename VectorType>
+  void GridInterpolator<dim, VectorType>::point_gradient(
+    const VectorType &fe_function,
+    std::vector<Tensor<1, dim, typename VectorType::value_type>> &gradient)
+  {
+    typedef typename VectorType::value_type Number;
+    const FiniteElement<dim> &fe = dof_handler.get_fe();
+    Assert(gradient.size() == fe.n_components(),
+           ExcDimensionMismatch(gradient.size(), fe.n_components()));
+    // If for some reason, the point is not found in any cell,
+    // or it is on a cell that is not locally owned, return 0.
+    if (cell_point.first == dof_handler.end() ||
+        !cell_point.first->is_locally_owned())
+      {
+        for (auto &v : gradient)
+          {
+            v = 0;
+          }
+      }
+    Assert(GeometryInfo<dim>::distance_to_unit_cell(cell_point.second) < 1e-10,
+           ExcInternalError());
+
+    const Quadrature<dim> quadrature(
+      GeometryInfo<dim>::project_to_unit_cell(cell_point.second));
+    FEValues<dim> fe_values(mapping, fe, quadrature, update_gradients);
+    fe_values.reinit(cell_point.first);
+    std::vector<std::vector<Tensor<1, dim, Number>>> u_gradient(
+      1, std::vector<Tensor<1, dim, Number>>(fe.n_components()));
+    fe_values.get_function_gradients(fe_function, u_gradient);
+    gradient = u_gradient[0];
+  }
+
+  template class GridInterpolator<2, Vector<double>>;
+  template class GridInterpolator<3, Vector<double>>;
+
   // The code to create triangulation is copied from [Martin Kronbichler's code]
   // (https://github.com/kronbichler/adaflo/blob/master/tests/flow_past_cylinder.cc)
   // with very few modifications.
