@@ -156,25 +156,24 @@ void FSI<dim>::find_fluid_fsi(std::vector<SymmetricTensor<2, dim>> &fsi_stress,
           // Solid part
           Point<dim> q_point = fe_values.quadrature_point(q);
           Vector<double> tmp(dim);
-          VectorTools::point_value(solid_solver.dof_handler,
-                                   solid_solver.current_acceleration,
-                                   q_point,
-                                   tmp);
+          Utils::GridInterpolator<dim, Vector<double>> interpolator(
+            solid_solver.dof_handler, q_point);
+          interpolator.point_value(solid_solver.current_acceleration, tmp);
           Tensor<1, dim> solid_acc;
           for (unsigned int i = 0; i < dim; ++i)
             {
               solid_acc[i] = tmp[i];
             }
+          Utils::GridInterpolator<dim, Vector<double>> dg_interpolator(
+            solid_solver.dg_dof_handler, q_point);
           SymmetricTensor<2, dim> solid_sigma;
           for (unsigned int i = 0; i < dim; ++i)
             {
               for (unsigned int j = 0; j < dim; ++j)
                 {
                   Vector<double> sigma_ij(1);
-                  VectorTools::point_value(solid_solver.dg_dof_handler,
-                                           solid_solver.stress[i][j],
-                                           q_point,
-                                           sigma_ij);
+                  dg_interpolator.point_value(solid_solver.stress[i][j],
+                                              sigma_ij);
                   solid_sigma[i][j] = sigma_ij[0];
                 }
             }
@@ -229,17 +228,14 @@ void FSI<dim>::find_solid_bc(std::vector<Tensor<1, dim>> &traction)
                   Point<dim> q_point = fe_face_values.quadrature_point(q);
                   Tensor<1, dim> normal = fe_face_values.normal_vector(q);
                   Vector<double> value(dim + 1);
-                  VectorTools::point_value(fluid_solver.dof_handler,
-                                           fluid_solver.present_solution,
-                                           q_point,
+                  Utils::GridInterpolator<dim, BlockVector<double>>
+                    interpolator(fluid_solver.dof_handler, q_point);
+                  interpolator.point_value(fluid_solver.present_solution,
                                            value);
                   std::vector<Tensor<1, dim>> gradient(dim + 1,
                                                        Tensor<1, dim>());
-                  VectorTools::point_gradient(fluid_solver.dof_handler,
-                                              fluid_solver.present_solution,
-                                              q_point,
+                  interpolator.point_gradient(fluid_solver.present_solution,
                                               gradient);
-
                   SymmetricTensor<2, dim> sym_deformation;
                   for (unsigned int i = 0; i < dim; ++i)
                     {

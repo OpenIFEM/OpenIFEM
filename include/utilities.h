@@ -9,6 +9,7 @@
 #include <deal.II/grid/tria.h>
 #include <deal.II/grid/tria_accessor.h>
 #include <deal.II/grid/tria_iterator.h>
+#include <deal.II/lac/block_vector.h>
 #include <deal.II/numerics/vector_tools.h>
 
 namespace Utils

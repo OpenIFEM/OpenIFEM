@@ -400,7 +400,8 @@ namespace Fluid
     const unsigned int n_q_points = volume_quad_formula.size();
     const unsigned int n_face_q_points = face_quad_formula.size();
 
-    Assert(u_dofs * dim + p_dofs == dofs_per_cell, ExcMessage("Wrong partitioning of dofs!"));
+    Assert(u_dofs * dim + p_dofs == dofs_per_cell,
+           ExcMessage("Wrong partitioning of dofs!"));
 
     const FEValuesExtractors::Vector velocities(0);
     const FEValuesExtractors::Scalar pressure(dim);
@@ -518,8 +519,10 @@ namespace Fluid
                   fe_values.JxW(q);
                 if (ind == 1)
                   {
-                    local_rhs(i) += (scalar_product(grad_phi_u[i], fsi_stress[count]) +
-                      (fsi_acceleration[count] * rho_bar * phi_u[i])) * fe_values.JxW(q);
+                    local_rhs(i) +=
+                      (scalar_product(grad_phi_u[i], fsi_stress[count]) +
+                       (fsi_acceleration[count] * rho_bar * phi_u[i])) *
+                      fe_values.JxW(q);
                   }
               }
 
@@ -582,7 +585,8 @@ namespace Fluid
           }
       }
 
-    AssertThrow(count == fsi_acceleration.size(), ExcMessage("FSI force size wrong!"));
+    AssertThrow(count == fsi_acceleration.size(),
+                ExcMessage("FSI force size wrong!"));
   }
 
   template <int dim>

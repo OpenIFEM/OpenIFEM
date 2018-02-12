@@ -55,6 +55,7 @@ namespace Utils
         !cell_point.first->is_locally_owned())
       {
         value = 0;
+        return;
       }
     Assert(GeometryInfo<dim>::distance_to_unit_cell(cell_point.second) < 1e-10,
            ExcInternalError());
@@ -86,6 +87,7 @@ namespace Utils
           {
             v = 0;
           }
+        return;
       }
     Assert(GeometryInfo<dim>::distance_to_unit_cell(cell_point.second) < 1e-10,
            ExcInternalError());
@@ -102,6 +104,8 @@ namespace Utils
 
   template class GridInterpolator<2, Vector<double>>;
   template class GridInterpolator<3, Vector<double>>;
+  template class GridInterpolator<2, BlockVector<double>>;
+  template class GridInterpolator<3, BlockVector<double>>;
 
   // The code to create triangulation is copied from [Martin Kronbichler's code]
   // (https://github.com/kronbichler/adaflo/blob/master/tests/flow_past_cylinder.cc)
