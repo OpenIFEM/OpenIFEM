@@ -60,7 +60,7 @@ private:
    * points. The pressure is then applied as the boundary condition on the solid
    * face.
    */
-  void find_solid_bc(std::vector<Tensor<1, dim>> &);
+  void find_solid_bc();
   /**
    * The solid acts on the fluid through the FSI force defined as:
    * \f$ F^{\text{FSI}} = (\sigma^s_{ij,j} - \sigma^f_{ij,j}) -
@@ -86,8 +86,7 @@ private:
    * acceleration, however,
    * must take convection into account.
    */
-  void find_fluid_fsi(std::vector<SymmetricTensor<2, dim>> &,
-                      std::vector<Tensor<1, dim>> &);
+  void find_fluid_fsi();
 
   Fluid::NavierStokes<dim> &fluid_solver;
   Solid::LinearElasticSolver<dim> &solid_solver;

@@ -116,6 +116,10 @@ namespace Solid
       dim,
       std::vector<Vector<double>>(dim,
                                   Vector<double>(dg_dof_handler.n_dofs())));
+
+    // Set up cell property, which contains the FSI traction required in FSI simulation
+    const unsigned int n_data = face_quad_formula.size() * GeometryInfo<dim>::faces_per_cell;
+    cell_property.initialize(triangulation.begin_active(), triangulation.end(), n_data);
   }
 
   template <int dim>
@@ -168,6 +172,9 @@ namespace Solid
     for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
          ++cell)
       {
+        auto p = cell_property.get_data(cell);
+        Assert(p.size() == n_f_q_points * GeometryInfo<dim>::faces_per_cell,
+          ExcMessage("Wrong number of cell data!"));
         local_matrix = 0;
         local_stiffness = 0;
         local_rhs = 0;
@@ -222,7 +229,6 @@ namespace Solid
         // should be either Traction or Pressure;
         // it this is a FSI simulation, the Neumann boundary type must be FSI.
 
-        unsigned int cnt = 0; // face counter used for FSI
         for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
              ++face)
           {
@@ -276,7 +282,7 @@ namespace Solid
                   }
                 else if (parameters.solid_neumann_bc_type == "FSI")
                   {
-                    traction = fluid_traction[cnt++];
+                    traction = p[face*n_f_q_points+q]->fsi_traction;
                   }
 
                 for (unsigned int j = 0; j < dofs_per_cell; ++j)

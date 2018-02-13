@@ -331,7 +331,8 @@ namespace Fluid
 
     /**
      * This struct tells whether a cell contains real fluid or artificial fluid,
-     * and returns the corresponding properties.
+     * and returns the corresponding properties. It also caches the FSI force which
+     * includes a tensor and a vector.
      */
     struct CellProperty
     {
@@ -346,6 +347,8 @@ namespace Fluid
       double fluid_rho;
       double solid_mu;
       double solid_rho;
+      SymmetricTensor<2, dim> fsi_stress;
+      Tensor<1, dim> fsi_acceleration;
       /**
        * Return the density of the current cell.
        */

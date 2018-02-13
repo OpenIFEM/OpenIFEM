@@ -3,6 +3,7 @@
 
 #include <deal.II/base/function.h>
 #include <deal.II/base/quadrature_lib.h>
+#include <deal.II/base/quadrature_point_data.h>
 #include <deal.II/base/tensor.h>
 #include <deal.II/base/timer.h>
 
@@ -88,6 +89,8 @@ namespace Solid
     void run_one_step(bool);
 
   private:
+    struct CellProperty;
+
     /**
      * Set up the DofHandler, reorder the grid, sparsity pattern.
      */
@@ -205,10 +208,18 @@ namespace Solid
 
     Parameters::AllParameters parameters;
 
+    std::vector<Tensor<1, dim>> fluid_traction;
+
+    CellDataStorage<typename Triangulation<dim>::cell_iterator, CellProperty>
+      cell_property;
+
     /**
      * The fluid traction in FSI simulation, which should be set by the FSI.
      */
-    std::vector<Tensor<1, dim>> fluid_traction;
+    struct CellProperty
+    {
+      Tensor<1, dim> fsi_traction;
+    };
   };
 }
 

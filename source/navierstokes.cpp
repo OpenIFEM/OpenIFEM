@@ -317,21 +317,25 @@ namespace Fluid
   void NavierStokes<dim>::setup_cell_property()
   {
     std::cout << "   Setting up cell property..." << std::endl;
+    const unsigned int n_q_points = volume_quad_formula.size();
     cell_property.initialize(
-      triangulation.begin_active(), triangulation.end(), 1);
+      triangulation.begin_active(), triangulation.end(), n_q_points);
     for (auto cell = triangulation.begin_active(); cell != triangulation.end();
          ++cell)
       {
         const std::vector<std::shared_ptr<CellProperty>> p =
           cell_property.get_data(cell);
-        Assert(p.size() == 1, ExcMessage("Wrong number of cell property!"));
-        p[0]->indicator = 0;
-        p[0]->fluid_rho = parameters.fluid_rho;
-        p[0]->fluid_mu = parameters.viscosity;
-        p[0]->solid_rho = parameters.solid_rho;
-        AssertThrow(parameters.solid_type == "LinearElastic",
-                    ExcMessage("Only LinearElastic solid is allowed in FSI!"));
-        p[0]->solid_mu = parameters.E / (2 * (1 + parameters.nu));
+        Assert(p.size() == n_q_points, ExcMessage("Wrong number of cell property!"));
+        for (unsigned int q = 0; q < n_q_points; ++q)
+          {
+            p[q]->indicator = 0;
+            p[q]->fluid_rho = parameters.fluid_rho;
+            p[q]->fluid_mu = parameters.viscosity;
+            p[q]->solid_rho = parameters.solid_rho;
+            AssertThrow(parameters.solid_type == "LinearElastic",
+                        ExcMessage("Only LinearElastic solid is allowed in FSI!"));
+            p[q]->solid_mu = parameters.E / (2 * (1 + parameters.nu));
+          }
       }
   }
 
@@ -428,15 +432,10 @@ namespace Fluid
     std::vector<Tensor<2, dim>> grad_phi_u(dofs_per_cell);
     std::vector<double> phi_p(dofs_per_cell);
 
-    unsigned int count = 0;
-
     for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
          ++cell)
       {
         auto p = cell_property.get_data(cell);
-        const int ind = p[0]->indicator;
-        const double mu_bar = p[0]->get_mu();
-        const double rho_bar = p[0]->get_rho();
 
         fe_values.reinit(cell);
 
@@ -461,6 +460,9 @@ namespace Fluid
         //
         for (unsigned int q = 0; q < n_q_points; ++q)
           {
+            const int ind = p[q]->indicator;
+            const double mu_bar = p[q]->get_mu();
+            const double rho_bar = p[q]->get_rho();
             for (unsigned int k = 0; k < dofs_per_cell; ++k)
               {
                 div_phi_u[k] = fe_values[velocities].divergence(k, q);
@@ -520,14 +522,11 @@ namespace Fluid
                 if (ind == 1)
                   {
                     local_rhs(i) +=
-                      (scalar_product(grad_phi_u[i], fsi_stress[count]) +
-                       (fsi_acceleration[count] * rho_bar * phi_u[i])) *
+                      (scalar_product(grad_phi_u[i], p[q]->fsi_stress) +
+                       (p[q]->fsi_acceleration * rho_bar * phi_u[i])) *
                       fe_values.JxW(q);
                   }
               }
-
-            if (ind == 1)
-              count++;
           }
 
         // Impose pressure boundary here if specified, loop over faces on the
@@ -584,9 +583,6 @@ namespace Fluid
               local_rhs, local_dof_indices, system_rhs);
           }
       }
-
-    AssertThrow(count == fsi_acceleration.size(),
-                ExcMessage("FSI force size wrong!"));
   }
 
   template <int dim>
@@ -799,7 +795,16 @@ namespace Fluid
          ++cell)
       {
         auto p = cell_property.get_data(cell);
-        ind[i++] = p[0]->indicator;
+        bool artificial = false;
+        for (auto ptr : p)
+          {
+            if (ptr->indicator == 1)
+              {
+                artificial = true;
+                break;
+              }
+          }
+        ind[i++] = artificial;
       }
     data_out.add_data_vector(ind, "Indicator");
 

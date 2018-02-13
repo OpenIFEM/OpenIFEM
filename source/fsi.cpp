@@ -79,6 +79,10 @@ void FSI<dim>::update_indicator()
 {
   move_solid_mesh(true);
 
+  // NOTE: The indicator is defined at quadrature points, so its value should be
+  // determined by whether the quadrature point is in solid mesh or not. However,
+  // this is not stable. Our current strategy is that only when all the quadrature
+  // points in a fluid cell are found in solid, then set the indicators to 1.
   const unsigned int n_q_points = fluid_solver.volume_quad_formula.size();
   FEValues<dim> fe_values(fluid_solver.fe,
                           fluid_solver.volume_quad_formula,
@@ -87,6 +91,7 @@ void FSI<dim>::update_indicator()
        f_cell != fluid_solver.dof_handler.end();
        ++f_cell)
     {
+      auto p = fluid_solver.cell_property.get_data(f_cell);
       fe_values.reinit(f_cell);
       bool is_solid = true;
       for (unsigned int q = 0; q < n_q_points; ++q)
@@ -98,19 +103,18 @@ void FSI<dim>::update_indicator()
               break;
             }
         }
-      auto p = fluid_solver.cell_property.get_data(f_cell);
-      p[0]->indicator = (is_solid ? 1 : 0);
+      for (unsigned int q = 0; q < n_q_points; ++q)
+        {
+          p[q]->indicator = is_solid;
+        }
     }
 
   move_solid_mesh(false);
 }
 
 template <int dim>
-void FSI<dim>::find_fluid_fsi(std::vector<SymmetricTensor<2, dim>> &fsi_stress,
-                              std::vector<Tensor<1, dim>> &fsi_acceleration)
+void FSI<dim>::find_fluid_fsi()
 {
-  fsi_stress.clear();
-  fsi_acceleration.clear();
   FEValues<dim> fe_values(fluid_solver.fe,
                           fluid_solver.volume_quad_formula,
                           update_values | update_quadrature_points |
@@ -131,11 +135,6 @@ void FSI<dim>::find_fluid_fsi(std::vector<SymmetricTensor<2, dim>> &fsi_stress,
        ++f_cell)
     {
       auto ptr = fluid_solver.cell_property.get_data(f_cell);
-      if (ptr[0]->indicator == 0)
-        {
-          continue; // FSI force is only applied to artificial fluid cells
-        }
-      double mu = ptr[0]->get_mu();
       fe_values.reinit(f_cell);
       // Fluid symmetric velocity gradient
       fe_values[velocities].get_function_symmetric_gradients(
@@ -153,6 +152,11 @@ void FSI<dim>::find_fluid_fsi(std::vector<SymmetricTensor<2, dim>> &fsi_stress,
                                                 dv);
       for (unsigned int q = 0; q < n_q_points; ++q)
         {
+          if (ptr[q]->indicator == 0)
+            {
+              continue; // FSI force is only applied to artificial fluid cells
+            }
+          double mu = ptr[q]->get_mu();
           // Solid part
           Point<dim> q_point = fe_values.quadrature_point(q);
           Vector<double> tmp(dim);
@@ -183,17 +187,15 @@ void FSI<dim>::find_fluid_fsi(std::vector<SymmetricTensor<2, dim>> &fsi_stress,
             mu * sym_grad_v[q];
           Tensor<1, dim> fluid_acc = dv[q] / dt + grad_v[q] * v[q];
           // FSI force
-          fsi_stress.push_back(fluid_sigma - solid_sigma);
-          fsi_acceleration.push_back(fluid_acc - solid_acc);
+          ptr[q]->fsi_stress = fluid_sigma -solid_sigma;
+          ptr[q]->fsi_acceleration = fluid_acc -solid_acc;
         }
     }
 }
 
 template <int dim>
-void FSI<dim>::find_solid_bc(std::vector<Tensor<1, dim>> &traction)
+void FSI<dim>::find_solid_bc()
 {
-  traction.clear();
-
   // Fluid finite element extractor
   const FEValuesExtractors::Vector v(0);
   const FEValuesExtractors::Scalar p(dim);
@@ -212,6 +214,7 @@ void FSI<dim>::find_solid_bc(std::vector<Tensor<1, dim>> &traction)
        s_cell != solid_solver.dof_handler.end();
        ++s_cell)
     {
+      auto p = solid_solver.cell_property.get_data(s_cell);
       for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
         {
           // Current face is at boundary and without Dirichlet bc.
@@ -245,12 +248,11 @@ void FSI<dim>::find_solid_bc(std::vector<Tensor<1, dim>> &traction)
                             (gradient[i][j] + gradient[j][i]) / 2;
                         }
                     }
-
                   // \f$ \sigma = -p\bold{I} + \mu\nabla^S v\f$
                   SymmetricTensor<2, dim> stress =
                     -value[dim] * Physics::Elasticity::StandardTensors<dim>::I +
                     parameters.viscosity * sym_deformation;
-                  traction.push_back(stress * normal);
+                  p[f*n_face_q_points+q]->fsi_traction = stress * normal;
                 }
             }
         }
@@ -265,16 +267,10 @@ void FSI<dim>::run()
   bool first_step = true;
   while (time.end() - time.current() > 1e-12)
     {
-      std::vector<Tensor<1, dim>> traction;
-      find_solid_bc(traction);
-      solid_solver.fluid_traction = traction;
+      find_solid_bc();
       solid_solver.run_one_step(first_step);
       update_indicator();
-      std::vector<SymmetricTensor<2, dim>> fsi_stress;
-      std::vector<Tensor<1, dim>> fsi_acceleration;
-      find_fluid_fsi(fsi_stress, fsi_acceleration);
-      fluid_solver.fsi_stress = fsi_stress;
-      fluid_solver.fsi_acceleration = fsi_acceleration;
+      find_fluid_fsi();
       fluid_solver.run_one_step(first_step);
       first_step = false;
       time.increment();
