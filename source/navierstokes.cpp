@@ -9,24 +9,17 @@ namespace Fluid
   {
     Assert(component < this->n_components,
            ExcIndexRange(component, 0, this->n_components));
-    double left_boundary = (dim == 2 ? 0.0 : 0.0);
+    double left_boundary = (dim == 2 ? 0.3 : 0.0);
     if (component == 0 && std::abs(p[0] - left_boundary) < 1e-10)
       {
-        double U_mean = 7.39e-2;
-        double U_max = 3 * U_mean / 2;
-        double h = 2e-2;
-        double y = p[1];
-        return 4 * U_max * y * (h - y) / (h * h);
-        /*
         double U = 1.5;
         double y = p[1];
         double value = 4 * U * y * (0.41 - y) / (0.41 * 0.41);
         if (dim == 3)
-         {
-           value *= 4 * p[2] * (0.41 - p[2]);
-         }
-         return value;
-        */
+          {
+            value *= 4 * p[2] * (0.41 - p[2]);
+          }
+        return value;
       }
     return 0;
   }
@@ -325,15 +318,17 @@ namespace Fluid
       {
         const std::vector<std::shared_ptr<CellProperty>> p =
           cell_property.get_data(cell);
-        Assert(p.size() == n_q_points, ExcMessage("Wrong number of cell property!"));
+        Assert(p.size() == n_q_points,
+               ExcMessage("Wrong number of cell property!"));
         for (unsigned int q = 0; q < n_q_points; ++q)
           {
             p[q]->indicator = 0;
             p[q]->fluid_rho = parameters.fluid_rho;
             p[q]->fluid_mu = parameters.viscosity;
             p[q]->solid_rho = parameters.solid_rho;
-            AssertThrow(parameters.solid_type == "LinearElastic",
-                        ExcMessage("Only LinearElastic solid is allowed in FSI!"));
+            AssertThrow(
+              parameters.solid_type == "LinearElastic",
+              ExcMessage("Only LinearElastic solid is allowed in FSI!"));
             p[q]->solid_mu = parameters.E / (2 * (1 + parameters.nu));
           }
       }
@@ -358,8 +353,6 @@ namespace Fluid
     newton_update.reinit(dofs_per_block);
     evaluation_point.reinit(dofs_per_block);
     solution_increment.reinit(dofs_per_block);
-    present_solution = 0;
-    solution_increment = 0;
     system_rhs.reinit(dofs_per_block);
 
     // Compute the sparsity pattern for mass schur in advance.

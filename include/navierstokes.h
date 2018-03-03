@@ -331,7 +331,8 @@ namespace Fluid
 
     /**
      * This struct tells whether a cell contains real fluid or artificial fluid,
-     * and returns the corresponding properties. It also caches the FSI force which
+     * and returns the corresponding properties. It also caches the FSI force
+     * which
      * includes a tensor and a vector.
      */
     struct CellProperty

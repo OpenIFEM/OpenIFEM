@@ -74,6 +74,14 @@ namespace Utils
      */
     static void flow_around_cylinder(Triangulation<2> &);
     static void flow_around_cylinder(Triangulation<3> &);
+    /** \brief Generate a nice mesh for a sphere.
+     *
+     * Adapted from [dealii tutorials step-6]
+     * (http://www.dealii.org/developer/doxygen/deal.II/step_6.html)
+     */
+    static void sphere(Triangulation<2> &tria,
+                       const Point<2> &center = Point<2>(),
+                       double radius = 1);
 
   private:
     /** \brief A helper function used by flow_around_cylinder.

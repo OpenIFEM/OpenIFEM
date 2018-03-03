@@ -117,9 +117,12 @@ namespace Solid
       std::vector<Vector<double>>(dim,
                                   Vector<double>(dg_dof_handler.n_dofs())));
 
-    // Set up cell property, which contains the FSI traction required in FSI simulation
-    const unsigned int n_data = face_quad_formula.size() * GeometryInfo<dim>::faces_per_cell;
-    cell_property.initialize(triangulation.begin_active(), triangulation.end(), n_data);
+    // Set up cell property, which contains the FSI traction required in FSI
+    // simulation
+    const unsigned int n_data =
+      face_quad_formula.size() * GeometryInfo<dim>::faces_per_cell;
+    cell_property.initialize(
+      triangulation.begin_active(), triangulation.end(), n_data);
   }
 
   template <int dim>
@@ -174,7 +177,7 @@ namespace Solid
       {
         auto p = cell_property.get_data(cell);
         Assert(p.size() == n_f_q_points * GeometryInfo<dim>::faces_per_cell,
-          ExcMessage("Wrong number of cell data!"));
+               ExcMessage("Wrong number of cell data!"));
         local_matrix = 0;
         local_stiffness = 0;
         local_rhs = 0;
@@ -282,7 +285,7 @@ namespace Solid
                   }
                 else if (parameters.solid_neumann_bc_type == "FSI")
                   {
-                    traction = p[face*n_f_q_points+q]->fsi_traction;
+                    traction = p[face * n_f_q_points + q]->fsi_traction;
                   }
 
                 for (unsigned int j = 0; j < dofs_per_cell; ++j)
@@ -365,6 +368,12 @@ namespace Solid
     // displacements
     data_out.add_data_vector(dof_handler,
                              current_displacement,
+                             solution_names,
+                             data_component_interpretation);
+    // velocity
+    solution_names = std::vector<std::string>(dim, "velocities");
+    data_out.add_data_vector(dof_handler,
+                             current_velocity,
                              solution_names,
                              data_component_interpretation);
 

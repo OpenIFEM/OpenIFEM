@@ -80,8 +80,10 @@ void FSI<dim>::update_indicator()
   move_solid_mesh(true);
 
   // NOTE: The indicator is defined at quadrature points, so its value should be
-  // determined by whether the quadrature point is in solid mesh or not. However,
-  // this is not stable. Our current strategy is that only when all the quadrature
+  // determined by whether the quadrature point is in solid mesh or not.
+  // However,
+  // this is not stable. Our current strategy is that only when all the
+  // quadrature
   // points in a fluid cell are found in solid, then set the indicators to 1.
   const unsigned int n_q_points = fluid_solver.volume_quad_formula.size();
   FEValues<dim> fe_values(fluid_solver.fe,
@@ -187,8 +189,8 @@ void FSI<dim>::find_fluid_fsi()
             mu * sym_grad_v[q];
           Tensor<1, dim> fluid_acc = dv[q] / dt + grad_v[q] * v[q];
           // FSI force
-          ptr[q]->fsi_stress = fluid_sigma -solid_sigma;
-          ptr[q]->fsi_acceleration = fluid_acc -solid_acc;
+          ptr[q]->fsi_stress = fluid_sigma - solid_sigma;
+          ptr[q]->fsi_acceleration = fluid_acc - solid_acc;
         }
     }
 }
@@ -252,7 +254,7 @@ void FSI<dim>::find_solid_bc()
                   SymmetricTensor<2, dim> stress =
                     -value[dim] * Physics::Elasticity::StandardTensors<dim>::I +
                     parameters.viscosity * sym_deformation;
-                  p[f*n_face_q_points+q]->fsi_traction = stress * normal;
+                  p[f * n_face_q_points + q]->fsi_traction = stress * normal;
                 }
             }
         }
@@ -263,6 +265,7 @@ template <int dim>
 void FSI<dim>::run()
 {
   fluid_solver.triangulation.refine_global(parameters.global_refinement);
+  solid_solver.triangulation.refine_global(parameters.global_refinement);
   initialize_system();
   bool first_step = true;
   while (time.end() - time.current() > 1e-12)
