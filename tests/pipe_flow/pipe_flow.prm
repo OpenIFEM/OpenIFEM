@@ -15,16 +15,16 @@ subsection Simulation
   set Global refinement = 1
 
   # The end time of the simulation in second
-  set End time = 1e0
+  set End time = 2e0
 
   # The time step in second
-  set Time step size = 1e-2
+  set Time step size = 1e-1
 
   # The output interval in second
-  set Output interval = 1e-2
+  set Output interval = 1e-1
 
   # Mesh refinement interval in second
-  set Refinement interval = 10
+  set Refinement interval = 1000
 end
 
 # --------------------------------------------------------------------------------
@@ -36,7 +36,7 @@ end
 
 subsection Fluid material properties
   # The dynamic viscosity
-  set Dynamic viscosity = 0.001
+  set Dynamic viscosity = 0.002
 
   # Fluid density
   set Fluid density = 1
@@ -58,23 +58,23 @@ subsection Fluid Dirichlet BCs
   # Note: even if this variable is set to 1, the following 3 variables
   # will still be used so that the hard-coded values BCs applies to the
   # target boundaries and directions only.
-  set Use hard-coded boundary values = 1
+  set Use hard-coded boundary values = 0
 
   # Number of boundaries with Dirichlet BCs
-  set Number of Dirichlet BCs = 4
+  set Number of Dirichlet BCs = 3
 
   # List all the boundaries with Dirichlet BCs
-  set Dirichlet boundary id = 0, 2, 3, 4
+  set Dirichlet boundary id = 0, 2, 3
 
   # List the constrained components of these boundaries
   # One decimal number indicates one set of constrained components:
   # 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
   # To make sense of the numbering, convert decimals to binaries (zyx)
-  set Dirichlet boundary components = 3, 3, 3, 3
+  set Dirichlet boundary components = 3, 2, 3
 
   # Specify the values of the Dirichlet BCs, including both homogeneous and
   # inhomogeneous ones.
-  set Dirichlet boundary values = 0.2, 0, 0, 0, 0, 0, 0, 0
+  set Dirichlet boundary values = 1, 0, 0, 0, 0
 end
 
 subsection Fluid Neumann BCs

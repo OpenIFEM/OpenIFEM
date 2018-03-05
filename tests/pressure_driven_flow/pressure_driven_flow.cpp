@@ -1,26 +1,15 @@
-#include "fsi.h"
-#include "hyperelasticSolver.h"
-#include "linearElasticSolver.h"
-#include "mpi_linearelasticity.h"
-#include "mpi_navierstokes.h"
+/**
+ * This program tests serial NavierStokes solver with a 2D pressure-driven pipe flow case.
+ * The final axial velocity profile should be parabolic, we should check
+ * the maximum velocity.
+ * 2D test takes about 86s.
+ */
 #include "navierstokes.h"
 #include "parameters.h"
 #include "utilities.h"
 
 extern template class Fluid::NavierStokes<2>;
 extern template class Fluid::NavierStokes<3>;
-extern template class Solid::LinearElasticSolver<2>;
-extern template class Solid::LinearElasticSolver<3>;
-extern template class Solid::HyperelasticSolver<2>;
-extern template class Solid::HyperelasticSolver<3>;
-
-extern template class Solid::ParallelLinearElasticity<2>;
-extern template class Solid::ParallelLinearElasticity<3>;
-extern template class Fluid::ParallelNavierStokes<2>;
-extern template class Fluid::ParallelNavierStokes<3>;
-
-extern template class FSI<2>;
-extern template class FSI<3>;
 
 int main(int argc, char *argv[])
 {
@@ -28,8 +17,6 @@ int main(int argc, char *argv[])
 
   try
     {
-      Utilities::MPI::MPI_InitFinalize mpi_initialization(argc, argv, 1);
-
       std::string infile("parameters.prm");
       if (argc > 1)
         {
@@ -37,18 +24,33 @@ int main(int argc, char *argv[])
         }
       Parameters::AllParameters params(infile);
 
+      double L = 2.0, D = 0.2;
+
       if (params.dimension == 2)
         {
-          parallel::distributed::Triangulation<2> tria(MPI_COMM_WORLD);
-          Utils::GridCreator::flow_around_cylinder(tria);
-          Fluid::ParallelNavierStokes<2> flow(tria, params);
+          Triangulation<2> tria;
+          dealii::GridGenerator::subdivided_hyper_rectangle(tria, 
+                                                            {100, 5},
+                                                            Point<2>(0, 0),
+                                                            Point<2>(L, D/2),
+                                                            true);
+          Fluid::NavierStokes<2> flow(tria, params);
           flow.run();
+          auto solution = flow.get_current_solution();
+          // Assuming the mass is conserved and final velocity profile is parabolic,
+          // vmax should equal 1.5 times inlet velocity.
+          auto v = solution.block(0);
+          double vmax = *std::max_element(v.begin(), v.end());
+          double verror = std::abs(vmax - 2.5e-2) / 2.5e-2;
+          AssertThrow(verror < 1e-3, ExcMessage("Maximum velocity is incorrect!"));
         }
       else if (params.dimension == 3)
         {
-          parallel::distributed::Triangulation<3> tria(MPI_COMM_WORLD);
-          Utils::GridCreator::flow_around_cylinder(tria);
-          Fluid::ParallelNavierStokes<3> flow(tria, params);
+          Triangulation<3> tria;
+          dealii::GridGenerator::cylinder(tria, D/2, L/2);
+          static const CylindricalManifold<3> cylinder;
+          tria.set_manifold(0, cylinder);
+          Fluid::NavierStokes<3> flow(tria, params);
           flow.run();
         }
       else

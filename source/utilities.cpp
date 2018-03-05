@@ -204,9 +204,8 @@ namespace Utils
   void GridCreator::flow_around_cylinder(Triangulation<2> &tria)
   {
     flow_around_cylinder_2d(tria);
-    // Set the left boundary (inflow) to 1, the right boundary (outflow) to 2,
-    // the
-    // rest to 0.
+    // Set the left boundary (inflow) to 0, the right boundary (outflow) to 1,
+    // upper to 2, lower to 3 and the cylindrical surface to 4.
     for (Triangulation<2>::active_cell_iterator cell = tria.begin();
          cell != tria.end();
          ++cell)
@@ -217,15 +216,23 @@ namespace Utils
               {
                 if (std::abs(cell->face(f)->center()[0] - 2.5) < 1e-12)
                   {
-                    cell->face(f)->set_all_boundary_ids(2);
+                    cell->face(f)->set_all_boundary_ids(1);
                   }
                 else if (std::abs(cell->face(f)->center()[0] - 0.3) < 1e-12)
                   {
-                    cell->face(f)->set_all_boundary_ids(1);
+                    cell->face(f)->set_all_boundary_ids(0);
+                  }
+                else if (std::abs(cell->face(f)->center()[1] - 0.41) < 1e-12)
+                  {
+                    cell->face(f)->set_all_boundary_ids(3);
+                  }
+                else if (std::abs(cell->face(f)->center()[1]) < 1e-12)
+                  {
+                    cell->face(f)->set_all_boundary_ids(2);
                   }
                 else
                   {
-                    cell->face(f)->set_all_boundary_ids(0);
+                    cell->face(f)->set_all_boundary_ids(4);
                   }
               }
           }
@@ -238,9 +245,8 @@ namespace Utils
     Triangulation<2> tria_2d;
     flow_around_cylinder_2d(tria_2d, false);
     GridGenerator::extrude_triangulation(tria_2d, 5, 0.41, tria);
-    // Set the left boundary (inflow) to 1, the right boundary (outflow) to 2,
-    // the
-    // rest to 0.
+    // Set boundaries in x direction to 0 and 1; y direction to 2 and 3;
+    // z direction to 4 and 5; the cylindrical surface 6.
     for (Triangulation<3>::active_cell_iterator cell = tria.begin();
          cell != tria.end();
          ++cell)
@@ -251,15 +257,31 @@ namespace Utils
               {
                 if (std::abs(cell->face(f)->center()[0] - 2.5) < 1e-12)
                   {
-                    cell->face(f)->set_all_boundary_ids(2);
+                    cell->face(f)->set_all_boundary_ids(1);
                   }
                 else if (std::abs(cell->face(f)->center()[0]) < 1e-12)
                   {
-                    cell->face(f)->set_all_boundary_ids(1);
+                    cell->face(f)->set_all_boundary_ids(0);
+                  }
+                else if (std::abs(cell->face(f)->center()[1] - 0.41) < 1e-12)
+                  {
+                    cell->face(f)->set_all_boundary_ids(3);
+                  }
+                else if (std::abs(cell->face(f)->center()[1]) < 1e-12)
+                  {
+                    cell->face(f)->set_all_boundary_ids(2);
+                  }
+                else if (std::abs(cell->face(f)->center()[2] - 0.41) < 1e-12)
+                  {
+                    cell->face(f)->set_all_boundary_ids(5);
+                  }
+                else if (std::abs(cell->face(f)->center()[2]) < 1e-12)
+                  {
+                    cell->face(f)->set_all_boundary_ids(4);
                   }
                 else
                   {
-                    cell->face(f)->set_all_boundary_ids(0);
+                    cell->face(f)->set_all_boundary_ids(6);
                   }
               }
           }

@@ -122,6 +122,10 @@ namespace Parameters
   {
     prm.enter_subsection("Fluid Dirichlet BCs");
     {
+      prm.declare_entry("Use hard-coded boundary values",
+                        "0",
+                        Patterns::Integer(),
+                        "Use hard-coded boundary values or the input ones");
       prm.declare_entry("Number of Dirichlet BCs",
                         "1",
                         Patterns::Integer(),
@@ -146,6 +150,7 @@ namespace Parameters
   {
     prm.enter_subsection("Fluid Dirichlet BCs");
     {
+      use_hard_coded_values = prm.get_integer("Use hard-coded boundary values");
       n_fluid_dirichlet_bcs = prm.get_integer("Number of Dirichlet BCs");
       std::string raw_input = prm.get("Dirichlet boundary id");
       std::vector<std::string> parsed_input =

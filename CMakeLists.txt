@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8.12)
+cmake_minimum_required(VERSION 3.5.0)
 
 FIND_PACKAGE(deal.II QUIET
   HINTS ${deal.II_DIR} ${DEAL_II_DIR} ../ ../../ $ENV{DEAL_II_DIR}
@@ -46,5 +46,6 @@ ENDIF()
 DEAL_II_INITIALIZE_CACHED_VARIABLES()
 
 project(OpenIFEM)
-
+enable_testing()
 add_subdirectory(source)
+add_subdirectory(tests)

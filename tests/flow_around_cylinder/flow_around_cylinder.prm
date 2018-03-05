@@ -24,7 +24,7 @@ subsection Simulation
   set Output interval = 1e-2
 
   # Mesh refinement interval in second
-  set Refinement interval = 10
+  set Refinement interval = 100
 end
 
 # --------------------------------------------------------------------------------

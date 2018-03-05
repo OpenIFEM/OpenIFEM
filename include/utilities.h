@@ -67,10 +67,11 @@ namespace Utils
      *  The geometry and benchmark results are reported in Turek (1996), or
      * [this webpage]
      *  (http://www.featflow.de/en/benchmarks/cfdbenchmarking/flow/dfg_benchmark1_re20.html)
-     *  For both 2d and 3d cases, the right boundary is marked with boundary id
-     * 2,
-     *  the cylindrical surface is marked with boundary id 1,
-     *  and all the rest of surfaces are marked with id 0.
+     *  The boundaries are numbered such that the lower one in x-direction is 0,
+     *  the upper one is 1; the lower one in y-direction is 2, the upper one is
+     * 3;
+     *  the lower one in z-direction is 4, the upper one is 5.
+     *  the cylindrical surface is marked with boundary id 4 in 2d and 6 in 3d.
      */
     static void flow_around_cylinder(Triangulation<2> &);
     static void flow_around_cylinder(Triangulation<3> &);

@@ -12,7 +12,7 @@ namespace Fluid
     double left_boundary = (dim == 2 ? 0.3 : 0.0);
     if (component == 0 && std::abs(p[0] - left_boundary) < 1e-10)
       {
-        double U = 1.5;
+        double U = 0.3;
         double y = p[1];
         double value = 4 * U * y * (0.41 - y) / (0.41 * 0.41);
         if (dim == 3)
@@ -43,6 +43,12 @@ namespace Fluid
   double NavierStokes<dim>::CellProperty::get_rho() const
   {
     return (indicator * solid_rho + (1 - indicator) * fluid_rho);
+  }
+
+  template <int dim>
+  BlockVector<double> NavierStokes<dim>::get_current_solution() const
+  {
+    return present_solution;
   }
 
   /**
@@ -282,13 +288,23 @@ namespace Fluid
               AssertThrow(false, ExcMessage("Unrecogonized component flag!"));
               break;
             }
-          VectorTools::interpolate_boundary_values(
-            dof_handler,
-            id,
-            // Functions::ConstantFunction<dim>(augmented_value),
-            BoundaryValues(),
-            nonzero_constraints,
-            ComponentMask(mask));
+          if (parameters.use_hard_coded_values == 1)
+            {
+              VectorTools::interpolate_boundary_values(dof_handler,
+                                                       id,
+                                                       BoundaryValues(),
+                                                       nonzero_constraints,
+                                                       ComponentMask(mask));
+            }
+          else
+            {
+              VectorTools::interpolate_boundary_values(
+                dof_handler,
+                id,
+                Functions::ConstantFunction<dim>(augmented_value),
+                nonzero_constraints,
+                ComponentMask(mask));
+            }
           VectorTools::interpolate_boundary_values(
             dof_handler,
             id,

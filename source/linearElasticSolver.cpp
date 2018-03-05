@@ -639,6 +639,12 @@ namespace Solid
       }
   }
 
+  template <int dim>
+  Vector<double> LinearElasticSolver<dim>::get_current_solution() const
+  {
+    return current_displacement;
+  }
+
   template class LinearElasticSolver<2>;
   template class LinearElasticSolver<3>;
 }

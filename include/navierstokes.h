@@ -101,10 +101,10 @@ namespace Fluid
      */
     void run();
     /**
-     * In FSI application, the workflow is controled by the FSI class,
-     * as an interface, this function runs the simulation for one time step.
+     * A convenient function to return the current solution for testing
+     * purposes.
      */
-    void run_one_step(bool);
+    BlockVector<double> get_current_solution() const;
 
   private:
     /**
@@ -164,12 +164,16 @@ namespace Fluid
      * next mesh using the SolutionTransfer class.
      */
     void refine_mesh(const unsigned int, const unsigned int);
-
     /**
      * Write a vtu file for the current solution, as well as a pvtu file to
      * organize them.
      */
     void output_results(const unsigned int) const;
+    /**
+     * In FSI application, the workflow is controled by the FSI class,
+     * as an interface, this function runs the simulation for one time step.
+     */
+    void run_one_step(bool);
 
     double viscosity; //!< Dynamic viscosity
     double rho;

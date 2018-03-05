@@ -50,6 +50,8 @@ namespace Parameters
 
   struct FluidDirichlet
   {
+    /** Use the hard-coded bc values or the input ones. */
+    int use_hard_coded_values;
     /** Number of fluid Dirichlet BCs. */
     unsigned int n_fluid_dirichlet_bcs;
     /**

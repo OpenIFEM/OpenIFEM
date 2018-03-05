@@ -86,7 +86,7 @@ namespace Solid
     /*! \brief Destructor. */
     ~LinearElasticSolver();
     void run();
-    void run_one_step(bool);
+    Vector<double> get_current_solution() const;
 
   private:
     struct CellProperty;
@@ -143,6 +143,11 @@ namespace Solid
      * Update the strain and stress, used in output_results and FSI.
      */
     void update_strain_and_stress() const;
+
+    /**
+     * Run one time step.
+     */
+    void run_one_step(bool);
 
     LinearElasticMaterial<dim> material;
 

@@ -292,13 +292,23 @@ namespace Fluid
               AssertThrow(false, ExcMessage("Unrecogonized component flag!"));
               break;
             }
-          VectorTools::interpolate_boundary_values(
-            dof_handler,
-            id,
-            // Functions::ConstantFunction<dim>(augmented_value),
-            BoundaryValues(),
-            nonzero_constraints,
-            ComponentMask(mask));
+          if (parameters.use_hard_coded_values == 1)
+            {
+              VectorTools::interpolate_boundary_values(dof_handler,
+                                                       id,
+                                                       BoundaryValues(),
+                                                       nonzero_constraints,
+                                                       ComponentMask(mask));
+            }
+          else
+            {
+              VectorTools::interpolate_boundary_values(
+                dof_handler,
+                id,
+                Functions::ConstantFunction<dim>(augmented_value),
+                nonzero_constraints,
+                ComponentMask(mask));
+            }
           VectorTools::interpolate_boundary_values(
             dof_handler,
             id,

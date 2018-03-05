@@ -1,0 +1,27 @@
+cmake_minimum_required(VERSION 3.5.0)
+
+include_directories(${CMAKE_SOURCE_DIR}/include/)
+
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+
+MACRO(SUBDIRLIST result curdir)
+  FILE(GLOB children RELATIVE ${curdir} ${curdir}/*)
+  SET(dirlist "")
+  FOREACH(child ${children})
+    IF(IS_DIRECTORY ${curdir}/${child})
+      LIST(APPEND dirlist ${child})
+    ENDIF()
+  ENDFOREACH()
+  SET(${result} ${dirlist})
+ENDMACRO()
+
+SUBDIRLIST(testnames ${CMAKE_CURRENT_SOURCE_DIR})
+foreach(test ${testnames})
+  set(input ${CMAKE_CURRENT_SOURCE_DIR}/${test}/${test}.prm)
+  set(output ${CMAKE_CURRENT_BINARY_DIR}/${test})
+  file(MAKE_DIRECTORY ${output})
+  add_executable(${test} ${CMAKE_CURRENT_SOURCE_DIR}/${test}/${test}.cpp)
+  DEAL_II_SETUP_TARGET(${test})
+  target_link_libraries(${test} openifem)
+  add_test(NAME ${test} COMMAND ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${test} ${input} WORKING_DIRECTORY ${output})
+endforeach()
