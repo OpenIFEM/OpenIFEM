@@ -87,6 +87,7 @@ namespace Solid
     ~LinearElasticSolver();
     void run();
     Vector<double> get_current_solution() const;
+    Tensor<1, dim> get_fsi_force() const;
 
   private:
     struct CellProperty;

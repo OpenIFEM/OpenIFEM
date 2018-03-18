@@ -265,6 +265,8 @@ void FSI<dim>::find_solid_bc()
 template <int dim>
 void FSI<dim>::run()
 {
+  std::ofstream ofs("FSI_force.txt", std::ofstream::out);
+
   fluid_solver.triangulation.refine_global(parameters.global_refinement);
   solid_solver.triangulation.refine_global(parameters.global_refinement);
   initialize_system();

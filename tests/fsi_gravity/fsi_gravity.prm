@@ -15,19 +15,19 @@ subsection Simulation
   set Global refinement = 1
 
   # The end time of the simulation in second
-  set End time = 1e0
+  set End time = 1.0e-1
 
   # The time step in second
-  set Time step size = 1e-2
+  set Time step size = 1e-3
 
   # The output interval in second
-  set Output interval = 1e-2
+  set Output interval = 1e-3
 
   # Mesh refinement interval in second
   set Refinement interval = 100
 
   # Body force which applies to both fluid and solid (acceleration)
-  set Gravity = 0.0, 0.0
+  set Gravity = 100.0, 0.0
 end
 
 # --------------------------------------------------------------------------------
@@ -39,10 +39,10 @@ end
 
 subsection Fluid material properties
   # The dynamic viscosity
-  set Dynamic viscosity = 8.9e-4  # air: 1.81e-5
+  set Dynamic viscosity = 0.01  # air: 1.81e-5
 
   # Fluid density
-  set Fluid density = 1000 # air: 1.225
+  set Fluid density = 1 # air: 1.225
 end
 
 subsection Fluid solver control
@@ -53,7 +53,7 @@ subsection Fluid solver control
   set Max Newton iterations = 8
 
   # The relative tolerance of the nonlinear system residual
-  set Nonlinear system tolerance = 1e-5
+  set Nonlinear system tolerance = 1e-4
 end
 
 subsection Fluid Dirichlet BCs
@@ -73,11 +73,11 @@ subsection Fluid Dirichlet BCs
   # One decimal number indicates one set of constrained components:
   # 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
   # To make sense of the numbering, convert decimals to binaries (zyx)
-  set Dirichlet boundary components = 3, 3, 3
+  set Dirichlet boundary components = 3, 2, 2
 
   # Specify the values of the Dirichlet BCs, including both homogeneous and
   # inhomogeneous ones.
-  set Dirichlet boundary values = 0, 0, 0, 0, 0, 0
+  set Dirichlet boundary values = 0, 0, 0, 0
 end
 
 subsection Fluid Neumann BCs
@@ -104,10 +104,10 @@ subsection Solid material properties
   set Solid type = LinearElastic
 
   # Solid density, used by all solid solvers
-  set Solid density = 1225 #122.5
+  set Solid density = 2.02 #122.5
 
   # E and nu are only used by linearElasticMaterial
-  set Young's modulus = 5.25e2 #5.249e-5
+  set Young's modulus = 2.78e3 #5.249e-5
 
   set Poisson's ratio = 0.48 #0.3
 

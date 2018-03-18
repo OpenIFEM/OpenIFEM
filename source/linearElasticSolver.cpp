@@ -649,6 +649,53 @@ namespace Solid
     return current_displacement;
   }
 
+  template <int dim>
+  Tensor<1, dim> LinearElasticSolver<dim>::get_fsi_force() const
+  {
+    Tensor<1, dim> force;
+    FEFaceValues<dim> fe_face_values(fe, face_quad_formula, update_JxW_values);
+    const unsigned int n_f_q_points = face_quad_formula.size();
+    for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+         ++cell)
+      {
+        auto p = cell_property.get_data(cell);
+        Assert(p.size() == n_f_q_points * GeometryInfo<dim>::faces_per_cell,
+               ExcMessage("Wrong number of cell data!"));
+        for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
+             ++face)
+          {
+            unsigned int id = cell->face(face)->boundary_id();
+
+            if (!cell->face(face)->at_boundary() ||
+                parameters.solid_dirichlet_bcs.find(id) !=
+                  parameters.solid_dirichlet_bcs.end())
+              {
+                // Not a Neumann boundary
+                continue;
+              }
+
+            if (parameters.solid_neumann_bc_type != "FSI" &&
+                parameters.solid_neumann_bcs.find(id) ==
+                  parameters.solid_neumann_bcs.end())
+              {
+                // Traction-free boundary, do nothing
+                continue;
+              }
+
+            fe_face_values.reinit(cell, face);
+
+            for (unsigned int q = 0; q < n_f_q_points; ++q)
+              {
+                if (parameters.solid_neumann_bc_type == "FSI")
+                  {
+                    force += p[face * n_f_q_points + q]->fsi_traction *
+                             fe_face_values.JxW(q);
+                  }
+              }
+          }
+      }
+    return force;
+  }
   template class LinearElasticSolver<2>;
   template class LinearElasticSolver<3>;
 }

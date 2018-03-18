@@ -29,12 +29,12 @@ int main(int argc, char *argv[])
         {
           Triangulation<2> fluid_tria;
           dealii::GridGenerator::subdivided_hyper_rectangle(
-            fluid_tria, {32, 8}, Point<2>(0, 0), Point<2>(8e-2, 2e-2), true);
+            fluid_tria, {32, 8}, Point<2>(0, 0), Point<2>(8, 2), true);
           Fluid::NavierStokes<2> fluid(fluid_tria, params);
 
           Triangulation<2> solid_tria;
-          Point<2> center(2e-2, 1e-2);
-          double radius = 0.25e-2;
+          Point<2> center(1, 1);
+          double radius = 0.25;
           Utils::GridCreator::sphere(solid_tria, center, radius);
           Solid::LinearElasticSolver<2> solid(solid_tria, params);
 
