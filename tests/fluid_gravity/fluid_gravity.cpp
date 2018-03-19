@@ -1,13 +1,15 @@
 /**
- * This program tests serial linear elastic solver with a 2D bending beam case.
- * Constant traction is applied to the upper surface.
+ * This program tests serial NavierStokes solver with a 2D pipe flow case.
+ * There is no velocity input. With a constant gravity, we expect to see
+ * a pressure difference.
+ * 2D test takes about 7s.
  */
-#include "linearElasticSolver.h"
+#include "navierstokes.h"
 #include "parameters.h"
 #include "utilities.h"
 
-extern template class Solid::LinearElasticSolver<2>;
-extern template class Solid::LinearElasticSolver<3>;
+extern template class Fluid::NavierStokes<2>;
+extern template class Fluid::NavierStokes<3>;
 
 int main(int argc, char *argv[])
 {
@@ -22,28 +24,34 @@ int main(int argc, char *argv[])
         }
       Parameters::AllParameters params(infile);
 
-      double L = 8.0, H = 1.0;
+      double L = 2.0, D = 0.2;
 
       if (params.dimension == 2)
         {
           Triangulation<2> tria;
           dealii::GridGenerator::subdivided_hyper_rectangle(
-            tria, {32, 4}, Point<2>(0, 0), Point<2>(L, H), true);
-          Solid::LinearElasticSolver<2> solid(tria, params);
-          solid.run();
-          auto u = solid.get_current_solution();
-          double umin = *std::min_element(u.begin(), u.end());
-          double uerror = std::abs(umin + 0.1337) / 0.1337;
-          AssertThrow(uerror < 1e-3,
-                      ExcMessage("Minimum displacement is incorrect!"));
+            tria, {100, 5}, Point<2>(0, 0), Point<2>(L, D / 2), true);
+          Fluid::NavierStokes<2> flow(tria, params);
+          flow.run();
+          auto solution = flow.get_current_solution();
+          // The pressure difference between the max and min should be rho * g *
+          // L
+          auto p = solution.block(1);
+          double pmax = *std::max_element(p.begin(), p.end());
+          double pmin = *std::min_element(p.begin(), p.end());
+          double pdiff = pmax - pmin;
+          double perror = std::abs(pdiff - 20) / 20;
+          AssertThrow(perror < 1e-3,
+                      ExcMessage("Pressure difference is incorrect!"));
         }
       else if (params.dimension == 3)
         {
           Triangulation<3> tria;
-          dealii::GridGenerator::subdivided_hyper_rectangle(
-            tria, {32, 4, 4}, Point<3>(0, 0, 0), Point<3>(L, H, H), true);
-          Solid::LinearElasticSolver<3> solid(tria, params);
-          solid.run();
+          dealii::GridGenerator::cylinder(tria, D / 2, L / 2);
+          static const CylindricalManifold<3> cylinder;
+          tria.set_manifold(0, cylinder);
+          Fluid::NavierStokes<3> flow(tria, params);
+          flow.run();
         }
       else
         {

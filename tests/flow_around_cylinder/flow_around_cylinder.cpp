@@ -1,5 +1,6 @@
 /**
- * This program tests serial NavierStokes solver with a 2D flow around cylinder case.
+ * This program tests serial NavierStokes solver with a 2D flow around cylinder
+ * case.
  * Hard-coded parabolic velocity input is used, and Re = 20.
  * To save time, the global mesh refinement level is set to 1.
  * For real application, 2 should be used.
@@ -39,7 +40,7 @@ int main(int argc, char *argv[])
           double verror = std::abs(vmax - 0.4008695) / 0.4008695;
           double perror = std::abs(pmax - 0.1473135) / 0.1473135;
           AssertThrow(verror < 1e-3 && perror < 1e-3,
-            ExcMessage("Maximum velocity or pressure is incorrect!"));
+                      ExcMessage("Maximum velocity or pressure is incorrect!"));
         }
       else if (params.dimension == 3)
         {

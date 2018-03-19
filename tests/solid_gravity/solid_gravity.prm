@@ -12,22 +12,22 @@ subsection Simulation
 
   # Level of global refinement before running,
   # which applies to all the solvers
-  set Global refinement = 1
+  set Global refinement = 2
 
   # The end time of the simulation in second
-  set End time = 1e0
+  set End time = 1
 
   # The time step in second
-  set Time step size = 1e-2
+  set Time step size = 0.2
 
   # The output interval in second
-  set Output interval = 1e-2
+  set Output interval = 0.2
 
   # Mesh refinement interval in second
   set Refinement interval = 100
 
   # Body force which applies to both fluid and solid (acceleration)
-  set Gravity = 0.0, 0.0
+  set Gravity = 0.0, -10
 end
 
 # --------------------------------------------------------------------------------
@@ -155,7 +155,7 @@ subsection Solid Neumann BCs
   set Neumann boundary id = 0
 
   # Traction/Pressure, currently they cannot coexist.
-  set Neumann boundary type = FSI
+  set Neumann boundary type = Pressure
 
   # If traction, dim*n_solid_neumann_bcs components are expected;
   # if pressure, n_solid_neumann_bcs components are expected.

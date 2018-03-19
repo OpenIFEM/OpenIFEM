@@ -413,8 +413,8 @@ namespace Fluid
     const unsigned int n_q_points = volume_quad_formula.size();
     const unsigned int n_face_q_points = face_quad_formula.size();
 
-    Assert(u_dofs * dim + p_dofs == dofs_per_cell,
-           ExcMessage("Wrong partitioning of dofs!"));
+    AssertThrow(u_dofs * dim + p_dofs == dofs_per_cell,
+                ExcMessage("Wrong partitioning of dofs!"));
 
     const FEValuesExtractors::Vector velocities(0);
     const FEValuesExtractors::Scalar pressure(dim);
@@ -440,6 +440,12 @@ namespace Fluid
     std::vector<Tensor<1, dim>> phi_u(dofs_per_cell);
     std::vector<Tensor<2, dim>> grad_phi_u(dofs_per_cell);
     std::vector<double> phi_p(dofs_per_cell);
+
+    Tensor<1, dim> gravity;
+    for (unsigned int i = 0; i < dim; ++i)
+      {
+        gravity[i] = parameters.gravity[i];
+      }
 
     for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
          ++cell)
@@ -526,7 +532,8 @@ namespace Fluid
                     gamma * current_velocity_divergence * div_phi_u[i] *
                       rho_bar) -
                    (current_velocity_values[q] - present_velocity_values[q]) *
-                     phi_u[i] / time.get_delta_t() * rho_bar) *
+                     phi_u[i] / time.get_delta_t() * rho_bar +
+                   gravity * phi_u[i] * rho_bar) *
                   fe_values.JxW(q);
                 if (ind == 1)
                   {

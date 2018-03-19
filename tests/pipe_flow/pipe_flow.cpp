@@ -30,25 +30,24 @@ int main(int argc, char *argv[])
       if (params.dimension == 2)
         {
           Triangulation<2> tria;
-          dealii::GridGenerator::subdivided_hyper_rectangle(tria, 
-                                                            {100, 5},
-                                                            Point<2>(0, 0),
-                                                            Point<2>(L, D/2),
-                                                            true);
+          dealii::GridGenerator::subdivided_hyper_rectangle(
+            tria, {100, 5}, Point<2>(0, 0), Point<2>(L, D / 2), true);
           Fluid::NavierStokes<2> flow(tria, params);
           flow.run();
           auto solution = flow.get_current_solution();
-          // Assuming the mass is conserved and final velocity profile is parabolic,
+          // Assuming the mass is conserved and final velocity profile is
+          // parabolic,
           // vmax should equal 1.5 times inlet velocity.
           auto v = solution.block(0);
           double vmax = *std::max_element(v.begin(), v.end());
           double verror = std::abs(vmax - 1.5) / 1.5;
-          AssertThrow(verror < 1e-3, ExcMessage("Maximum velocity is incorrect!"));
+          AssertThrow(verror < 1e-3,
+                      ExcMessage("Maximum velocity is incorrect!"));
         }
       else if (params.dimension == 3)
         {
           Triangulation<3> tria;
-          dealii::GridGenerator::cylinder(tria, D/2, L/2);
+          dealii::GridGenerator::cylinder(tria, D / 2, L / 2);
           static const CylindricalManifold<3> cylinder;
           tria.set_manifold(0, cylinder);
           Fluid::NavierStokes<3> flow(tria, params);

@@ -2,8 +2,10 @@
 set(tests bending_beam
           flow_around_cylinder
           fsi_gravity
+          fluid_gravity
           pipe_flow
-          pressure_driven_flow)
+          pressure_driven_flow
+          solid_gravity)
 
 # Create a subdirectory and add an executible for each test
 foreach(test ${tests})
