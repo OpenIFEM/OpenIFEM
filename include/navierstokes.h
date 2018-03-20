@@ -121,9 +121,13 @@ namespace Fluid
     struct CellProperty;
 
     /**
-     * This function initializes the DoFHandler and constraints.
+     * This function initializes the DoFHandler.
      */
     void setup_dofs();
+    /**
+     * This function sets up the constraints.
+     */
+    void make_constraints();
     /**
      * This function sets up the material property stored at each cell.
      */

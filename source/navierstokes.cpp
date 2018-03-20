@@ -212,6 +212,15 @@ namespace Fluid
     unsigned int dof_u = dofs_per_block[0];
     unsigned int dof_p = dofs_per_block[1];
 
+    std::cout << "   Number of active fluid cells: "
+              << triangulation.n_active_cells() << std::endl
+              << "   Number of degrees of freedom: " << dof_handler.n_dofs()
+              << " (" << dof_u << '+' << dof_p << ')' << std::endl;
+  }
+
+  template <int dim>
+  void NavierStokes<dim>::make_constraints()
+  {
     // In Newton's scheme, we first apply the boundary condition on the solution
     // obtained from the initial step. To make sure the boundary conditions
     // remain
@@ -224,109 +233,102 @@ namespace Fluid
     // For inhomogeneous BC, only constant input values can be read from
     // the input file. If time or space dependent Dirichlet BCs are
     // desired, this block of code has to be modified.
-    {
-      nonzero_constraints.clear();
-      zero_constraints.clear();
-      DoFTools::make_hanging_node_constraints(dof_handler, nonzero_constraints);
-      DoFTools::make_hanging_node_constraints(dof_handler, zero_constraints);
-      for (auto itr = parameters.fluid_dirichlet_bcs.begin();
-           itr != parameters.fluid_dirichlet_bcs.end();
-           ++itr)
-        {
-          // First get the id, flag and value from the input file
-          unsigned int id = itr->first;
-          unsigned int flag = itr->second.first;
-          std::vector<double> value = itr->second.second;
+    nonzero_constraints.clear();
+    zero_constraints.clear();
+    DoFTools::make_hanging_node_constraints(dof_handler, nonzero_constraints);
+    DoFTools::make_hanging_node_constraints(dof_handler, zero_constraints);
+    for (auto itr = parameters.fluid_dirichlet_bcs.begin();
+          itr != parameters.fluid_dirichlet_bcs.end();
+          ++itr)
+      {
+        // First get the id, flag and value from the input file
+        unsigned int id = itr->first;
+        unsigned int flag = itr->second.first;
+        std::vector<double> value = itr->second.second;
 
-          // To make VectorTools::interpolate_boundary_values happy,
-          // a vector of bool and a vector of double which are of size
-          // dim + 1 are required.
-          std::vector<bool> mask(dim + 1, false);
-          std::vector<double> augmented_value(dim + 1, 0.0);
-          // 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
-          switch (flag)
-            {
-            case 1:
-              mask[0] = true;
-              augmented_value[0] = value[0];
-              break;
-            case 2:
-              mask[1] = true;
-              augmented_value[1] = value[0];
-              break;
-            case 3:
-              mask[0] = true;
-              mask[1] = true;
-              augmented_value[0] = value[0];
-              augmented_value[1] = value[1];
-              break;
-            case 4:
-              mask[2] = true;
-              augmented_value[2] = value[0];
-              break;
-            case 5:
-              mask[0] = true;
-              mask[2] = true;
-              augmented_value[0] = value[0];
-              augmented_value[2] = value[1];
-              break;
-            case 6:
-              mask[1] = true;
-              mask[2] = true;
-              augmented_value[1] = value[0];
-              augmented_value[2] = value[1];
-              break;
-            case 7:
-              mask[0] = true;
-              mask[1] = true;
-              mask[2] = true;
-              augmented_value[0] = value[0];
-              augmented_value[1] = value[1];
-              augmented_value[2] = value[2];
-              break;
-            default:
-              AssertThrow(false, ExcMessage("Unrecogonized component flag!"));
-              break;
-            }
-          if (parameters.use_hard_coded_values == 1)
-            {
-              VectorTools::interpolate_boundary_values(dof_handler,
-                                                       id,
-                                                       BoundaryValues(),
-                                                       nonzero_constraints,
-                                                       ComponentMask(mask));
-            }
-          else
-            {
-              VectorTools::interpolate_boundary_values(
-                dof_handler,
-                id,
-                Functions::ConstantFunction<dim>(augmented_value),
-                nonzero_constraints,
-                ComponentMask(mask));
-            }
-          VectorTools::interpolate_boundary_values(
-            dof_handler,
-            id,
-            Functions::ZeroFunction<dim>(dim + 1),
-            zero_constraints,
-            ComponentMask(mask));
-        }
-    }
+        // To make VectorTools::interpolate_boundary_values happy,
+        // a vector of bool and a vector of double which are of size
+        // dim + 1 are required.
+        std::vector<bool> mask(dim + 1, false);
+        std::vector<double> augmented_value(dim + 1, 0.0);
+        // 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
+        switch (flag)
+          {
+          case 1:
+            mask[0] = true;
+            augmented_value[0] = value[0];
+            break;
+          case 2:
+            mask[1] = true;
+            augmented_value[1] = value[0];
+            break;
+          case 3:
+            mask[0] = true;
+            mask[1] = true;
+            augmented_value[0] = value[0];
+            augmented_value[1] = value[1];
+            break;
+          case 4:
+            mask[2] = true;
+            augmented_value[2] = value[0];
+            break;
+          case 5:
+            mask[0] = true;
+            mask[2] = true;
+            augmented_value[0] = value[0];
+            augmented_value[2] = value[1];
+            break;
+          case 6:
+            mask[1] = true;
+            mask[2] = true;
+            augmented_value[1] = value[0];
+            augmented_value[2] = value[1];
+            break;
+          case 7:
+            mask[0] = true;
+            mask[1] = true;
+            mask[2] = true;
+            augmented_value[0] = value[0];
+            augmented_value[1] = value[1];
+            augmented_value[2] = value[2];
+            break;
+          default:
+            AssertThrow(false, ExcMessage("Unrecogonized component flag!"));
+            break;
+          }
+        if (parameters.use_hard_coded_values == 1)
+          {
+            VectorTools::interpolate_boundary_values(dof_handler,
+                                                      id,
+                                                      BoundaryValues(),
+                                                      nonzero_constraints,
+                                                      ComponentMask(mask));
+          }
+        else
+          {
+            VectorTools::interpolate_boundary_values(
+              dof_handler,
+              id,
+              Functions::ConstantFunction<dim>(augmented_value),
+              nonzero_constraints,
+              ComponentMask(mask));
+          }
+        VectorTools::interpolate_boundary_values(
+          dof_handler,
+          id,
+          Functions::ZeroFunction<dim>(dim + 1),
+          zero_constraints,
+          ComponentMask(mask));
+      }
     nonzero_constraints.close();
     zero_constraints.close();
+}
 
-    std::cout << "   Number of active fluid cells: "
-              << triangulation.n_active_cells() << std::endl
-              << "   Number of degrees of freedom: " << dof_handler.n_dofs()
-              << " (" << dof_u << '+' << dof_p << ')' << std::endl;
-  }
-
-  template <int dim>
-  void NavierStokes<dim>::setup_cell_property()
-  {
-    std::cout << "   Setting up cell property..." << std::endl;
-    const unsigned int n_q_points = volume_quad_formula.size();
+template <int dim>
+void NavierStokes<dim>::setup_cell_property()
+{
+  std::cout << "   Setting up cell property..." << std::endl;
+  const unsigned int n_q_points = volume_quad_formula.size();
     cell_property.initialize(
       triangulation.begin_active(), triangulation.end(), n_q_points);
     for (auto cell = triangulation.begin_active(); cell != triangulation.end();
@@ -687,6 +689,7 @@ namespace Fluid
     triangulation.execute_coarsening_and_refinement();
 
     setup_dofs();
+    make_constraints();
     initialize_system();
 
     solution_transfer.interpolate(buffer, present_solution);
@@ -773,6 +776,7 @@ namespace Fluid
   {
     triangulation.refine_global(parameters.global_refinement);
     setup_dofs();
+    make_constraints();
     initialize_system();
 
     // Time loop.

@@ -23,6 +23,7 @@ template <int dim>
 void FSI<dim>::initialize_system()
 {
   fluid_solver.setup_dofs();
+  fluid_solver.make_constraints();
   fluid_solver.initialize_system();
   solid_solver.setup_dofs();
   solid_solver.initialize_system();

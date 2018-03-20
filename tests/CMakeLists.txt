@@ -1,10 +1,10 @@
 # List all the tests
-set(tests bending_beam
-          flow_around_cylinder
-          fsi_gravity
+set(tests fluid_cylinder
           fluid_gravity
-          pipe_flow
-          pressure_driven_flow
+          fluid_pipe
+          fluid_pressure_driven
+          fsi_gravity
+          solid_bending_beam
           solid_gravity)
 
 # Create a subdirectory and add an executible for each test
