@@ -26,21 +26,27 @@ int main(int argc, char *argv[])
       Parameters::AllParameters params("parameters.prm");
       if (params.dimension == 2)
         {
-          parallel::distributed::Triangulation<2> tria(MPI_COMM_WORLD,
-            typename Triangulation<2>::MeshSmoothing
-              (Triangulation<2>::smoothing_on_refinement |
-               Triangulation<2>::smoothing_on_coarsening));
+          Triangulation<2> tria;
           GridGenerator::subdivided_hyper_rectangle(
             tria,
-            std::vector<unsigned int>{16, 2},
+            std::vector<unsigned int>{20, 4},
             Point<2>(0, 0),
-            Point<2>(8, 1),
+            Point<2>(5, 1),
             true);
-          Solid::ParallelLinearElasticity<2> solid(tria, params);
+          Solid::HyperelasticSolver<2> solid(tria, params);
           solid.run();
         }
       else if (params.dimension == 3)
         {
+	  Triangulation<3> tria;
+          GridGenerator::subdivided_hyper_rectangle(
+          tria,
+          std::vector<unsigned int>{40, 4, 4},
+          Point<3>(0, 0, 0),
+          Point<3>(10, 1, 1),
+          true);
+          Solid::HyperelasticSolver<3> solid(tria, params);
+          solid.run();
         }
       else
         {

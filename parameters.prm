@@ -8,20 +8,20 @@
 # Simulation parameters
 subsection Simulation
   # The dimension of the simulation
-  set Dimension = 2
+  set Dimension = 3
 
   # Level of global refinement before running,
   # which applies to all the solvers
-  set Global refinement = 3
+  set Global refinement = 0
 
   # The end time of the simulation in second
-  set End time = 20
+  set End time = 2
 
   # The time step in second
-  set Time step size = 1e-2
+  set Time step size = 0.01
 
   # The output interval in second
-  set Output interval = 1e-2
+  set Output interval = 0.1
 
   # Mesh refinement interval in second
   set Refinement interval = 10
@@ -44,7 +44,7 @@ subsection Fluid solver control
   set Grad-Div stabilization = 1.0
 
   # Maximum number of Newton iterations at a time step
-  set Max Newton iterations = 8
+  set Max Newton iterations = 10
 
   # The absolute tolerance of the nonlinear system residual
   set Nonlinear system tolerance = 1e-12
@@ -88,24 +88,24 @@ subsection Solid finite element system
 end
 
 subsection Solid material properties
-  # Material type, currently LinearElastic and NeoHookean are available
-  set Solid type = LinearElastic
+  # Material type, currently LinearElastic, NeoHookean and MooneyRivlin are available
+  set Solid type = MooneyRivlin
 
   # Density, required by dynamic analysis
-  set Density = 1
+  set Density = 1100
 
   # E and nu are only used by linearElasticMaterial
   set Young's modulus = 2.5
 
   set Poisson's ratio = 0.25
 
-  # A list of parameters used by hyperelasticMaterial
-  set Hyperelastic parameters = 0.5, 1.67
+  # A list of parameters used by hyperelasticMaterial C1, kappa and C2
+  set Hyperelastic parameters = 0.297761e6,1e5, 0.297761e6
 end
 
 subsection Solid solver control
   # Artifitial damping.
-  set Damping = 0.0
+  set Damping = 0
 
   # Number of Newton-Raphson iterations allowed, used by hyperelastic solver only
   set Max Newton iterations = 10
@@ -129,7 +129,7 @@ subsection Solid Dirichlet BCs
   # One decimal number indicates one set of constrained components:
   # 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
   # To make sense of the numbering, convert decimals to binaries (zyx)
-  set Dirichlet boundary components = 3
+  set Dirichlet boundary components = 7
 end
 
 # Two types of Neumann BCs are supported: traction and pressure.
@@ -147,5 +147,5 @@ subsection Solid Neumann BCs
 
   # If traction, dim*n_solid_neumann_bcs components are expected;
   # if pressure, n_solid_neumann_bcs components are expected.
-  set Neumann boundary values = 0, -1e-4
+  set Neumann boundary values = 0, -100, 0
 end

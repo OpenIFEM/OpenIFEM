@@ -39,8 +39,11 @@
 
 #include <fstream>
 #include <iostream>
+#include <vector>
+
 
 #include "neoHookean.h"
+#include "mooneyrivlin.h"
 #include "parameters.h"
 #include "utilities.h"
 
@@ -156,7 +159,9 @@ namespace Solid
                                                         Vector<double> &,
                                                         Vector<double> &);
 
-    void output_results(const unsigned int) const;
+    void output_results(const unsigned int) ;
+
+    void update_strain_and_stress()  ;
 
     Parameters::AllParameters parameters;
     double vol;
@@ -174,8 +179,10 @@ namespace Solid
 
     const unsigned int degree;
     const FESystem<dim> fe;
+    FESystem<dim> dg_fe;
     Triangulation<dim> &triangulation;
     DoFHandler<dim> dof_handler;
+    DoFHandler<dim> dg_dof_handler;
     const unsigned int dofs_per_cell;
     const QGauss<dim> volume_quad_formula;
     const QGauss<dim - 1> face_quad_formula;
@@ -205,6 +212,8 @@ namespace Solid
     Vector<double> previous_acceleration;
     Vector<double> previous_velocity;
     Vector<double> previous_displacement;
+   
+    mutable std::vector<std::vector<Vector<double>>> strain, stress;
 
     double error_residual; //!< Norm of the residual at a Newton iteration.
     double

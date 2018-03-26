@@ -1,4 +1,7 @@
 #include "hyperelasticSolver.h"
+#include <fstream>
+#include <iostream>
+#include <vector>
 
 namespace
 {
@@ -13,6 +16,15 @@ namespace
         material.reset(new Solid::NeoHookean<dim>(
           parameters.C[0], parameters.C[1], parameters.rho));
         update(parameters, Tensor<2, dim>());
+	
+      }
+   else if (parameters.solid_type == "MooneyRivlin")
+      {
+        Assert(parameters.C.size() >= 2, ExcInternalError());
+        material.reset(new Solid::MooneyRivlin<dim>(
+          parameters.C[0], parameters.C[1], parameters.C[2], parameters.rho));
+        update(parameters, Tensor<2, dim>());
+
       }
     else
       {
@@ -33,6 +45,15 @@ namespace
         Assert(nh, ExcInternalError());
         tau = nh->get_tau();
         Jc = nh->get_Jc();
+
+      }
+    else if (parameters.solid_type == "MooneyRivlin")
+      {
+        auto nh = std::dynamic_pointer_cast<Solid::MooneyRivlin<dim>>(material);
+        Assert(nh, ExcInternalError());
+        tau = nh->get_tau();
+        Jc = nh->get_Jc();
+	
       }
     else
       {
@@ -46,6 +67,7 @@ namespace
 namespace Solid
 {
   using namespace dealii;
+  using namespace std;
 
   template <int dim>
   HyperelasticSolver<dim>::HyperelasticSolver(
@@ -59,8 +81,10 @@ namespace Solid
       timer(std::cout, TimerOutput::summary, TimerOutput::wall_times),
       degree(parameters.solid_degree),
       fe(FE_Q<dim>(degree), dim),
+      dg_fe(FE_Q<dim>(degree)),
       triangulation(tria),
       dof_handler(triangulation),
+      dg_dof_handler(triangulation),
       dofs_per_cell(fe.dofs_per_cell),
       volume_quad_formula(degree + 1),
       face_quad_formula(degree + 1),
@@ -81,8 +105,8 @@ namespace Solid
 
     setup_dofs();
     initialize_system();
-
-    // Solve for the initial acceleration
+    
+   // Solve for the initial acceleration
     assemble(true);
     solve_linear_system(mass_matrix, previous_acceleration, system_rhs);
     output_results(time.get_timestep());
@@ -90,7 +114,9 @@ namespace Solid
     Vector<double> predicted_displacement(dof_handler.n_dofs());
     Vector<double> newton_update(dof_handler.n_dofs());
     Vector<double> tmp(dof_handler.n_dofs());
-
+   
+    
+    
     while (time.end() - time.current() > 1e-12)
       {
         time.increment();
@@ -118,7 +144,8 @@ namespace Solid
 
         std::cout << std::string(100, '_') << std::endl;
 
-        while (normalized_error_update > parameters.tol_d ||
+
+       while (normalized_error_update > parameters.tol_d ||
                normalized_error_residual > parameters.tol_f)
           {
             AssertThrow(newton_iteration < parameters.solid_max_iterations,
@@ -175,7 +202,8 @@ namespace Solid
 
             newton_iteration++;
           }
-        // Once converged, update current acceleration and velocity again.
+	
+	// Once converged, update current acceleration and velocity again.
         current_acceleration = current_displacement;
         current_acceleration -= predicted_displacement;
         current_acceleration /= (beta * dt * dt);
@@ -193,7 +221,10 @@ namespace Solid
                   << "Relative errors:" << std::endl
                   << "Displacement:\t" << normalized_error_update << std::endl
                   << "Force: \t\t" << normalized_error_residual << std::endl;
+	
 
+
+	
         if (time.time_to_output())
           {
             output_results(time.get_timestep());
@@ -206,6 +237,7 @@ namespace Solid
   {
     timer.enter_subsection("Setup system");
     dof_handler.distribute_dofs(fe);
+    dg_dof_handler.distribute_dofs(dg_fe);
     DoFRenumbering::Cuthill_McKee(dof_handler);
 
     std::cout << "Triangulation:"
@@ -266,6 +298,10 @@ namespace Solid
     previous_acceleration.reinit(dof_handler.n_dofs());
     previous_velocity.reinit(dof_handler.n_dofs());
     previous_displacement.reinit(dof_handler.n_dofs());
+    strain = std::vector<std::vector<Vector<double>>>(dim,
+    std::vector<Vector<double>>(dim, Vector<double>(dg_dof_handler.n_dofs())));
+    stress = std::vector<std::vector<Vector<double>>>(dim,
+    std::vector<Vector<double>>(dim, Vector<double>(dg_dof_handler.n_dofs())));
     setup_qph();
   }
 
@@ -404,22 +440,26 @@ namespace Solid
     FullMatrix<double> local_mass(dofs_per_cell, dofs_per_cell);
     Vector<double> local_rhs(dofs_per_cell);
     std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+  
+    
 
     for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
          ++cell)
       {
         fe_values.reinit(cell);
         cell->get_dof_indices(local_dof_indices);
-
+	
         local_mass = 0;
         local_matrix = 0;
         local_rhs = 0;
-
+		
+	
         const std::vector<std::shared_ptr<PointHistory<dim>>> lqph =
           quad_point_history.get_data(cell);
         Assert(lqph.size() == n_q_points, ExcInternalError());
-
-        for (unsigned int q = 0; q < n_q_points; ++q)
+	
+	int counter=0;
+	for (unsigned int q = 0; q < n_q_points; ++q)
           {
             const Tensor<2, dim> F_inv = lqph[q]->get_F_inv();
             for (unsigned int k = 0; k < dofs_per_cell; ++k)
@@ -435,6 +475,7 @@ namespace Solid
             const double dt = time.get_delta_t();
             const double JxW = fe_values.JxW(q);
 
+	  
             for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
                 const unsigned int component_i =
@@ -465,7 +506,10 @@ namespace Solid
                   sym_grad_phi[q][i] * tau * JxW; // -internal force
               }
           }
-
+          
+	
+	
+	
         for (unsigned int i = 0; i < dofs_per_cell; ++i)
           {
             for (unsigned int j = i + 1; j < dofs_per_cell; ++j)
@@ -539,8 +583,10 @@ namespace Solid
                                                    system_rhs);
           }
       }
-
+      
+   
     timer.leave_subsection();
+    
   }
 
   template <int dim>
@@ -562,10 +608,13 @@ namespace Solid
     return {solver_control.last_step(), solver_control.last_value()};
   }
 
+ 
   template <int dim>
   void
-  HyperelasticSolver<dim>::output_results(const unsigned int output_index) const
+  HyperelasticSolver<dim>::output_results(const unsigned int output_index) 
   {
+    
+
     DataOut<dim> data_out;
     std::vector<DataComponentInterpretation::DataComponentInterpretation>
       data_component_interpretation(
@@ -577,11 +626,32 @@ namespace Solid
                              solution_names,
                              DataOut<dim>::type_dof_data,
                              data_component_interpretation);
+    
+
+    // strain and stress
+    update_strain_and_stress();
+    data_out.add_data_vector(dg_dof_handler, strain[0][0], "Exx");
+    data_out.add_data_vector(dg_dof_handler, strain[0][1], "Exy");
+    data_out.add_data_vector(dg_dof_handler, strain[1][1], "Eyy");
+    data_out.add_data_vector(dg_dof_handler, stress[0][0], "Sxx");
+    data_out.add_data_vector(dg_dof_handler, stress[0][1], "Sxy");
+    data_out.add_data_vector(dg_dof_handler, stress[1][1], "Syy");
+    if (dim == 3)
+      {
+        data_out.add_data_vector(dg_dof_handler, strain[0][2], "Exz");
+        data_out.add_data_vector(dg_dof_handler, strain[1][2], "Eyz");
+        data_out.add_data_vector(dg_dof_handler, strain[2][2], "Ezz");
+        data_out.add_data_vector(dg_dof_handler, stress[0][2], "Sxz");
+        data_out.add_data_vector(dg_dof_handler, stress[1][2], "Syz");
+        data_out.add_data_vector(dg_dof_handler, stress[2][2], "Szz");
+      }
 
     Vector<double> soln(current_displacement.size());
     for (unsigned int i = 0; i < soln.size(); ++i)
       {
         soln(i) = current_displacement(i);
+	
+	
       }
     // Map the solution to the deformed mesh, not necessary!
     MappingQEulerian<dim> q_mapping(degree, dof_handler, soln);
@@ -600,6 +670,103 @@ namespace Solid
     DataOutBase::write_pvd_record(pvd_output, times_and_names);
   }
 
+  template <int dim>
+  void HyperelasticSolver<dim>::update_strain_and_stress() 
+  {
+
+    // The strain and stress tensors are stored as 2D vectors of shape dim*dim
+    // at cell and quadrature point level.
+    std::vector<std::vector<Vector<double>>> cell_strain(
+      dim,
+      std::vector<Vector<double>>(dim, Vector<double>(dg_fe.dofs_per_cell)));
+    std::vector<std::vector<Vector<double>>> cell_stress(
+      dim,
+      std::vector<Vector<double>>(dim, Vector<double>(dg_fe.dofs_per_cell)));
+    std::vector<std::vector<Vector<double>>> quad_strain(
+      dim,
+      std::vector<Vector<double>>(dim,
+                                  Vector<double>(volume_quad_formula.size())));
+    std::vector<std::vector<Vector<double>>> quad_stress(
+      dim,
+      std::vector<Vector<double>>(dim,
+                                  Vector<double>(volume_quad_formula.size())));
+
+    // Displacement gradients at quadrature points.
+    std::vector<Tensor<2, dim>> current_displacement_gradients(
+      volume_quad_formula.size());
+
+    // The projection matrix from quadrature points to the dofs.
+    FullMatrix<double> qpt_to_dof(dg_fe.dofs_per_cell,
+                                  volume_quad_formula.size());
+    FETools::compute_projection_from_quadrature_points_matrix(
+      dg_fe, volume_quad_formula, volume_quad_formula, qpt_to_dof);
+
+    
+    const FEValuesExtractors::Vector displacements(0);
+
+    FEValues<dim> fe_values(fe,
+                            volume_quad_formula,
+                            update_values | update_gradients |
+                              update_quadrature_points | update_JxW_values);
+
+   
+    auto cell = dof_handler.begin_active();
+    auto dg_cell = dg_dof_handler.begin_active();
+   
+    for (; cell != dof_handler.end(); ++cell, ++dg_cell)
+      {
+        fe_values.reinit(cell);
+        fe_values[displacements].get_function_gradients(
+          current_displacement, current_displacement_gradients);
+
+	const std::vector<std::shared_ptr<PointHistory<dim>>> lqph =
+          quad_point_history.get_data(cell);
+        Assert(lqph.size() == n_q_points, ExcInternalError());
+
+        for (unsigned int q = 0; q < volume_quad_formula.size(); ++q)
+          {
+            SymmetricTensor<2, dim> tmp_strain, tmp_stress;
+	    const SymmetricTensor<2, dim> tau = lqph[q]->get_tau();
+	    const double det = lqph[q]->get_det_F();
+	    
+            for (unsigned int i = 0; i < dim; ++i)
+              {
+                for (unsigned int j = 0; j < dim; ++j)
+                  {
+                    tmp_strain[TableIndices<2>(i, j)] =
+                      (current_displacement_gradients[q][i][j] +
+                       current_displacement_gradients[q][j][i]) /
+                      2;
+                    quad_strain[i][j][q] = tmp_strain[i][j];
+                  }
+              }
+            
+            for (unsigned int i = 0; i < dim; ++i)
+              {
+                for (unsigned int j = 0; j < dim; ++j)
+                  {
+                    quad_stress[i][j][q] = tau[i][j]/det;
+	
+                  }
+              }
+          }
+	
+        for (unsigned int i = 0; i < dim; ++i)
+          {
+            for (unsigned int j = 0; j < dim; ++j)
+              {
+                qpt_to_dof.vmult(cell_strain[i][j], quad_strain[i][j]);
+                qpt_to_dof.vmult(cell_stress[i][j], quad_stress[i][j]);
+                dg_cell->set_dof_values(cell_strain[i][j], strain[i][j]);
+                dg_cell->set_dof_values(cell_stress[i][j], stress[i][j]);
+              }
+          }
+	
+       }
+     
+  }
+
+    
   template class HyperelasticSolver<2>;
   template class HyperelasticSolver<3>;
 }
