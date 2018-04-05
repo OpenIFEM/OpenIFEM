@@ -34,18 +34,6 @@ namespace Fluid
   }
 
   template <int dim>
-  double NavierStokes<dim>::CellProperty::get_mu() const
-  {
-    return (indicator * solid_mu + (1 - indicator) * fluid_mu);
-  }
-
-  template <int dim>
-  double NavierStokes<dim>::CellProperty::get_rho() const
-  {
-    return (indicator * solid_rho + (1 - indicator) * fluid_rho);
-  }
-
-  template <int dim>
   BlockVector<double> NavierStokes<dim>::get_current_solution() const
   {
     return present_solution;
@@ -238,8 +226,8 @@ namespace Fluid
     DoFTools::make_hanging_node_constraints(dof_handler, nonzero_constraints);
     DoFTools::make_hanging_node_constraints(dof_handler, zero_constraints);
     for (auto itr = parameters.fluid_dirichlet_bcs.begin();
-          itr != parameters.fluid_dirichlet_bcs.end();
-          ++itr)
+         itr != parameters.fluid_dirichlet_bcs.end();
+         ++itr)
       {
         // First get the id, flag and value from the input file
         unsigned int id = itr->first;
@@ -299,10 +287,10 @@ namespace Fluid
         if (parameters.use_hard_coded_values == 1)
           {
             VectorTools::interpolate_boundary_values(dof_handler,
-                                                      id,
-                                                      BoundaryValues(),
-                                                      nonzero_constraints,
-                                                      ComponentMask(mask));
+                                                     id,
+                                                     BoundaryValues(),
+                                                     nonzero_constraints,
+                                                     ComponentMask(mask));
           }
         else
           {
@@ -322,13 +310,13 @@ namespace Fluid
       }
     nonzero_constraints.close();
     zero_constraints.close();
-}
+  }
 
-template <int dim>
-void NavierStokes<dim>::setup_cell_property()
-{
-  std::cout << "   Setting up cell property..." << std::endl;
-  const unsigned int n_q_points = volume_quad_formula.size();
+  template <int dim>
+  void NavierStokes<dim>::setup_cell_property()
+  {
+    std::cout << "   Setting up cell property..." << std::endl;
+    const unsigned int n_q_points = volume_quad_formula.size();
     cell_property.initialize(
       triangulation.begin_active(), triangulation.end(), n_q_points);
     for (auto cell = triangulation.begin_active(); cell != triangulation.end();
@@ -341,13 +329,8 @@ void NavierStokes<dim>::setup_cell_property()
         for (unsigned int q = 0; q < n_q_points; ++q)
           {
             p[q]->indicator = 0;
-            p[q]->fluid_rho = parameters.fluid_rho;
-            p[q]->fluid_mu = parameters.viscosity;
-            p[q]->solid_rho = parameters.solid_rho;
-            AssertThrow(
-              parameters.solid_type == "LinearElastic",
-              ExcMessage("Only LinearElastic solid is allowed in FSI!"));
-            p[q]->solid_mu = parameters.E / (2 * (1 + parameters.nu));
+            p[q]->fsi_acceleration = 0;
+            p[q]->fsi_stress = 0;
           }
       }
   }
@@ -370,7 +353,6 @@ void NavierStokes<dim>::setup_cell_property()
     present_solution.reinit(dofs_per_block);
     newton_update.reinit(dofs_per_block);
     evaluation_point.reinit(dofs_per_block);
-    solution_increment.reinit(dofs_per_block);
     system_rhs.reinit(dofs_per_block);
 
     // Compute the sparsity pattern for mass schur in advance.
@@ -386,17 +368,12 @@ void NavierStokes<dim>::setup_cell_property()
   }
 
   template <int dim>
-  void NavierStokes<dim>::assemble(const bool initial_step,
-                                   const bool assemble_matrix)
+  void NavierStokes<dim>::assemble(const bool use_nonzero_constraints)
   {
     TimerOutput::Scope timer_section(timer, "Assemble system");
 
-    if (assemble_matrix)
-      {
-        system_matrix = 0;
-        mass_matrix = 0;
-      }
-
+    system_matrix = 0;
+    mass_matrix = 0;
     system_rhs = 0;
 
     FEValues<dim> fe_values(fe,
@@ -443,12 +420,6 @@ void NavierStokes<dim>::setup_cell_property()
     std::vector<Tensor<2, dim>> grad_phi_u(dofs_per_cell);
     std::vector<double> phi_p(dofs_per_cell);
 
-    Tensor<1, dim> gravity;
-    for (unsigned int i = 0; i < dim; ++i)
-      {
-        gravity[i] = parameters.gravity[i];
-      }
-
     for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
          ++cell)
       {
@@ -478,8 +449,6 @@ void NavierStokes<dim>::setup_cell_property()
         for (unsigned int q = 0; q < n_q_points; ++q)
           {
             const int ind = p[q]->indicator;
-            const double mu_bar = p[q]->get_mu();
-            const double rho_bar = p[q]->get_rho();
             for (unsigned int k = 0; k < dofs_per_cell; ++k)
               {
                 div_phi_u[k] = fe_values[velocities].divergence(k, q);
@@ -490,34 +459,31 @@ void NavierStokes<dim>::setup_cell_property()
 
             for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
-                if (assemble_matrix)
+                for (unsigned int j = 0; j < dofs_per_cell; ++j)
                   {
-                    for (unsigned int j = 0; j < dofs_per_cell; ++j)
-                      {
-                        // Let the linearized diffusion, continuity and Grad-Div
-                        // term be written as
-                        // the bilinear operator: \f$A = a((\delta{u},
-                        // \delta{p}), (\delta{v}, \delta{q}))\f$,
-                        // the linearized convection term be: \f$C =
-                        // c(u;\delta{u}, \delta{v})\f$,
-                        // and the linearized inertial term be:
-                        // \f$M = m(\delta{u}, \delta{v})$, then LHS is: $(A +
-                        // C) + M/{\Delta{t}}\f$
-                        local_matrix(i, j) +=
-                          ((mu_bar *
-                              scalar_product(grad_phi_u[j], grad_phi_u[i]) +
-                            current_velocity_gradients[q] * phi_u[j] *
-                              phi_u[i] * rho_bar +
-                            grad_phi_u[j] * current_velocity_values[q] *
-                              phi_u[i] * rho_bar -
-                            div_phi_u[i] * phi_p[j] - phi_p[i] * div_phi_u[j] +
-                            gamma * div_phi_u[j] * div_phi_u[i] * rho_bar) +
-                           phi_u[i] * phi_u[j] / time.get_delta_t() * rho_bar) *
-                          fe_values.JxW(q);
-                        local_mass_matrix(i, j) +=
-                          (phi_u[i] * phi_u[j] + phi_p[i] * phi_p[j]) *
-                          fe_values.JxW(q);
-                      }
+                    // Let the linearized diffusion, continuity and Grad-Div
+                    // term be written as
+                    // the bilinear operator: \f$A = a((\delta{u},
+                    // \delta{p}), (\delta{v}, \delta{q}))\f$,
+                    // the linearized convection term be: \f$C =
+                    // c(u;\delta{u}, \delta{v})\f$,
+                    // and the linearized inertial term be:
+                    // \f$M = m(\delta{u}, \delta{v})$, then LHS is: $(A +
+                    // C) + M/{\Delta{t}}\f$
+                    local_matrix(i, j) +=
+                      ((viscosity *
+                          scalar_product(grad_phi_u[j], grad_phi_u[i]) +
+                        current_velocity_gradients[q] * phi_u[j] * phi_u[i] *
+                          rho +
+                        grad_phi_u[j] * current_velocity_values[q] * phi_u[i] *
+                          rho -
+                        div_phi_u[i] * phi_p[j] - phi_p[i] * div_phi_u[j] +
+                        gamma * div_phi_u[j] * div_phi_u[i] * rho) +
+                       phi_u[i] * phi_u[j] / time.get_delta_t() * rho) *
+                      fe_values.JxW(q);
+                    local_mass_matrix(i, j) +=
+                      (phi_u[i] * phi_u[j] + phi_p[i] * phi_p[j]) *
+                      fe_values.JxW(q);
                   }
 
                 // RHS is \f$-(A_{current} + C_{current}) -
@@ -525,23 +491,21 @@ void NavierStokes<dim>::setup_cell_property()
                 double current_velocity_divergence =
                   trace(current_velocity_gradients[q]);
                 local_rhs(i) +=
-                  ((-mu_bar * scalar_product(current_velocity_gradients[q],
-                                             grad_phi_u[i]) -
+                  ((-viscosity * scalar_product(current_velocity_gradients[q],
+                                                grad_phi_u[i]) -
                     current_velocity_gradients[q] * current_velocity_values[q] *
-                      phi_u[i] * rho_bar +
+                      phi_u[i] * rho +
                     current_pressure_values[q] * div_phi_u[i] +
                     current_velocity_divergence * phi_p[i] -
-                    gamma * current_velocity_divergence * div_phi_u[i] *
-                      rho_bar) -
+                    gamma * current_velocity_divergence * div_phi_u[i] * rho) -
                    (current_velocity_values[q] - present_velocity_values[q]) *
-                     phi_u[i] / time.get_delta_t() * rho_bar +
-                   gravity * phi_u[i] * rho_bar) *
+                     phi_u[i] / time.get_delta_t() * rho) *
                   fe_values.JxW(q);
                 if (ind == 1)
                   {
                     local_rhs(i) +=
                       (scalar_product(grad_phi_u[i], p[q]->fsi_stress) +
-                       (p[q]->fsi_acceleration * rho_bar * phi_u[i])) *
+                       (p[q]->fsi_acceleration * rho * phi_u[i])) *
                       fe_values.JxW(q);
                   }
               }
@@ -583,41 +547,20 @@ void NavierStokes<dim>::setup_cell_property()
         cell->get_dof_indices(local_dof_indices);
 
         const ConstraintMatrix &constraints_used =
-          initial_step ? nonzero_constraints : zero_constraints;
-
-        if (assemble_matrix)
-          {
-            constraints_used.distribute_local_to_global(local_matrix,
-                                                        local_rhs,
-                                                        local_dof_indices,
-                                                        system_matrix,
-                                                        system_rhs);
-            constraints_used.distribute_local_to_global(
-              local_mass_matrix, local_dof_indices, mass_matrix);
-          }
-        else
-          {
-            constraints_used.distribute_local_to_global(
-              local_rhs, local_dof_indices, system_rhs);
-          }
+          use_nonzero_constraints ? nonzero_constraints : zero_constraints;
+        constraints_used.distribute_local_to_global(local_matrix,
+                                                    local_rhs,
+                                                    local_dof_indices,
+                                                    system_matrix,
+                                                    system_rhs);
+        constraints_used.distribute_local_to_global(
+          local_mass_matrix, local_dof_indices, mass_matrix);
       }
   }
 
   template <int dim>
-  void NavierStokes<dim>::assemble_system(const bool initial_step)
-  {
-    assemble(initial_step, true);
-  }
-
-  template <int dim>
-  void NavierStokes<dim>::assemble_rhs(const bool initial_step)
-  {
-    assemble(initial_step, false);
-  }
-
-  template <int dim>
   std::pair<unsigned int, double>
-  NavierStokes<dim>::solve(const bool initial_step)
+  NavierStokes<dim>::solve(const bool use_nonzero_constraints)
   {
     TimerOutput::Scope timer_section(timer, "Solve linear system");
 
@@ -641,7 +584,7 @@ void NavierStokes<dim>::setup_cell_property()
     gmres.solve(system_matrix, newton_update, system_rhs, *preconditioner);
 
     const ConstraintMatrix &constraints_used =
-      initial_step ? nonzero_constraints : zero_constraints;
+      use_nonzero_constraints ? nonzero_constraints : zero_constraints;
     constraints_used.distribute(newton_update);
 
     return {solver_control.last_step(), solver_control.last_value()};
@@ -697,14 +640,14 @@ void NavierStokes<dim>::setup_cell_property()
   }
 
   template <int dim>
-  void NavierStokes<dim>::run_one_step(bool first_step)
+  void NavierStokes<dim>::run_one_step(bool apply_nonzero_constraints)
   {
     std::cout.precision(6);
     std::cout.width(12);
 
-    if (first_step)
+    if (time.get_timestep() == 0)
       {
-        output_results(time.get_timestep());
+        output_results(0);
       }
 
     // Time loop.
@@ -719,8 +662,7 @@ void NavierStokes<dim>::setup_cell_property()
     double relative_residual = 1.0;
     unsigned int outer_iteration = 0;
     evaluation_point = present_solution;
-    while (first_step ||
-           (relative_residual > tolerance && current_residual > 1e-14))
+    while (relative_residual > tolerance && current_residual > 1e-14)
       {
         AssertThrow(outer_iteration < max_iteration,
                     ExcMessage("Too many Newton iterations!"));
@@ -730,15 +672,14 @@ void NavierStokes<dim>::setup_cell_property()
         // Since evaluation_point changes at every iteration,
         // we have to reassemble both the lhs and rhs of the system
         // before solving it.
-        assemble_system(first_step);
-        auto state = solve(first_step);
+        assemble(apply_nonzero_constraints && outer_iteration == 0);
+        auto state = solve(apply_nonzero_constraints && outer_iteration == 0);
         current_residual = system_rhs.l2_norm();
 
-        // Update evaluation_point and do not forget to modify it
-        // with constraints.
+        // Update evaluation_point. Since newton_update has been set to
+        // the correct bc values, there is no need to distribute the
+        // evaluation_point again
         evaluation_point.add(1.0, newton_update);
-        nonzero_constraints.distribute(evaluation_point);
-        first_step = false;
 
         // Update the relative residual
         if (outer_iteration == 0)
@@ -755,9 +696,6 @@ void NavierStokes<dim>::setup_cell_property()
 
         outer_iteration++;
       }
-    // Update solution increment, which is used in FSI application.
-    solution_increment = evaluation_point;
-    solution_increment -= present_solution;
     // Newton iteration converges, update time and solution
     present_solution = evaluation_point;
     // Output
@@ -780,6 +718,10 @@ void NavierStokes<dim>::setup_cell_property()
     initialize_system();
 
     // Time loop.
+    // use_nonzero_constraints is set to true only at the first time step,
+    // which means nonzero_constraints will be applied at the first iteration
+    // in the first time step only, and never be used again.
+    // This corresponds to time-independent Dirichlet BCs.
     run_one_step(true);
     while (time.end() - time.current() > 1e-12)
       {

@@ -64,7 +64,7 @@ namespace Fluid
 {
   using namespace dealii;
 
-  /** \brief The incompressible Navier Stokes equation solver.
+  /*! \brief The incompressible Navier Stokes equation solver.
    *
    * This program is built upon dealii tutorials step-57, step-22, step-20.
    * We use fully implicit scheme for time stepping.
@@ -72,112 +72,97 @@ namespace Fluid
    * so we define two variables: the present solution and the update.
    * Additionally, the evaluation point is for temporarily holding
    * the updated solution.
-   * We use one ConstraintMatrix for Dirichlet boundary conditions
-   * at the initial step and a zero ConstraintMatrix for the rest steps.
+   * The Dirichlet boundary conditions are applied through a nonzero
+   * ConstraintMatrix
+   * and a zero ConstraintMatrix. The nonzero one is used to set the solution to
+   * the correct value, and the zero one is used to keep it unchanged.
+   * Therefore, assuming the initial value of the solution is zero, in case of
+   * constant Dirichlet BC, the nonzero constraint is applied at the first
+   * iteration in the first time step, and zero constraint is applied at
+   * all the following iterations in all time steps; while in case of
+   * time-dependent
+   * Dirichlet BC, nonzero constraint should be applied at every first iteration
+   * in every time step, but from the second time step on, the nonzero value
+   * should
+   * be solution increment instead of solution itself.
    * Although the density does not matter in the incompressible flow, we still
    * include it in the formulation in order to be consistent with the
    * slightly compressible flow. Correspondingly the viscosity represents
    * the dynamic visocity \f$\mu\f$ instead of the kinetic visocity \f$\nu\f$,
-   * and the pressure block in the solution is the real pressure.
+   * and the pressure block in the solution is the non-normalized pressure.
    */
   template <int dim>
   class NavierStokes
   {
   public:
+    //! FSI solver need access to the private members of this solver.
     friend FSI<dim>;
 
-    /** \brief Constructor.
-     *
-     * We do not want to modify the solver every time we change the
-     * triangulation.
-     * So we pass in a Triangulation<dim> that is either generated using dealii
-     * functions or by reading Abaqus input file. Also, a parameter handler is
-     * required to specify all the input parameters.
-     */
+    //! Constructor
     NavierStokes(Triangulation<dim> &, const Parameters::AllParameters &);
-    /**
-     * This function implements the Newton iteration with given tolerance
-     * and maximum number of iterations.
-     */
+
+    //! Run the simulation
     void run();
-    /**
-     * A convenient function to return the current solution for testing
-     * purposes.
-     */
+
+    //! Return the solution for testing.
     BlockVector<double> get_current_solution() const;
 
   private:
-    /**
-     * Currently the Dirichlet BCs in the input file can only be constant
-     * values.
-     * Space/time-dependent Dirichlet BCs are hard-coded in this class.
-     */
     class BoundaryValues;
-    /**
-     * The blcok preconditioner for the whole linear system.
-     * It is a private member of NavierStokes<dim>.
-     */
     class BlockSchurPreconditioner;
     struct CellProperty;
 
-    /**
-     * This function initializes the DoFHandler.
-     */
+    //! Set up the dofs based on the finite element scheme and renumber them.
     void setup_dofs();
-    /**
-     * This function sets up the constraints.
-     */
+
+    //! Set up the nonzero and zero constraints.
     void make_constraints();
-    /**
-     * This function sets up the material property stored at each cell.
-     */
+
+    //! Initialize the cell properties, which only matters in FSI applications.
     void setup_cell_property();
-    /**
-     * Specify the sparsity pattern and reinit matrices and vectors.
-     * It is separated from setup_dofs because when we do mesh refinement
-     * we need to transfer the solution from old grid to the new one.
-     */
+
+    /// Specify the sparsity pattern and reinit matrices and vectors based on
+    /// the dofs and constraints.
     void initialize_system();
-    /**
-     * This function builds the system matrix and right hand side that we
-     * currently work on. The initial_step argument is used to determine
-     * which set of constraints we apply (nonzero for the initial step and zero
-     * for the others). The assemble_matrix flag determines whether to
-     * assemble the whole system or only the right hand side vector,
-     * respectively.
+
+    /*! \brief Assemble the system matrix, mass mass matrix, and the RHS.
+     *
+     *  Since backward Euler method is used, the linear system must be
+     * reassembled
+     *  at every Newton iteration. The Dirichlet BCs are applied at the same
+     * time
+     *  as the cell matrix and rhs are distributed to the global matrix and rhs,
+     *  which is optimal according to the deal.II documentation.
+     *  The boolean argument is used to determine whether nonzero constraints
+     *  or zero constraints should be used.
      */
-    void assemble(const bool initial_step, const bool assemble_matrix);
-    void assemble_system(const bool initial_step);
-    void assemble_rhs(const bool initial_step);
-    /**
-     * In this function, we use FGMRES together with the block preconditioner,
-     * which is defined at the beginning of the program, to solve the linear
-     * system. What we obtain at this step is the solution vector. If this is
-     * the initial step, the solution vector gives us an initial guess for the
-     * Navier Stokes equations. For the initial step, nonzero constraints are
-     * applied in order to make sure boundary conditions are satisfied. In the
-     * following steps, we will solve for the Newton update so zero
-     * constraints are used.
+    void assemble(const bool use_nonzero_constraints);
+
+    /*! \brief Solve the linear system using FGMRES solver plus block
+     * preconditioner.
+     *
+     *  After solving the linear system, the same ConstraintMatrix as used
+     *  in assembly must be used again, to set the solution to the right value
+     *  at the constrained dofs.
      */
-    std::pair<unsigned int, double> solve(const bool initial_step);
-    /**
-     * After finding a good initial guess on the coarse mesh, we hope to
-     * decrease the error through refining the mesh. Here we do adaptive
-     * refinement based on the Kelly estimator on the velocity only.
-     * We also need to transfer the current solution to the
-     * next mesh using the SolutionTransfer class.
-     */
+    std::pair<unsigned int, double> solve(const bool use_nonzero_constraints);
+
+    /// Mesh adaption.
     void refine_mesh(const unsigned int, const unsigned int);
-    /**
-     * Write a vtu file for the current solution, as well as a pvtu file to
-     * organize them.
-     */
+
+    /// Output in vtu format.
     void output_results(const unsigned int) const;
-    /**
-     * In FSI application, the workflow is controled by the FSI class,
-     * as an interface, this function runs the simulation for one time step.
+
+    /*! \brief Run the simulation for one time step.
+     *
+     *  If the Dirichlet BC is time-dependent, nonzero constraints must be
+     * applied
+     *  at every first Newton iteration in every time step. If it is not, only
+     *  apply nonzero constraints at the first iteration in the first time step.
+     *  A boolean argument controls whether nonzero constraints should be
+     *  applied in a certain time step.
      */
-    void run_one_step(bool);
+    void run_one_step(bool apply_nonzero_constraints);
 
     double viscosity; //!< Dynamic viscosity
     double rho;
@@ -209,14 +194,6 @@ namespace Fluid
      * in the current time step, which approaches to the new present_solution.
      */
     BlockVector<double> evaluation_point;
-    /**
-     * The solution increment from the previous time step to the current time
-     * step,
-     * i.e., the summation of the newton_update at a certain time step.
-     * This is redundant in fluid stand-alone simulation, but useful in FSI
-     * application because we are interested in fluid acceleration.
-     */
-    BlockVector<double> solution_increment;
     BlockVector<double> system_rhs;
 
     const double tolerance;
@@ -227,16 +204,14 @@ namespace Fluid
 
     Parameters::AllParameters parameters;
 
-    /// The BlockSchurPreconditioner for the whole system.
+    /// The BlockSchurPreconditioner for the entire system.
     std::shared_ptr<BlockSchurPreconditioner> preconditioner;
 
     CellDataStorage<typename Triangulation<dim>::cell_iterator, CellProperty>
       cell_property;
 
-    std::vector<SymmetricTensor<2, dim>> fsi_stress;
-    std::vector<Tensor<1, dim>> fsi_acceleration;
-
-    /** \brief Helper function to specify Dirchlet boundary conditions.
+    /*! \brief Helper class to specify space/time-dependent Dirichlet BCs,
+     *         as the input file can only handle constant BC values.
      *
      *  It specifies a parabolic velocity profile at the left side boundary,
      *  and all the remaining boundaries are considered as walls
@@ -253,7 +228,7 @@ namespace Fluid
                                 Vector<double> &values) const;
     };
 
-    /** \brief Block preconditioner for the system
+    /*! \brief Block preconditioner for the system
      *
      * A right block preconditioner is defined here:
      * \f{eqnarray*}{
@@ -337,35 +312,15 @@ namespace Fluid
       SparseDirectUMFPACK A_inverse;
     };
 
-    /**
-     * This struct tells whether a cell contains real fluid or artificial fluid,
-     * and returns the corresponding properties. It also caches the FSI force
-     * which
-     * includes a tensor and a vector.
-     */
+    /// A data structure that caches the real/artificial fluid indicator,
+    /// FSI stress, and FSI acceleration terms at quadrature points, that
+    /// will only be used in FSI simulations.
     struct CellProperty
     {
-      /**
-       * Material indicator: 1 for solid and 0 for fluid.
-       */
-      int indicator;
-      /**
-       * The viscosity and density of fluid and solid.
-       */
-      double fluid_mu;
-      double fluid_rho;
-      double solid_mu;
-      double solid_rho;
-      SymmetricTensor<2, dim> fsi_stress;
-      Tensor<1, dim> fsi_acceleration;
-      /**
-       * Return the density of the current cell.
-       */
-      double get_rho() const;
-      /**
-       * Return the viscosity of the current cell.
-       */
-      double get_mu() const;
+      int indicator; //!< Domain indicator: 1 for artificial fluid 0 for real
+                     //! fluid.
+      Tensor<1, dim> fsi_acceleration; //!< The acceleration term in FSI force.
+      SymmetricTensor<2, dim> fsi_stress; //!< The stress term in FSI force.
     };
   };
 }

@@ -15,7 +15,7 @@ subsection Simulation
   set Global refinement = 1
 
   # The end time of the simulation in second
-  set End time = 1.0e-1
+  set End time = 1.0
 
   # The time step in second
   set Time step size = 1e-3
@@ -27,7 +27,7 @@ subsection Simulation
   set Refinement interval = 100
 
   # Body force which applies to both fluid and solid (acceleration)
-  set Gravity = 100.0, 0.0
+  set Gravity = 20.0, 0.0
 end
 
 # --------------------------------------------------------------------------------
@@ -39,7 +39,7 @@ end
 
 subsection Fluid material properties
   # The dynamic viscosity
-  set Dynamic viscosity = 0.01  # air: 1.81e-5
+  set Dynamic viscosity = 0.2  # air: 1.81e-5
 
   # Fluid density
   set Fluid density = 1 # air: 1.225
@@ -107,7 +107,7 @@ subsection Solid material properties
   set Solid density = 2.02 #122.5
 
   # E and nu are only used by linearElasticMaterial
-  set Young's modulus = 2.78e3 #5.249e-5
+  set Young's modulus = 2.78e4 #5.249e-5
 
   set Poisson's ratio = 0.48 #0.3
 

@@ -1,6 +1,5 @@
 # List all the tests
 set(tests fluid_cylinder
-          fluid_gravity
           fluid_pipe
           fluid_pressure_driven
           fsi_gravity
