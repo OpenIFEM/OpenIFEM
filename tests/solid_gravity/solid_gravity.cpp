@@ -9,6 +9,8 @@
 
 extern template class Solid::LinearElasticSolver<2>;
 extern template class Solid::LinearElasticSolver<3>;
+extern template class Utils::GridCreator<2>;
+extern template class Utils::GridCreator<3>;
 
 int main(int argc, char *argv[])
 {
@@ -28,7 +30,7 @@ int main(int argc, char *argv[])
           Triangulation<2> solid_tria;
           Point<2> center(2, 1);
           double radius = 0.25;
-          Utils::GridCreator::sphere(solid_tria, center, radius);
+          Utils::GridCreator<2>::sphere(solid_tria, center, radius);
           Solid::LinearElasticSolver<2> solid(solid_tria, params);
           solid.run();
 

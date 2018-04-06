@@ -12,6 +12,8 @@
 
 extern template class Fluid::NavierStokes<2>;
 extern template class Fluid::NavierStokes<3>;
+extern template class Utils::GridCreator<2>;
+extern template class Utils::GridCreator<3>;
 
 int main(int argc, char *argv[])
 {
@@ -29,7 +31,7 @@ int main(int argc, char *argv[])
       if (params.dimension == 2)
         {
           Triangulation<2> tria;
-          Utils::GridCreator::flow_around_cylinder(tria);
+          Utils::GridCreator<2>::flow_around_cylinder(tria);
           Fluid::NavierStokes<2> flow(tria, params);
           flow.run();
           auto solution = flow.get_current_solution();
@@ -45,7 +47,7 @@ int main(int argc, char *argv[])
       else if (params.dimension == 3)
         {
           Triangulation<3> tria;
-          Utils::GridCreator::flow_around_cylinder(tria);
+          Utils::GridCreator<3>::flow_around_cylinder(tria);
           Fluid::NavierStokes<3> flow(tria, params);
           flow.run();
         }

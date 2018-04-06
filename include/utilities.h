@@ -15,9 +15,8 @@
 namespace Utils
 {
   using namespace dealii;
-  /** \brief This class manages simulation time and output frequency.
-   *
-   */
+
+  /// This class manages simulation time and output frequency.
   class Time
   {
   public:
@@ -50,7 +49,7 @@ namespace Utils
     const double refinement_interval;
   };
 
-  /** \brief A helper class to generate triangulations and specify boundary ids.
+  /*! \brief A helper class to generate triangulations and specify boundary ids.
    *
    *  dealii::GridGenerator can be used to generate a few standard grids such as
    * hyperrectangle,
@@ -58,10 +57,11 @@ namespace Utils
    * more complicated
    *  grids that are useful to us.
    */
+  template <int dim>
   class GridCreator
   {
   public:
-    /** \brief Generate triangulation for the flow around cylinder benchmark
+    /*! \brief Generate triangulation for the flow around cylinder benchmark
      * case.
      *
      *  The geometry and benchmark results are reported in Turek (1996), or
@@ -73,25 +73,23 @@ namespace Utils
      *  the lower one in z-direction is 4, the upper one is 5.
      *  the cylindrical surface is marked with boundary id 4 in 2d and 6 in 3d.
      */
-    static void flow_around_cylinder(Triangulation<2> &);
-    static void flow_around_cylinder(Triangulation<3> &);
-    /** \brief Generate a nice mesh for a sphere.
+    static void flow_around_cylinder(Triangulation<dim> &);
+    /*! \brief Generate a nice mesh for a sphere.
      *
      * Adapted from [dealii tutorials step-6]
      * (http://www.dealii.org/developer/doxygen/deal.II/step_6.html)
      */
-    static void sphere(Triangulation<2> &tria,
-                       const Point<2> &center = Point<2>(),
+    static void sphere(Triangulation<dim> &tria,
+                       const Point<dim> &center = Point<dim>(),
                        double radius = 1);
 
   private:
-    /** \brief A helper function used by flow_around_cylinder.
-     */
+    /// A helper function used by flow_around_cylinder.
     static void flow_around_cylinder_2d(Triangulation<2> &,
                                         bool compute_in_2d = true);
   };
 
-  /** \brief Interpolate the solution value or gradient at an arbitrary point.
+  /*! \brief Interpolate the solution value or gradient at an arbitrary point.
    *
    * The implementation is a combination of VectorTools::point_value and
    * VectorTools::point_graident. However, this class avoids locating the given

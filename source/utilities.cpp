@@ -111,8 +111,9 @@ namespace Utils
   // (https://github.com/kronbichler/adaflo/blob/master/tests/flow_past_cylinder.cc)
   // with very few modifications.
   // Helper function used in both 2d and 3d:
-  void GridCreator::flow_around_cylinder_2d(Triangulation<2> &tria,
-                                            bool compute_in_2d)
+  template <int dim>
+  void GridCreator<dim>::flow_around_cylinder_2d(Triangulation<2> &tria,
+                                                 bool compute_in_2d)
   {
     SphericalManifold<2> boundary(Point<2>(0.5, 0.2));
     Triangulation<2> left, middle, right, tmp, tmp2;
@@ -201,7 +202,8 @@ namespace Utils
   }
 
   // Create 2D triangulation:
-  void GridCreator::flow_around_cylinder(Triangulation<2> &tria)
+  template <>
+  void GridCreator<2>::flow_around_cylinder(Triangulation<2> &tria)
   {
     flow_around_cylinder_2d(tria);
     // Set the left boundary (inflow) to 0, the right boundary (outflow) to 1,
@@ -240,7 +242,8 @@ namespace Utils
   }
 
   // Create 3D triangulation:
-  void GridCreator::flow_around_cylinder(Triangulation<3> &tria)
+  template <>
+  void GridCreator<3>::flow_around_cylinder(Triangulation<3> &tria)
   {
     Triangulation<2> tria_2d;
     flow_around_cylinder_2d(tria_2d, false);
@@ -288,12 +291,13 @@ namespace Utils
       }
   }
 
-  void GridCreator::sphere(Triangulation<2> &tria,
-                           const Point<2> &center,
-                           double radius)
+  template <int dim>
+  void GridCreator<dim>::sphere(Triangulation<dim> &tria,
+                                const Point<dim> &center,
+                                double radius)
   {
     GridGenerator::hyper_ball(tria, center, radius);
-    static const SphericalManifold<2> boundary(center);
+    static const SphericalManifold<dim> boundary(center);
     tria.set_all_manifold_ids_on_boundary(0);
     tria.set_manifold(0, boundary);
     const double core_radius = radius / 5.0, inner_radius = radius / 3.0;
@@ -302,7 +306,7 @@ namespace Utils
       {
         if (center.distance(cell->center()) < 1e-5 * radius)
           {
-            for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_cell;
+            for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
                  ++v)
               {
                 double scale = core_radius / center.distance(cell->vertex(v));
@@ -323,7 +327,7 @@ namespace Utils
 
     for (auto cell = tria.begin_active(); cell != tria.end(); ++cell)
       {
-        for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_cell; ++v)
+        for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
           {
             const double dist = center.distance(cell->vertex(v));
             if (dist > core_radius * 1.0001 && dist < 0.9999 * radius)
@@ -338,7 +342,7 @@ namespace Utils
     for (auto cell = tria.begin_active(); cell != tria.end(); ++cell)
       {
         bool is_in_inner_circle = false;
-        for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_cell; ++v)
+        for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
           {
             if (center.distance(cell->vertex(v)) < inner_radius)
               {
@@ -352,4 +356,7 @@ namespace Utils
           }
       }
   }
+
+  template class GridCreator<2>;
+  template class GridCreator<3>;
 }
