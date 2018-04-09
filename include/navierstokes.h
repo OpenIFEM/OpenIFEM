@@ -67,29 +67,22 @@ namespace Fluid
   /*! \brief The incompressible Navier Stokes equation solver.
    *
    * This program is built upon dealii tutorials step-57, step-22, step-20.
-   * We use fully implicit scheme for time stepping.
-   * At each time step, Newton's method is used to solve for the update,
-   * so we define two variables: the present solution and the update.
-   * Additionally, the evaluation point is for temporarily holding
-   * the updated solution.
-   * The Dirichlet boundary conditions are applied through a nonzero
-   * ConstraintMatrix
-   * and a zero ConstraintMatrix. The nonzero one is used to set the solution to
-   * the correct value, and the zero one is used to keep it unchanged.
-   * Therefore, assuming the initial value of the solution is zero, in case of
-   * constant Dirichlet BC, the nonzero constraint is applied at the first
-   * iteration in the first time step, and zero constraint is applied at
-   * all the following iterations in all time steps; while in case of
-   * time-dependent
-   * Dirichlet BC, nonzero constraint should be applied at every first iteration
-   * in every time step, but from the second time step on, the nonzero value
-   * should
-   * be solution increment instead of solution itself.
    * Although the density does not matter in the incompressible flow, we still
    * include it in the formulation in order to be consistent with the
    * slightly compressible flow. Correspondingly the viscosity represents
    * the dynamic visocity \f$\mu\f$ instead of the kinetic visocity \f$\nu\f$,
    * and the pressure block in the solution is the non-normalized pressure.
+   *
+   * Fully implicit scheme is used for time stepping. Newton's method is applied
+   * to solve the nonlinear system, thus the actual dofs being solved is the
+   * velocity and pressure increment.
+   *
+   * The final linear system to be solved is nonsymmetric. GMRES solver with
+   * Grad-Div right preconditioner is applied, which does modify the linear
+   * system
+   * a little bit, and requires the velocity shape functions to be one order
+   * higher
+   * than that of the pressure.
    */
   template <int dim>
   class NavierStokes
@@ -112,7 +105,7 @@ namespace Fluid
     class BlockSchurPreconditioner;
     struct CellProperty;
 
-    //! Set up the dofs based on the finite element scheme and renumber them.
+    //! Set up the dofs based on the finite element and renumber them.
     void setup_dofs();
 
     //! Set up the nonzero and zero constraints.

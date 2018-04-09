@@ -2,7 +2,7 @@
  * This program tests serial NavierStokes solver with a 2D pressure-driven pipe flow case.
  * The final axial velocity profile should be parabolic, we should check
  * the maximum velocity.
- * 2D test takes about 86s.
+ * 2D test takes about 26.9s.
  */
 #include "navierstokes.h"
 #include "parameters.h"

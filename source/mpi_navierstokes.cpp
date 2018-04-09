@@ -11,7 +11,7 @@ namespace Fluid
     double left_boundary = (dim == 2 ? 0.3 : 0.0);
     if (component == 0 && std::abs(p[0] - left_boundary) < 1e-10)
       {
-        double U = 1.5;
+        double U = 0.3;
         double y = p[1];
         double value = 4 * U * y * (0.41 - y) / (0.41 * 0.41);
         if (dim == 3)
@@ -67,11 +67,11 @@ namespace Fluid
     tmp2 = 0;
     // Jacobi preconditioner of matrix A is by definition inverse diag(A),
     // this is exactly what we want to compute.
+    // Note that the mass matrix and mass schur do not include the density.
     PETScWrappers::PreconditionJacobi jacobi(mass_matrix->block(0, 0));
     jacobi.vmult(tmp2.block(0), tmp1.block(0));
-    // The mass matrix is not multiplied with density, so we need to account
-    // for it when necessary.
-    tmp2 /= rho;
+    // The sparsity pattern has already been set correctly, so explicitly
+    // tell mmult not to rebuild the sparsity pattern.
     system_matrix->block(1, 0).mmult(
       mass_schur->block(1, 1), system_matrix->block(0, 1), tmp2.block(0));
   }
@@ -101,15 +101,13 @@ namespace Fluid
                                    1e-6 * src.block(1).l2_norm());
       SolverCG<PETScWrappers::MPI::Vector> cg(solver_control);
 
-      // \f$-(\nu + \gamma)M_p^{-1}v_1\f$
+      // \f$-(\mu + \gamma\rho)M_p^{-1}v_1\f$
       PETScWrappers::MPI::Vector tmp(src.block(1));
       tmp = 0;
       PETScWrappers::PreconditionBlockJacobi Mp_preconditioner;
       Mp_preconditioner.initialize(mass_matrix->block(1, 1));
       cg.solve(mass_matrix->block(1, 1), tmp, src.block(1), Mp_preconditioner);
-      // In the original formulation, this is \f$\nu + \gamma\f$,
-      // pressure matrix does not contain density so multiply it with density.
-      tmp *= -(viscosity / rho + gamma) * rho;
+      tmp *= -(viscosity + gamma * rho);
 
       timer.leave_subsection("CG for Mp");
       timer.enter_subsection("CG for Sm");
@@ -128,7 +126,7 @@ namespace Fluid
       Sm_preconditioner.initialize(mass_schur->block(1, 1));
       cg.solve(
         mass_schur->block(1, 1), dst.block(1), src.block(1), Sm_preconditioner);
-      dst.block(1) *= -1 / dt;
+      dst.block(1) *= -rho / dt;
 
       // Adding up these two, we get \f$\tilde{S}^{-1}v_1\f$.
       dst.block(1) += tmp;
@@ -214,6 +212,15 @@ namespace Fluid
     relevant_partitioning[1] =
       locally_relevant_dofs.get_view(dof_u, dof_u + dof_p);
 
+    pcout << "   Number of active fluid cells: "
+          << triangulation.n_global_active_cells() << std::endl
+          << "   Number of degrees of freedom: " << dof_handler.n_dofs() << " ("
+          << dof_u << '+' << dof_p << ')' << std::endl;
+  }
+
+  template <int dim>
+  void ParallelNavierStokes<dim>::make_constraints()
+  {
     // In Newton's scheme, we first apply the boundary condition on the solution
     // obtained from the initial step. To make sure the boundary conditions
     // remain
@@ -225,7 +232,7 @@ namespace Fluid
 
     // For inhomogeneous BC, only constant input values can be read from
     // the input file. If time or space dependent Dirichlet BCs are
-    // desired, this block of code has to be modified.
+    // desired, they must be implemented in BoundaryValues.
     {
       nonzero_constraints.clear();
       zero_constraints.clear();
@@ -319,11 +326,29 @@ namespace Fluid
     }
     nonzero_constraints.close();
     zero_constraints.close();
+  }
 
-    pcout << "   Number of active fluid cells: "
-          << triangulation.n_global_active_cells() << std::endl
-          << "   Number of degrees of freedom: " << dof_handler.n_dofs() << " ("
-          << dof_u << '+' << dof_p << ')' << std::endl;
+  template <int dim>
+  void ParallelNavierStokes<dim>::setup_cell_property()
+  {
+    pcout << "   Setting up cell property..." << std::endl;
+    const unsigned int n_q_points = volume_quad_formula.size();
+    cell_property.initialize(
+      triangulation.begin_active(), triangulation.end(), n_q_points);
+    for (auto cell = triangulation.begin_active(); cell != triangulation.end();
+         ++cell)
+      {
+        const std::vector<std::shared_ptr<CellProperty>> p =
+          cell_property.get_data(cell);
+        Assert(p.size() == n_q_points,
+               ExcMessage("Wrong number of cell property!"));
+        for (unsigned int q = 0; q < n_q_points; ++q)
+          {
+            p[q]->indicator = 0;
+            p[q]->fsi_acceleration = 0;
+            p[q]->fsi_stress = 0;
+          }
+      }
   }
 
   template <int dim>
@@ -366,20 +391,18 @@ namespace Fluid
     // system_rhs is non-ghosted because it is only used in the linear
     // solver and residual evaluation.
     system_rhs.reinit(owned_partitioning, mpi_communicator);
+
+    // Cell property
+    setup_cell_property();
   }
 
   template <int dim>
-  void ParallelNavierStokes<dim>::assemble(const bool initial_step,
-                                           const bool assemble_matrix)
+  void ParallelNavierStokes<dim>::assemble(const bool use_nonzero_constraints)
   {
     TimerOutput::Scope timer_section(timer, "Assemble system");
 
-    if (assemble_matrix)
-      {
-        system_matrix = 0;
-        mass_matrix = 0;
-      }
-
+    system_matrix = 0;
+    mass_matrix = 0;
     system_rhs = 0;
 
     FEValues<dim> fe_values(fe,
@@ -393,8 +416,13 @@ namespace Fluid
                                        update_JxW_values);
 
     const unsigned int dofs_per_cell = fe.dofs_per_cell;
+    const unsigned int u_dofs = fe.base_element(0).dofs_per_cell;
+    const unsigned int p_dofs = fe.base_element(1).dofs_per_cell;
     const unsigned int n_q_points = volume_quad_formula.size();
     const unsigned int n_face_q_points = face_quad_formula.size();
+
+    Assert(u_dofs * dim + p_dofs == dofs_per_cell,
+           ExcMessage("Wrong partitioning of dofs!"));
 
     const FEValuesExtractors::Vector velocities(0);
     const FEValuesExtractors::Scalar pressure(dim);
@@ -404,12 +432,6 @@ namespace Fluid
     Vector<double> local_rhs(dofs_per_cell);
 
     std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
-
-    // For the linearized system, we create temporary storage for current
-    // velocity
-    // and gradient, current pressure, and present velocity. In practice, they
-    // are
-    // all obtained through their shape functions at quadrature points.
 
     std::vector<Tensor<1, dim>> current_velocity_values(n_q_points);
     std::vector<Tensor<2, dim>> current_velocity_gradients(n_q_points);
@@ -426,6 +448,8 @@ namespace Fluid
       {
         if (cell->is_locally_owned())
           {
+            auto p = cell_property.get_data(cell);
+
             fe_values.reinit(cell);
 
             local_matrix = 0;
@@ -445,12 +469,11 @@ namespace Fluid
                                                       present_velocity_values);
 
             // Assemble the system matrix and mass matrix simultaneouly.
-            // We assemble \f$B^T\f$ and \f$B\f$ into the mass matrix for
-            // convience
-            // because they will be used in the preconditioner.
+            // The mass matrix only uses the (0, 0) and (1, 1) blocks.
             //
             for (unsigned int q = 0; q < n_q_points; ++q)
               {
+                const int ind = p[q]->indicator;
                 for (unsigned int k = 0; k < dofs_per_cell; ++k)
                   {
                     div_phi_u[k] = fe_values[velocities].divergence(k, q);
@@ -461,39 +484,32 @@ namespace Fluid
 
                 for (unsigned int i = 0; i < dofs_per_cell; ++i)
                   {
-                    if (assemble_matrix)
+                    for (unsigned int j = 0; j < dofs_per_cell; ++j)
                       {
-                        for (unsigned int j = 0; j < dofs_per_cell; ++j)
-                          {
-                            // Let the linearized diffusion, continuity and
-                            // Grad-Div
-                            // term be written as
-                            // the bilinear operator: \f$A = a((\delta{u},
-                            // \delta{p}), (\delta{v}, \delta{q}))\f$,
-                            // the linearized convection term be: \f$C =
-                            // c(u;\delta{u}, \delta{v})\f$,
-                            // and the linearized inertial term be:
-                            // \f$M = m(\delta{u}, \delta{v})$, then LHS is: $(A
-                            // +
-                            // C) + M/{\Delta{t}}\f$
-                            local_matrix(i, j) +=
-                              ((viscosity *
-                                  scalar_product(grad_phi_u[j], grad_phi_u[i]) +
-                                current_velocity_gradients[q] * phi_u[j] *
-                                  phi_u[i] * rho +
-                                grad_phi_u[j] * current_velocity_values[q] *
-                                  phi_u[i] * rho -
-                                div_phi_u[i] * phi_p[j] -
-                                phi_p[i] * div_phi_u[j] +
-                                gamma * div_phi_u[j] * div_phi_u[i] * rho) +
-                               phi_u[i] * phi_u[j] / time.get_delta_t() * rho) *
-                              fe_values.JxW(q);
-                            local_mass_matrix(i, j) +=
-                              (phi_u[i] * phi_u[j] + phi_p[i] * phi_p[j] -
-                               div_phi_u[i] * phi_p[j] -
-                               phi_p[i] * div_phi_u[j]) *
-                              fe_values.JxW(q);
-                          }
+                        // Let the linearized diffusion, continuity and
+                        // Grad-Div
+                        // term be written as
+                        // the bilinear operator: \f$A = a((\delta{u},
+                        // \delta{p}), (\delta{v}, \delta{q}))\f$,
+                        // the linearized convection term be: \f$C =
+                        // c(u;\delta{u}, \delta{v})\f$,
+                        // and the linearized inertial term be:
+                        // \f$M = m(\delta{u}, \delta{v})$, then LHS is: $(A +
+                        // C) + M/{\Delta{t}}\f$
+                        local_matrix(i, j) +=
+                          ((viscosity *
+                              scalar_product(grad_phi_u[j], grad_phi_u[i]) +
+                            current_velocity_gradients[q] * phi_u[j] *
+                              phi_u[i] * rho +
+                            grad_phi_u[j] * current_velocity_values[q] *
+                              phi_u[i] * rho -
+                            div_phi_u[i] * phi_p[j] - phi_p[i] * div_phi_u[j] +
+                            gamma * div_phi_u[j] * div_phi_u[i] * rho) +
+                           phi_u[i] * phi_u[j] / time.get_delta_t() * rho) *
+                          fe_values.JxW(q);
+                        local_mass_matrix(i, j) +=
+                          (phi_u[i] * phi_u[j] + phi_p[i] * phi_p[j]) *
+                          fe_values.JxW(q);
                       }
 
                     // RHS is \f$-(A_{current} + C_{current}) -
@@ -514,6 +530,13 @@ namespace Fluid
                         present_velocity_values[q]) *
                          phi_u[i] / time.get_delta_t() * rho) *
                       fe_values.JxW(q);
+                    if (ind == 1)
+                      {
+                        local_rhs(i) +=
+                          (scalar_product(grad_phi_u[i], p[q]->fsi_stress) +
+                           (p[q]->fsi_acceleration * rho * phi_u[i])) *
+                          fe_values.JxW(q);
+                      }
                   }
               }
 
@@ -555,52 +578,26 @@ namespace Fluid
             cell->get_dof_indices(local_dof_indices);
 
             const ConstraintMatrix &constraints_used =
-              initial_step ? nonzero_constraints : zero_constraints;
-
-            if (assemble_matrix)
-              {
-                constraints_used.distribute_local_to_global(local_matrix,
-                                                            local_rhs,
-                                                            local_dof_indices,
-                                                            system_matrix,
-                                                            system_rhs);
-                constraints_used.distribute_local_to_global(
-                  local_mass_matrix, local_dof_indices, mass_matrix);
-              }
-            else
-              {
-                constraints_used.distribute_local_to_global(
-                  local_rhs, local_dof_indices, system_rhs);
-              }
+              use_nonzero_constraints ? nonzero_constraints : zero_constraints;
+            constraints_used.distribute_local_to_global(local_matrix,
+                                                        local_rhs,
+                                                        local_dof_indices,
+                                                        system_matrix,
+                                                        system_rhs);
+            constraints_used.distribute_local_to_global(
+              local_mass_matrix, local_dof_indices, mass_matrix);
           }
       }
 
-    if (assemble_matrix)
-      {
-        system_matrix.compress(VectorOperation::add);
-        mass_matrix.compress(VectorOperation::add);
-      }
+    system_matrix.compress(VectorOperation::add);
+    mass_matrix.compress(VectorOperation::add);
     system_rhs.compress(VectorOperation::add);
   }
 
   template <int dim>
-  void ParallelNavierStokes<dim>::assemble_system(const bool initial_step)
-  {
-    assemble(initial_step, true);
-  }
-
-  template <int dim>
-  void ParallelNavierStokes<dim>::assemble_rhs(const bool initial_step)
-  {
-    assemble(initial_step, false);
-  }
-
-  template <int dim>
   std::pair<unsigned int, double>
-  ParallelNavierStokes<dim>::solve(const bool initial_step)
+  ParallelNavierStokes<dim>::solve(const bool use_nonzero_constraints)
   {
-    // This section includes the work done in the preconditioner
-    // and GMRES solver.
     TimerOutput::Scope timer_section(timer, "Solve linear system");
     preconditioner.reset(new BlockSchurPreconditioner(timer,
                                                       gamma,
@@ -614,7 +611,6 @@ namespace Fluid
 
     SolverControl solver_control(
       system_matrix.m(), 1e-8 * system_rhs.l2_norm(), true);
-
     // Because PETScWrappers::SolverGMRES requires preconditioner derived
     // from PETScWrappers::PreconditionBase, we use dealii SolverFGMRES.
     GrowingVectorMemory<PETScWrappers::MPI::BlockVector> vector_memory;
@@ -625,7 +621,7 @@ namespace Fluid
     gmres.solve(system_matrix, newton_update, system_rhs, *preconditioner);
 
     const ConstraintMatrix &constraints_used =
-      initial_step ? nonzero_constraints : zero_constraints;
+      use_nonzero_constraints ? nonzero_constraints : zero_constraints;
     constraints_used.distribute(newton_update);
 
     return {solver_control.last_step(), solver_control.last_value()};
@@ -636,20 +632,15 @@ namespace Fluid
                                               const unsigned int max_grid_level)
   {
     TimerOutput::Scope timer_section(timer, "Refine mesh");
-    pcout << "Refining mesh..." << std::endl;
 
     Vector<float> estimated_error_per_cell(triangulation.n_active_cells());
     FEValuesExtractors::Vector velocity(0);
-
-    // Evaluate the error
     KellyErrorEstimator<dim>::estimate(dof_handler,
                                        face_quad_formula,
                                        typename FunctionMap<dim>::type(),
                                        present_solution,
                                        estimated_error_per_cell,
                                        fe.component_mask(velocity));
-
-    // Set the refine and coarsen flag
     parallel::distributed::GridRefinement::refine_and_coarsen_fixed_fraction(
       triangulation, estimated_error_per_cell, 0.6, 0.4);
     if (triangulation.n_levels() > max_grid_level)
@@ -682,6 +673,7 @@ namespace Fluid
 
     // Reinitialize the system
     setup_dofs();
+    make_constraints();
     initialize_system();
 
     // Transfer solution
@@ -689,8 +681,86 @@ namespace Fluid
     PETScWrappers::MPI::BlockVector tmp(newton_update);
     tmp = 0;
     trans.interpolate(tmp);
-    nonzero_constraints.distribute(tmp);
+    nonzero_constraints.distribute(tmp); // Is this line necessary?
     present_solution = tmp;
+  }
+
+  template <int dim>
+  void ParallelNavierStokes<dim>::run_one_step(bool apply_nonzero_constraints)
+  {
+    std::cout.precision(6);
+    std::cout.width(12);
+
+    if (time.get_timestep() == 0)
+      {
+        output_results(0);
+      }
+
+    time.increment();
+    pcout << std::string(96, '*') << std::endl
+          << "Time step = " << time.get_timestep()
+          << ", at t = " << std::scientific << time.current() << std::endl;
+
+    // Resetting
+    double current_residual = 1.0;
+    double initial_residual = 1.0;
+    double relative_residual = 1.0;
+    unsigned int outer_iteration = 0;
+    evaluation_point = present_solution;
+    while (relative_residual > tolerance && current_residual > 1e-14)
+      {
+        AssertThrow(outer_iteration < max_iteration,
+                    ExcMessage("Too many Newton iterations!"));
+
+        newton_update = 0;
+
+        // Since evaluation_point changes at every iteration,
+        // we have to reassemble both the lhs and rhs of the system
+        // before solving it.
+        // If the Dirichlet BCs are time-dependent, nonzero_constraints
+        // should be applied at the first iteration of every time step;
+        // if they are time-independent, nonzero_constraints should be
+        // applied only at the first iteration of the first time step.
+        assemble(apply_nonzero_constraints && outer_iteration == 0);
+        auto state = solve(apply_nonzero_constraints && outer_iteration == 0);
+        current_residual = system_rhs.l2_norm();
+
+        // Update evaluation_point. Since newton_update has been set to
+        // the correct bc values, there is no need to distribute the
+        // evaluation_point again. Note we have to use a non-ghosted
+        // vector as a buffer in order to do addition.
+        PETScWrappers::MPI::BlockVector tmp;
+        tmp.reinit(owned_partitioning, mpi_communicator);
+        tmp = evaluation_point;
+        tmp += newton_update;
+        nonzero_constraints.distribute(tmp);
+        evaluation_point = tmp;
+
+        if (outer_iteration == 0)
+          {
+            initial_residual = current_residual;
+          }
+        relative_residual = current_residual / initial_residual;
+
+        pcout << std::scientific << std::left << " ITR = " << std::setw(2)
+              << outer_iteration << " ABS_RES = " << current_residual
+              << " REL_RES = " << relative_residual
+              << " GMRES_ITR = " << std::setw(3) << state.first
+              << " GMRES_RES = " << state.second << std::endl;
+
+        outer_iteration++;
+      }
+    // Newton iteration converges, update time and solution
+    present_solution = evaluation_point;
+    // Output
+    if (time.time_to_output())
+      {
+        output_results(time.get_timestep());
+      }
+    if (time.time_to_refine())
+      {
+        refine_mesh(1, 3);
+      }
   }
 
   template <int dim>
@@ -702,78 +772,18 @@ namespace Fluid
 
     triangulation.refine_global(parameters.global_refinement);
     setup_dofs();
+    make_constraints();
     initialize_system();
 
-    bool first_step = true;
-
     // Time loop.
-    std::cout.precision(6);
-    std::cout.width(12);
-    output_results(time.get_timestep());
+    // use_nonzero_constraints is set to true only at the first time step,
+    // which means nonzero_constraints will be applied at the first iteration
+    // in the first time step only, and never be used again.
+    // This corresponds to time-independent Dirichlet BCs.
+    run_one_step(true);
     while (time.end() - time.current() > 1e-12)
       {
-        time.increment();
-        pcout << std::string(96, '*') << std::endl
-              << "Time step = " << time.get_timestep()
-              << ", at t = " << std::scientific << time.current() << std::endl;
-
-        // Resetting
-        double current_residual = 1.0;
-        double initial_residual = 1.0;
-        double relative_residual = 1.0;
-        unsigned int outer_iteration = 0;
-        evaluation_point = present_solution;
-        while (first_step || relative_residual > tolerance)
-          {
-            AssertThrow(outer_iteration < max_iteration,
-                        ExcMessage("Too many Newton iterations!"));
-
-            newton_update = 0;
-
-            // Since evaluation_point changes at every iteration,
-            // we have to reassemble both the lhs and rhs of the system
-            // before solving it.
-            assemble_system(first_step);
-            auto state = solve(first_step);
-            current_residual = system_rhs.l2_norm();
-
-            // Update evaluation_point and do not forget to modify it
-            // with constraints.
-            // Note we have to use a non-ghosted vector as a buffer in order
-            // to do addition.
-            PETScWrappers::MPI::BlockVector tmp;
-            tmp.reinit(owned_partitioning, mpi_communicator);
-            tmp = evaluation_point;
-            tmp += newton_update;
-            nonzero_constraints.distribute(tmp);
-            evaluation_point = tmp;
-            first_step = false;
-
-            if (outer_iteration == 0)
-              {
-                initial_residual = current_residual;
-              }
-            relative_residual = current_residual / initial_residual;
-
-            pcout << std::scientific << std::left << " ITR = " << std::setw(2)
-                  << outer_iteration << " ABS_RES = " << current_residual
-                  << " REL_RES = " << relative_residual
-                  << " GMRES_ITR = " << std::setw(3) << state.first
-                  << " GMRES_RES = " << state.second << std::endl;
-
-            outer_iteration++;
-          }
-        // Newton iteration converges, update time and solution
-        present_solution = evaluation_point;
-        // Output
-        if (time.time_to_output())
-          {
-            output_results(time.get_timestep());
-          }
-        if (time.time_to_refine())
-          {
-            refine_mesh(1, 3);
-          }
+        run_one_step(false);
       }
   }
 
@@ -800,12 +810,33 @@ namespace Fluid
                              DataOut<dim>::type_dof_data,
                              data_component_interpretation);
 
+    // Partition
     Vector<float> subdomain(triangulation.n_active_cells());
     for (unsigned int i = 0; i < subdomain.size(); ++i)
       {
         subdomain(i) = triangulation.locally_owned_subdomain();
       }
     data_out.add_data_vector(subdomain, "subdomain");
+
+    // Indicator
+    Vector<float> ind(triangulation.n_active_cells());
+    int i = 0;
+    for (auto cell = triangulation.begin_active(); cell != triangulation.end();
+         ++cell)
+      {
+        auto p = cell_property.get_data(cell);
+        bool artificial = false;
+        for (auto ptr : p)
+          {
+            if (ptr->indicator == 1)
+              {
+                artificial = true;
+                break;
+              }
+          }
+        ind[i++] = artificial;
+      }
+    data_out.add_data_vector(ind, "Indicator");
     data_out.build_patches();
 
     std::string basename =

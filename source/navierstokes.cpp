@@ -77,10 +77,8 @@ namespace Fluid
       tmp2 = 0;
       // Jacobi preconditioner of matrix A is by definition inverse diag(A),
       // this is exactly what we want to compute.
+      // Note that the mass matrix and mass schur do not include the density.
       mass_matrix->block(0, 0).precondition_Jacobi(tmp2, tmp1);
-      // The mass matrix is not multiplied with density, so we need to account
-      // for it when necessary.
-      tmp2 /= rho;
       // The sparsity pattern has already been set correctly, so explicitly
       // tell mmult not to rebuild the sparsity pattern.
       system_matrix->block(1, 0).mmult(
@@ -108,15 +106,12 @@ namespace Fluid
                                    1e-6 * src.block(1).l2_norm());
       SolverCG<> cg(solver_control);
 
-      // \f$-(\nu + \gamma)M_p^{-1}v_1\f$
-      // We choose to use SparseILU as a preconditioner.
+      // \f$-(\mu + \gamma\rho)M_p^{-1}v_1\f$
       Vector<double> tmp(src.block(1).size());
       SparseILU<double> Mp_preconditioner;
       Mp_preconditioner.initialize(mass_matrix->block(1, 1));
       cg.solve(mass_matrix->block(1, 1), tmp, src.block(1), Mp_preconditioner);
-      // In the original formulation, this is \f$\nu + \gamma\f$,
-      // pressure matrix does not contain density so multiply it with density.
-      tmp *= -(viscosity / rho + gamma) * rho;
+      tmp *= -(viscosity + gamma * rho);
 
       timer.leave_subsection("CG for Mp");
       timer.enter_subsection("CG for Sm");
@@ -124,8 +119,8 @@ namespace Fluid
       // FIXME: There is a mysterious bug here. After refine_mesh is called,
       // the initialization of Sm_preconditioner will complain about zero
       // entries on the diagonal which causes division by 0. Same thing happens
-      // to the parallel code since its block Jacobi preconditioner uses ILU
-      // underneath. However, 1. if we do not use a preconditioner here, the
+      // to the block Jacobi preconditioner of the parallel solver.
+      // However, 1. if we do not use a preconditioner here, the
       // code runs fine, suggesting that mass_schur is correct; 2. if we do not
       // call refine_mesh, the code also runs fine. So the question is, why
       // would refine_mesh generate diagonal zeros?
@@ -134,7 +129,7 @@ namespace Fluid
       SparseILU<double> Sm_preconditioner;
       Sm_preconditioner.initialize(*mass_schur);
       cg.solve(*mass_schur, dst.block(1), src.block(1), Sm_preconditioner);
-      dst.block(1) *= -1 / dt;
+      dst.block(1) *= -rho / dt;
 
       // Adding up these two, we get \f$\tilde{S}^{-1}v_1\f$.
       dst.block(1) += tmp;
@@ -220,7 +215,7 @@ namespace Fluid
 
     // For inhomogeneous BC, only constant input values can be read from
     // the input file. If time or space dependent Dirichlet BCs are
-    // desired, this block of code has to be modified.
+    // desired, they must be implemented in BoundaryValues.
     nonzero_constraints.clear();
     zero_constraints.clear();
     DoFTools::make_hanging_node_constraints(dof_handler, nonzero_constraints);
@@ -392,8 +387,8 @@ namespace Fluid
     const unsigned int n_q_points = volume_quad_formula.size();
     const unsigned int n_face_q_points = face_quad_formula.size();
 
-    AssertThrow(u_dofs * dim + p_dofs == dofs_per_cell,
-                ExcMessage("Wrong partitioning of dofs!"));
+    Assert(u_dofs * dim + p_dofs == dofs_per_cell,
+           ExcMessage("Wrong partitioning of dofs!"));
 
     const FEValuesExtractors::Vector velocities(0);
     const FEValuesExtractors::Scalar pressure(dim);
@@ -403,12 +398,6 @@ namespace Fluid
     Vector<double> local_rhs(dofs_per_cell);
 
     std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
-
-    // For the linearized system, we create temporary storage for current
-    // velocity
-    // and gradient, current pressure, and present velocity. In practice, they
-    // are
-    // all obtained through their shape functions at quadrature points.
 
     std::vector<Tensor<1, dim>> current_velocity_values(n_q_points);
     std::vector<Tensor<2, dim>> current_velocity_gradients(n_q_points);
@@ -636,7 +625,7 @@ namespace Fluid
     initialize_system();
 
     solution_transfer.interpolate(buffer, present_solution);
-    nonzero_constraints.distribute(present_solution);
+    nonzero_constraints.distribute(present_solution); // Is this line necessary?
   }
 
   template <int dim>
@@ -650,7 +639,6 @@ namespace Fluid
         output_results(0);
       }
 
-    // Time loop.
     time.increment();
     std::cout << std::string(96, '*') << std::endl
               << "Time step = " << time.get_timestep()
@@ -672,13 +660,17 @@ namespace Fluid
         // Since evaluation_point changes at every iteration,
         // we have to reassemble both the lhs and rhs of the system
         // before solving it.
+        // If the Dirichlet BCs are time-dependent, nonzero_constraints
+        // should be applied at the first iteration of every time step;
+        // if they are time-independent, nonzero_constraints should be
+        // applied only at the first iteration of the first time step.
         assemble(apply_nonzero_constraints && outer_iteration == 0);
         auto state = solve(apply_nonzero_constraints && outer_iteration == 0);
         current_residual = system_rhs.l2_norm();
 
         // Update evaluation_point. Since newton_update has been set to
         // the correct bc values, there is no need to distribute the
-        // evaluation_point again
+        // evaluation_point again.
         evaluation_point.add(1.0, newton_update);
 
         // Update the relative residual
