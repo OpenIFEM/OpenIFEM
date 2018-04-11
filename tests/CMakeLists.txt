@@ -2,6 +2,7 @@
 set(tests fluid_cylinder
           fluid_pipe
           fluid_pressure_driven
+          fluid_mpi_cylinder
           fsi_gravity
           solid_bending_beam
           solid_gravity)

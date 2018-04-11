@@ -31,6 +31,12 @@ namespace Fluid
       values(c) = BoundaryValues::value(p, c);
   }
 
+  template <int dim>
+  PETScWrappers::MPI::BlockVector ParallelNavierStokes<dim>::get_current_solution() const
+  {
+    return present_solution;
+  }
+
   /**
    * In serial code, we initialize the direct solver in the constructor
    * to avoid repeatedly allocating memory. However it seems we can't
@@ -333,20 +339,22 @@ namespace Fluid
   {
     pcout << "   Setting up cell property..." << std::endl;
     const unsigned int n_q_points = volume_quad_formula.size();
-    cell_property.initialize(
-      triangulation.begin_active(), triangulation.end(), n_q_points);
     for (auto cell = triangulation.begin_active(); cell != triangulation.end();
          ++cell)
       {
-        const std::vector<std::shared_ptr<CellProperty>> p =
-          cell_property.get_data(cell);
-        Assert(p.size() == n_q_points,
-               ExcMessage("Wrong number of cell property!"));
-        for (unsigned int q = 0; q < n_q_points; ++q)
+        if (cell->is_locally_owned())
           {
-            p[q]->indicator = 0;
-            p[q]->fsi_acceleration = 0;
-            p[q]->fsi_stress = 0;
+            cell_property.initialize(cell, n_q_points);
+            const std::vector<std::shared_ptr<CellProperty>> p =
+              cell_property.get_data(cell);
+            Assert(p.size() == n_q_points,
+                  ExcMessage("Wrong number of cell property!"));
+            for (unsigned int q = 0; q < n_q_points; ++q)
+              {
+                p[q]->indicator = 0;
+                p[q]->fsi_acceleration = 0;
+                p[q]->fsi_stress = 0;
+              }
           }
       }
   }
@@ -820,21 +828,23 @@ namespace Fluid
 
     // Indicator
     Vector<float> ind(triangulation.n_active_cells());
-    int i = 0;
-    for (auto cell = triangulation.begin_active(); cell != triangulation.end();
-         ++cell)
+    int cnt = 0;
+    for (auto cell = triangulation.begin_active(); cell != triangulation.end(); ++cell)
       {
-        auto p = cell_property.get_data(cell);
-        bool artificial = false;
-        for (auto ptr : p)
+        if (cell->is_locally_owned())
           {
-            if (ptr->indicator == 1)
+            auto p = cell_property.get_data(cell);
+            bool artificial = false;
+            for (auto ptr : p)
               {
-                artificial = true;
-                break;
+                if (ptr->indicator == 1)
+                  {
+                    artificial = true;
+                    break;
+                  }
               }
+            ind[cnt++] = artificial;
           }
-        ind[i++] = artificial;
       }
     data_out.add_data_vector(ind, "Indicator");
     data_out.build_patches();
