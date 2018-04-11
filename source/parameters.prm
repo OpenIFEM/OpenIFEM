@@ -26,7 +26,7 @@ subsection Simulation
   # Mesh refinement interval in second
   set Refinement interval = 10
 
-  # Body force which applies to both fluid and solid (acceleration)
+  # Body force which applies to solid only (acceleration)
   set Gravity = 0.0, 0.0
 end
 

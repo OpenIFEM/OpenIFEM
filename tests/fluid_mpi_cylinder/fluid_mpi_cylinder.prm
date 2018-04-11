@@ -12,10 +12,10 @@ subsection Simulation
 
   # Level of global refinement before running,
   # which applies to all the solvers
-  set Global refinement = 2
+  set Global refinement = 4
 
   # The end time of the simulation in second
-  set End time = 1e0
+  set End time = 1e-2
 
   # The time step in second
   set Time step size = 1e-2

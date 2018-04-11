@@ -847,7 +847,7 @@ namespace Fluid
           }
       }
     data_out.add_data_vector(ind, "Indicator");
-    data_out.build_patches();
+    data_out.build_patches(parameters.fluid_degree + 1);
 
     std::string basename =
       "navierstokes" + Utilities::int_to_string(output_index, 6) + "-";

@@ -2,9 +2,7 @@
  * This program tests parallel NavierStokes solver with a 2D flow around cylinder
  * case.
  * Hard-coded parabolic velocity input is used, and Re = 20.
- * To save time, the global mesh refinement level is set to 1.
- * For real application, 2 should be used.
- * This test takes about 240s.
+ * Only one step is run, and the test takes about 175s.
  */
 #include "mpi_navierstokes.h"
 #include "parameters.h"
@@ -37,16 +35,14 @@ int main(int argc, char *argv[])
           Fluid::ParallelNavierStokes<2> flow(tria, params);
           flow.run();
           // Check the max values of velocity and pressure
-          /*
           auto solution = flow.get_current_solution();
           auto v = solution.block(0), p = solution.block(1);
-          double vmax = *std::max_element(v.begin(), v.end());
-          double pmax = *std::max_element(p.begin(), p.end());
-          double verror = std::abs(vmax - 0.4008695) / 0.4008695;
-          double perror = std::abs(pmax - 0.1473135) / 0.1473135;
+          double vmax = v.max();
+          double pmax = p.max();
+          double verror = std::abs(vmax - 0.379012) / 0.379012;
+          double perror = std::abs(pmax - 46.4475) / 46.4475;
           AssertThrow(verror < 1e-3 && perror < 1e-3,
                       ExcMessage("Maximum velocity or pressure is incorrect!"));
-                      */
         }
       else if (params.dimension == 3)
         {
