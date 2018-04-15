@@ -458,7 +458,7 @@ namespace Solid
           quad_point_history.get_data(cell);
         Assert(lqph.size() == n_q_points, ExcInternalError());
 	
-	int counter=0;
+	
 	for (unsigned int q = 0; q < n_q_points; ++q)
           {
             const Tensor<2, dim> F_inv = lqph[q]->get_F_inv();

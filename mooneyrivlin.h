@@ -31,8 +31,9 @@ namespace Solid
     virtual dealii::SymmetricTensor<2, dim> get_tau_bar() const override
     {
       
-    
+    // Calculating d_psi/d_b_bar
        const dealii::SymmetricTensor<2, dim> temp1 = (this->c1*ST::I + this->c2 *(dealii::trace(this->b_bar)*ST::I - this->b_bar));
+    // Multiplication by b_bar	
        dealii::SymmetricTensor<2, dim> temp2;
        
          for (unsigned int i=0; i<dim; ++i)
@@ -53,8 +54,9 @@ namespace Solid
 
     virtual dealii::SymmetricTensor<4, dim> get_cc_bar() const override
     {
-      
+      //Calculating d2_psi/d_b_bar^2
         const dealii::SymmetricTensor<4, dim> temp1 = this->c2 * (ST::IxI - ST::S);
+      //Calculating b_bar*d2_psi/d_b_bar^2*b_bar
         dealii::SymmetricTensor<4, dim> temp2;
 	dealii::SymmetricTensor<4, dim> temp3;
 	for (unsigned int i=0; i<dim; ++i)
