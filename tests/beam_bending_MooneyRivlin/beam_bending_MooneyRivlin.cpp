@@ -21,9 +21,13 @@ int main(int argc, char *argv[])
 
   try
     {
-      Utilities::MPI::MPI_InitFinalize mpi_initialization(argc, argv, 1);
-
-      Parameters::AllParameters params("parameters.prm");
+       std::string infile("parameters.prm");
+      if (argc > 1)
+        {
+          infile = argv[1];
+        }
+      Parameters::AllParameters params(infile);
+      
       if (params.dimension == 2)
         {
           Triangulation<2> tria;

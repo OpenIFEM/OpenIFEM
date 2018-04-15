@@ -15,13 +15,13 @@ subsection Simulation
   set Global refinement = 0
 
   # The end time of the simulation in second
-  set End time = 2
+  set End time = 0.5
 
   # The time step in second
   set Time step size = 0.01
 
   # The output interval in second
-  set Output interval = 0.1
+  set Output interval = 0.05
 
   # Mesh refinement interval in second
   set Refinement interval = 10
@@ -89,7 +89,7 @@ end
 
 subsection Solid material properties
   # Material type, currently LinearElastic, NeoHookean and MooneyRivlin are available
-  set Solid type = MooneyRivlin
+  set Solid type = NeoHookean
 
   # Density, required by dynamic analysis
   set Density = 1100
@@ -100,7 +100,7 @@ subsection Solid material properties
   set Poisson's ratio = 0.25
 
   # A list of parameters used by hyperelasticMaterial C1, kappa and C2
-  set Hyperelastic parameters = 0.297761e6,1e5, 0.297761e6
+  set Hyperelastic parameters = 0.297751e6, 1e6, 0.297761e6
 end
 
 subsection Solid solver control
