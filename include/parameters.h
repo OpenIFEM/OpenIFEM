@@ -20,6 +20,7 @@ namespace Parameters
     double time_step;
     double output_interval;
     double refinement_interval;
+    std::vector<double> gravity;
     static void declareParameters(ParameterHandler &);
     void parseParameters(ParameterHandler &);
   };
@@ -34,6 +35,7 @@ namespace Parameters
   struct FluidMaterial
   {
     double viscosity;
+    double fluid_rho;
     static void declareParameters(ParameterHandler &);
     void parseParameters(ParameterHandler &);
   };
@@ -49,6 +51,8 @@ namespace Parameters
 
   struct FluidDirichlet
   {
+    /** Use the hard-coded bc values or the input ones. */
+    int use_hard_coded_values;
     /** Number of fluid Dirichlet BCs. */
     unsigned int n_fluid_dirichlet_bcs;
     /**
@@ -86,7 +90,7 @@ namespace Parameters
   struct SolidMaterial
   {
     std::string solid_type;
-    double rho;            //!< density, used by all types.
+    double solid_rho;      //!< density, used by all types.
     double E;              //!< Young's modulus, linear elastic material only.
     double nu;             //!< Poisson's ratio, linear elastic material only.
     std::vector<double> C; //!< Hyperelastic material constants.

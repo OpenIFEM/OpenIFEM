@@ -3,6 +3,7 @@
 
 #include <deal.II/base/function.h>
 #include <deal.II/base/quadrature_lib.h>
+#include <deal.II/base/quadrature_point_data.h>
 #include <deal.II/base/tensor.h>
 #include <deal.II/base/timer.h>
 
@@ -12,8 +13,10 @@
 #include <deal.II/dofs/dof_tools.h>
 
 #include <deal.II/fe/fe.h>
+#include <deal.II/fe/fe_dgq.h>
 #include <deal.II/fe/fe_q.h>
 #include <deal.II/fe/fe_system.h>
+#include <deal.II/fe/fe_tools.h>
 #include <deal.II/fe/fe_values.h>
 
 #include <deal.II/grid/grid_generator.h>
@@ -49,6 +52,9 @@
 #include "parameters.h"
 #include "utilities.h"
 
+template <int>
+class FSI;
+
 namespace Solid
 {
   using namespace dealii;
@@ -67,6 +73,8 @@ namespace Solid
   class LinearElasticSolver
   {
   public:
+    friend FSI<dim>;
+
     /*! \brief Constructor.
      *
      * The triangulation can either be generated using dealii functions or
@@ -76,10 +84,14 @@ namespace Solid
     LinearElasticSolver(Triangulation<dim> &,
                         const Parameters::AllParameters &);
     /*! \brief Destructor. */
-    ~LinearElasticSolver() { dof_handler.clear(); }
+    ~LinearElasticSolver();
     void run();
+    Vector<double> get_current_solution() const;
+    Tensor<1, dim> get_fsi_force() const;
 
   private:
+    struct CellProperty;
+
     /**
      * Set up the DofHandler, reorder the grid, sparsity pattern.
      */
@@ -95,8 +107,20 @@ namespace Solid
     /**
      * Assembles lhs and rhs. At time step 0, the lhs is the mass matrix;
      * at all the following steps, it is \f$ M + \beta{\Delta{t}}^2K \f$.
+     * It can also be used to assemble the RHS only, in case of time-dependent
+     * Neumann boundary conditions.
+     */
+    void assemble(bool is_initial, bool assemble_matrix);
+
+    /**
+     * Assembles both the LHS and RHS of the system.
      */
     void assemble_system(bool is_initial);
+
+    /**
+     * Assembles only the RHS of the system.
+     */
+    void assemble_rhs();
 
     /**
      * Solve the linear system. Returns the number of
@@ -116,6 +140,16 @@ namespace Solid
      */
     void refine_mesh(const unsigned int, const unsigned int);
 
+    /**
+     * Update the strain and stress, used in output_results and FSI.
+     */
+    void update_strain_and_stress() const;
+
+    /**
+     * Run one time step.
+     */
+    void run_one_step(bool);
+
     LinearElasticMaterial<dim> material;
 
     const double gamma; //!< Newton-beta parameter
@@ -128,7 +162,10 @@ namespace Solid
 
     Triangulation<dim> &triangulation;
     FESystem<dim> fe;
+    FE_DGQ<dim> dg_fe; //!< Discontinous Glerkin FE for the nodal strain/stress
     DoFHandler<dim> dof_handler;
+    DoFHandler<dim>
+      dg_dof_handler; //!< Dof handler for dg_fe, which has one dof per vertex.
 
     const QGauss<dim>
       volume_quad_formula; //!< Quadrature formula for volume integration.
@@ -165,10 +202,30 @@ namespace Solid
     Vector<double> previous_velocity;
     Vector<double> previous_displacement;
 
+    /**
+     * Infinitesimal strain and Cauchy stress. Each of them contains dim*dim
+     * Vectors,
+     * where every Vector has dg_dof_handler.n_dofs() components.
+     */
+    mutable std::vector<std::vector<Vector<double>>> strain, stress;
+
     Utils::Time time;
     mutable TimerOutput timer;
 
     Parameters::AllParameters parameters;
+
+    std::vector<Tensor<1, dim>> fluid_traction;
+
+    CellDataStorage<typename Triangulation<dim>::cell_iterator, CellProperty>
+      cell_property;
+
+    /**
+     * The fluid traction in FSI simulation, which should be set by the FSI.
+     */
+    struct CellProperty
+    {
+      Tensor<1, dim> fsi_traction;
+    };
   };
 }
 

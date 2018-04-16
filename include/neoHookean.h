@@ -31,7 +31,8 @@ namespace Solid
     virtual dealii::SymmetricTensor<4, dim> get_cc_bar() const override
     {
       return dealii::SymmetricTensor<4, dim>();
-    } 
+    }
+
   private:
     double c1;
   };

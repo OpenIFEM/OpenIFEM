@@ -1,22 +1,24 @@
 # List all the source files here
-set(TARGET_SRC
+set(TARGET_SRC fsi.cpp
                hyperelasticMaterial.cpp
                hyperelasticSolver.cpp
                linearElasticMaterial.cpp
                linearElasticSolver.cpp
                mpi_linearelasticity.cpp
+               mpi_navierstokes.cpp
                navierstokes.cpp
                parameters.cpp
                utilities.cpp)
 
 # List all the header files here
-set(headers 
+set(headers fsi.h
             hyperelasticMaterial.h
             hyperelasticSolver.h
             linearElasticMaterial.h
             linearElasticSolver.h
-	    mpi_linearelasticity.h
             material.h
+            mpi_linearelasticity.h
+            mpi_navierstokes.h
             navierstokes.h
             neoHookean.h
 	    mooneyrivlin.h

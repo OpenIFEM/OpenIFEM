@@ -3,127 +3,160 @@
 namespace Fluid
 {
   template <int dim>
-  double BoundaryValues<dim>::value(const Point<dim> &p,
-                                    const unsigned int component) const
+  double
+  NavierStokes<dim>::BoundaryValues::value(const Point<dim> &p,
+                                           const unsigned int component) const
   {
     Assert(component < this->n_components,
            ExcIndexRange(component, 0, this->n_components));
-    if (component == 0 && std::abs(p[0] - 0.3) < 1e-10)
+    double left_boundary = (dim == 2 ? 0.3 : 0.0);
+    if (component == 0 && std::abs(p[0] - left_boundary) < 1e-10)
       {
-        double U = 1.5;
+        double U = 0.3;
         double y = p[1];
-        return 4 * U * y * (0.41 - y) / (0.41 * 0.41);
+        double value = 4 * U * y * (0.41 - y) / (0.41 * 0.41);
+        if (dim == 3)
+          {
+            value *= 4 * p[2] * (0.41 - p[2]);
+          }
+        return value;
       }
     return 0;
   }
 
   template <int dim>
-  void BoundaryValues<dim>::vector_value(const Point<dim> &p,
-                                         Vector<double> &values) const
+  void
+  NavierStokes<dim>::BoundaryValues::vector_value(const Point<dim> &p,
+                                                  Vector<double> &values) const
   {
     for (unsigned int c = 0; c < this->n_components; ++c)
-      values(c) = BoundaryValues<dim>::value(p, c);
+      values(c) = BoundaryValues::value(p, c);
   }
 
-  template <class MatrixType, class PreconditionerType>
-  InverseMatrix<MatrixType, PreconditionerType>::InverseMatrix(
-    const MatrixType &m, const PreconditionerType &preconditioner)
-    : matrix(&m), preconditioner(&preconditioner)
+  template <int dim>
+  BlockVector<double> NavierStokes<dim>::get_current_solution() const
   {
-  }
-
-  template <class MatrixType, class PreconditionerType>
-  void InverseMatrix<MatrixType, PreconditionerType>::vmult(
-    Vector<double> &dst, const Vector<double> &src) const
-  {
-    SolverControl solver_control(src.size(), 1e-6 * src.l2_norm());
-    SolverCG<> cg(solver_control);
-    dst = 0;
-    cg.solve(*matrix, dst, src, *preconditioner);
-  }
-
-  ApproximateMassSchur::ApproximateMassSchur(const BlockSparseMatrix<double> &M)
-    : mass_matrix(&M), tmp1(M.block(0, 0).m()), tmp2(M.block(0, 0).m())
-  {
-  }
-
-  void ApproximateMassSchur::vmult(Vector<double> &dst,
-                                   const Vector<double> &src) const
-  {
-    mass_matrix->block(0, 1).vmult(tmp1, src);
-    mass_matrix->block(0, 0).precondition_Jacobi(tmp2, tmp1);
-    mass_matrix->block(1, 0).vmult(dst, tmp2);
-  }
-
-  template <class PreconditionerSm, class PreconditionerMp>
-  SchurComplementInverse<PreconditionerSm, PreconditionerMp>::
-    SchurComplementInverse(
-      double gamma,
-      double viscosity,
-      double dt,
-      const InverseMatrix<ApproximateMassSchur, PreconditionerSm> &Sm_inv,
-      const InverseMatrix<SparseMatrix<double>, PreconditionerMp> &Mp_inv)
-    : gamma(gamma),
-      viscosity(viscosity),
-      dt(dt),
-      Sm_inverse(&Sm_inv),
-      Mp_inverse(&Mp_inv)
-  {
-  }
-
-  template <class PreconditionerSm, class PreconditionerMp>
-  void SchurComplementInverse<PreconditionerSm, PreconditionerMp>::vmult(
-    Vector<double> &dst, const Vector<double> &src) const
-  {
-    Vector<double> tmp(src.size());
-    Mp_inverse->vmult(tmp, src);
-    tmp *= -(viscosity + gamma);
-    Sm_inverse->vmult(dst, src);
-    dst *= -1 / dt;
-    dst += tmp;
+    return present_solution;
   }
 
   /**
-   * We can notice that the initialization of the inverse of the matrix at (0,0)
-   * corner
-   * is completed in the constructor. Thus the initialization of this class is
-   * expensive,
-   * but every application of the preconditioner then no longer requires
-   * the computation of the matrix factors.
+   * The initialization of the direct solver is expensive as it allocates
+   * a lot of memory. The preconditioner is going to be applied several
+   * times before it is re-initialized. Therefore initializing the direct
+   * solver in the constructor saves time. However, it is pointless to do
+   * this to iterative solvers.
    */
-  template <class PreconditionerSm, class PreconditionerMp>
-  BlockSchurPreconditioner<PreconditionerSm, PreconditionerMp>::
-    BlockSchurPreconditioner(
-      const BlockSparseMatrix<double> &system,
-      const SchurComplementInverse<PreconditionerSm, PreconditionerMp> &S_inv)
-    : system_matrix(&system), S_inverse(&S_inv)
+  template <int dim>
+  NavierStokes<dim>::BlockSchurPreconditioner::BlockSchurPreconditioner(
+    TimerOutput &timer,
+    double gamma,
+    double viscosity,
+    double rho,
+    double dt,
+    const BlockSparseMatrix<double> &system,
+    const BlockSparseMatrix<double> &mass,
+    SparseMatrix<double> &schur)
+    : timer(timer),
+      gamma(gamma),
+      viscosity(viscosity),
+      rho(rho),
+      dt(dt),
+      system_matrix(&system),
+      mass_matrix(&mass),
+      mass_schur(&schur)
   {
-    A_inverse.initialize(system_matrix->block(0, 0));
+    {
+      // Factoring A is also part of the direct solver.
+      TimerOutput::Scope timer_section(timer, "UMFPACK for A_inv");
+      A_inverse.initialize(system_matrix->block(0, 0));
+    }
+    {
+      TimerOutput::Scope timer_section(timer, "CG for Sm");
+      Vector<double> tmp1(mass_matrix->block(0, 0).m()), tmp2(tmp1);
+      tmp1 = 1;
+      tmp2 = 0;
+      // Jacobi preconditioner of matrix A is by definition inverse diag(A),
+      // this is exactly what we want to compute.
+      // Note that the mass matrix and mass schur do not include the density.
+      mass_matrix->block(0, 0).precondition_Jacobi(tmp2, tmp1);
+      // The sparsity pattern has already been set correctly, so explicitly
+      // tell mmult not to rebuild the sparsity pattern.
+      system_matrix->block(1, 0).mmult(
+        *mass_schur, system_matrix->block(0, 1), tmp2, false);
+    }
   }
 
-  template <class PreconditionerSm, class PreconditionerMp>
-  void BlockSchurPreconditioner<PreconditionerSm, PreconditionerMp>::vmult(
+  /**
+   * The vmult operation strictly follows the definition of
+   * BlockSchurPreconditioner. Conceptually it computes \f$u = P^{-1}v\f$.
+   */
+  template <int dim>
+  void NavierStokes<dim>::BlockSchurPreconditioner::vmult(
     BlockVector<double> &dst, const BlockVector<double> &src) const
   {
+    // First, buffer the velocity block of src vector (\f$v_0\f$).
     Vector<double> utmp(src.block(0));
 
+    // This block computes \f$u_1 = \tilde{S}^{-1} v_1\f$.
     {
-      S_inverse->vmult(dst.block(1), src.block(1));
+      timer.enter_subsection("CG for Mp");
+
+      // CG solver used for \f$M_p^{-1}\f$ and \f$S_m^{-1}\f$.
+      SolverControl solver_control(src.block(1).size(),
+                                   1e-6 * src.block(1).l2_norm());
+      SolverCG<> cg(solver_control);
+
+      // \f$-(\mu + \gamma\rho)M_p^{-1}v_1\f$
+      Vector<double> tmp(src.block(1).size());
+      SparseILU<double> Mp_preconditioner;
+      Mp_preconditioner.initialize(mass_matrix->block(1, 1));
+      cg.solve(mass_matrix->block(1, 1), tmp, src.block(1), Mp_preconditioner);
+      tmp *= -(viscosity + gamma * rho);
+
+      timer.leave_subsection("CG for Mp");
+      timer.enter_subsection("CG for Sm");
+
+      // FIXME: There is a mysterious bug here. After refine_mesh is called,
+      // the initialization of Sm_preconditioner will complain about zero
+      // entries on the diagonal which causes division by 0. Same thing happens
+      // to the block Jacobi preconditioner of the parallel solver.
+      // However, 1. if we do not use a preconditioner here, the
+      // code runs fine, suggesting that mass_schur is correct; 2. if we do not
+      // call refine_mesh, the code also runs fine. So the question is, why
+      // would refine_mesh generate diagonal zeros?
+      //
+      // \f$-\frac{1}{dt}S_m^{-1}v_1\f$
+      SparseILU<double> Sm_preconditioner;
+      Sm_preconditioner.initialize(*mass_schur);
+      cg.solve(*mass_schur, dst.block(1), src.block(1), Sm_preconditioner);
+      dst.block(1) *= -rho / dt;
+
+      // Adding up these two, we get \f$\tilde{S}^{-1}v_1\f$.
+      dst.block(1) += tmp;
+
+      timer.leave_subsection("CG for Sm");
     }
 
+    // This block computes \f$v_0 - B^T\tilde{S}^{-1}v_1\f$ based on \f$u_1\f$.
     {
       system_matrix->block(0, 1).vmult(utmp, dst.block(1));
       utmp *= -1.0;
       utmp += src.block(0);
     }
 
-    A_inverse.vmult(dst.block(0), utmp);
+    // Finally, compute the product of \f$\tilde{A}^{-1}\f$ and utmp with
+    // the direct solver.
+    {
+      TimerOutput::Scope timer_section(timer, "UMFPACK for A_inv");
+      A_inverse.vmult(dst.block(0), utmp);
+    }
   }
 
   template <int dim>
   NavierStokes<dim>::NavierStokes(Triangulation<dim> &tria,
                                   const Parameters::AllParameters &parameters)
     : viscosity(parameters.viscosity),
+      rho(parameters.fluid_rho),
       gamma(parameters.grad_div),
       degree(parameters.fluid_degree),
       triangulation(tria),
@@ -162,6 +195,15 @@ namespace Fluid
     unsigned int dof_u = dofs_per_block[0];
     unsigned int dof_p = dofs_per_block[1];
 
+    std::cout << "   Number of active fluid cells: "
+              << triangulation.n_active_cells() << std::endl
+              << "   Number of degrees of freedom: " << dof_handler.n_dofs()
+              << " (" << dof_u << '+' << dof_p << ')' << std::endl;
+  }
+
+  template <int dim>
+  void NavierStokes<dim>::make_constraints()
+  {
     // In Newton's scheme, we first apply the boundary condition on the solution
     // obtained from the initial step. To make sure the boundary conditions
     // remain
@@ -173,98 +215,129 @@ namespace Fluid
 
     // For inhomogeneous BC, only constant input values can be read from
     // the input file. If time or space dependent Dirichlet BCs are
-    // desired, this block of code has to be modified.
-    {
-      nonzero_constraints.clear();
-      zero_constraints.clear();
-      DoFTools::make_hanging_node_constraints(dof_handler, nonzero_constraints);
-      DoFTools::make_hanging_node_constraints(dof_handler, zero_constraints);
-      for (auto itr = parameters.fluid_dirichlet_bcs.begin();
-           itr != parameters.fluid_dirichlet_bcs.end();
-           ++itr)
-        {
-          // First get the id, flag and value from the input file
-          unsigned int id = itr->first;
-          unsigned int flag = itr->second.first;
-          std::vector<double> value = itr->second.second;
+    // desired, they must be implemented in BoundaryValues.
+    nonzero_constraints.clear();
+    zero_constraints.clear();
+    DoFTools::make_hanging_node_constraints(dof_handler, nonzero_constraints);
+    DoFTools::make_hanging_node_constraints(dof_handler, zero_constraints);
+    for (auto itr = parameters.fluid_dirichlet_bcs.begin();
+         itr != parameters.fluid_dirichlet_bcs.end();
+         ++itr)
+      {
+        // First get the id, flag and value from the input file
+        unsigned int id = itr->first;
+        unsigned int flag = itr->second.first;
+        std::vector<double> value = itr->second.second;
 
-          // To make VectorTools::interpolate_boundary_values happy,
-          // a vector of bool and a vector of double which are of size
-          // dim + 1 are required.
-          std::vector<bool> mask(dim + 1, false);
-          std::vector<double> augmented_value(dim + 1, 0.0);
-          // 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
-          switch (flag)
-            {
-            case 1:
-              mask[0] = true;
-              augmented_value[0] = value[0];
-              break;
-            case 2:
-              mask[1] = true;
-              augmented_value[1] = value[0];
-              break;
-            case 3:
-              mask[0] = true;
-              mask[1] = true;
-              augmented_value[0] = value[0];
-              augmented_value[1] = value[1];
-              break;
-            case 4:
-              mask[2] = true;
-              augmented_value[2] = value[0];
-              break;
-            case 5:
-              mask[0] = true;
-              mask[2] = true;
-              augmented_value[0] = value[0];
-              augmented_value[2] = value[1];
-              break;
-            case 6:
-              mask[1] = true;
-              mask[2] = true;
-              augmented_value[1] = value[0];
-              augmented_value[2] = value[1];
-              break;
-            case 7:
-              mask[0] = true;
-              mask[1] = true;
-              mask[2] = true;
-              augmented_value[0] = value[0];
-              augmented_value[1] = value[1];
-              augmented_value[2] = value[2];
-              break;
-            default:
-              AssertThrow(false, ExcMessage("Unrecogonized component flag!"));
-              break;
-            }
-          VectorTools::interpolate_boundary_values(
-            dof_handler,
-            id,
-            Functions::ConstantFunction<dim>(augmented_value),
-            // BoundaryValues<dim>(),
-            nonzero_constraints,
-            ComponentMask(mask));
-          VectorTools::interpolate_boundary_values(
-            dof_handler,
-            id,
-            Functions::ZeroFunction<dim>(dim + 1),
-            zero_constraints,
-            ComponentMask(mask));
-        }
-    }
+        // To make VectorTools::interpolate_boundary_values happy,
+        // a vector of bool and a vector of double which are of size
+        // dim + 1 are required.
+        std::vector<bool> mask(dim + 1, false);
+        std::vector<double> augmented_value(dim + 1, 0.0);
+        // 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
+        switch (flag)
+          {
+          case 1:
+            mask[0] = true;
+            augmented_value[0] = value[0];
+            break;
+          case 2:
+            mask[1] = true;
+            augmented_value[1] = value[0];
+            break;
+          case 3:
+            mask[0] = true;
+            mask[1] = true;
+            augmented_value[0] = value[0];
+            augmented_value[1] = value[1];
+            break;
+          case 4:
+            mask[2] = true;
+            augmented_value[2] = value[0];
+            break;
+          case 5:
+            mask[0] = true;
+            mask[2] = true;
+            augmented_value[0] = value[0];
+            augmented_value[2] = value[1];
+            break;
+          case 6:
+            mask[1] = true;
+            mask[2] = true;
+            augmented_value[1] = value[0];
+            augmented_value[2] = value[1];
+            break;
+          case 7:
+            mask[0] = true;
+            mask[1] = true;
+            mask[2] = true;
+            augmented_value[0] = value[0];
+            augmented_value[1] = value[1];
+            augmented_value[2] = value[2];
+            break;
+          default:
+            AssertThrow(false, ExcMessage("Unrecogonized component flag!"));
+            break;
+          }
+        if (parameters.use_hard_coded_values == 1)
+          {
+            VectorTools::interpolate_boundary_values(dof_handler,
+                                                     id,
+                                                     BoundaryValues(),
+                                                     nonzero_constraints,
+                                                     ComponentMask(mask));
+          }
+        else
+          {
+            VectorTools::interpolate_boundary_values(
+              dof_handler,
+              id,
+              Functions::ConstantFunction<dim>(augmented_value),
+              nonzero_constraints,
+              ComponentMask(mask));
+          }
+        VectorTools::interpolate_boundary_values(
+          dof_handler,
+          id,
+          Functions::ZeroFunction<dim>(dim + 1),
+          zero_constraints,
+          ComponentMask(mask));
+      }
     nonzero_constraints.close();
     zero_constraints.close();
+  }
 
-    std::cout << "   Number of active fluid cells: "
-              << triangulation.n_active_cells() << std::endl
-              << "   Number of degrees of freedom: " << dof_handler.n_dofs()
-              << " (" << dof_u << '+' << dof_p << ')' << std::endl;
+  template <int dim>
+  void NavierStokes<dim>::setup_cell_property()
+  {
+    std::cout << "   Setting up cell property..." << std::endl;
+    const unsigned int n_q_points = volume_quad_formula.size();
+    cell_property.initialize(
+      triangulation.begin_active(), triangulation.end(), n_q_points);
+    for (auto cell = triangulation.begin_active(); cell != triangulation.end();
+         ++cell)
+      {
+        const std::vector<std::shared_ptr<CellProperty>> p =
+          cell_property.get_data(cell);
+        Assert(p.size() == n_q_points,
+               ExcMessage("Wrong number of cell property!"));
+        for (unsigned int q = 0; q < n_q_points; ++q)
+          {
+            p[q]->indicator = 0;
+            p[q]->fsi_acceleration = 0;
+            p[q]->fsi_stress = 0;
+          }
+      }
   }
 
   template <int dim>
   void NavierStokes<dim>::initialize_system()
   {
+    preconditioner.reset();
+    system_matrix.clear();
+    mass_matrix.clear();
+    mass_schur.clear();
+
     BlockDynamicSparsityPattern dsp(dofs_per_block, dofs_per_block);
     DoFTools::make_sparsity_pattern(dof_handler, dsp, nonzero_constraints);
     sparsity_pattern.copy_from(dsp);
@@ -276,20 +349,26 @@ namespace Fluid
     newton_update.reinit(dofs_per_block);
     evaluation_point.reinit(dofs_per_block);
     system_rhs.reinit(dofs_per_block);
+
+    // Compute the sparsity pattern for mass schur in advance.
+    // It should be the same as \f$BB^T\f$.
+    DynamicSparsityPattern schur_pattern(dofs_per_block[1], dofs_per_block[1]);
+    schur_pattern.compute_mmult_pattern(sparsity_pattern.block(1, 0),
+                                        sparsity_pattern.block(0, 1));
+    mass_schur_pattern.copy_from(schur_pattern);
+    mass_schur.reinit(mass_schur_pattern);
+
+    // Cell property
+    setup_cell_property();
   }
 
   template <int dim>
-  void NavierStokes<dim>::assemble(const bool initial_step,
-                                   const bool assemble_matrix)
+  void NavierStokes<dim>::assemble(const bool use_nonzero_constraints)
   {
     TimerOutput::Scope timer_section(timer, "Assemble system");
 
-    if (assemble_matrix)
-      {
-        system_matrix = 0;
-        mass_matrix = 0;
-      }
-
+    system_matrix = 0;
+    mass_matrix = 0;
     system_rhs = 0;
 
     FEValues<dim> fe_values(fe,
@@ -303,8 +382,13 @@ namespace Fluid
                                        update_JxW_values);
 
     const unsigned int dofs_per_cell = fe.dofs_per_cell;
+    const unsigned int u_dofs = fe.base_element(0).dofs_per_cell;
+    const unsigned int p_dofs = fe.base_element(1).dofs_per_cell;
     const unsigned int n_q_points = volume_quad_formula.size();
     const unsigned int n_face_q_points = face_quad_formula.size();
+
+    Assert(u_dofs * dim + p_dofs == dofs_per_cell,
+           ExcMessage("Wrong partitioning of dofs!"));
 
     const FEValuesExtractors::Vector velocities(0);
     const FEValuesExtractors::Scalar pressure(dim);
@@ -314,12 +398,6 @@ namespace Fluid
     Vector<double> local_rhs(dofs_per_cell);
 
     std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
-
-    // For the linearized system, we create temporary storage for current
-    // velocity
-    // and gradient, current pressure, and present velocity. In practice, they
-    // are
-    // all obtained through their shape functions at quadrature points.
 
     std::vector<Tensor<1, dim>> current_velocity_values(n_q_points);
     std::vector<Tensor<2, dim>> current_velocity_gradients(n_q_points);
@@ -334,6 +412,8 @@ namespace Fluid
     for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
          ++cell)
       {
+        auto p = cell_property.get_data(cell);
+
         fe_values.reinit(cell);
 
         local_matrix = 0;
@@ -353,11 +433,11 @@ namespace Fluid
                                                   present_velocity_values);
 
         // Assemble the system matrix and mass matrix simultaneouly.
-        // We assemble \f$B^T\f$ and \f$B\f$ into the mass matrix for convience
-        // because they will be used in the preconditioner.
+        // The mass matrix only uses the (0, 0) and (1, 1) blocks.
         //
         for (unsigned int q = 0; q < n_q_points; ++q)
           {
+            const int ind = p[q]->indicator;
             for (unsigned int k = 0; k < dofs_per_cell; ++k)
               {
                 div_phi_u[k] = fe_values[velocities].divergence(k, q);
@@ -368,35 +448,31 @@ namespace Fluid
 
             for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
-                if (assemble_matrix)
+                for (unsigned int j = 0; j < dofs_per_cell; ++j)
                   {
-                    for (unsigned int j = 0; j < dofs_per_cell; ++j)
-                      {
-                        // Let the linearized diffusion, continuity and Grad-Div
-                        // term be written as
-                        // the bilinear operator: \f$A = a((\delta{u},
-                        // \delta{p}), (\delta{v}, \delta{q}))\f$,
-                        // the linearized convection term be: \f$C =
-                        // c(u;\delta{u}, \delta{v})\f$,
-                        // and the linearized inertial term be:
-                        // \f$M = m(\delta{u}, \delta{v})$, then LHS is: $(A +
-                        // C) + M/{\Delta{t}}\f$
-                        local_matrix(i, j) +=
-                          ((viscosity *
-                              scalar_product(grad_phi_u[j], grad_phi_u[i]) +
-                            current_velocity_gradients[q] * phi_u[j] *
-                              phi_u[i] +
-                            grad_phi_u[j] * current_velocity_values[q] *
-                              phi_u[i] -
-                            div_phi_u[i] * phi_p[j] - phi_p[i] * div_phi_u[j] +
-                            gamma * div_phi_u[j] * div_phi_u[i]) +
-                           phi_u[i] * phi_u[j] / time.get_delta_t()) *
-                          fe_values.JxW(q);
-                        local_mass_matrix(i, j) +=
-                          (phi_u[i] * phi_u[j] + phi_p[i] * phi_p[j] -
-                           div_phi_u[i] * phi_p[j] - phi_p[i] * div_phi_u[j]) *
-                          fe_values.JxW(q);
-                      }
+                    // Let the linearized diffusion, continuity and Grad-Div
+                    // term be written as
+                    // the bilinear operator: \f$A = a((\delta{u},
+                    // \delta{p}), (\delta{v}, \delta{q}))\f$,
+                    // the linearized convection term be: \f$C =
+                    // c(u;\delta{u}, \delta{v})\f$,
+                    // and the linearized inertial term be:
+                    // \f$M = m(\delta{u}, \delta{v})$, then LHS is: $(A +
+                    // C) + M/{\Delta{t}}\f$
+                    local_matrix(i, j) +=
+                      ((viscosity *
+                          scalar_product(grad_phi_u[j], grad_phi_u[i]) +
+                        current_velocity_gradients[q] * phi_u[j] * phi_u[i] *
+                          rho +
+                        grad_phi_u[j] * current_velocity_values[q] * phi_u[i] *
+                          rho -
+                        div_phi_u[i] * phi_p[j] - phi_p[i] * div_phi_u[j] +
+                        gamma * div_phi_u[j] * div_phi_u[i] * rho) +
+                       phi_u[i] * phi_u[j] / time.get_delta_t() * rho) *
+                      fe_values.JxW(q);
+                    local_mass_matrix(i, j) +=
+                      (phi_u[i] * phi_u[j] + phi_p[i] * phi_p[j]) *
+                      fe_values.JxW(q);
                   }
 
                 // RHS is \f$-(A_{current} + C_{current}) -
@@ -407,40 +483,51 @@ namespace Fluid
                   ((-viscosity * scalar_product(current_velocity_gradients[q],
                                                 grad_phi_u[i]) -
                     current_velocity_gradients[q] * current_velocity_values[q] *
-                      phi_u[i] +
+                      phi_u[i] * rho +
                     current_pressure_values[q] * div_phi_u[i] +
                     current_velocity_divergence * phi_p[i] -
-                    gamma * current_velocity_divergence * div_phi_u[i]) -
+                    gamma * current_velocity_divergence * div_phi_u[i] * rho) -
                    (current_velocity_values[q] - present_velocity_values[q]) *
-                     phi_u[i] / time.get_delta_t()) *
+                     phi_u[i] / time.get_delta_t() * rho) *
                   fe_values.JxW(q);
+                if (ind == 1)
+                  {
+                    local_rhs(i) +=
+                      (scalar_product(grad_phi_u[i], p[q]->fsi_stress) +
+                       (p[q]->fsi_acceleration * rho * phi_u[i])) *
+                      fe_values.JxW(q);
+                  }
               }
           }
 
-        // Impose pressure boundary here, loop over faces on the cell
+        // Impose pressure boundary here if specified, loop over faces on the
+        // cell
         // and apply pressure boundary conditions:
         // \f$\int_{\Gamma_n} -p\bold{n}d\Gamma\f$
-        for (unsigned int face_n = 0;
-             face_n < GeometryInfo<dim>::faces_per_cell;
-             ++face_n)
+        if (parameters.n_fluid_neumann_bcs != 0)
           {
-            if (cell->at_boundary(face_n) &&
-                parameters.fluid_neumann_bcs.find(
-                  cell->face(face_n)->boundary_id()) !=
-                  parameters.fluid_neumann_bcs.end())
+            for (unsigned int face_n = 0;
+                 face_n < GeometryInfo<dim>::faces_per_cell;
+                 ++face_n)
               {
-                fe_face_values.reinit(cell, face_n);
-                unsigned int p_bc_id = cell->face(face_n)->boundary_id();
-                double boundary_values_p =
-                  parameters.fluid_neumann_bcs[p_bc_id];
-                for (unsigned int q = 0; q < n_face_q_points; ++q)
+                if (cell->at_boundary(face_n) &&
+                    parameters.fluid_neumann_bcs.find(
+                      cell->face(face_n)->boundary_id()) !=
+                      parameters.fluid_neumann_bcs.end())
                   {
-                    for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                    fe_face_values.reinit(cell, face_n);
+                    unsigned int p_bc_id = cell->face(face_n)->boundary_id();
+                    double boundary_values_p =
+                      parameters.fluid_neumann_bcs[p_bc_id];
+                    for (unsigned int q = 0; q < n_face_q_points; ++q)
                       {
-                        local_rhs(i) +=
-                          -(fe_face_values[velocities].value(i, q) *
-                            fe_face_values.normal_vector(q) *
-                            boundary_values_p * fe_face_values.JxW(q));
+                        for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                          {
+                            local_rhs(i) +=
+                              -(fe_face_values[velocities].value(i, q) *
+                                fe_face_values.normal_vector(q) *
+                                boundary_values_p * fe_face_values.JxW(q));
+                          }
                       }
                   }
               }
@@ -449,75 +536,31 @@ namespace Fluid
         cell->get_dof_indices(local_dof_indices);
 
         const ConstraintMatrix &constraints_used =
-          initial_step ? nonzero_constraints : zero_constraints;
-
-        if (assemble_matrix)
-          {
-            constraints_used.distribute_local_to_global(local_matrix,
-                                                        local_rhs,
-                                                        local_dof_indices,
-                                                        system_matrix,
-                                                        system_rhs);
-            constraints_used.distribute_local_to_global(
-              local_mass_matrix, local_dof_indices, mass_matrix);
-          }
-        else
-          {
-            constraints_used.distribute_local_to_global(
-              local_rhs, local_dof_indices, system_rhs);
-          }
+          use_nonzero_constraints ? nonzero_constraints : zero_constraints;
+        constraints_used.distribute_local_to_global(local_matrix,
+                                                    local_rhs,
+                                                    local_dof_indices,
+                                                    system_matrix,
+                                                    system_rhs);
+        constraints_used.distribute_local_to_global(
+          local_mass_matrix, local_dof_indices, mass_matrix);
       }
   }
 
   template <int dim>
-  void NavierStokes<dim>::assemble_system(const bool initial_step)
-  {
-    assemble(initial_step, true);
-  }
-
-  template <int dim>
-  void NavierStokes<dim>::assemble_rhs(const bool initial_step)
-  {
-    assemble(initial_step, false);
-  }
-
-  template <int dim>
   std::pair<unsigned int, double>
-  NavierStokes<dim>::solve(const bool initial_step)
+  NavierStokes<dim>::solve(const bool use_nonzero_constraints)
   {
-    // The only reason that the initialization of the preconditioners is timed
-    // separately from solving the system is that it calls a direct solver
-    // to get \f$\tilde{A}^{-1}\f$ which is time-consuming. Other than that,
-    // initializing preconditioners does not do real work.
-    {
-      TimerOutput::Scope timer_section(timer, "Initialize preconditioners");
+    TimerOutput::Scope timer_section(timer, "Solve linear system");
 
-      preconditioner.reset();
-      S_inverse.reset();
-      Mp_inverse.reset();
-      preconditioner_Mp.reset();
-      Sm_inverse.reset();
-      preconditioner.reset();
-      approximate_Sm.reset();
-
-      approximate_Sm.reset(new ApproximateMassSchur(mass_matrix));
-      preconditioner_Sm.reset(new PreconditionIdentity());
-      Sm_inverse.reset(
-        new InverseMatrix<ApproximateMassSchur, PreconditionIdentity>(
-          *approximate_Sm, *preconditioner_Sm));
-      preconditioner_Mp.reset(new SparseILU<double>());
-      preconditioner_Mp->initialize(mass_matrix.block(1, 1),
-                                    SparseILU<double>::AdditionalData());
-      Mp_inverse.reset(
-        new InverseMatrix<SparseMatrix<double>, SparseILU<double>>(
-          mass_matrix.block(1, 1), *preconditioner_Mp));
-      S_inverse.reset(
-        new SchurComplementInverse<PreconditionIdentity, SparseILU<double>>(
-          gamma, viscosity, time.get_delta_t(), *Sm_inverse, *Mp_inverse));
-      preconditioner.reset(
-        new BlockSchurPreconditioner<PreconditionIdentity, SparseILU<double>>(
-          system_matrix, *S_inverse));
-    }
+    preconditioner.reset(new BlockSchurPreconditioner(timer,
+                                                      gamma,
+                                                      viscosity,
+                                                      rho,
+                                                      time.get_delta_t(),
+                                                      system_matrix,
+                                                      mass_matrix,
+                                                      mass_schur));
 
     // NOTE: SolverFGMRES only applies the preconditioner from the right,
     // as opposed to SolverGMRES which allows both left and right
@@ -526,21 +569,19 @@ namespace Fluid
       system_matrix.m(), 1e-8 * system_rhs.l2_norm(), true);
     GrowingVectorMemory<BlockVector<double>> vector_memory;
     SolverFGMRES<BlockVector<double>> gmres(solver_control, vector_memory);
-    {
-      TimerOutput::Scope timer_section(timer, "Solve linear system");
 
-      gmres.solve(system_matrix, newton_update, system_rhs, *preconditioner);
+    gmres.solve(system_matrix, newton_update, system_rhs, *preconditioner);
 
-      const ConstraintMatrix &constraints_used =
-        initial_step ? nonzero_constraints : zero_constraints;
-      constraints_used.distribute(newton_update);
-    }
+    const ConstraintMatrix &constraints_used =
+      use_nonzero_constraints ? nonzero_constraints : zero_constraints;
+    constraints_used.distribute(newton_update);
 
     return {solver_control.last_step(), solver_control.last_value()};
   }
 
   template <int dim>
-  void NavierStokes<dim>::refine_mesh()
+  void NavierStokes<dim>::refine_mesh(const unsigned int min_grid_level,
+                                      const unsigned int max_grid_level)
   {
     TimerOutput::Scope timer_section(timer, "Refine mesh");
 
@@ -552,32 +593,112 @@ namespace Fluid
                                        present_solution,
                                        estimated_error_per_cell,
                                        fe.component_mask(velocity));
+    GridRefinement::refine_and_coarsen_fixed_fraction(
+      triangulation, estimated_error_per_cell, 0.6, 0.4);
+    if (triangulation.n_levels() > max_grid_level)
+      {
+        for (auto cell = triangulation.begin_active(max_grid_level);
+             cell != triangulation.end();
+             ++cell)
+          {
+            cell->clear_refine_flag();
+          }
+      }
 
-    GridRefinement::refine_and_coarsen_fixed_number(
-      triangulation, estimated_error_per_cell, 0.3, 0.0);
+    for (auto cell = triangulation.begin_active(min_grid_level);
+         cell != triangulation.end_active(min_grid_level);
+         ++cell)
+      {
+        cell->clear_coarsen_flag();
+      }
+
+    BlockVector<double> buffer(present_solution);
+    SolutionTransfer<dim, BlockVector<double>> solution_transfer(dof_handler);
 
     triangulation.prepare_coarsening_and_refinement();
-    SolutionTransfer<dim, BlockVector<double>> solution_transfer(dof_handler);
-    solution_transfer.prepare_for_coarsening_and_refinement(present_solution);
+    solution_transfer.prepare_for_coarsening_and_refinement(buffer);
+
     triangulation.execute_coarsening_and_refinement();
 
-    // First the DoFHandler is set up and constraints are generated. Then we
-    // create a temporary vector whose size is according with the
-    // solution on the new mesh.
     setup_dofs();
-
-    BlockVector<double> tmp(dofs_per_block);
-
-    // Transfer solution from coarse to fine mesh and apply boundary value
-    // constraints to the new transfered solution. Note that present_solution
-    // is still a vector corresponding to the old mesh.
-    solution_transfer.interpolate(present_solution, tmp);
-    nonzero_constraints.distribute(tmp);
-
-    // Finally set up matrix and vectors and set the present_solution to the
-    // interpolated data.
+    make_constraints();
     initialize_system();
-    present_solution = tmp;
+
+    solution_transfer.interpolate(buffer, present_solution);
+    nonzero_constraints.distribute(present_solution); // Is this line necessary?
+  }
+
+  template <int dim>
+  void NavierStokes<dim>::run_one_step(bool apply_nonzero_constraints)
+  {
+    std::cout.precision(6);
+    std::cout.width(12);
+
+    if (time.get_timestep() == 0)
+      {
+        output_results(0);
+      }
+
+    time.increment();
+    std::cout << std::string(96, '*') << std::endl
+              << "Time step = " << time.get_timestep()
+              << ", at t = " << std::scientific << time.current() << std::endl;
+
+    // Resetting
+    double current_residual = 1.0;
+    double initial_residual = 1.0;
+    double relative_residual = 1.0;
+    unsigned int outer_iteration = 0;
+    evaluation_point = present_solution;
+    while (relative_residual > tolerance && current_residual > 1e-14)
+      {
+        AssertThrow(outer_iteration < max_iteration,
+                    ExcMessage("Too many Newton iterations!"));
+
+        newton_update = 0.0;
+
+        // Since evaluation_point changes at every iteration,
+        // we have to reassemble both the lhs and rhs of the system
+        // before solving it.
+        // If the Dirichlet BCs are time-dependent, nonzero_constraints
+        // should be applied at the first iteration of every time step;
+        // if they are time-independent, nonzero_constraints should be
+        // applied only at the first iteration of the first time step.
+        assemble(apply_nonzero_constraints && outer_iteration == 0);
+        auto state = solve(apply_nonzero_constraints && outer_iteration == 0);
+        current_residual = system_rhs.l2_norm();
+
+        // Update evaluation_point. Since newton_update has been set to
+        // the correct bc values, there is no need to distribute the
+        // evaluation_point again.
+        evaluation_point.add(1.0, newton_update);
+
+        // Update the relative residual
+        if (outer_iteration == 0)
+          {
+            initial_residual = current_residual;
+          }
+        relative_residual = current_residual / initial_residual;
+
+        std::cout << std::scientific << std::left << " ITR = " << std::setw(2)
+                  << outer_iteration << " ABS_RES = " << current_residual
+                  << " REL_RES = " << relative_residual
+                  << " GMRES_ITR = " << std::setw(3) << state.first
+                  << " GMRES_RES = " << state.second << std::endl;
+
+        outer_iteration++;
+      }
+    // Newton iteration converges, update time and solution
+    present_solution = evaluation_point;
+    // Output
+    if (time.time_to_output())
+      {
+        output_results(time.get_timestep());
+      }
+    if (time.time_to_refine())
+      {
+        refine_mesh(1, 3);
+      }
   }
 
   template <int dim>
@@ -585,58 +706,18 @@ namespace Fluid
   {
     triangulation.refine_global(parameters.global_refinement);
     setup_dofs();
+    make_constraints();
     initialize_system();
 
-    bool first_step = true;
-
     // Time loop.
-    std::cout.precision(6);
-    std::cout.width(12);
-    output_results(time.get_timestep());
+    // use_nonzero_constraints is set to true only at the first time step,
+    // which means nonzero_constraints will be applied at the first iteration
+    // in the first time step only, and never be used again.
+    // This corresponds to time-independent Dirichlet BCs.
+    run_one_step(true);
     while (time.end() - time.current() > 1e-12)
       {
-        time.increment();
-        std::cout << std::string(91, '*') << std::endl
-                  << "Time step = " << time.get_timestep()
-                  << ", at t = " << std::scientific << time.current()
-                  << std::endl;
-
-        // Resetting current_res to a number greater than tolerance.
-        double current_res = 1.0;
-        unsigned int outer_iteration = 0;
-        while (first_step || current_res > tolerance)
-          {
-            AssertThrow(outer_iteration < max_iteration,
-                        ExcMessage("Too many Newton iterations!"));
-
-            // Since evaluation_point changes at every iteration,
-            // we have to reassemble both the lhs and rhs of the system
-            // before solving it.
-            assemble_system(first_step);
-            auto state = solve(first_step);
-            current_res = system_rhs.l2_norm();
-
-            // Update evaluation_point and do not forget to modify it
-            // with constraints.
-            evaluation_point.add(1.0, newton_update);
-            nonzero_constraints.distribute(evaluation_point);
-            first_step = false;
-
-            std::cout << std::scientific << std::left
-                      << " Iteration = " << std::setw(2) << outer_iteration
-                      << " Residual = " << current_res
-                      << " FGMRES iteration: " << std::setw(3) << state.first
-                      << " FGMRES residual: " << state.second << std::endl;
-
-            outer_iteration++;
-          }
-        // Newton iteration converges, update time and solution
-        present_solution = evaluation_point;
-        // Output
-        if (time.time_to_output())
-          {
-            output_results(time.get_timestep());
-          }
+        run_one_step(false);
       }
   }
 
@@ -660,7 +741,28 @@ namespace Fluid
                              solution_names,
                              DataOut<dim>::type_dof_data,
                              data_component_interpretation);
-    data_out.build_patches();
+
+    // Indicator
+    Vector<float> ind(triangulation.n_active_cells());
+    int i = 0;
+    for (auto cell = triangulation.begin_active(); cell != triangulation.end();
+         ++cell)
+      {
+        auto p = cell_property.get_data(cell);
+        bool artificial = false;
+        for (auto ptr : p)
+          {
+            if (ptr->indicator == 1)
+              {
+                artificial = true;
+                break;
+              }
+          }
+        ind[i++] = artificial;
+      }
+    data_out.add_data_vector(ind, "Indicator");
+
+    data_out.build_patches(parameters.fluid_degree + 1);
 
     std::string basename = "navierstokes";
     std::string filename =

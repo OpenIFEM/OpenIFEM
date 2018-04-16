@@ -23,6 +23,11 @@ namespace Parameters
                         "1.0",
                         Patterns::Double(0.0),
                         "Refinement interval");
+      prm.declare_entry(
+        "Gravity",
+        "",
+        Patterns::List(dealii::Patterns::Double()),
+        "Gravity acceleration that applies to both fluid and solid");
     }
     prm.leave_subsection();
   }
@@ -37,6 +42,12 @@ namespace Parameters
       time_step = prm.get_double("Time step size");
       output_interval = prm.get_double("Output interval");
       refinement_interval = prm.get_double("Refinement interval");
+      std::string raw_input = prm.get("Gravity");
+      std::vector<std::string> parsed_input =
+        Utilities::split_string_list(raw_input);
+      gravity = Utilities::string_to_double(parsed_input);
+      AssertThrow(static_cast<int>(gravity.size()) == dimension,
+                  ExcMessage("Inconsistent dimension of gravity!"));
     }
     prm.leave_subsection();
   }
@@ -66,8 +77,12 @@ namespace Parameters
   {
     prm.enter_subsection("Fluid material properties");
     {
+      prm.declare_entry("Dynamic viscosity",
+                        "1e-3",
+                        Patterns::Double(0.0),
+                        "Dynamic viscosity");
       prm.declare_entry(
-        "Viscosity", "1e-3", Patterns::Double(0.0), "Kinematic viscosity");
+        "Fluid density", "1.0", Patterns::Double(0.0), "Dynamic viscosity");
     }
     prm.leave_subsection();
   }
@@ -76,7 +91,8 @@ namespace Parameters
   {
     prm.enter_subsection("Fluid material properties");
     {
-      viscosity = prm.get_double("Viscosity");
+      viscosity = prm.get_double("Dynamic viscosity");
+      fluid_rho = prm.get_double("Fluid density");
     }
     prm.leave_subsection();
   }
@@ -117,6 +133,10 @@ namespace Parameters
   {
     prm.enter_subsection("Fluid Dirichlet BCs");
     {
+      prm.declare_entry("Use hard-coded boundary values",
+                        "0",
+                        Patterns::Integer(),
+                        "Use hard-coded boundary values or the input ones");
       prm.declare_entry("Number of Dirichlet BCs",
                         "1",
                         Patterns::Integer(),
@@ -141,17 +161,19 @@ namespace Parameters
   {
     prm.enter_subsection("Fluid Dirichlet BCs");
     {
+      use_hard_coded_values = prm.get_integer("Use hard-coded boundary values");
       n_fluid_dirichlet_bcs = prm.get_integer("Number of Dirichlet BCs");
       std::string raw_input = prm.get("Dirichlet boundary id");
       std::vector<std::string> parsed_input =
         Utilities::split_string_list(raw_input);
       std::vector<int> ids = Utilities::string_to_int(parsed_input);
-      AssertThrow(ids.size() == n_fluid_dirichlet_bcs,
+      AssertThrow(!n_fluid_dirichlet_bcs || ids.size() == n_fluid_dirichlet_bcs,
                   ExcMessage("Inconsistent boundary ids!"));
       raw_input = prm.get("Dirichlet boundary components");
       parsed_input = Utilities::split_string_list(raw_input);
       std::vector<int> components = Utilities::string_to_int(parsed_input);
-      AssertThrow(components.size() == n_fluid_dirichlet_bcs,
+      AssertThrow(!n_fluid_dirichlet_bcs ||
+                    components.size() == n_fluid_dirichlet_bcs,
                   ExcMessage("Inconsistent boundary components!"));
       raw_input = prm.get("Dirichlet boundary values");
       parsed_input = Utilities::split_string_list(raw_input);
@@ -221,14 +243,15 @@ namespace Parameters
       std::vector<std::string> parsed_input =
         Utilities::split_string_list(raw_input);
       std::vector<int> ids = Utilities::string_to_int(parsed_input);
-      AssertThrow(ids.size() == n_fluid_neumann_bcs,
+      // Assert only when the user wants to impose Neumann BC
+      AssertThrow(!n_fluid_neumann_bcs || ids.size() == n_fluid_neumann_bcs,
                   ExcMessage("Inconsistent boundary ids!"));
       raw_input = prm.get("Neumann boundary values");
       parsed_input = Utilities::split_string_list(raw_input);
       std::vector<double> values = Utilities::string_to_double(parsed_input);
       // The size of values should be exactly the same as the number of
       // the given boundary values.
-      AssertThrow(values.size() == n_fluid_neumann_bcs,
+      AssertThrow(!n_fluid_neumann_bcs || values.size() == n_fluid_neumann_bcs,
                   ExcMessage("Inconsistent boundary values!"));
       for (unsigned int i = 0; i < n_fluid_neumann_bcs; ++i)
         {
@@ -267,7 +290,8 @@ namespace Parameters
                         "LinearElastic",
                         Patterns::Selection("LinearElastic|NeoHookean|MooneyRivlin"),
                         "Type of solid material");
-      prm.declare_entry("Density", "1.0", Patterns::Double(0.0), "Density");
+      prm.declare_entry(
+        "Solid density", "1.0", Patterns::Double(0.0), "Solid density");
       prm.declare_entry("Young's modulus",
                         "0.0",
                         Patterns::Double(0.0),
@@ -292,7 +316,7 @@ namespace Parameters
     prm.enter_subsection("Solid material properties");
     {
       solid_type = prm.get("Solid type");
-      rho = prm.get_double("Density");
+      solid_rho = prm.get_double("Solid density");
       E = prm.get_double("Young's modulus");
       nu = prm.get_double("Poisson's ratio");
       std::string raw_input = prm.get("Hyperelastic parameters");
@@ -369,12 +393,13 @@ namespace Parameters
       std::vector<std::string> parsed_input =
         Utilities::split_string_list(raw_input);
       std::vector<int> ids = Utilities::string_to_int(parsed_input);
-      AssertThrow(ids.size() == n_solid_dirichlet_bcs,
+      AssertThrow(!n_solid_dirichlet_bcs || ids.size() == n_solid_dirichlet_bcs,
                   ExcMessage("Inconsistent boundary ids!"));
       raw_input = prm.get("Dirichlet boundary components");
       parsed_input = Utilities::split_string_list(raw_input);
       std::vector<int> components = Utilities::string_to_int(parsed_input);
-      AssertThrow(components.size() == n_solid_dirichlet_bcs,
+      AssertThrow(!n_solid_dirichlet_bcs ||
+                    components.size() == n_solid_dirichlet_bcs,
                   ExcMessage("Inconsistent boundary components!"));
       for (unsigned int i = 0; i < n_solid_dirichlet_bcs; ++i)
         {
@@ -398,7 +423,7 @@ namespace Parameters
                         "Ids of the boundaries with Neumann BCs");
       prm.declare_entry("Neumann boundary type",
                         "Traction",
-                        Patterns::Selection("Traction|Pressure"),
+                        Patterns::Selection("Traction|Pressure|FSI"),
                         "Type of Neumann BC");
       prm.declare_entry("Neumann boundary values",
                         "",
@@ -417,7 +442,8 @@ namespace Parameters
       std::vector<std::string> parsed_input =
         Utilities::split_string_list(raw_input);
       std::vector<int> ids = Utilities::string_to_int(parsed_input);
-      AssertThrow(ids.size() == n_solid_neumann_bcs,
+      // Assert only when the user wants to impose Neumann BC
+      AssertThrow(!n_solid_neumann_bcs || ids.size() == n_solid_neumann_bcs,
                   ExcMessage("Inconsistent boundary ids!"));
       solid_neumann_bc_type = prm.get("Neumann boundary type");
       unsigned int tmp =
@@ -425,7 +451,8 @@ namespace Parameters
       raw_input = prm.get("Neumann boundary values");
       parsed_input = Utilities::split_string_list(raw_input);
       std::vector<double> values = Utilities::string_to_double(parsed_input);
-      AssertThrow(values.size() == tmp * n_solid_neumann_bcs,
+      AssertThrow(!n_solid_neumann_bcs ||
+                    values.size() == tmp * n_solid_neumann_bcs,
                   ExcMessage("Inconsistent boundary values!"));
       for (unsigned int i = 0; i < n_solid_neumann_bcs; ++i)
         {
@@ -446,7 +473,6 @@ namespace Parameters
     declareParameters(prm);
     prm.parse_input(infile);
     parseParameters(prm);
-    prm.print_parameters(std::cout, ParameterHandler::Text);
   }
 
   void AllParameters::declareParameters(ParameterHandler &prm)

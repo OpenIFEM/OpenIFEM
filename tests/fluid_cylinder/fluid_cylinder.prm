@@ -8,26 +8,26 @@
 # Simulation parameters
 subsection Simulation
   # The dimension of the simulation
-  set Dimension = 3
+  set Dimension = 2
 
   # Level of global refinement before running,
   # which applies to all the solvers
-  set Global refinement = 0
+  set Global refinement = 1
 
   # The end time of the simulation in second
-  set End time = 0.5
+  set End time = 1e0
 
   # The time step in second
-  set Time step size = 0.01
+  set Time step size = 1e-2
 
   # The output interval in second
-  set Output interval = 0.05
+  set Output interval = 1e-2
 
   # Mesh refinement interval in second
-  set Refinement interval = 10
+  set Refinement interval = 100
 
   # Body force which applies to both fluid and solid (acceleration)
-  set Gravity = 0.0, 0.0, 0.0
+  set Gravity = 0.0, 0.0
 end
 
 # --------------------------------------------------------------------------------
@@ -39,7 +39,7 @@ end
 
 subsection Fluid material properties
   # The dynamic viscosity
-  set Dynamic viscosity = 0.002
+  set Dynamic viscosity = 0.001
 
   # Fluid density
   set Fluid density = 1
@@ -61,23 +61,23 @@ subsection Fluid Dirichlet BCs
   # Note: even if this variable is set to 1, the following 3 variables
   # will still be used so that the hard-coded values BCs applies to the
   # target boundaries and directions only.
-  set Use hard-coded boundary values = 0
+  set Use hard-coded boundary values = 1
 
   # Number of boundaries with Dirichlet BCs
-  set Number of Dirichlet BCs = 3
+  set Number of Dirichlet BCs = 4
 
   # List all the boundaries with Dirichlet BCs
-  set Dirichlet boundary id = 0, 2, 3
+  set Dirichlet boundary id = 0, 2, 3, 4
 
   # List the constrained components of these boundaries
   # One decimal number indicates one set of constrained components:
   # 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
   # To make sense of the numbering, convert decimals to binaries (zyx)
-  set Dirichlet boundary components = 3, 2, 3
+  set Dirichlet boundary components = 3, 3, 3, 3
 
   # Specify the values of the Dirichlet BCs, including both homogeneous and
   # inhomogeneous ones.
-  set Dirichlet boundary values = 1, 0, 0, 0, 0
+  set Dirichlet boundary values = 0.2, 0, 0, 0, 0, 0, 0, 0
 end
 
 subsection Fluid Neumann BCs
@@ -101,10 +101,10 @@ end
 
 subsection Solid material properties
   # Material type, currently LinearElastic and NeoHookean are available
-  set Solid type = NeoHookean
+  set Solid type = LinearElastic
 
   # Solid density, used by all solid solvers
-  set Solid density = 1100
+  set Solid density = 1
 
   # E and nu are only used by linearElasticMaterial
   set Young's modulus = 2.5
@@ -112,7 +112,7 @@ subsection Solid material properties
   set Poisson's ratio = 0.25
 
   # A list of parameters used by hyperelasticMaterial
-  set Hyperelastic parameters = 0.297751e6, 1e6, 0.297761e6
+  set Hyperelastic parameters = 0.5, 1.67
 end
 
 subsection Solid solver control
@@ -132,7 +132,7 @@ end
 # Only homogeneous Dirichlet BC is supported, i.e., the prescribed value is always 0.
 subsection Solid Dirichlet BCs
   # Dirichlet BCs can be applied to multiple boundaries.
-  set Number of Dirichlet BCs = 1
+  set Number of Dirichlet BCs = 0
 
   # List all the constrained boundaries here
   set Dirichlet boundary id = 0
@@ -141,7 +141,7 @@ subsection Solid Dirichlet BCs
   # One decimal number indicates one set of constrained components:
   # 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
   # To make sense of the numbering, convert decimals to binaries (zyx)
-  set Dirichlet boundary components = 7
+  set Dirichlet boundary components = 3
 end
 
 # Two types of Neumann BCs are supported: traction and pressure.
@@ -149,7 +149,7 @@ end
 # (Original normal vectors are used to compute the traction.)
 subsection Solid Neumann BCs
   # Indicates how many sets of Neumann boundary conditions to expect.
-  set Number of Neumann BCs = 1
+  set Number of Neumann BCs = 0
 
   # The id, type, and values must appear n_neumann_bcs times.
   set Neumann boundary id = 3
@@ -159,5 +159,5 @@ subsection Solid Neumann BCs
 
   # If traction, dim*n_solid_neumann_bcs components are expected;
   # if pressure, n_solid_neumann_bcs components are expected.
-  set Neumann boundary values = 0, -500, 0
+  set Neumann boundary values = 0, -1e-4
 end

@@ -7,14 +7,16 @@ namespace Solid
   template <int dim>
   LinearElasticSolver<dim>::LinearElasticSolver(
     Triangulation<dim> &tria, const Parameters::AllParameters &parameters)
-    : material(parameters.E, parameters.nu, parameters.rho),
+    : material(parameters.E, parameters.nu, parameters.solid_rho),
       gamma(0.5 + parameters.damping),
       beta(gamma / 2),
       degree(parameters.solid_degree),
       tolerance(1e-12),
       triangulation(tria),
       fe(FE_Q<dim>(degree), dim),
+      dg_fe(FE_DGQ<dim>(degree)),
       dof_handler(triangulation),
+      dg_dof_handler(triangulation),
       volume_quad_formula(degree + 1),
       face_quad_formula(degree + 1),
       time(parameters.end_time,
@@ -27,12 +29,20 @@ namespace Solid
   }
 
   template <int dim>
+  LinearElasticSolver<dim>::~LinearElasticSolver()
+  {
+    dg_dof_handler.clear();
+    dof_handler.clear();
+  }
+
+  template <int dim>
   void LinearElasticSolver<dim>::setup_dofs()
   {
     TimerOutput::Scope timer_section(timer, "Setup system");
 
     dof_handler.distribute_dofs(fe);
     DoFRenumbering::Cuthill_McKee(dof_handler);
+    dg_dof_handler.distribute_dofs(dg_fe);
 
     // The Dirichlet boundary conditions are stored in the ConstraintMatrix
     // object. It does not need to modify the sparse matrix after assembly,
@@ -97,15 +107,34 @@ namespace Solid
     previous_acceleration.reinit(dof_handler.n_dofs());
     previous_velocity.reinit(dof_handler.n_dofs());
     previous_displacement.reinit(dof_handler.n_dofs());
+
+    strain = std::vector<std::vector<Vector<double>>>(
+      dim,
+      std::vector<Vector<double>>(dim,
+                                  Vector<double>(dg_dof_handler.n_dofs())));
+    stress = std::vector<std::vector<Vector<double>>>(
+      dim,
+      std::vector<Vector<double>>(dim,
+                                  Vector<double>(dg_dof_handler.n_dofs())));
+
+    // Set up cell property, which contains the FSI traction required in FSI
+    // simulation
+    const unsigned int n_data =
+      face_quad_formula.size() * GeometryInfo<dim>::faces_per_cell;
+    cell_property.initialize(
+      triangulation.begin_active(), triangulation.end(), n_data);
   }
 
   template <int dim>
-  void LinearElasticSolver<dim>::assemble_system(const bool is_initial)
+  void LinearElasticSolver<dim>::assemble(bool is_initial, bool assemble_matrix)
   {
     TimerOutput::Scope timer_section(timer, "Assemble system");
 
-    system_matrix = 0;
-    stiffness_matrix = 0;
+    if (assemble_matrix)
+      {
+        system_matrix = 0;
+        stiffness_matrix = 0;
+      }
     system_rhs = 0;
 
     FEValues<dim> fe_values(fe,
@@ -146,6 +175,9 @@ namespace Solid
     for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
          ++cell)
       {
+        auto p = cell_property.get_data(cell);
+        Assert(p.size() == n_f_q_points * GeometryInfo<dim>::faces_per_cell,
+               ExcMessage("Wrong number of cell data!"));
         local_matrix = 0;
         local_stiffness = 0;
         local_rhs = 0;
@@ -165,87 +197,144 @@ namespace Solid
             // Loop over the dofs again, to assemble
             for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
-                for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                if (assemble_matrix)
                   {
-                    if (is_initial)
+                    for (unsigned int j = 0; j < dofs_per_cell; ++j)
                       {
-                        local_matrix[i][j] +=
-                          rho * phi[i] * phi[j] * fe_values.JxW(q);
-                      }
-                    else
-                      {
-                        local_matrix[i][j] +=
-                          (rho * phi[i] * phi[j] +
-                           symmetric_grad_phi[i] * elasticity *
-                             symmetric_grad_phi[j] * beta * dt * dt) *
-                          fe_values.JxW(q);
-                        local_stiffness[i][j] +=
-                          symmetric_grad_phi[i] * elasticity *
-                          symmetric_grad_phi[j] * fe_values.JxW(q);
+                        if (is_initial)
+                          {
+                            local_matrix[i][j] +=
+                              rho * phi[i] * phi[j] * fe_values.JxW(q);
+                          }
+                        else
+                          {
+                            local_matrix[i][j] +=
+                              (rho * phi[i] * phi[j] +
+                               symmetric_grad_phi[i] * elasticity *
+                                 symmetric_grad_phi[j] * beta * dt * dt) *
+                              fe_values.JxW(q);
+                            local_stiffness[i][j] +=
+                              symmetric_grad_phi[i] * elasticity *
+                              symmetric_grad_phi[j] * fe_values.JxW(q);
+                          }
                       }
                   }
-                // zero body force
+                // body force
                 Tensor<1, dim> gravity;
+                for (unsigned int i = 0; i < dim; ++i)
+                  {
+                    gravity[i] = parameters.gravity[i];
+                  }
                 local_rhs[i] += phi[i] * gravity * rho * fe_values.JxW(q);
               }
           }
 
         cell->get_dof_indices(local_dof_indices);
 
-        // Traction or Pressure
+        // Neumann boundary conditions
+        // If this is a stand-alone solid simulation, the Neumann boundary type
+        // should be either Traction or Pressure;
+        // it this is a FSI simulation, the Neumann boundary type must be FSI.
+
         for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
              ++face)
           {
-            if (cell->face(face)->at_boundary())
-              {
-                unsigned int id = cell->face(face)->boundary_id();
-                if (parameters.solid_neumann_bcs.find(id) !=
-                    parameters.solid_neumann_bcs.end())
-                  {
-                    std::vector<double> value =
-                      parameters.solid_neumann_bcs[id];
-                    Tensor<1, dim> traction;
-                    if (parameters.solid_neumann_bc_type == "Traction")
-                      {
-                        for (unsigned int i = 0; i < dim; ++i)
-                          {
-                            traction[i] = value[i];
-                          }
-                      }
+            unsigned int id = cell->face(face)->boundary_id();
 
-                    fe_face_values.reinit(cell, face);
-                    for (unsigned int q = 0; q < n_f_q_points; ++q)
-                      {
-                        if (parameters.solid_neumann_bc_type == "Pressure")
-                          {
-                            // The normal is w.r.t. reference configuration!
-                            traction = fe_face_values.normal_vector(q);
-                            traction *= value[0];
-                          }
-                        for (unsigned int j = 0; j < dofs_per_cell; ++j)
-                          {
-                            const unsigned int component_j =
-                              fe.system_to_component_index(j).first;
-                            // +external force
-                            local_rhs(j) += fe_face_values.shape_value(j, q) *
-                                            traction[component_j] *
-                                            fe_face_values.JxW(q);
-                          }
-                      }
+            if (!cell->face(face)->at_boundary() ||
+                parameters.solid_dirichlet_bcs.find(id) !=
+                  parameters.solid_dirichlet_bcs.end())
+              {
+                // Not a Neumann boundary
+                continue;
+              }
+
+            if (parameters.solid_neumann_bc_type != "FSI" &&
+                parameters.solid_neumann_bcs.find(id) ==
+                  parameters.solid_neumann_bcs.end())
+              {
+                // Traction-free boundary, do nothing
+                continue;
+              }
+
+            fe_face_values.reinit(cell, face);
+
+            Tensor<1, dim> traction;
+            std::vector<double> prescribed_value;
+            if (parameters.solid_neumann_bc_type != "FSI")
+              {
+                // In stand-alone simulation, the boundary value is prescribed
+                // by the user.
+                prescribed_value = parameters.solid_neumann_bcs[id];
+              }
+
+            if (parameters.solid_neumann_bc_type == "Traction")
+              {
+                for (unsigned int i = 0; i < dim; ++i)
+                  {
+                    traction[i] = prescribed_value[i];
+                  }
+              }
+
+            for (unsigned int q = 0; q < n_f_q_points; ++q)
+              {
+                if (parameters.solid_neumann_bc_type == "Pressure")
+                  {
+                    // TODO:
+                    // here and FSI, the normal is w.r.t. reference
+                    // configuration,
+                    // should be changed to current config.
+                    traction = fe_face_values.normal_vector(q);
+                    traction *= prescribed_value[0];
+                  }
+                else if (parameters.solid_neumann_bc_type == "FSI")
+                  {
+                    traction = p[face * n_f_q_points + q]->fsi_traction;
+                  }
+
+                for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                  {
+                    const unsigned int component_j =
+                      fe.system_to_component_index(j).first;
+                    // +external force
+                    local_rhs(j) += fe_face_values.shape_value(j, q) *
+                                    traction[component_j] *
+                                    fe_face_values.JxW(q);
                   }
               }
           }
 
-        // Now distribute local data to the system, and apply the
-        // hanging node constraints at the same time.
-        constraints.distribute_local_to_global(local_matrix,
-                                               local_rhs,
-                                               local_dof_indices,
-                                               system_matrix,
-                                               system_rhs);
-        constraints.distribute_local_to_global(
-          local_stiffness, local_dof_indices, stiffness_matrix);
+        if (assemble_matrix)
+          {
+            // Now distribute local data to the system, and apply the
+            // hanging node constraints at the same time.
+            constraints.distribute_local_to_global(local_matrix,
+                                                   local_rhs,
+                                                   local_dof_indices,
+                                                   system_matrix,
+                                                   system_rhs);
+            constraints.distribute_local_to_global(
+              local_stiffness, local_dof_indices, stiffness_matrix);
+          }
+        else
+          {
+            constraints.distribute_local_to_global(
+              local_rhs, local_dof_indices, system_rhs);
+          }
       }
+  }
+
+  template <int dim>
+  void LinearElasticSolver<dim>::assemble_system(bool is_initial)
+  {
+    assemble(is_initial, true);
+  }
+
+  template <int dim>
+  void LinearElasticSolver<dim>::assemble_rhs()
+  {
+    // In case of assembling rhs only, the first boolean does not matter.
+    assemble(false, false);
   }
 
   // Solve linear system \f$Ax = b\f$ using CG solver.
@@ -280,11 +369,36 @@ namespace Solid
       data_component_interpretation(
         dim, DataComponentInterpretation::component_is_part_of_vector);
     DataOut<dim> data_out;
-    data_out.attach_dof_handler(dof_handler);
-    data_out.add_data_vector(current_displacement,
+    // displacements
+    data_out.add_data_vector(dof_handler,
+                             current_displacement,
                              solution_names,
-                             DataOut<dim>::type_dof_data,
                              data_component_interpretation);
+    // velocity
+    solution_names = std::vector<std::string>(dim, "velocities");
+    data_out.add_data_vector(dof_handler,
+                             current_velocity,
+                             solution_names,
+                             data_component_interpretation);
+
+    // strain and stress
+    update_strain_and_stress();
+    data_out.add_data_vector(dg_dof_handler, strain[0][0], "Exx");
+    data_out.add_data_vector(dg_dof_handler, strain[0][1], "Exy");
+    data_out.add_data_vector(dg_dof_handler, strain[1][1], "Eyy");
+    data_out.add_data_vector(dg_dof_handler, stress[0][0], "Sxx");
+    data_out.add_data_vector(dg_dof_handler, stress[0][1], "Sxy");
+    data_out.add_data_vector(dg_dof_handler, stress[1][1], "Syy");
+    if (dim == 3)
+      {
+        data_out.add_data_vector(dg_dof_handler, strain[0][2], "Exz");
+        data_out.add_data_vector(dg_dof_handler, strain[1][2], "Eyz");
+        data_out.add_data_vector(dg_dof_handler, strain[2][2], "Ezz");
+        data_out.add_data_vector(dg_dof_handler, stress[0][2], "Sxz");
+        data_out.add_data_vector(dg_dof_handler, stress[1][2], "Syz");
+        data_out.add_data_vector(dg_dof_handler, stress[2][2], "Szz");
+      }
+
     data_out.build_patches();
 
     std::string basename = "linearelastic";
@@ -304,6 +418,8 @@ namespace Solid
   void LinearElasticSolver<dim>::refine_mesh(const unsigned int min_grid_level,
                                              const unsigned int max_grid_level)
   {
+    TimerOutput::Scope timer_section(timer, "Refine mesh");
+
     Vector<float> estimated_error_per_cell(triangulation.n_active_cells());
     KellyErrorEstimator<dim>::estimate(dof_handler,
                                        face_quad_formula,
@@ -356,81 +472,230 @@ namespace Solid
   }
 
   template <int dim>
+  void LinearElasticSolver<dim>::run_one_step(bool first_step)
+  {
+    std::cout.precision(6);
+    std::cout.width(12);
+
+    if (first_step)
+      {
+        // Neet to compute the initial acceleration, \f$ Ma_n = F \f$,
+        // at this point set system_matrix to mass_matrix.
+        assemble_system(true);
+        solve(system_matrix, previous_acceleration, system_rhs);
+        // Update the system_matrix
+        assemble_system(false);
+        output_results(time.get_timestep());
+      }
+
+    const double dt = time.get_delta_t();
+
+    // Time loop
+    time.increment();
+    std::cout << std::string(91, '*') << std::endl
+              << "Time step = " << time.get_timestep()
+              << ", at t = " << std::scientific << time.current() << std::endl;
+
+    // In FSI application we have to update the RHS
+    if (parameters.solid_neumann_bc_type == "FSI")
+      {
+        assemble_rhs();
+      }
+    // Modify the RHS
+    Vector<double> tmp1(system_rhs);
+    auto tmp2 = previous_displacement;
+    tmp2.add(
+      dt, previous_velocity, (0.5 - beta) * dt * dt, previous_acceleration);
+    Vector<double> tmp3(dof_handler.n_dofs());
+    stiffness_matrix.vmult(tmp3, tmp2);
+    tmp1 -= tmp3;
+
+    auto state = solve(system_matrix, current_acceleration, tmp1);
+
+    // update the current velocity
+    // \f$ v_{n+1} = v_n + (1-\gamma)\Delta{t}a_n + \gamma\Delta{t}a_{n+1}
+    // \f$
+    current_velocity = previous_velocity;
+    current_velocity.add(dt * (1 - gamma), previous_acceleration);
+    current_velocity.add(dt * gamma, current_acceleration);
+
+    // update the current displacement
+    current_displacement = previous_displacement;
+    current_displacement.add(dt, previous_velocity);
+    current_displacement.add(dt * dt * (0.5 - beta), previous_acceleration);
+    current_displacement.add(dt * dt * beta, current_acceleration);
+
+    // update the previous values
+    previous_acceleration = current_acceleration;
+    previous_velocity = current_velocity;
+    previous_displacement = current_displacement;
+
+    std::cout << std::scientific << std::left
+              << " CG iteration: " << std::setw(3) << state.first
+              << " CG residual: " << state.second << std::endl;
+
+    if (time.time_to_output())
+      {
+        output_results(time.get_timestep());
+      }
+
+    if (time.time_to_refine())
+      {
+        refine_mesh(1, 4);
+        assemble_system(false);
+      }
+  }
+
+  template <int dim>
   void LinearElasticSolver<dim>::run()
   {
     triangulation.refine_global(parameters.global_refinement);
     setup_dofs();
     initialize_system();
 
-    std::cout.precision(6);
-    std::cout.width(12);
-
-    // Neet to compute the initial acceleration, \f$ Ma_n = F \f$,
-    // at this point set system_matrix to mass_matrix.
-    assemble_system(true);
-    solve(system_matrix, previous_acceleration, system_rhs);
-
-    // Update the system_matrix
-    assemble_system(false);
-
-    const double dt = time.get_delta_t();
-
     // Time loop
-    output_results(time.get_timestep());
+    run_one_step(true);
     while (time.end() - time.current() > 1e-12)
       {
-        time.increment();
-        std::cout << std::string(91, '*') << std::endl
-                  << "Time step = " << time.get_timestep()
-                  << ", at t = " << std::scientific << time.current()
-                  << std::endl;
+        run_one_step(false);
+      }
+  }
 
-        // Modify the RHS
-        Vector<double> tmp1(system_rhs);
-        auto tmp2 = previous_displacement;
-        tmp2.add(
-          dt, previous_velocity, (0.5 - beta) * dt * dt, previous_acceleration);
-        Vector<double> tmp3(dof_handler.n_dofs());
-        stiffness_matrix.vmult(tmp3, tmp2);
-        tmp1 -= tmp3;
+  template <int dim>
+  void LinearElasticSolver<dim>::update_strain_and_stress() const
+  {
+    // The strain and stress tensors are stored as 2D vectors of shape dim*dim
+    // at cell and quadrature point level.
+    std::vector<std::vector<Vector<double>>> cell_strain(
+      dim,
+      std::vector<Vector<double>>(dim, Vector<double>(dg_fe.dofs_per_cell)));
+    std::vector<std::vector<Vector<double>>> cell_stress(
+      dim,
+      std::vector<Vector<double>>(dim, Vector<double>(dg_fe.dofs_per_cell)));
+    std::vector<std::vector<Vector<double>>> quad_strain(
+      dim,
+      std::vector<Vector<double>>(dim,
+                                  Vector<double>(volume_quad_formula.size())));
+    std::vector<std::vector<Vector<double>>> quad_stress(
+      dim,
+      std::vector<Vector<double>>(dim,
+                                  Vector<double>(volume_quad_formula.size())));
 
-        auto state = solve(system_matrix, current_acceleration, tmp1);
+    // Displacement gradients at quadrature points.
+    std::vector<Tensor<2, dim>> current_displacement_gradients(
+      volume_quad_formula.size());
 
-        // update the current velocity
-        // \f$ v_{n+1} = v_n + (1-\gamma)\Delta{t}a_n + \gamma\Delta{t}a_{n+1}
-        // \f$
-        current_velocity = previous_velocity;
-        current_velocity.add(dt * (1 - gamma), previous_acceleration);
-        current_velocity.add(dt * gamma, current_acceleration);
+    // The projection matrix from quadrature points to the dofs.
+    FullMatrix<double> qpt_to_dof(dg_fe.dofs_per_cell,
+                                  volume_quad_formula.size());
+    FETools::compute_projection_from_quadrature_points_matrix(
+      dg_fe, volume_quad_formula, volume_quad_formula, qpt_to_dof);
 
-        // update the current displacement
-        current_displacement = previous_displacement;
-        current_displacement.add(dt, previous_velocity);
-        current_displacement.add(dt * dt * (0.5 - beta), previous_acceleration);
-        current_displacement.add(dt * dt * beta, current_acceleration);
+    const SymmetricTensor<4, dim> elasticity = material.get_elasticity();
+    const FEValuesExtractors::Vector displacements(0);
 
-        // update the previous values
-        previous_acceleration = current_acceleration;
-        previous_velocity = current_velocity;
-        previous_displacement = current_displacement;
+    FEValues<dim> fe_values(fe,
+                            volume_quad_formula,
+                            update_values | update_gradients |
+                              update_quadrature_points | update_JxW_values);
+    auto cell = dof_handler.begin_active();
+    auto dg_cell = dg_dof_handler.begin_active();
+    for (; cell != dof_handler.end(); ++cell, ++dg_cell)
+      {
+        fe_values.reinit(cell);
+        fe_values[displacements].get_function_gradients(
+          current_displacement, current_displacement_gradients);
 
-        std::cout << std::scientific << std::left
-                  << " CG iteration: " << std::setw(3) << state.first
-                  << " CG residual: " << state.second << std::endl;
-
-        if (time.time_to_output())
+        for (unsigned int q = 0; q < volume_quad_formula.size(); ++q)
           {
-            output_results(time.get_timestep());
+            SymmetricTensor<2, dim> tmp_strain, tmp_stress;
+            for (unsigned int i = 0; i < dim; ++i)
+              {
+                for (unsigned int j = 0; j < dim; ++j)
+                  {
+                    tmp_strain[i][j] =
+                      (current_displacement_gradients[q][i][j] +
+                       current_displacement_gradients[q][j][i]) /
+                      2;
+                    quad_strain[i][j][q] = tmp_strain[i][j];
+                  }
+              }
+            tmp_stress = elasticity * tmp_strain;
+            for (unsigned int i = 0; i < dim; ++i)
+              {
+                for (unsigned int j = 0; j < dim; ++j)
+                  {
+                    quad_stress[i][j][q] = tmp_stress[i][j];
+                  }
+              }
           }
 
-        if (time.time_to_refine())
+        for (unsigned int i = 0; i < dim; ++i)
           {
-            refine_mesh(1, 4);
-            assemble_system(false);
+            for (unsigned int j = 0; j < dim; ++j)
+              {
+                qpt_to_dof.vmult(cell_strain[i][j], quad_strain[i][j]);
+                qpt_to_dof.vmult(cell_stress[i][j], quad_stress[i][j]);
+                dg_cell->set_dof_values(cell_strain[i][j], strain[i][j]);
+                dg_cell->set_dof_values(cell_stress[i][j], stress[i][j]);
+              }
           }
       }
   }
 
+  template <int dim>
+  Vector<double> LinearElasticSolver<dim>::get_current_solution() const
+  {
+    return current_displacement;
+  }
+
+  template <int dim>
+  Tensor<1, dim> LinearElasticSolver<dim>::get_fsi_force() const
+  {
+    Tensor<1, dim> force;
+    FEFaceValues<dim> fe_face_values(fe, face_quad_formula, update_JxW_values);
+    const unsigned int n_f_q_points = face_quad_formula.size();
+    for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+         ++cell)
+      {
+        auto p = cell_property.get_data(cell);
+        Assert(p.size() == n_f_q_points * GeometryInfo<dim>::faces_per_cell,
+               ExcMessage("Wrong number of cell data!"));
+        for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
+             ++face)
+          {
+            unsigned int id = cell->face(face)->boundary_id();
+
+            if (!cell->face(face)->at_boundary() ||
+                parameters.solid_dirichlet_bcs.find(id) !=
+                  parameters.solid_dirichlet_bcs.end())
+              {
+                // Not a Neumann boundary
+                continue;
+              }
+
+            if (parameters.solid_neumann_bc_type != "FSI" &&
+                parameters.solid_neumann_bcs.find(id) ==
+                  parameters.solid_neumann_bcs.end())
+              {
+                // Traction-free boundary, do nothing
+                continue;
+              }
+
+            fe_face_values.reinit(cell, face);
+
+            for (unsigned int q = 0; q < n_f_q_points; ++q)
+              {
+                if (parameters.solid_neumann_bc_type == "FSI")
+                  {
+                    force += p[face * n_f_q_points + q]->fsi_traction *
+                             fe_face_values.JxW(q);
+                  }
+              }
+          }
+      }
+    return force;
+  }
   template class LinearElasticSolver<2>;
   template class LinearElasticSolver<3>;
 }

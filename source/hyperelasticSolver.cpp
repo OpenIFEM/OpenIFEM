@@ -14,7 +14,7 @@ namespace
       {
         Assert(parameters.C.size() >= 2, ExcInternalError());
         material.reset(new Solid::NeoHookean<dim>(
-          parameters.C[0], parameters.C[1], parameters.rho));
+          parameters.C[0], parameters.C[1], parameters.solid_rho));
         update(parameters, Tensor<2, dim>());
 	
       }
@@ -22,9 +22,9 @@ namespace
       {
         Assert(parameters.C.size() >= 2, ExcInternalError());
         material.reset(new Solid::MooneyRivlin<dim>(
-          parameters.C[0], parameters.C[1], parameters.C[2], parameters.rho));
+          parameters.C[0], parameters.C[1], parameters.C[2], parameters.solid_rho));
         update(parameters, Tensor<2, dim>());
-
+	
       }
     else
       {
