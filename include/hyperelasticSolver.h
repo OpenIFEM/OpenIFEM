@@ -44,6 +44,9 @@
 #include "parameters.h"
 #include "utilities.h"
 
+template <int>
+class FSI;
+
 namespace
 {
   using namespace dealii;
@@ -119,12 +122,16 @@ namespace Solid
   class HyperelasticSolver
   {
   public:
+    friend FSI<dim>;
+
     HyperelasticSolver(Triangulation<dim> &, const Parameters::AllParameters &);
     ~HyperelasticSolver() { dof_handler.clear(); }
     Vector<double> get_current_solution() const;
     void run();
 
   private:
+    struct CellProperty;
+
     /** Initialize dofs and constraints. */
     void setup_dofs();
 
@@ -159,6 +166,9 @@ namespace Solid
 
     void output_results(const unsigned int) const;
 
+    /// Run one time step.
+    void run_one_step(bool);
+
     Parameters::AllParameters parameters;
     double vol;
     Utils::Time time;
@@ -172,6 +182,14 @@ namespace Solid
     CellDataStorage<typename Triangulation<dim>::cell_iterator,
                     PointHistory<dim>>
       quad_point_history;
+
+    /**
+     * In FSI application the Neumann BCs are set by the FSI solver.
+     * Fluid traction is applied to every face on the solid boundary,
+     * which needs to be cached.
+     */
+    CellDataStorage<typename Triangulation<dim>::cell_iterator, CellProperty>
+      cell_property;
 
     const unsigned int degree;
     const FESystem<dim> fe;
@@ -224,6 +242,14 @@ namespace Solid
 
     // Return the current volume of the geometry
     double compute_volume() const;
+
+    /**
+     * The fluid traction in FSI simulation, which should be set by the FSI.
+     */
+    struct CellProperty
+    {
+      Tensor<1, dim> fsi_traction;
+    };
   };
 }
 

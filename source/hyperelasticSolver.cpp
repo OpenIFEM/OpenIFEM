@@ -79,6 +79,128 @@ namespace Solid
   }
 
   template <int dim>
+  void HyperelasticSolver<dim>::run_one_step(bool first_step)
+  {
+    if (first_step)
+      {
+        // Solve for the initial acceleration
+        assemble(true);
+        solve_linear_system(mass_matrix, previous_acceleration, system_rhs);
+        output_results(time.get_timestep());
+      }
+
+    Vector<double> predicted_displacement(dof_handler.n_dofs());
+    Vector<double> newton_update(dof_handler.n_dofs());
+    Vector<double> tmp(dof_handler.n_dofs());
+
+    time.increment();
+
+    std::cout << std::endl
+              << "Timestep " << time.get_timestep() << " @ " << time.current()
+              << "s" << std::endl;
+
+    // Reset the errors, iteration counter, and the solution increment
+    newton_update = 0;
+    unsigned int newton_iteration = 0;
+    error_residual = 1.0;
+    initial_error_residual = 1.0;
+    normalized_error_residual = 1.0;
+    error_update = 1.0;
+    initial_error_update = 1.0;
+    normalized_error_update = 1.0;
+    const double dt = time.get_delta_t();
+
+    // The prediction of the current displacement,
+    // which is what we want to solve.
+    predicted_displacement = previous_displacement;
+    predicted_displacement.add(
+      dt, previous_velocity, (0.5 - beta) * dt * dt, previous_acceleration);
+
+    std::cout << std::string(100, '_') << std::endl;
+
+    while (normalized_error_update > parameters.tol_d ||
+           normalized_error_residual > parameters.tol_f)
+      {
+        AssertThrow(newton_iteration < parameters.solid_max_iterations,
+                    ExcMessage("Too many Newton iterations!"));
+
+        // Compute the displacement, velocity and acceleration
+        current_acceleration = current_displacement;
+        current_acceleration -= predicted_displacement;
+        current_acceleration /= (beta * dt * dt);
+        current_velocity = previous_velocity;
+        current_velocity.add(dt * (1 - gamma),
+                             previous_acceleration,
+                             dt * gamma,
+                             current_acceleration);
+
+        // Assemble the system, and modify the RHS to account for
+        // the time-discretization.
+        assemble(false);
+        mass_matrix.vmult(tmp, current_acceleration);
+        system_rhs -= tmp;
+
+        // Solve linear system
+        const std::pair<unsigned int, double> lin_solver_output =
+          solve_linear_system(system_matrix, newton_update, system_rhs);
+
+        // Error evaluation
+        {
+          get_error_residual(error_residual);
+          if (newton_iteration == 0)
+            {
+              initial_error_residual = error_residual;
+            }
+          normalized_error_residual = error_residual / initial_error_residual;
+
+          get_error_update(newton_update, error_update);
+          if (newton_iteration == 0)
+            {
+              initial_error_update = error_update;
+            }
+          normalized_error_update = error_update / initial_error_update;
+        }
+
+        current_displacement += newton_update;
+        // Update the quadrature point history with the newest displacement
+        update_qph(current_displacement);
+
+        std::cout << "Newton iteration = " << newton_iteration
+                  << ", CG itr = " << lin_solver_output.first << std::fixed
+                  << std::setprecision(3) << std::setw(7) << std::scientific
+                  << ", CG res = " << lin_solver_output.second
+                  << ", res_F = " << error_residual
+                  << ", res_U = " << error_update << std::endl;
+
+        newton_iteration++;
+      }
+
+    // Once converged, update current acceleration and velocity again.
+    current_acceleration = current_displacement;
+    current_acceleration -= predicted_displacement;
+    current_acceleration /= (beta * dt * dt);
+    current_velocity = previous_velocity;
+    current_velocity.add(dt * (1 - gamma),
+                         previous_acceleration,
+                         dt * gamma,
+                         current_acceleration);
+    // Update the previous values
+    previous_acceleration = current_acceleration;
+    previous_velocity = current_velocity;
+    previous_displacement = current_displacement;
+
+    std::cout << std::string(100, '_') << std::endl
+              << "Relative errors:" << std::endl
+              << "Displacement:\t" << normalized_error_update << std::endl
+              << "Force: \t\t" << normalized_error_residual << std::endl;
+
+    if (time.time_to_output())
+      {
+        output_results(time.get_timestep());
+      }
+  }
+
+  template <int dim>
   void HyperelasticSolver<dim>::run()
   {
     triangulation.refine_global(parameters.global_refinement);
@@ -88,122 +210,10 @@ namespace Solid
     setup_dofs();
     initialize_system();
 
-    // Solve for the initial acceleration
-    assemble(true);
-    solve_linear_system(mass_matrix, previous_acceleration, system_rhs);
-    output_results(time.get_timestep());
-
-    Vector<double> predicted_displacement(dof_handler.n_dofs());
-    Vector<double> newton_update(dof_handler.n_dofs());
-    Vector<double> tmp(dof_handler.n_dofs());
-
+    run_one_step(true);
     while (time.end() - time.current() > 1e-12)
       {
-        time.increment();
-
-        std::cout << std::endl
-                  << "Timestep " << time.get_timestep() << " @ "
-                  << time.current() << "s" << std::endl;
-
-        // Reset the errors, iteration counter, and the solution increment
-        newton_update = 0;
-        unsigned int newton_iteration = 0;
-        error_residual = 1.0;
-        initial_error_residual = 1.0;
-        normalized_error_residual = 1.0;
-        error_update = 1.0;
-        initial_error_update = 1.0;
-        normalized_error_update = 1.0;
-        const double dt = time.get_delta_t();
-
-        // The prediction of the current displacement,
-        // which is what we want to solve.
-        predicted_displacement = previous_displacement;
-        predicted_displacement.add(
-          dt, previous_velocity, (0.5 - beta) * dt * dt, previous_acceleration);
-
-        std::cout << std::string(100, '_') << std::endl;
-
-        while (normalized_error_update > parameters.tol_d ||
-               normalized_error_residual > parameters.tol_f)
-          {
-            AssertThrow(newton_iteration < parameters.solid_max_iterations,
-                        ExcMessage("Too many Newton iterations!"));
-
-            // Compute the displacement, velocity and acceleration
-            current_acceleration = current_displacement;
-            current_acceleration -= predicted_displacement;
-            current_acceleration /= (beta * dt * dt);
-            current_velocity = previous_velocity;
-            current_velocity.add(dt * (1 - gamma),
-                                 previous_acceleration,
-                                 dt * gamma,
-                                 current_acceleration);
-
-            // Assemble the system, and modify the RHS to account for
-            // the time-discretization.
-            assemble(false);
-            mass_matrix.vmult(tmp, current_acceleration);
-            system_rhs -= tmp;
-
-            // Solve linear system
-            const std::pair<unsigned int, double> lin_solver_output =
-              solve_linear_system(system_matrix, newton_update, system_rhs);
-
-            // Error evaluation
-            {
-              get_error_residual(error_residual);
-              if (newton_iteration == 0)
-                {
-                  initial_error_residual = error_residual;
-                }
-              normalized_error_residual =
-                error_residual / initial_error_residual;
-
-              get_error_update(newton_update, error_update);
-              if (newton_iteration == 0)
-                {
-                  initial_error_update = error_update;
-                }
-              normalized_error_update = error_update / initial_error_update;
-            }
-
-            current_displacement += newton_update;
-            // Update the quadrature point history with the newest displacement
-            update_qph(current_displacement);
-
-            std::cout << "Newton iteration = " << newton_iteration
-                      << ", CG itr = " << lin_solver_output.first << std::fixed
-                      << std::setprecision(3) << std::setw(7) << std::scientific
-                      << ", CG res = " << lin_solver_output.second
-                      << ", res_F = " << error_residual
-                      << ", res_U = " << error_update << std::endl;
-
-            newton_iteration++;
-          }
-        // Once converged, update current acceleration and velocity again.
-        current_acceleration = current_displacement;
-        current_acceleration -= predicted_displacement;
-        current_acceleration /= (beta * dt * dt);
-        current_velocity = previous_velocity;
-        current_velocity.add(dt * (1 - gamma),
-                             previous_acceleration,
-                             dt * gamma,
-                             current_acceleration);
-        // Update the previous values
-        previous_acceleration = current_acceleration;
-        previous_velocity = current_velocity;
-        previous_displacement = current_displacement;
-
-        std::cout << std::string(100, '_') << std::endl
-                  << "Relative errors:" << std::endl
-                  << "Displacement:\t" << normalized_error_update << std::endl
-                  << "Force: \t\t" << normalized_error_residual << std::endl;
-
-        if (time.time_to_output())
-          {
-            output_results(time.get_timestep());
-          }
+        run_one_step(false);
       }
   }
 
@@ -273,6 +283,10 @@ namespace Solid
     previous_velocity.reinit(dof_handler.n_dofs());
     previous_displacement.reinit(dof_handler.n_dofs());
     setup_qph();
+    const unsigned int n_data =
+      n_f_q_points * GeometryInfo<dim>::faces_per_cell;
+    cell_property.initialize(
+      triangulation.begin_active(), triangulation.end(), n_data);
   }
 
   template <int dim>
@@ -414,6 +428,9 @@ namespace Solid
     for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
          ++cell)
       {
+        auto p = cell_property.get_data(cell);
+        Assert(p.size() == n_f_q_points * GeometryInfo<dim>::faces_per_cell,
+               ExcMessage("Wrong number of cell data!"));
         fe_values.reinit(cell);
         cell->get_dof_indices(local_dof_indices);
 
@@ -484,46 +501,72 @@ namespace Solid
               }
           }
 
+        // Neumann boundary conditions
+        // If this is a stand-alone solid simulation, the Neumann boundary type
+        // should be either Traction or Pressure;
+        // it this is a FSI simulation, the Neumann boundary type must be FSI.
+
         for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
              ++face)
           {
-            // apply traction or pressure
-            if (cell->face(face)->at_boundary())
-              {
-                unsigned int id = cell->face(face)->boundary_id();
-                if (parameters.solid_neumann_bcs.find(id) !=
-                    parameters.solid_neumann_bcs.end())
-                  {
-                    std::vector<double> value =
-                      parameters.solid_neumann_bcs[id];
-                    Tensor<1, dim> traction;
-                    if (parameters.solid_neumann_bc_type == "Traction")
-                      {
-                        for (unsigned int i = 0; i < dim; ++i)
-                          {
-                            traction[i] = value[i];
-                          }
-                      }
+            unsigned int id = cell->face(face)->boundary_id();
 
-                    fe_face_values.reinit(cell, face);
-                    for (unsigned int q = 0; q < n_f_q_points; ++q)
-                      {
-                        if (parameters.solid_neumann_bc_type == "Pressure")
-                          {
-                            // The normal is w.r.t. reference configuration!
-                            traction = fe_face_values.normal_vector(q);
-                            traction *= value[0];
-                          }
-                        for (unsigned int j = 0; j < dofs_per_cell; ++j)
-                          {
-                            const unsigned int component_j =
-                              fe.system_to_component_index(j).first;
-                            // +external force
-                            local_rhs(j) += fe_face_values.shape_value(j, q) *
-                                            traction[component_j] *
-                                            fe_face_values.JxW(q);
-                          }
-                      }
+            if (!cell->face(face)->at_boundary() ||
+                parameters.solid_dirichlet_bcs.find(id) !=
+                  parameters.solid_dirichlet_bcs.end())
+              {
+                // Not a Neumann boundary
+                continue;
+              }
+
+            if (parameters.solid_neumann_bc_type != "FSI" &&
+                parameters.solid_neumann_bcs.find(id) ==
+                  parameters.solid_neumann_bcs.end())
+              {
+                // Traction-free boundary, do nothing
+                continue;
+              }
+
+            fe_face_values.reinit(cell, face);
+
+            Tensor<1, dim> traction;
+            std::vector<double> prescribed_value;
+            if (parameters.solid_neumann_bc_type != "FSI")
+              {
+                // In stand-alone simulation, the boundary value is prescribed
+                // by the user.
+                prescribed_value = parameters.solid_neumann_bcs[id];
+              }
+
+            if (parameters.solid_neumann_bc_type == "Traction")
+              {
+                for (unsigned int i = 0; i < dim; ++i)
+                  {
+                    traction[i] = prescribed_value[i];
+                  }
+              }
+
+            for (unsigned int q = 0; q < n_f_q_points; ++q)
+              {
+                if (parameters.solid_neumann_bc_type == "Pressure")
+                  {
+                    // The normal is w.r.t. reference configuration!
+                    traction = fe_face_values.normal_vector(q);
+                    traction *= prescribed_value[0];
+                  }
+                else if (parameters.solid_neumann_bc_type == "FSI")
+                  {
+                    traction = p[face * n_f_q_points + q]->fsi_traction;
+                  }
+
+                for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                  {
+                    const unsigned int component_j =
+                      fe.system_to_component_index(j).first;
+                    // +external force
+                    local_rhs(j) += fe_face_values.shape_value(j, q) *
+                                    traction[component_j] *
+                                    fe_face_values.JxW(q);
                   }
               }
           }

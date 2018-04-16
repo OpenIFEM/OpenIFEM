@@ -214,8 +214,6 @@ namespace Solid
 
     Parameters::AllParameters parameters;
 
-    std::vector<Tensor<1, dim>> fluid_traction;
-
     CellDataStorage<typename Triangulation<dim>::cell_iterator, CellProperty>
       cell_property;
 
