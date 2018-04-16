@@ -21,6 +21,7 @@ set(headers fsi.h
             mpi_navierstokes.h
             navierstokes.h
             neoHookean.h
+	    mooneyrivlin.h
             parameters.h
             utilities.h)
 

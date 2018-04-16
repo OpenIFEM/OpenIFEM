@@ -288,7 +288,7 @@ namespace Parameters
     {
       prm.declare_entry("Solid type",
                         "LinearElastic",
-                        Patterns::Selection("LinearElastic|NeoHookean"),
+                        Patterns::Selection("LinearElastic|NeoHookean|MooneyRivlin"),
                         "Type of solid material");
       prm.declare_entry(
         "Solid density", "1.0", Patterns::Double(0.0), "Solid density");
