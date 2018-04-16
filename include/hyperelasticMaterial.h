@@ -79,7 +79,7 @@ namespace Solid
     dealii::SymmetricTensor<2, dim>
       b_bar; //!< modified left Cauchy-Green tensor
 
-    /** Return the isochoric part of the Kirchhoff stress. */
+   /** Return the isochoric part of the Kirchhoff stress. */
     virtual dealii::SymmetricTensor<2, dim> get_tau_iso() const
     {
       return ST::dev_P * get_tau_bar();
