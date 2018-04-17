@@ -4,7 +4,8 @@ set(serial_tests fluid_cylinder
                  fluid_pressure_driven
                  fsi_gravity
                  solid_bending_beam
-                 solid_gravity)
+                 solid_gravity
+                 beam_bending_NeoHookean)
 
 # List all the mpi tests
 set(mpi_tests fluid_mpi_cylinder)
