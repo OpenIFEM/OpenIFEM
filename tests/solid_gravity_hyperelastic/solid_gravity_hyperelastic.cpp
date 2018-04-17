@@ -1,16 +1,16 @@
 /**
- * This program tests serial NavierStokes solver with a 2D pressure-driven pipe
- * flow case.
- * The final axial velocity profile should be parabolic, we should check
- * the maximum velocity.
- * 2D test takes about 26.9s.
+ * This program tests serial HyperelasticSolver with a 2D ball dropping case.
+ * In a free falling case, we know the velocity and displacement at a certain
+ * time.
  */
-#include "navierstokes.h"
+#include "hyperelasticSolver.h"
 #include "parameters.h"
 #include "utilities.h"
 
-extern template class Fluid::NavierStokes<2>;
-extern template class Fluid::NavierStokes<3>;
+extern template class Solid::HyperelasticSolver<2>;
+extern template class Solid::HyperelasticSolver<3>;
+extern template class Utils::GridCreator<2>;
+extern template class Utils::GridCreator<3>;
 
 int main(int argc, char *argv[])
 {
@@ -25,38 +25,35 @@ int main(int argc, char *argv[])
         }
       Parameters::AllParameters params(infile);
 
-      double L = 2.0, D = 0.2;
+      double R = 0.25;
+      Vector<double> u;
 
       if (params.dimension == 2)
         {
-          Triangulation<2> tria;
-          dealii::GridGenerator::subdivided_hyper_rectangle(
-            tria, {100, 5}, Point<2>(0, 0), Point<2>(L, D / 2), true);
-          Fluid::NavierStokes<2> flow(tria, params);
-          flow.run();
-          auto solution = flow.get_current_solution();
-          // Assuming the mass is conserved and final velocity profile is
-          // parabolic,
-          // vmax should equal 1.5 times inlet velocity.
-          auto v = solution.block(0);
-          double vmax = *std::max_element(v.begin(), v.end());
-          double verror = std::abs(vmax - 2.5e-2) / 2.5e-2;
-          AssertThrow(verror < 1e-3,
-                      ExcMessage("Maximum velocity is incorrect!"));
+          Triangulation<2> solid_tria;
+          Point<2> center(0, 0);
+          Utils::GridCreator<2>::sphere(solid_tria, center, R);
+          Solid::HyperelasticSolver<2> solid(solid_tria, params);
+          solid.run();
+          u = solid.get_current_solution();
         }
       else if (params.dimension == 3)
         {
-          Triangulation<3> tria;
-          dealii::GridGenerator::cylinder(tria, D / 2, L / 2);
-          static const CylindricalManifold<3> cylinder;
-          tria.set_manifold(0, cylinder);
-          Fluid::NavierStokes<3> flow(tria, params);
-          flow.run();
+          Triangulation<3> solid_tria;
+          Point<3> center(0, 0, 0);
+          Utils::GridCreator<3>::sphere(solid_tria, center, R);
+          Solid::HyperelasticSolver<3> solid(solid_tria, params);
+          solid.run();
+          u = solid.get_current_solution();
         }
       else
         {
           AssertThrow(false, ExcNotImplemented());
         }
+
+      double umin = *std::min_element(u.begin(), u.end());
+      double uerror = std::abs(umin + 5.0) / 5.0;
+      AssertThrow(uerror < 1e-3, ExcMessage("Incorrect min velocity!"));
     }
   catch (std::exception &exc)
     {

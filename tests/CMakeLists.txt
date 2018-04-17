@@ -3,12 +3,13 @@ set(serial_tests fluid_cylinder
                  fluid_pipe
                  fluid_pressure_driven
                  fsi_gravity
-                 solid_bending_beam
-                 solid_gravity
-                 beam_bending_NeoHookean)
+                 solid_beam_bending_linearelastic
+                 solid_beam_bending_NeoHookean
+                 solid_gravity_hyperelastic
+                 solid_gravity_linearelastic)
 
 # List all the mpi tests
-set(mpi_tests fluid_mpi_cylinder)
+set(mpi_tests fluid_cylinder_mpi)
 
 set(tests ${serial_tests})
 list(APPEND tests ${mpi_tests})

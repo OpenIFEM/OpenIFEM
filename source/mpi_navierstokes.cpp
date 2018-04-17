@@ -32,7 +32,8 @@ namespace Fluid
   }
 
   template <int dim>
-  PETScWrappers::MPI::BlockVector ParallelNavierStokes<dim>::get_current_solution() const
+  PETScWrappers::MPI::BlockVector
+  ParallelNavierStokes<dim>::get_current_solution() const
   {
     return present_solution;
   }
@@ -348,7 +349,7 @@ namespace Fluid
             const std::vector<std::shared_ptr<CellProperty>> p =
               cell_property.get_data(cell);
             Assert(p.size() == n_q_points,
-                  ExcMessage("Wrong number of cell property!"));
+                   ExcMessage("Wrong number of cell property!"));
             for (unsigned int q = 0; q < n_q_points; ++q)
               {
                 p[q]->indicator = 0;
@@ -829,7 +830,8 @@ namespace Fluid
     // Indicator
     Vector<float> ind(triangulation.n_active_cells());
     int cnt = 0;
-    for (auto cell = triangulation.begin_active(); cell != triangulation.end(); ++cell)
+    for (auto cell = triangulation.begin_active(); cell != triangulation.end();
+         ++cell)
       {
         if (cell->is_locally_owned())
           {

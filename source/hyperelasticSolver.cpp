@@ -1,6 +1,6 @@
 #include "hyperelasticSolver.h"
 
-namespace
+namespace Internal
 {
   using namespace dealii;
 
@@ -299,7 +299,7 @@ namespace Solid
     for (auto cell = triangulation.begin_active(); cell != triangulation.end();
          ++cell)
       {
-        const std::vector<std::shared_ptr<PointHistory<dim>>> lqph =
+        const std::vector<std::shared_ptr<Internal::PointHistory<dim>>> lqph =
           quad_point_history.get_data(cell);
         Assert(lqph.size() == n_q_points, ExcInternalError());
         for (unsigned int q = 0; q < n_q_points; ++q)
@@ -323,7 +323,7 @@ namespace Solid
     for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
          ++cell)
       {
-        const std::vector<std::shared_ptr<PointHistory<dim>>> lqph =
+        const std::vector<std::shared_ptr<Internal::PointHistory<dim>>> lqph =
           quad_point_history.get_data(cell);
         Assert(lqph.size() == n_q_points, ExcInternalError());
 
@@ -348,8 +348,8 @@ namespace Solid
          ++cell)
       {
         fe_values.reinit(cell);
-        const std::vector<std::shared_ptr<const PointHistory<dim>>> lqph =
-          quad_point_history.get_data(cell);
+        const std::vector<std::shared_ptr<const Internal::PointHistory<dim>>>
+          lqph = quad_point_history.get_data(cell);
         Assert(lqph.size() == n_q_points, ExcInternalError());
         for (unsigned int q = 0; q < n_q_points; ++q)
           {
@@ -425,6 +425,12 @@ namespace Solid
     Vector<double> local_rhs(dofs_per_cell);
     std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
+    Tensor<1, dim> gravity;
+    for (unsigned int i = 0; i < dim; ++i)
+      {
+        gravity[i] = parameters.gravity[i];
+      }
+
     for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
          ++cell)
       {
@@ -438,7 +444,7 @@ namespace Solid
         local_matrix = 0;
         local_rhs = 0;
 
-        const std::vector<std::shared_ptr<PointHistory<dim>>> lqph =
+        const std::vector<std::shared_ptr<Internal::PointHistory<dim>>> lqph =
           quad_point_history.get_data(cell);
         Assert(lqph.size() == n_q_points, ExcInternalError());
 
@@ -486,6 +492,8 @@ namespace Solid
                   }
                 local_rhs(i) -=
                   sym_grad_phi[q][i] * tau * JxW; // -internal force
+                // body force
+                local_rhs[i] += phi[q][i] * gravity * rho * fe_values.JxW(q);
               }
           }
 

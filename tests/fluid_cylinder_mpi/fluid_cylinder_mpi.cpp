@@ -1,5 +1,6 @@
 /**
- * This program tests parallel NavierStokes solver with a 2D flow around cylinder
+ * This program tests parallel NavierStokes solver with a 2D flow around
+ * cylinder
  * case.
  * Hard-coded parabolic velocity input is used, and Re = 20.
  * Only one step is run, and the test takes about 175s.

@@ -47,7 +47,7 @@
 template <int>
 class FSI;
 
-namespace
+namespace Internal
 {
   using namespace dealii;
 
@@ -180,7 +180,7 @@ namespace Solid
      * can be cached.
      */
     CellDataStorage<typename Triangulation<dim>::cell_iterator,
-                    PointHistory<dim>>
+                    Internal::PointHistory<dim>>
       quad_point_history;
 
     /**

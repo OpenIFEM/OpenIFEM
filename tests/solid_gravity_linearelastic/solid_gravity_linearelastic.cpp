@@ -1,6 +1,7 @@
 /**
- * This program tests serial linear elastic solver with a 2D bending beam case.
- * Constant traction is applied to the upper surface.
+ * This program tests serial LinearElasticSolver with a 2D ball dropping case.
+ * In a free falling case, we know the velocity and displacement at a certain
+ * time.
  */
 #include "linearElasticSolver.h"
 #include "parameters.h"
@@ -8,6 +9,8 @@
 
 extern template class Solid::LinearElasticSolver<2>;
 extern template class Solid::LinearElasticSolver<3>;
+extern template class Utils::GridCreator<2>;
+extern template class Utils::GridCreator<3>;
 
 int main(int argc, char *argv[])
 {
@@ -22,33 +25,35 @@ int main(int argc, char *argv[])
         }
       Parameters::AllParameters params(infile);
 
-      double L = 8.0, H = 1.0;
+      double R = 0.25;
+      Vector<double> u;
 
       if (params.dimension == 2)
         {
-          Triangulation<2> tria;
-          dealii::GridGenerator::subdivided_hyper_rectangle(
-            tria, {32, 4}, Point<2>(0, 0), Point<2>(L, H), true);
-          Solid::LinearElasticSolver<2> solid(tria, params);
+          Triangulation<2> solid_tria;
+          Point<2> center(0, 0);
+          Utils::GridCreator<2>::sphere(solid_tria, center, R);
+          Solid::LinearElasticSolver<2> solid(solid_tria, params);
           solid.run();
-          auto u = solid.get_current_solution();
-          double umin = *std::min_element(u.begin(), u.end());
-          double uerror = std::abs(umin + 0.1337) / 0.1337;
-          AssertThrow(uerror < 1e-3,
-                      ExcMessage("Minimum displacement is incorrect!"));
+          u = solid.get_current_solution();
         }
       else if (params.dimension == 3)
         {
-          Triangulation<3> tria;
-          dealii::GridGenerator::subdivided_hyper_rectangle(
-            tria, {32, 4, 4}, Point<3>(0, 0, 0), Point<3>(L, H, H), true);
-          Solid::LinearElasticSolver<3> solid(tria, params);
+          Triangulation<3> solid_tria;
+          Point<3> center(0, 0, 0);
+          Utils::GridCreator<3>::sphere(solid_tria, center, R);
+          Solid::LinearElasticSolver<3> solid(solid_tria, params);
           solid.run();
+          u = solid.get_current_solution();
         }
       else
         {
           AssertThrow(false, ExcNotImplemented());
         }
+
+      double umin = *std::min_element(u.begin(), u.end());
+      double uerror = std::abs(umin + 5.0) / 5.0;
+      AssertThrow(uerror < 1e-3, ExcMessage("Incorrect min velocity!"));
     }
   catch (std::exception &exc)
     {
