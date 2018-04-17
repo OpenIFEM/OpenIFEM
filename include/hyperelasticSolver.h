@@ -40,6 +40,7 @@
 #include <fstream>
 #include <iostream>
 
+#include "mooneyrivlin.h"
 #include "neoHookean.h"
 #include "parameters.h"
 #include "utilities.h"
