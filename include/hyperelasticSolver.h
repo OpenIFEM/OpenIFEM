@@ -121,6 +121,7 @@ namespace Solid
   public:
     HyperelasticSolver(Triangulation<dim> &, const Parameters::AllParameters &);
     ~HyperelasticSolver() { dof_handler.clear(); }
+    Vector<double> get_current_solution() const;
     void run();
 
   private:

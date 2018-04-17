@@ -73,6 +73,12 @@ namespace Solid
   }
 
   template <int dim>
+  Vector<double> HyperelasticSolver<dim>::get_current_solution() const
+  {
+    return current_displacement;
+  }
+
+  template <int dim>
   void HyperelasticSolver<dim>::run()
   {
     triangulation.refine_global(parameters.global_refinement);
