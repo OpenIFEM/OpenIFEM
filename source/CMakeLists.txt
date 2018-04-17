@@ -20,6 +20,7 @@ set(headers fsi.h
             mpi_linearelasticity.h
             mpi_navierstokes.h
             navierstokes.h
+	    mooneyrivlin.h
             neoHookean.h
             parameters.h
             utilities.h)

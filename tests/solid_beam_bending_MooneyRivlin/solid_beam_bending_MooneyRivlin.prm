@@ -8,7 +8,7 @@
 # Simulation parameters
 subsection Simulation
   # The dimension of the simulation
-  set Dimension = 3
+  set Dimension = 2
 
   # Level of global refinement before running,
   # which applies to all the solvers
@@ -27,7 +27,7 @@ subsection Simulation
   set Refinement interval = 10
 
   # Body force which applies to both fluid and solid (acceleration)
-  set Gravity = 0.0, 0.0, 0.0
+  set Gravity = 0.0, 0.0
 end
 
 # --------------------------------------------------------------------------------
@@ -101,7 +101,7 @@ end
 
 subsection Solid material properties
   # Material type, currently LinearElastic and NeoHookean are available
-  set Solid type = NeoHookean
+  set Solid type = MooneyRivlin
 
   # Solid density, used by all solid solvers
   set Solid density = 1100
@@ -141,7 +141,7 @@ subsection Solid Dirichlet BCs
   # One decimal number indicates one set of constrained components:
   # 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
   # To make sense of the numbering, convert decimals to binaries (zyx)
-  set Dirichlet boundary components = 7
+  set Dirichlet boundary components = 3
 end
 
 # Two types of Neumann BCs are supported: traction and pressure.
@@ -159,5 +159,5 @@ subsection Solid Neumann BCs
 
   # If traction, dim*n_solid_neumann_bcs components are expected;
   # if pressure, n_solid_neumann_bcs components are expected.
-  set Neumann boundary values = 0, -500, 0
+  set Neumann boundary values = 0, -500
 end

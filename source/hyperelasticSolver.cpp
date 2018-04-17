@@ -14,6 +14,15 @@ namespace Internal
           parameters.C[0], parameters.C[1], parameters.solid_rho));
         update(parameters, Tensor<2, dim>());
       }
+    else if (parameters.solid_type == "MooneyRivlin")
+      {
+        Assert(parameters.C.size() >= 2, ExcInternalError());
+        material.reset(new Solid::MooneyRivlin<dim>(parameters.C[0],
+                                                    parameters.C[1],
+                                                    parameters.C[2],
+                                                    parameters.solid_rho));
+        update(parameters, Tensor<2, dim>());
+      }
     else
       {
         Assert(false, ExcNotImplemented());
@@ -30,6 +39,13 @@ namespace Internal
     if (parameters.solid_type == "NeoHookean")
       {
         auto nh = std::dynamic_pointer_cast<Solid::NeoHookean<dim>>(material);
+        Assert(nh, ExcInternalError());
+        tau = nh->get_tau();
+        Jc = nh->get_Jc();
+      }
+    else if (parameters.solid_type == "MooneyRivlin")
+      {
+        auto nh = std::dynamic_pointer_cast<Solid::MooneyRivlin<dim>>(material);
         Assert(nh, ExcInternalError());
         tau = nh->get_tau();
         Jc = nh->get_Jc();
