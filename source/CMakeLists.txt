@@ -8,6 +8,7 @@ set(TARGET_SRC fsi.cpp
                mpi_navierstokes.cpp
                navierstokes.cpp
                parameters.cpp
+               solidSolver.cpp
                utilities.cpp)
 
 # List all the header files here
@@ -22,6 +23,7 @@ set(headers fsi.h
             navierstokes.h
             neoHookean.h
             parameters.h
+            solidSolver.h
             utilities.h)
 
 # Prefix the header files with the path to include directory

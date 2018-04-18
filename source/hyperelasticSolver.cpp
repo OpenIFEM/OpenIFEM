@@ -50,43 +50,22 @@ namespace Solid
   template <int dim>
   HyperelasticSolver<dim>::HyperelasticSolver(
     Triangulation<dim> &tria, const Parameters::AllParameters &params)
-    : parameters(params),
-      vol(0.),
-      time(parameters.end_time,
-           parameters.time_step,
-           parameters.output_interval,
-           parameters.refinement_interval),
-      timer(std::cout, TimerOutput::summary, TimerOutput::wall_times),
-      degree(parameters.solid_degree),
-      fe(FE_Q<dim>(degree), dim),
-      triangulation(tria),
-      dof_handler(triangulation),
-      dofs_per_cell(fe.dofs_per_cell),
-      volume_quad_formula(degree + 1),
-      face_quad_formula(degree + 1),
-      n_q_points(volume_quad_formula.size()),
-      n_f_q_points(face_quad_formula.size()),
-      displacement(0),
-      gamma(0.5 + parameters.damping),
-      beta(gamma / 2)
+    : SolidSolver<dim>(tria, params)
   {
-  }
-
-  template <int dim>
-  Vector<double> HyperelasticSolver<dim>::get_current_solution() const
-  {
-    return current_displacement;
   }
 
   template <int dim>
   void HyperelasticSolver<dim>::run_one_step(bool first_step)
   {
+    double gamma = 0.5 + parameters.damping;
+    double beta = gamma / 2;
+
     if (first_step)
       {
         // Solve for the initial acceleration
-        assemble(true);
-        solve_linear_system(mass_matrix, previous_acceleration, system_rhs);
-        output_results(time.get_timestep());
+        assemble_system(true);
+        this->solve(mass_matrix, previous_acceleration, system_rhs);
+        this->output_results(time.get_timestep());
       }
 
     Vector<double> predicted_displacement(dof_handler.n_dofs());
@@ -136,13 +115,13 @@ namespace Solid
 
         // Assemble the system, and modify the RHS to account for
         // the time-discretization.
-        assemble(false);
+        assemble_system(false);
         mass_matrix.vmult(tmp, current_acceleration);
         system_rhs -= tmp;
 
         // Solve linear system
         const std::pair<unsigned int, double> lin_solver_output =
-          solve_linear_system(system_matrix, newton_update, system_rhs);
+          this->solve(system_matrix, newton_update, system_rhs);
 
         // Error evaluation
         {
@@ -196,104 +175,21 @@ namespace Solid
 
     if (time.time_to_output())
       {
-        output_results(time.get_timestep());
+        this->output_results(time.get_timestep());
       }
-  }
-
-  template <int dim>
-  void HyperelasticSolver<dim>::run()
-  {
-    triangulation.refine_global(parameters.global_refinement);
-    vol = GridTools::volume(triangulation);
-    std::cout << "Grid:\n\t Reference volume: " << vol << std::endl;
-
-    setup_dofs();
-    initialize_system();
-
-    run_one_step(true);
-    while (time.end() - time.current() > 1e-12)
-      {
-        run_one_step(false);
-      }
-  }
-
-  template <int dim>
-  void HyperelasticSolver<dim>::setup_dofs()
-  {
-    timer.enter_subsection("Setup system");
-    dof_handler.distribute_dofs(fe);
-    DoFRenumbering::Cuthill_McKee(dof_handler);
-
-    std::cout << "Triangulation:"
-              << "\n\t Number of active cells: "
-              << triangulation.n_active_cells()
-              << "\n\t Number of degrees of freedom: " << dof_handler.n_dofs()
-              << std::endl;
-
-    constraints.clear();
-    DoFTools::make_hanging_node_constraints(dof_handler, constraints);
-
-    for (auto itr = parameters.solid_dirichlet_bcs.begin();
-         itr != parameters.solid_dirichlet_bcs.end();
-         ++itr)
-      {
-        unsigned int id = itr->first;
-        unsigned int flag = itr->second;
-        std::vector<bool> mask(dim, false);
-        // 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
-        if (flag == 1 || flag == 3 || flag == 5 || flag == 7)
-          {
-            mask[0] = true;
-          }
-        if (flag == 2 || flag == 3 || flag == 6 || flag == 7)
-          {
-            mask[1] = true;
-          }
-        if (flag == 4 || flag == 5 || flag == 6 || flag == 7)
-          {
-            mask[2] = true;
-          }
-        VectorTools::interpolate_boundary_values(
-          dof_handler,
-          id,
-          Functions::ZeroFunction<dim>(dim),
-          constraints,
-          ComponentMask(mask));
-      }
-
-    constraints.close();
-
-    timer.leave_subsection();
   }
 
   template <int dim>
   void HyperelasticSolver<dim>::initialize_system()
   {
-    system_matrix.clear();
-    DynamicSparsityPattern dsp(dof_handler.n_dofs(), dof_handler.n_dofs());
-    DoFTools::make_sparsity_pattern(dof_handler, dsp, constraints, false);
-    pattern.copy_from(dsp);
-    system_matrix.reinit(pattern);
-    mass_matrix.reinit(pattern);
-    system_rhs.reinit(dof_handler.n_dofs());
-    current_acceleration.reinit(dof_handler.n_dofs());
-    current_velocity.reinit(dof_handler.n_dofs());
-    current_displacement.reinit(dof_handler.n_dofs());
-    previous_acceleration.reinit(dof_handler.n_dofs());
-    previous_velocity.reinit(dof_handler.n_dofs());
-    previous_displacement.reinit(dof_handler.n_dofs());
+    SolidSolver<dim>::initialize_system();
     setup_qph();
-    const unsigned int n_data =
-      n_f_q_points * GeometryInfo<dim>::faces_per_cell;
-    cell_property.initialize(
-      triangulation.begin_active(), triangulation.end(), n_data);
   }
 
   template <int dim>
   void HyperelasticSolver<dim>::setup_qph()
   {
-    std::cout << "    Setting up quadrature point data..." << std::endl;
-
+    const unsigned int n_q_points = volume_quad_formula.size();
     quad_point_history.initialize(
       triangulation.begin_active(), triangulation.end(), n_q_points);
     for (auto cell = triangulation.begin_active(); cell != triangulation.end();
@@ -316,6 +212,8 @@ namespace Solid
     timer.enter_subsection("Update QPH data");
 
     // displacement gradient at quad points
+    const unsigned int n_q_points = volume_quad_formula.size();
+    FEValuesExtractors::Vector displacement(0);
     std::vector<Tensor<2, dim>> grad_u(volume_quad_formula.size());
     FEValues<dim> fe_values(
       fe, volume_quad_formula, update_values | update_gradients);
@@ -342,6 +240,7 @@ namespace Solid
   template <int dim>
   double HyperelasticSolver<dim>::compute_volume() const
   {
+    const unsigned int n_q_points = volume_quad_formula.size();
     double volume = 0.0;
     FEValues<dim> fe_values(fe, volume_quad_formula, update_JxW_values);
     for (auto cell = triangulation.begin_active(); cell != triangulation.end();
@@ -393,9 +292,16 @@ namespace Solid
   }
 
   template <int dim>
-  void HyperelasticSolver<dim>::assemble(bool initial_step)
+  void HyperelasticSolver<dim>::assemble_system(bool initial_step)
   {
     timer.enter_subsection("Assemble tangent matrix");
+
+    const unsigned int n_q_points = volume_quad_formula.size();
+    const unsigned int n_f_q_points = face_quad_formula.size();
+    const unsigned int dofs_per_cell = fe.dofs_per_cell;
+    FEValuesExtractors::Vector displacement(0);
+    double gamma = 0.5 + parameters.damping;
+    double beta = gamma / 2;
 
     if (initial_step)
       {
@@ -601,60 +507,9 @@ namespace Solid
   }
 
   template <int dim>
-  std::pair<unsigned int, double> HyperelasticSolver<dim>::solve_linear_system(
-    SparseMatrix<double> &A, Vector<double> &x, Vector<double> &b)
+  void HyperelasticSolver<dim>::update_strain_and_stress() const
   {
-    timer.enter_subsection("Linear solver");
-
-    SolverControl solver_control(A.m(), 1e-6 * b.l2_norm());
-    GrowingVectorMemory<Vector<double>> GVM;
-    SolverCG<Vector<double>> solver_CG(solver_control, GVM);
-    PreconditionSSOR<> preconditioner;
-    preconditioner.initialize(A, 1.2);
-    solver_CG.solve(A, x, b, preconditioner);
-
-    constraints.distribute(x);
-    timer.leave_subsection();
-
-    return {solver_control.last_step(), solver_control.last_value()};
-  }
-
-  template <int dim>
-  void
-  HyperelasticSolver<dim>::output_results(const unsigned int output_index) const
-  {
-    DataOut<dim> data_out;
-    std::vector<DataComponentInterpretation::DataComponentInterpretation>
-      data_component_interpretation(
-        dim, DataComponentInterpretation::component_is_part_of_vector);
-
-    std::vector<std::string> solution_names(dim, "displacement");
-    data_out.attach_dof_handler(dof_handler);
-    data_out.add_data_vector(current_displacement,
-                             solution_names,
-                             DataOut<dim>::type_dof_data,
-                             data_component_interpretation);
-
-    Vector<double> soln(current_displacement.size());
-    for (unsigned int i = 0; i < soln.size(); ++i)
-      {
-        soln(i) = current_displacement(i);
-      }
-    // Map the solution to the deformed mesh, not necessary!
-    MappingQEulerian<dim> q_mapping(degree, dof_handler, soln);
-    data_out.build_patches(q_mapping, degree);
-
-    std::string basename = "hyperelastic";
-    std::string filename =
-      basename + "-" + Utilities::int_to_string(output_index, 6) + ".vtu";
-
-    std::ofstream output(filename);
-    data_out.write_vtu(output);
-
-    static std::vector<std::pair<double, std::string>> times_and_names;
-    times_and_names.push_back({time.current(), filename});
-    std::ofstream pvd_output(basename + ".pvd");
-    DataOutBase::write_pvd_record(pvd_output, times_and_names);
+    // To be implemented...
   }
 
   template class HyperelasticSolver<2>;

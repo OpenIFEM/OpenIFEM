@@ -7,128 +7,18 @@ namespace Solid
   template <int dim>
   LinearElasticSolver<dim>::LinearElasticSolver(
     Triangulation<dim> &tria, const Parameters::AllParameters &parameters)
-    : material(parameters.E, parameters.nu, parameters.solid_rho),
-      gamma(0.5 + parameters.damping),
-      beta(gamma / 2),
-      degree(parameters.solid_degree),
-      tolerance(1e-12),
-      triangulation(tria),
-      fe(FE_Q<dim>(degree), dim),
-      dg_fe(FE_DGQ<dim>(degree)),
-      dof_handler(triangulation),
-      dg_dof_handler(triangulation),
-      volume_quad_formula(degree + 1),
-      face_quad_formula(degree + 1),
-      time(parameters.end_time,
-           parameters.time_step,
-           parameters.output_interval,
-           parameters.refinement_interval),
-      timer(std::cout, TimerOutput::summary, TimerOutput::wall_times),
-      parameters(parameters)
+    : SolidSolver<dim>(tria, parameters),
+      material(parameters.E, parameters.nu, parameters.solid_rho)
   {
-  }
-
-  template <int dim>
-  LinearElasticSolver<dim>::~LinearElasticSolver()
-  {
-    dg_dof_handler.clear();
-    dof_handler.clear();
-  }
-
-  template <int dim>
-  void LinearElasticSolver<dim>::setup_dofs()
-  {
-    TimerOutput::Scope timer_section(timer, "Setup system");
-
-    dof_handler.distribute_dofs(fe);
-    DoFRenumbering::Cuthill_McKee(dof_handler);
-    dg_dof_handler.distribute_dofs(dg_fe);
-
-    // The Dirichlet boundary conditions are stored in the ConstraintMatrix
-    // object. It does not need to modify the sparse matrix after assembly,
-    // because it is applied in the assembly process,
-    // therefore is better compared with apply_boundary_values approach.
-    // Note that ZeroFunction is used here for convenience. In more
-    // complicated applications, write a BoundaryValue class to replace it.
-
-    constraints.clear();
-    DoFTools::make_hanging_node_constraints(dof_handler, constraints);
-
-    // Homogeneous BC only!
-    for (auto itr = parameters.solid_dirichlet_bcs.begin();
-         itr != parameters.solid_dirichlet_bcs.end();
-         ++itr)
-      {
-        unsigned int id = itr->first;
-        unsigned int flag = itr->second;
-        std::vector<bool> mask(dim, false);
-        // 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
-        if (flag == 1 || flag == 3 || flag == 5 || flag == 7)
-          {
-            mask[0] = true;
-          }
-        if (flag == 2 || flag == 3 || flag == 6 || flag == 7)
-          {
-            mask[1] = true;
-          }
-        if (flag == 4 || flag == 5 || flag == 6 || flag == 7)
-          {
-            mask[2] = true;
-          }
-        VectorTools::interpolate_boundary_values(
-          dof_handler,
-          id,
-          Functions::ZeroFunction<dim>(dim),
-          constraints,
-          ComponentMask(mask));
-      }
-
-    constraints.close();
-
-    std::cout << "  Number of active solid cells: "
-              << triangulation.n_active_cells() << std::endl
-              << "  Number of degrees of freedom: " << dof_handler.n_dofs()
-              << std::endl;
-  }
-
-  template <int dim>
-  void LinearElasticSolver<dim>::initialize_system()
-  {
-    DynamicSparsityPattern dsp(dof_handler.n_dofs(), dof_handler.n_dofs());
-    DoFTools::make_sparsity_pattern(dof_handler, dsp, constraints);
-    pattern.copy_from(dsp);
-
-    system_matrix.reinit(pattern);
-    stiffness_matrix.reinit(pattern);
-    system_rhs.reinit(dof_handler.n_dofs());
-    current_acceleration.reinit(dof_handler.n_dofs());
-    current_velocity.reinit(dof_handler.n_dofs());
-    current_displacement.reinit(dof_handler.n_dofs());
-    previous_acceleration.reinit(dof_handler.n_dofs());
-    previous_velocity.reinit(dof_handler.n_dofs());
-    previous_displacement.reinit(dof_handler.n_dofs());
-
-    strain = std::vector<std::vector<Vector<double>>>(
-      dim,
-      std::vector<Vector<double>>(dim,
-                                  Vector<double>(dg_dof_handler.n_dofs())));
-    stress = std::vector<std::vector<Vector<double>>>(
-      dim,
-      std::vector<Vector<double>>(dim,
-                                  Vector<double>(dg_dof_handler.n_dofs())));
-
-    // Set up cell property, which contains the FSI traction required in FSI
-    // simulation
-    const unsigned int n_data =
-      face_quad_formula.size() * GeometryInfo<dim>::faces_per_cell;
-    cell_property.initialize(
-      triangulation.begin_active(), triangulation.end(), n_data);
   }
 
   template <int dim>
   void LinearElasticSolver<dim>::assemble(bool is_initial, bool assemble_matrix)
   {
     TimerOutput::Scope timer_section(timer, "Assemble system");
+
+    double gamma = 0.5 + parameters.damping;
+    double beta = gamma / 2;
 
     if (assemble_matrix)
       {
@@ -337,155 +227,24 @@ namespace Solid
     assemble(false, false);
   }
 
-  // Solve linear system \f$Ax = b\f$ using CG solver.
-  template <int dim>
-  std::pair<unsigned int, double> LinearElasticSolver<dim>::solve(
-    const SparseMatrix<double> &A, Vector<double> &x, const Vector<double> &b)
-  {
-    TimerOutput::Scope timer_section(timer, "Solve linear system");
-
-    SolverControl solver_control(A.m(), tolerance);
-    SolverCG<> cg(solver_control);
-
-    PreconditionSSOR<> preconditioner;
-    preconditioner.initialize(A, 1.2);
-
-    cg.solve(A, x, b, preconditioner);
-    constraints.distribute(x);
-
-    return {solver_control.last_step(), solver_control.last_value()};
-  }
-
-  template <int dim>
-  void LinearElasticSolver<dim>::output_results(
-    const unsigned int output_index) const
-  {
-    TimerOutput::Scope timer_section(timer, "Output results");
-
-    std::cout << "Writing solid results..." << std::endl;
-    std::vector<std::string> solution_names(dim, "displacements");
-
-    std::vector<DataComponentInterpretation::DataComponentInterpretation>
-      data_component_interpretation(
-        dim, DataComponentInterpretation::component_is_part_of_vector);
-    DataOut<dim> data_out;
-    // displacements
-    data_out.add_data_vector(dof_handler,
-                             current_displacement,
-                             solution_names,
-                             data_component_interpretation);
-    // velocity
-    solution_names = std::vector<std::string>(dim, "velocities");
-    data_out.add_data_vector(dof_handler,
-                             current_velocity,
-                             solution_names,
-                             data_component_interpretation);
-
-    // strain and stress
-    update_strain_and_stress();
-    data_out.add_data_vector(dg_dof_handler, strain[0][0], "Exx");
-    data_out.add_data_vector(dg_dof_handler, strain[0][1], "Exy");
-    data_out.add_data_vector(dg_dof_handler, strain[1][1], "Eyy");
-    data_out.add_data_vector(dg_dof_handler, stress[0][0], "Sxx");
-    data_out.add_data_vector(dg_dof_handler, stress[0][1], "Sxy");
-    data_out.add_data_vector(dg_dof_handler, stress[1][1], "Syy");
-    if (dim == 3)
-      {
-        data_out.add_data_vector(dg_dof_handler, strain[0][2], "Exz");
-        data_out.add_data_vector(dg_dof_handler, strain[1][2], "Eyz");
-        data_out.add_data_vector(dg_dof_handler, strain[2][2], "Ezz");
-        data_out.add_data_vector(dg_dof_handler, stress[0][2], "Sxz");
-        data_out.add_data_vector(dg_dof_handler, stress[1][2], "Syz");
-        data_out.add_data_vector(dg_dof_handler, stress[2][2], "Szz");
-      }
-
-    data_out.build_patches();
-
-    std::string basename = "linearelastic";
-    std::string filename =
-      basename + "-" + Utilities::int_to_string(output_index, 6) + ".vtu";
-
-    std::ofstream output(filename);
-    data_out.write_vtu(output);
-
-    static std::vector<std::pair<double, std::string>> times_and_names;
-    times_and_names.push_back({time.current(), filename});
-    std::ofstream pvd_output(basename + ".pvd");
-    DataOutBase::write_pvd_record(pvd_output, times_and_names);
-  }
-
-  template <int dim>
-  void LinearElasticSolver<dim>::refine_mesh(const unsigned int min_grid_level,
-                                             const unsigned int max_grid_level)
-  {
-    TimerOutput::Scope timer_section(timer, "Refine mesh");
-
-    Vector<float> estimated_error_per_cell(triangulation.n_active_cells());
-    KellyErrorEstimator<dim>::estimate(dof_handler,
-                                       face_quad_formula,
-                                       typename FunctionMap<dim>::type(),
-                                       current_displacement,
-                                       estimated_error_per_cell);
-    GridRefinement::refine_and_coarsen_fixed_fraction(
-      triangulation, estimated_error_per_cell, 0.6, 0.4);
-    if (triangulation.n_levels() > max_grid_level)
-      {
-        for (auto cell = triangulation.begin_active(max_grid_level);
-             cell != triangulation.end();
-             ++cell)
-          {
-            cell->clear_refine_flag();
-          }
-      }
-
-    for (auto cell = triangulation.begin_active(min_grid_level);
-         cell != triangulation.end_active(min_grid_level);
-         ++cell)
-      {
-        cell->clear_coarsen_flag();
-      }
-
-    std::vector<SolutionTransfer<dim>> solution_trans(
-      3, SolutionTransfer<dim>(dof_handler));
-    std::vector<Vector<double>> buffer{
-      previous_displacement, previous_velocity, previous_acceleration};
-
-    triangulation.prepare_coarsening_and_refinement();
-
-    for (unsigned int i = 0; i < 3; ++i)
-      {
-        solution_trans[i].prepare_for_coarsening_and_refinement(buffer[i]);
-      }
-
-    triangulation.execute_coarsening_and_refinement();
-
-    setup_dofs();
-    initialize_system();
-
-    solution_trans[0].interpolate(buffer[0], previous_displacement);
-    solution_trans[1].interpolate(buffer[1], previous_velocity);
-    solution_trans[2].interpolate(buffer[2], previous_acceleration);
-
-    constraints.distribute(previous_displacement);
-    constraints.distribute(previous_velocity);
-    constraints.distribute(previous_acceleration);
-  }
-
   template <int dim>
   void LinearElasticSolver<dim>::run_one_step(bool first_step)
   {
     std::cout.precision(6);
     std::cout.width(12);
 
+    double gamma = 0.5 + parameters.damping;
+    double beta = gamma / 2;
+
     if (first_step)
       {
         // Neet to compute the initial acceleration, \f$ Ma_n = F \f$,
         // at this point set system_matrix to mass_matrix.
         assemble_system(true);
-        solve(system_matrix, previous_acceleration, system_rhs);
+        this->solve(system_matrix, previous_acceleration, system_rhs);
         // Update the system_matrix
         assemble_system(false);
-        output_results(time.get_timestep());
+        this->output_results(time.get_timestep());
       }
 
     const double dt = time.get_delta_t();
@@ -510,7 +269,7 @@ namespace Solid
     stiffness_matrix.vmult(tmp3, tmp2);
     tmp1 -= tmp3;
 
-    auto state = solve(system_matrix, current_acceleration, tmp1);
+    auto state = this->solve(system_matrix, current_acceleration, tmp1);
 
     // update the current velocity
     // \f$ v_{n+1} = v_n + (1-\gamma)\Delta{t}a_n + \gamma\Delta{t}a_{n+1}
@@ -536,28 +295,13 @@ namespace Solid
 
     if (time.time_to_output())
       {
-        output_results(time.get_timestep());
+        this->output_results(time.get_timestep());
       }
 
     if (time.time_to_refine())
       {
-        refine_mesh(1, 4);
+        this->refine_mesh(1, 4);
         assemble_system(false);
-      }
-  }
-
-  template <int dim>
-  void LinearElasticSolver<dim>::run()
-  {
-    triangulation.refine_global(parameters.global_refinement);
-    setup_dofs();
-    initialize_system();
-
-    // Time loop
-    run_one_step(true);
-    while (time.end() - time.current() > 1e-12)
-      {
-        run_one_step(false);
       }
   }
 
@@ -643,59 +387,6 @@ namespace Solid
       }
   }
 
-  template <int dim>
-  Vector<double> LinearElasticSolver<dim>::get_current_solution() const
-  {
-    return current_displacement;
-  }
-
-  template <int dim>
-  Tensor<1, dim> LinearElasticSolver<dim>::get_fsi_force() const
-  {
-    Tensor<1, dim> force;
-    FEFaceValues<dim> fe_face_values(fe, face_quad_formula, update_JxW_values);
-    const unsigned int n_f_q_points = face_quad_formula.size();
-    for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
-         ++cell)
-      {
-        auto p = cell_property.get_data(cell);
-        Assert(p.size() == n_f_q_points * GeometryInfo<dim>::faces_per_cell,
-               ExcMessage("Wrong number of cell data!"));
-        for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
-             ++face)
-          {
-            unsigned int id = cell->face(face)->boundary_id();
-
-            if (!cell->face(face)->at_boundary() ||
-                parameters.solid_dirichlet_bcs.find(id) !=
-                  parameters.solid_dirichlet_bcs.end())
-              {
-                // Not a Neumann boundary
-                continue;
-              }
-
-            if (parameters.solid_neumann_bc_type != "FSI" &&
-                parameters.solid_neumann_bcs.find(id) ==
-                  parameters.solid_neumann_bcs.end())
-              {
-                // Traction-free boundary, do nothing
-                continue;
-              }
-
-            fe_face_values.reinit(cell, face);
-
-            for (unsigned int q = 0; q < n_f_q_points; ++q)
-              {
-                if (parameters.solid_neumann_bc_type == "FSI")
-                  {
-                    force += p[face * n_f_q_points + q]->fsi_traction *
-                             fe_face_values.JxW(q);
-                  }
-              }
-          }
-      }
-    return force;
-  }
   template class LinearElasticSolver<2>;
   template class LinearElasticSolver<3>;
 }

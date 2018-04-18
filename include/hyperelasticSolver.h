@@ -1,48 +1,16 @@
 #ifndef HYPERELASTIC_SOLVER
 #define HYPERELASTIC_SOLVER
 
-#include <deal.II/base/function.h>
-#include <deal.II/base/parameter_handler.h>
-#include <deal.II/base/point.h>
-#include <deal.II/base/quadrature_lib.h>
-#include <deal.II/base/quadrature_point_data.h>
 #include <deal.II/base/symmetric_tensor.h>
 #include <deal.II/base/tensor.h>
-#include <deal.II/base/timer.h>
-#include <deal.II/base/work_stream.h>
-#include <deal.II/dofs/dof_renumbering.h>
-#include <deal.II/dofs/dof_tools.h>
-#include <deal.II/fe/fe_dgp_monomial.h>
-#include <deal.II/fe/fe_q.h>
-#include <deal.II/fe/fe_system.h>
-#include <deal.II/fe/fe_tools.h>
-#include <deal.II/fe/fe_values.h>
 #include <deal.II/fe/mapping_q_eulerian.h>
-#include <deal.II/grid/grid_generator.h>
-#include <deal.II/grid/grid_in.h>
-#include <deal.II/grid/grid_tools.h>
-#include <deal.II/lac/constraint_matrix.h>
-#include <deal.II/lac/dynamic_sparsity_pattern.h>
-#include <deal.II/lac/full_matrix.h>
 #include <deal.II/lac/linear_operator.h>
 #include <deal.II/lac/packaged_operation.h>
-#include <deal.II/lac/precondition_selector.h>
-#include <deal.II/lac/solver_cg.h>
-#include <deal.II/lac/solver_selector.h>
-#include <deal.II/lac/sparse_direct.h>
-#include <deal.II/numerics/data_out.h>
-#include <deal.II/numerics/error_estimator.h>
-#include <deal.II/numerics/solution_transfer.h>
-#include <deal.II/numerics/vector_tools.h>
 #include <deal.II/physics/elasticity/kinematics.h>
 #include <deal.II/physics/elasticity/standard_tensors.h>
 
-#include <fstream>
-#include <iostream>
-
 #include "neoHookean.h"
-#include "parameters.h"
-#include "utilities.h"
+#include "solidSolver.h"
 
 template <int>
 class FSI;
@@ -105,6 +73,8 @@ namespace Solid
 {
   using namespace dealii;
 
+  extern template class SolidSolver<2>;
+  extern template class SolidSolver<3>;
   extern template class HyperelasticMaterial<2>;
   extern template class HyperelasticMaterial<3>;
 
@@ -119,33 +89,52 @@ namespace Solid
    * (http://www.dealii.org/8.5.0/doxygen/deal.II/step_44.html)
    */
   template <int dim>
-  class HyperelasticSolver
+  class HyperelasticSolver : public SolidSolver<dim>
   {
   public:
     friend FSI<dim>;
 
     HyperelasticSolver(Triangulation<dim> &, const Parameters::AllParameters &);
-    ~HyperelasticSolver() { dof_handler.clear(); }
-    Vector<double> get_current_solution() const;
-    void run();
+    ~HyperelasticSolver() {}
 
   private:
-    struct CellProperty;
-
-    /** Initialize dofs and constraints. */
-    void setup_dofs();
-
     /**
-     * Initialize matrices and vectors, this process
-     * is separate from setup_dofs because if we refine
-     * mesh in time-dependent simulation, we must
-     * transfer solution after setup_dofs, and then
-     * initialize.
+     * Members in its template-base class.
+     * Annoying C++ feature: the compiler does not know how to access
+     * template-derived members unless you tell it explicitly by using
+     * declarations or this->Foo.
      */
+    using SolidSolver<dim>::triangulation;
+    using SolidSolver<dim>::parameters;
+    using SolidSolver<dim>::dof_handler;
+    using SolidSolver<dim>::dg_dof_handler;
+    using SolidSolver<dim>::fe;
+    using SolidSolver<dim>::dg_fe;
+    using SolidSolver<dim>::volume_quad_formula;
+    using SolidSolver<dim>::face_quad_formula;
+    using SolidSolver<dim>::constraints;
+    using SolidSolver<dim>::pattern;
+    using SolidSolver<dim>::system_matrix;
+    using SolidSolver<dim>::mass_matrix;
+    using SolidSolver<dim>::system_rhs;
+    using SolidSolver<dim>::current_acceleration;
+    using SolidSolver<dim>::current_velocity;
+    using SolidSolver<dim>::current_displacement;
+    using SolidSolver<dim>::previous_acceleration;
+    using SolidSolver<dim>::previous_velocity;
+    using SolidSolver<dim>::previous_displacement;
+    using SolidSolver<dim>::strain;
+    using SolidSolver<dim>::stress;
+    using SolidSolver<dim>::time;
+    using SolidSolver<dim>::timer;
+    using SolidSolver<dim>::cell_property;
+
     void initialize_system();
 
+    void update_strain_and_stress() const;
+
     /** Assemble the lhs and rhs at the same time. */
-    void assemble(bool);
+    void assemble_system(bool);
 
     /** Set up the quadrature point history. */
     void setup_qph();
@@ -158,21 +147,8 @@ namespace Solid
      */
     void update_qph(const Vector<double> &);
 
-    /** Solve a linear equation, return the number of iterations and residual.
-     */
-    std::pair<unsigned int, double> solve_linear_system(SparseMatrix<double> &,
-                                                        Vector<double> &,
-                                                        Vector<double> &);
-
-    void output_results(const unsigned int) const;
-
     /// Run one time step.
     void run_one_step(bool);
-
-    Parameters::AllParameters parameters;
-    double vol;
-    Utils::Time time;
-    mutable TimerOutput timer; // Record the time profile of the program
 
     /**
      * We store a PointHistory structure at every quadrature point,
@@ -182,48 +158,6 @@ namespace Solid
     CellDataStorage<typename Triangulation<dim>::cell_iterator,
                     Internal::PointHistory<dim>>
       quad_point_history;
-
-    /**
-     * In FSI application the Neumann BCs are set by the FSI solver.
-     * Fluid traction is applied to every face on the solid boundary,
-     * which needs to be cached.
-     */
-    CellDataStorage<typename Triangulation<dim>::cell_iterator, CellProperty>
-      cell_property;
-
-    const unsigned int degree;
-    const FESystem<dim> fe;
-    Triangulation<dim> &triangulation;
-    DoFHandler<dim> dof_handler;
-    const unsigned int dofs_per_cell;
-    const QGauss<dim> volume_quad_formula;
-    const QGauss<dim - 1> face_quad_formula;
-    const unsigned int n_q_points;
-    const unsigned int n_f_q_points;
-    /** Tells dealii to view the dofs as a vector when necessary. */
-    const FEValuesExtractors::Vector displacement;
-    const double gamma; //!< Newmark-beta parameter
-    const double beta;  //!< Newmark-beta parameter
-
-    /**
-     * Notice the solver currently does not support inhomogeneous
-     * boundary conditions.
-     * If one wants to apply inhomogeneous boundary condition, two
-     * ConstraintMatrix
-     * are needed: a homogeneous one and an inhomogeneous one.
-     */
-    ConstraintMatrix constraints;
-    SparsityPattern pattern;
-    SparseMatrix<double> system_matrix;
-    SparseMatrix<double> mass_matrix;
-    Vector<double> system_rhs;
-
-    Vector<double> current_acceleration;
-    Vector<double> current_velocity;
-    Vector<double> current_displacement;
-    Vector<double> previous_acceleration;
-    Vector<double> previous_velocity;
-    Vector<double> previous_displacement;
 
     double error_residual; //!< Norm of the residual at a Newton iteration.
     double
@@ -242,14 +176,6 @@ namespace Solid
 
     // Return the current volume of the geometry
     double compute_volume() const;
-
-    /**
-     * The fluid traction in FSI simulation, which should be set by the FSI.
-     */
-    struct CellProperty
-    {
-      Tensor<1, dim> fsi_traction;
-    };
   };
 }
 
