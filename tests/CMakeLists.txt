@@ -3,6 +3,7 @@ set(serial_tests fluid_cylinder
                  fluid_pipe
                  fluid_pressure_driven
                  fsi_gravity
+                 fsi_leaflet
                  solid_beam_bending_linearelastic
                  solid_beam_bending_NeoHookean
                  solid_gravity_hyperelastic

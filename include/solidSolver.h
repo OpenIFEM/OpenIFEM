@@ -49,6 +49,9 @@
 #include "parameters.h"
 #include "utilities.h"
 
+template <int>
+class FSI;
+
 namespace Solid
 {
   using namespace dealii;
@@ -58,6 +61,8 @@ namespace Solid
   class SolidSolver
   {
   public:
+    friend FSI<dim>;
+
     SolidSolver(Triangulation<dim> &, const Parameters::AllParameters &);
     ~SolidSolver();
     void run();

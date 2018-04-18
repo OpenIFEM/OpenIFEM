@@ -3,7 +3,7 @@
 
 template <int dim>
 FSI<dim>::FSI(Fluid::NavierStokes<dim> &f,
-              Solid::LinearElasticSolver<dim> &s,
+              Solid::SolidSolver<dim> &s,
               const Parameters::AllParameters &p)
   : fluid_solver(f),
     solid_solver(s),
@@ -178,8 +178,10 @@ void FSI<dim>::find_fluid_bc()
 
   inner_nonzero.close();
   inner_zero.close();
-  fluid_solver.nonzero_constraints.merge(inner_nonzero);
-  fluid_solver.zero_constraints.merge(inner_zero);
+  fluid_solver.nonzero_constraints.merge(
+    inner_nonzero, ConstraintMatrix::MergeConflictBehavior::left_object_wins);
+  fluid_solver.zero_constraints.merge(
+    inner_zero, ConstraintMatrix::MergeConflictBehavior::left_object_wins);
 
   move_solid_mesh(false);
 }
@@ -265,6 +267,12 @@ void FSI<dim>::run()
       solid_solver.run_one_step(first_step);
       update_indicator();
       fluid_solver.make_constraints();
+      if (!first_step)
+        {
+          fluid_solver.nonzero_constraints.clear();
+          fluid_solver.nonzero_constraints.copy_from(
+            fluid_solver.zero_constraints);
+        }
       find_fluid_bc();
       fluid_solver.run_one_step(true);
       first_step = false;

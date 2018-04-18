@@ -12,22 +12,22 @@ subsection Simulation
 
   # Level of global refinement before running,
   # which applies to all the solvers
-  set Global refinement = 2
+  set Global refinement = 1
 
   # The end time of the simulation in second
-  set End time = 1.0
+  set End time = 1e0
 
   # The time step in second
-  set Time step size = 1e-3
+  set Time step size = 5e-3
 
   # The output interval in second
-  set Output interval = 1e-3
+  set Output interval = 5e-3
 
   # Mesh refinement interval in second
   set Refinement interval = 100
 
   # Body force which applies to both fluid and solid (acceleration)
-  set Gravity = 0.0, -100.0
+  set Gravity = 0.0, 0.0
 end
 
 # --------------------------------------------------------------------------------
@@ -39,7 +39,7 @@ end
 
 subsection Fluid material properties
   # The dynamic viscosity
-  set Dynamic viscosity = 1.0
+  set Dynamic viscosity = 0.1
 
   # Fluid density
   set Fluid density = 1
@@ -53,7 +53,7 @@ subsection Fluid solver control
   set Max Newton iterations = 8
 
   # The relative tolerance of the nonlinear system residual
-  set Nonlinear system tolerance = 1e-5
+  set Nonlinear system tolerance = 1e-6
 end
 
 subsection Fluid Dirichlet BCs
@@ -67,17 +67,17 @@ subsection Fluid Dirichlet BCs
   set Number of Dirichlet BCs = 3
 
   # List all the boundaries with Dirichlet BCs
-  set Dirichlet boundary id = 0, 1, 3
+  set Dirichlet boundary id = 0, 2, 3
 
   # List the constrained components of these boundaries
   # One decimal number indicates one set of constrained components:
   # 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
   # To make sense of the numbering, convert decimals to binaries (zyx)
-  set Dirichlet boundary components = 2, 2, 3
+  set Dirichlet boundary components = 3, 3, 2
 
   # Specify the values of the Dirichlet BCs, including both homogeneous and
   # inhomogeneous ones.
-  set Dirichlet boundary values = 0, 0, 0, 0
+  set Dirichlet boundary values = 1.5, 0, 0, 0, 0
 end
 
 subsection Fluid Neumann BCs
@@ -104,10 +104,10 @@ subsection Solid material properties
   set Solid type = NeoHookean
 
   # Solid density, used by all solid solvers
-  set Solid density = 2.0
+  set Solid density = 7.8
 
   # E and nu are only used by linearElasticMaterial
-  set Young's modulus = 1.0e4
+  set Young's modulus = 2.78e4
 
   set Poisson's ratio = 0.48
 
@@ -132,7 +132,7 @@ end
 # Only homogeneous Dirichlet BC is supported, i.e., the prescribed value is always 0.
 subsection Solid Dirichlet BCs
   # Dirichlet BCs can be applied to multiple boundaries.
-  set Number of Dirichlet BCs = 0
+  set Number of Dirichlet BCs = 1
 
   # List all the constrained boundaries here
   set Dirichlet boundary id = 2

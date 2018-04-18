@@ -1,14 +1,14 @@
+/**
+ * 2D leaflet case with serial incompressible fluid solver and hyperelastic
+ * solver.
+ */
 #include "fsi.h"
 #include "hyperelasticSolver.h"
-#include "navierstokes.h"
 
 extern template class Fluid::NavierStokes<2>;
 extern template class Fluid::NavierStokes<3>;
 extern template class Solid::HyperelasticSolver<2>;
 extern template class Solid::HyperelasticSolver<3>;
-extern template class Utils::GridCreator<2>;
-extern template class Utils::GridCreator<3>;
-
 extern template class FSI<2>;
 extern template class FSI<3>;
 
@@ -25,23 +25,28 @@ int main(int argc, char *argv[])
         }
       Parameters::AllParameters params(infile);
 
-      double L = 1, W = 2, H = 5, R = 0.25, h = 0.25;
+      double L = 4, H = 1, a = 0.1, b = 0.4, h = 0.05;
 
       if (params.dimension == 2)
         {
           Triangulation<2> fluid_tria;
           dealii::GridGenerator::subdivided_hyper_rectangle(
             fluid_tria,
-            {static_cast<unsigned int>(W / h),
+            {static_cast<unsigned int>(L / h),
              static_cast<unsigned int>(H / h)},
             Point<2>(0, 0),
-            Point<2>(W, -H),
+            Point<2>(L, H),
             true);
           Fluid::NavierStokes<2> fluid(fluid_tria, params);
 
           Triangulation<2> solid_tria;
-          Point<2> center(L, -L);
-          Utils::GridCreator<2>::sphere(solid_tria, center, R);
+          dealii::GridGenerator::subdivided_hyper_rectangle(
+            solid_tria,
+            {static_cast<unsigned int>(a / h),
+             static_cast<unsigned int>(b / h)},
+            Point<2>(L / 4, 0),
+            Point<2>(a + L / 4, b),
+            true);
           Solid::HyperelasticSolver<2> solid(solid_tria, params);
 
           FSI<2> fsi(fluid, solid, params);
