@@ -2,6 +2,7 @@
 set(TARGET_SRC fsi.cpp
                hyperelasticMaterial.cpp
                hyperelasticSolver.cpp
+               insimex.cpp
                linearElasticMaterial.cpp
                linearElasticSolver.cpp
                mpi_insimex.cpp
@@ -16,6 +17,7 @@ set(TARGET_SRC fsi.cpp
 set(headers fsi.h
             hyperelasticMaterial.h
             hyperelasticSolver.h
+            insimex.h
             linearElasticMaterial.h
             linearElasticSolver.h
             material.h

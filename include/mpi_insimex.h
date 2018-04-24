@@ -65,7 +65,7 @@ namespace Fluid
   {
     using namespace dealii;
 
-    /** \brief The parallel incompressible Navier Stokes equation solver
+    /** \brief Parallel incompressible Navier Stokes equation solver
      *         using implicit-explicit time scheme.
      *
      * This program is built upon dealii tutorials step-57, step-22, step-20.
@@ -123,7 +123,7 @@ namespace Fluid
       void assemble(bool use_nonzero_constraints, bool assemble_system);
 
       /*! \brief Solve the linear system using FGMRES solver plus block
-       * preconditioner.
+       *         preconditioner.
        *
        *  After solving the linear system, the same ConstraintMatrix as used
        *  in assembly must be used again, to set the constrained value.
@@ -139,9 +139,7 @@ namespace Fluid
       /// Output in vtu format.
       void output_results(const unsigned int) const;
 
-      /*! \brief Run the simulation for one time step.
-       *
-       */
+      /// Run the simulation for one time step.
       void run_one_step();
 
       double viscosity; //!< Dynamic viscosity

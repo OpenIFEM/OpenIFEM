@@ -1,5 +1,6 @@
 # List all the serial tests
 set(serial_tests fluid_cylinder
+                 fluid_cylinder_insimex
                  fluid_pipe
                  fluid_pressure_driven
                  fsi_gravity

@@ -150,9 +150,9 @@ namespace Fluid
       // using another CG solver.
       {
         TimerOutput::Scope timer_section(timer, "CG for A");
-        SolverControl solver_control(src.block(0).size(),
-                                     1e-6 * src.block(0).l2_norm());
-        PETScWrappers::SolverCG cg_a(solver_control,
+        SolverControl a_control(src.block(0).size(),
+                                1e-6 * src.block(0).l2_norm());
+        PETScWrappers::SolverCG cg_a(a_control,
                                      mass_schur->get_mpi_communicator());
         PETScWrappers::PreconditionNone A_preconditioner;
         A_preconditioner.initialize(system_matrix->block(0, 0));
