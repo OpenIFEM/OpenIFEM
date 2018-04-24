@@ -11,6 +11,7 @@ set(serial_tests fluid_cylinder
 
 # List all the mpi tests
 set(mpi_tests fluid_cylinder_mpi
+              fluid_cylinder_mpi_insimex
               fluid_pipe_mpi)
 
 set(tests ${serial_tests} ${mpi_tests})
