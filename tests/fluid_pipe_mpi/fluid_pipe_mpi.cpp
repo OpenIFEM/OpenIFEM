@@ -1,9 +1,9 @@
 /**
- * This program tests parallel NavierStokes solver with a 2D flow around
- * cylinder
- * case.
- * Hard-coded parabolic velocity input is used, and Re = 20.
- * Only one step is run, and the test takes about 33s.
+ * This program tests parallel NavierStokes solver with a 2D pipe flow case.
+ * A constant inlet velocity is used, and Re = 100.
+ * The final axial velocity profile should be parabolic, we should check
+ * the mass conservation by integration at the inlet and outlet.
+ * 2D test takes about 260 on 2 ranks (sad).
  */
 #include "mpi_navierstokes.h"
 #include "parameters.h"
@@ -11,8 +11,6 @@
 
 extern template class Fluid::ParallelNavierStokes<2>;
 extern template class Fluid::ParallelNavierStokes<3>;
-extern template class Utils::GridCreator<2>;
-extern template class Utils::GridCreator<3>;
 
 int main(int argc, char *argv[])
 {
@@ -29,32 +27,37 @@ int main(int argc, char *argv[])
         }
       Parameters::AllParameters params(infile);
 
+      double L = 2.0, D = 0.2;
+
       if (params.dimension == 2)
         {
           parallel::distributed::Triangulation<2> tria(MPI_COMM_WORLD);
-          Utils::GridCreator<2>::flow_around_cylinder(tria);
+          dealii::GridGenerator::subdivided_hyper_rectangle(
+            tria, {100, 5}, Point<2>(0, 0), Point<2>(L, D / 2), true);
           Fluid::ParallelNavierStokes<2> flow(tria, params);
           flow.run();
-          // Check the max values of velocity and pressure
           auto solution = flow.get_current_solution();
-          auto v = solution.block(0), p = solution.block(1);
+          // Assuming the mass is conserved and final velocity profile is
+          // parabolic,
+          // vmax should equal 1.5 times inlet velocity.
+          auto v = solution.block(0);
           double vmax = v.max();
-          double pmax = p.max();
-          double verror = std::abs(vmax - 0.381898) / 0.381898;
-          double perror = std::abs(pmax - 46.4883) / 46.4883;
-          AssertThrow(verror < 1e-3 && perror < 1e-3,
-                      ExcMessage("Maximum velocity or pressure is incorrect!"));
+          double verror = std::abs(vmax - 1.5) / 1.5;
+          AssertThrow(verror < 1e-3,
+                      ExcMessage("Maximum velocity is incorrect!"));
         }
       else if (params.dimension == 3)
         {
           parallel::distributed::Triangulation<3> tria(MPI_COMM_WORLD);
-          Utils::GridCreator<3>::flow_around_cylinder(tria);
+          dealii::GridGenerator::cylinder(tria, D / 2, L / 2);
+          static const CylindricalManifold<3> cylinder;
+          tria.set_manifold(0, cylinder);
           Fluid::ParallelNavierStokes<3> flow(tria, params);
           flow.run();
         }
       else
         {
-          AssertThrow(false, ExcMessage("This test should be run in 2D!"));
+          AssertThrow(false, ExcNotImplemented());
         }
     }
   catch (std::exception &exc)

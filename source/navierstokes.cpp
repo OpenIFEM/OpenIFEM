@@ -96,26 +96,29 @@ namespace Fluid
   {
     // First, buffer the velocity block of src vector (\f$v_0\f$).
     Vector<double> utmp(src.block(0));
-
+    Vector<double> tmp(src.block(1).size());
+    tmp = 0;
     // This block computes \f$u_1 = \tilde{S}^{-1} v_1\f$.
     {
-      timer.enter_subsection("CG for Mp");
+      TimerOutput::Scope timer_section(timer, "CG for Mp");
 
       // CG solver used for \f$M_p^{-1}\f$ and \f$S_m^{-1}\f$.
       SolverControl solver_control(src.block(1).size(),
                                    1e-6 * src.block(1).l2_norm());
-      SolverCG<> cg(solver_control);
+      SolverCG<> cg_mp(solver_control);
 
       // \f$-(\mu + \gamma\rho)M_p^{-1}v_1\f$
-      Vector<double> tmp(src.block(1).size());
       SparseILU<double> Mp_preconditioner;
       Mp_preconditioner.initialize(mass_matrix->block(1, 1));
-      cg.solve(mass_matrix->block(1, 1), tmp, src.block(1), Mp_preconditioner);
+      cg_mp.solve(
+        mass_matrix->block(1, 1), tmp, src.block(1), Mp_preconditioner);
       tmp *= -(viscosity + gamma * rho);
+    }
 
-      timer.leave_subsection("CG for Mp");
-      timer.enter_subsection("CG for Sm");
-
+    {
+      TimerOutput::Scope timer_section(timer, "CG for Sm");
+      SolverControl solver_control(src.block(1).size(),
+                                   1e-6 * src.block(1).l2_norm());
       // FIXME: There is a mysterious bug here. After refine_mesh is called,
       // the initialization of Sm_preconditioner will complain about zero
       // entries on the diagonal which causes division by 0. Same thing happens
@@ -128,13 +131,12 @@ namespace Fluid
       // \f$-\frac{1}{dt}S_m^{-1}v_1\f$
       SparseILU<double> Sm_preconditioner;
       Sm_preconditioner.initialize(*mass_schur);
-      cg.solve(*mass_schur, dst.block(1), src.block(1), Sm_preconditioner);
+      SolverCG<> cg_sm(solver_control);
+      cg_sm.solve(*mass_schur, dst.block(1), src.block(1), Sm_preconditioner);
       dst.block(1) *= -rho / dt;
 
       // Adding up these two, we get \f$\tilde{S}^{-1}v_1\f$.
       dst.block(1) += tmp;
-
-      timer.leave_subsection("CG for Sm");
     }
 
     // This block computes \f$v_0 - B^T\tilde{S}^{-1}v_1\f$ based on \f$u_1\f$.
@@ -460,14 +462,14 @@ namespace Fluid
                     // \f$M = m(\delta{u}, \delta{v})$, then LHS is: $(A +
                     // C) + M/{\Delta{t}}\f$
                     local_matrix(i, j) +=
-                      ((viscosity *
-                          scalar_product(grad_phi_u[j], grad_phi_u[i]) +
-                        current_velocity_gradients[q] * phi_u[j] * phi_u[i] *
-                          rho +
-                        grad_phi_u[j] * current_velocity_values[q] * phi_u[i] *
-                          rho -
-                        div_phi_u[i] * phi_p[j] - phi_p[i] * div_phi_u[j] +
-                        gamma * div_phi_u[j] * div_phi_u[i] * rho) +
+                      (viscosity *
+                         scalar_product(grad_phi_u[j], grad_phi_u[i]) +
+                       current_velocity_gradients[q] * phi_u[j] * phi_u[i] *
+                         rho +
+                       grad_phi_u[j] * current_velocity_values[q] * phi_u[i] *
+                         rho -
+                       div_phi_u[i] * phi_p[j] - phi_p[i] * div_phi_u[j] +
+                       gamma * div_phi_u[j] * div_phi_u[i] * rho +
                        phi_u[i] * phi_u[j] / time.get_delta_t() * rho) *
                       fe_values.JxW(q);
                     local_mass_matrix(i, j) +=

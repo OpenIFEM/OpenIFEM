@@ -10,10 +10,10 @@ set(serial_tests fluid_cylinder
                  solid_gravity_linearelastic)
 
 # List all the mpi tests
-set(mpi_tests fluid_cylinder_mpi)
+set(mpi_tests fluid_cylinder_mpi
+              fluid_pipe_mpi)
 
-set(tests ${serial_tests})
-list(APPEND tests ${mpi_tests})
+set(tests ${serial_tests} ${mpi_tests})
 
 # Create a subdirectory and add an executible for each test
 foreach(test ${tests})
@@ -24,7 +24,7 @@ foreach(test ${tests})
   target_include_directories(${test} PUBLIC "${CMAKE_SOURCE_DIR}/include")
   deal_ii_setup_target(${test})
   target_link_libraries(${test} openifem)
-  list(FIND test ${mpi_tests} index)
+  list(FIND mpi_tests ${test} index)
   if(${index} GREATER -1)
     # FIXME: it is not good practice to specify the number of processors in this way
     add_test(NAME ${test} COMMAND mpirun -n 2 ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${test} ${input} WORKING_DIRECTORY ${output})
