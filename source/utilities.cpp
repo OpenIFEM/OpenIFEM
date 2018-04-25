@@ -132,7 +132,26 @@ namespace Utils
 
     // Create middle part first as a hyper shell.
     GridGenerator::hyper_shell(middle, Point<2>(0.5, 0.2), 0.05, 0.2, 4, true);
-    middle.set_manifold(0, boundary);
+    middle.reset_all_manifolds();
+    for (Triangulation<2>::cell_iterator cell = middle.begin();
+         cell != middle.end();
+         ++cell)
+      for (unsigned int f = 0; f < GeometryInfo<2>::faces_per_cell; ++f)
+        {
+          bool is_inner_rim = true;
+          for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_face; ++v)
+            {
+              Point<2> &vertex = cell->face(f)->vertex(v);
+              if (std::abs(vertex.distance(Point<2>(0.5, 0.2)) - 0.05) > 1e-10)
+                {
+                  is_inner_rim = false;
+                  break;
+                }
+            }
+          if (is_inner_rim)
+            cell->face(f)->set_manifold_id(1);
+        }
+    middle.set_manifold(1, boundary);
     middle.refine_global(1);
 
     // Then move the vertices to the points where we want them to be to create a
