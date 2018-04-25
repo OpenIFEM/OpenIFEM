@@ -14,12 +14,15 @@ namespace Fluid
       double left_boundary = (dim == 2 ? 0.3 : 0.0);
       if (component == 0 && std::abs(p[0] - left_boundary) < 1e-10)
         {
-          double U = 0.3;
-          double y = p[1];
-          double value = 4 * U * y * (0.41 - y) / (0.41 * 0.41);
+          // For a parabolic velocity profile, Uavg = 2/3 * Umax in 2D,
+          // and 4/9 * Umax in 3D. If nu = 0.001, D = 0.1,
+          // then Re = 100 * Uavg
+          double Uavg = 0.2;
+          double Umax = (dim == 2 ? 3 * Uavg / 2 : 9 * Uavg / 4);
+          double value = 4 * Umax * p[1] * (0.41 - p[1]) / (0.41 * 0.41);
           if (dim == 3)
             {
-              value *= 4 * p[2] * (0.41 - p[2]);
+              value *= 4 * p[2] * (0.41 - p[2]) / (0.41 * 0.41);
             }
           return value;
         }
