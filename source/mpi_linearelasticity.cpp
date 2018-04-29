@@ -27,7 +27,7 @@ namespace Solid
       pcout(std::cout,
             (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)),
       timer(
-        mpi_communicator, pcout, TimerOutput::summary, TimerOutput::wall_times)
+        mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times)
   {
   }
 
@@ -537,4 +537,4 @@ namespace Solid
 
   template class ParallelLinearElasticity<2>;
   template class ParallelLinearElasticity<3>;
-}
+} // namespace Solid

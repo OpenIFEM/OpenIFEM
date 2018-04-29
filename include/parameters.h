@@ -163,6 +163,6 @@ namespace Parameters
     static void declareParameters(ParameterHandler &);
     void parseParameters(ParameterHandler &);
   };
-}
+} // namespace Parameters
 
 #endif

@@ -105,6 +105,6 @@ namespace Solid
     /** Return the fictitious spatial elasticity tensor. Model-dependent. */
     virtual dealii::SymmetricTensor<4, dim> get_cc_bar() const = 0;
   };
-}
+} // namespace Solid
 
 #endif

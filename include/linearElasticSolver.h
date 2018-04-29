@@ -102,6 +102,6 @@ namespace Solid
 
     LinearElasticMaterial<dim> material;
   };
-}
+} // namespace Solid
 
 #endif

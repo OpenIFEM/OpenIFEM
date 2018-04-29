@@ -506,4 +506,4 @@ namespace Parameters
     solid_neumann_bc_dim = dimension;
     SolidNeumann::parseParameters(prm);
   }
-}
+} // namespace Parameters

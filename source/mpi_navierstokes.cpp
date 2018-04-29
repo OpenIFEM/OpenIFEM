@@ -183,7 +183,7 @@ namespace Fluid
            parameters.output_interval,
            parameters.refinement_interval),
       timer(
-        mpi_communicator, pcout, TimerOutput::summary, TimerOutput::wall_times)
+        mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times)
 
   {
   }
@@ -884,4 +884,4 @@ namespace Fluid
 
   template class ParallelNavierStokes<2>;
   template class ParallelNavierStokes<3>;
-}
+} // namespace Fluid

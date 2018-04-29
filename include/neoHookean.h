@@ -36,6 +36,6 @@ namespace Solid
   private:
     double c1;
   };
-}
+} // namespace Solid
 
 #endif

@@ -120,6 +120,6 @@ namespace Utils
     std::pair<typename DoFHandler<dim>::active_cell_iterator, Point<dim>>
       cell_point;
   };
-}
+} // namespace Utils
 
 #endif

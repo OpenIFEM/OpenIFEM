@@ -17,6 +17,6 @@ namespace Solid
   protected:
     double density;
   };
-}
+} // namespace Solid
 
 #endif

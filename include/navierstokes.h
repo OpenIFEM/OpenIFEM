@@ -97,6 +97,9 @@ namespace Fluid
     //! Run the simulation
     void run();
 
+    //! Destructor
+    ~NavierStokes() { timer.print_summary(); }
+
     //! Return the solution for testing.
     BlockVector<double> get_current_solution() const;
 
@@ -316,6 +319,6 @@ namespace Fluid
       SymmetricTensor<2, dim> fsi_stress; //!< The stress term in FSI force.
     };
   };
-}
+} // namespace Fluid
 
 #endif

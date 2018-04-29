@@ -106,7 +106,7 @@ namespace Fluid
       {
         TimerOutput::Scope timer_section(timer, "CG for Mp");
         SolverControl mp_control(src.block(1).size(),
-                                     1e-6 * src.block(1).l2_norm());
+                                 1e-6 * src.block(1).l2_norm());
         PETScWrappers::SolverCG cg_mp(mp_control,
                                       mass_schur->get_mpi_communicator());
         // \f$-(\mu + \gamma\rho)M_p^{-1}v_1\f$
@@ -130,7 +130,7 @@ namespace Fluid
       {
         TimerOutput::Scope timer_section(timer, "CG for Sm");
         SolverControl sm_control(src.block(1).size(),
-                                     1e-6 * src.block(1).l2_norm());
+                                 1e-6 * src.block(1).l2_norm());
         PETScWrappers::SolverCG cg_sm(sm_control,
                                       mass_schur->get_mpi_communicator());
         PETScWrappers::PreconditionBlockJacobi Sm_preconditioner;
@@ -184,10 +184,8 @@ namespace Fluid
              parameters.time_step,
              parameters.output_interval,
              parameters.refinement_interval),
-        timer(mpi_communicator,
-              pcout,
-              TimerOutput::summary,
-              TimerOutput::wall_times)
+        timer(
+          mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times)
 
     {
     }
@@ -520,8 +518,8 @@ namespace Fluid
                          current_pressure_values[q] * div_phi_u[i] +
                          gamma * current_velocity_divergences[q] *
                            div_phi_u[i] * rho +
-                         current_velocity_values[q] *
-                           current_velocity_gradients[q] * phi_u[i] * rho) *
+                         current_velocity_gradients[q] *
+                           current_velocity_values[q] * phi_u[i] * rho) *
                         fe_values.JxW(q);
                       if (ind == 1)
                         {
@@ -844,5 +842,5 @@ namespace Fluid
 
     template class InsIMEX<2>;
     template class InsIMEX<3>;
-  }
-}
+  } // namespace MPI
+} // namespace Fluid

@@ -3,9 +3,8 @@
 namespace Fluid
 {
   template <int dim>
-  double
-  InsIMEX<dim>::BoundaryValues::value(const Point<dim> &p,
-                                           const unsigned int component) const
+  double InsIMEX<dim>::BoundaryValues::value(const Point<dim> &p,
+                                             const unsigned int component) const
   {
     Assert(component < this->n_components,
            ExcIndexRange(component, 0, this->n_components));
@@ -28,8 +27,7 @@ namespace Fluid
   }
 
   template <int dim>
-  void
-  InsIMEX<dim>::BoundaryValues::vector_value(const Point<dim> &p,
+  void InsIMEX<dim>::BoundaryValues::vector_value(const Point<dim> &p,
                                                   Vector<double> &values) const
   {
     for (unsigned int c = 0; c < this->n_components; ++c)
@@ -93,7 +91,7 @@ namespace Fluid
       TimerOutput::Scope timer_section(timer, "CG for Mp");
       // CG solver used for \f$M_p^{-1}\f$ and \f$S_m^{-1}\f$.
       SolverControl mp_control(src.block(1).size(),
-                                   1e-6 * src.block(1).l2_norm());
+                               1e-6 * src.block(1).l2_norm());
       SolverCG<> cg_mp(mp_control);
       // \f$-(\mu + \gamma\rho)M_p^{-1}v_1\f$
       SparseILU<double> Mp_preconditioner;
@@ -165,7 +163,7 @@ namespace Fluid
            parameters.time_step,
            parameters.output_interval,
            parameters.refinement_interval),
-      timer(std::cout, TimerOutput::summary, TimerOutput::wall_times),
+      timer(std::cout, TimerOutput::never, TimerOutput::wall_times),
       parameters(parameters)
   {
   }
@@ -452,28 +450,25 @@ namespace Fluid
                 for (unsigned int j = 0; j < dofs_per_cell; ++j)
                   {
                     local_matrix(i, j) +=
-                      (viscosity * scalar_product(grad_phi_u[j],
-                                                  grad_phi_u[i]) -
-                        div_phi_u[i] * phi_p[j] -
-                        phi_p[i] * div_phi_u[j] +
-                        gamma * div_phi_u[j] * div_phi_u[i] * rho +
-                        phi_u[i] * phi_u[j] / time.get_delta_t() *
-                          rho) *
+                      (viscosity *
+                         scalar_product(grad_phi_u[j], grad_phi_u[i]) -
+                       div_phi_u[i] * phi_p[j] - phi_p[i] * div_phi_u[j] +
+                       gamma * div_phi_u[j] * div_phi_u[i] * rho +
+                       phi_u[i] * phi_u[j] / time.get_delta_t() * rho) *
                       fe_values.JxW(q);
                     local_mass_matrix(i, j) +=
                       (phi_u[i] * phi_u[j] + phi_p[i] * phi_p[j]) *
                       fe_values.JxW(q);
                   }
                 local_rhs(i) -=
-                  (viscosity *
-                      scalar_product(current_velocity_gradients[q],
-                                    grad_phi_u[i]) -
-                    current_velocity_divergences[q] * phi_p[i] -
-                    current_pressure_values[q] * div_phi_u[i] +
-                    gamma * current_velocity_divergences[q] *
-                      div_phi_u[i] * rho +
-                    current_velocity_values[q] *
-                      current_velocity_gradients[q] * phi_u[i] * rho) *
+                  (viscosity * scalar_product(current_velocity_gradients[q],
+                                              grad_phi_u[i]) -
+                   current_velocity_divergences[q] * phi_p[i] -
+                   current_pressure_values[q] * div_phi_u[i] +
+                   gamma * current_velocity_divergences[q] * div_phi_u[i] *
+                     rho +
+                   current_velocity_gradients[q] * current_velocity_values[q] *
+                     phi_u[i] * rho) *
                   fe_values.JxW(q);
                 if (ind == 1)
                   {
@@ -563,8 +558,7 @@ namespace Fluid
     GrowingVectorMemory<BlockVector<double>> vector_memory;
     SolverFGMRES<BlockVector<double>> gmres(solver_control, vector_memory);
 
-    gmres.solve(
-      system_matrix, solution_increment, system_rhs, *preconditioner);
+    gmres.solve(system_matrix, solution_increment, system_rhs, *preconditioner);
 
     const ConstraintMatrix &constraints_used =
       use_nonzero_constraints ? nonzero_constraints : zero_constraints;
@@ -650,9 +644,8 @@ namespace Fluid
 
     present_solution += solution_increment;
 
-    std::cout << std::scientific << std::left << " GMRES_ITR = "
-      << std::setw(3) << state.first << " GMRES_RES = "
-      << state.second << std::endl;
+    std::cout << std::scientific << std::left << " GMRES_ITR = " << std::setw(3)
+              << state.first << " GMRES_RES = " << state.second << std::endl;
 
     // Output
     if (time.time_to_output())
@@ -738,4 +731,4 @@ namespace Fluid
 
   template class InsIMEX<2>;
   template class InsIMEX<3>;
-}
+} // namespace Fluid

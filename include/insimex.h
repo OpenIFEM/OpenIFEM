@@ -65,21 +65,21 @@ namespace Fluid
   using namespace dealii;
 
   /** \brief Incompressible Navier Stokes equation solver
-    *        using implicit-explicit time scheme.
-    *
-    * This program is built upon dealii tutorials step-57, step-22, step-20.
-    * Although the density does not matter in the incompressible flow, we
-    * still include it in the formulation in order to be consistent with the
-    * slightly compressible flow. Correspondingly the viscosity represents
-    * dynamic visocity \f$\mu\f$ instead of kinetic visocity \f$\nu\f$,
-    * and the pressure block in the solution is the non-normalized pressure.
-    *
-    * The system equation is written in the incremental form, and we treat
-    * the convection term explicitly. Therefore the system equation is linear
-    * and symmetric, which does not need to be solved with Newton's iteration.
-    * The system is further stablized and preconditioned with Grad-Div method,
-    * where GMRES solver is used as the outer solver.
-    */
+   *        using implicit-explicit time scheme.
+   *
+   * This program is built upon dealii tutorials step-57, step-22, step-20.
+   * Although the density does not matter in the incompressible flow, we
+   * still include it in the formulation in order to be consistent with the
+   * slightly compressible flow. Correspondingly the viscosity represents
+   * dynamic visocity \f$\mu\f$ instead of kinetic visocity \f$\nu\f$,
+   * and the pressure block in the solution is the non-normalized pressure.
+   *
+   * The system equation is written in the incremental form, and we treat
+   * the convection term explicitly. Therefore the system equation is linear
+   * and symmetric, which does not need to be solved with Newton's iteration.
+   * The system is further stablized and preconditioned with Grad-Div method,
+   * where GMRES solver is used as the outer solver.
+   */
   template <int dim>
   class InsIMEX
   {
@@ -92,6 +92,9 @@ namespace Fluid
 
     //! Run the simulation
     void run();
+
+    //! Destructor
+    ~InsIMEX() { timer.print_summary(); }
 
     //! Return the solution for testing.
     BlockVector<double> get_current_solution() const;
@@ -202,38 +205,38 @@ namespace Fluid
     };
 
     /** \brief Block preconditioner for the system
-      *
-      * A right block preconditioner is defined here:
-      * \f{eqnarray*}{
-      *      P^{-1} = \begin{pmatrix} \tilde{A}^{-1} & 0\\ 0 & I\end{pmatrix}
-      *               \begin{pmatrix} I & -B^T\\ 0 & I\end{pmatrix}
-      *               \begin{pmatrix} I & 0\\ 0 & \tilde{S}^{-1}\end{pmatrix}
-      * \f}
-      *
-      * \f$\tilde{A}\f$ is symmetric since the convection term is eliminated
-      * from the LHS.
-      *
-      * \f$\tilde{S}^{-1}\f$ is the inverse of the total Schur complement,
-      * which consists of a reaction term, a diffusion term, a Grad-Div term
-      * and a convection term.
-      * In practice, the convection contribution is ignored because it is not
-      * clear how to treat it. But the block preconditioner is good enough even
-      * without it. Namely,
-      *
-      * \f[
-      *   \tilde{S}^{-1} = -(\nu + \gamma)M_p^{-1} -
-      *   \frac{1}{\Delta{t}}{[B(diag(M_u))^{-1}B^T]}^{-1}
-      * \f]
-      * where \f$M_p\f$ is the pressure mass, and
-      * \f${[B(diag(M_u))^{-1}B^T]}\f$
-      * is an approximation to the Schur complement of (velocity) mass matrix
-      * \f$BM_u^{-1}B^T\f$.
-      *
-      * In summary, in order to form the BlockSchurPreconditioner for our
-      * system, we need to compute \f$M_u^{-1}\f$, \f$M_p^{-1}\f$,
-      * \f$\tilde{A}^{-1}\f$, and then operate on them.
-      * These matrices are all symmetric in IMEX scheme.
-      */
+     *
+     * A right block preconditioner is defined here:
+     * \f{eqnarray*}{
+     *      P^{-1} = \begin{pmatrix} \tilde{A}^{-1} & 0\\ 0 & I\end{pmatrix}
+     *               \begin{pmatrix} I & -B^T\\ 0 & I\end{pmatrix}
+     *               \begin{pmatrix} I & 0\\ 0 & \tilde{S}^{-1}\end{pmatrix}
+     * \f}
+     *
+     * \f$\tilde{A}\f$ is symmetric since the convection term is eliminated
+     * from the LHS.
+     *
+     * \f$\tilde{S}^{-1}\f$ is the inverse of the total Schur complement,
+     * which consists of a reaction term, a diffusion term, a Grad-Div term
+     * and a convection term.
+     * In practice, the convection contribution is ignored because it is not
+     * clear how to treat it. But the block preconditioner is good enough even
+     * without it. Namely,
+     *
+     * \f[
+     *   \tilde{S}^{-1} = -(\nu + \gamma)M_p^{-1} -
+     *   \frac{1}{\Delta{t}}{[B(diag(M_u))^{-1}B^T]}^{-1}
+     * \f]
+     * where \f$M_p\f$ is the pressure mass, and
+     * \f${[B(diag(M_u))^{-1}B^T]}\f$
+     * is an approximation to the Schur complement of (velocity) mass matrix
+     * \f$BM_u^{-1}B^T\f$.
+     *
+     * In summary, in order to form the BlockSchurPreconditioner for our
+     * system, we need to compute \f$M_u^{-1}\f$, \f$M_p^{-1}\f$,
+     * \f$\tilde{A}^{-1}\f$, and then operate on them.
+     * These matrices are all symmetric in IMEX scheme.
+     */
     class BlockSchurPreconditioner : public Subscriptor
     {
     public:
@@ -288,6 +291,6 @@ namespace Fluid
       SymmetricTensor<2, dim> fsi_stress; //!< The stress term in FSI force.
     };
   };
-}
+} // namespace Fluid
 
 #endif

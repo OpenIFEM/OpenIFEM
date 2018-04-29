@@ -180,6 +180,6 @@ namespace Solid
       Tensor<1, dim> fsi_traction;
     };
   };
-}
+} // namespace Solid
 
 #endif

@@ -19,7 +19,7 @@ namespace Solid
            parameters.time_step,
            parameters.output_interval,
            parameters.refinement_interval),
-      timer(std::cout, TimerOutput::summary, TimerOutput::wall_times)
+      timer(std::cout, TimerOutput::never, TimerOutput::wall_times)
   {
   }
 
@@ -28,6 +28,7 @@ namespace Solid
   {
     dg_dof_handler.clear();
     dof_handler.clear();
+    timer.print_summary();
   }
 
   template <int dim>
@@ -271,4 +272,4 @@ namespace Solid
 
   template class SolidSolver<2>;
   template class SolidSolver<3>;
-}
+} // namespace Solid

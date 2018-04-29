@@ -175,7 +175,7 @@ namespace Fluid
            parameters.time_step,
            parameters.output_interval,
            parameters.refinement_interval),
-      timer(std::cout, TimerOutput::summary, TimerOutput::wall_times),
+      timer(std::cout, TimerOutput::never, TimerOutput::wall_times),
       parameters(parameters)
   {
   }
@@ -784,4 +784,4 @@ namespace Fluid
 
   template class NavierStokes<2>;
   template class NavierStokes<3>;
-}
+} // namespace Fluid

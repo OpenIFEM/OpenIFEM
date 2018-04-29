@@ -378,4 +378,4 @@ namespace Utils
 
   template class GridCreator<2>;
   template class GridCreator<3>;
-}
+} // namespace Utils

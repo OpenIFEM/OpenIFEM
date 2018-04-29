@@ -41,7 +41,7 @@ namespace Internal
     dPsi_vol_dJ = material->get_dPsi_vol_dJ();
     d2Psi_vol_dJ2 = material->get_d2Psi_vol_dJ2();
   }
-}
+} // namespace Internal
 
 namespace Solid
 {
@@ -514,4 +514,4 @@ namespace Solid
 
   template class HyperelasticSolver<2>;
   template class HyperelasticSolver<3>;
-}
+} // namespace Solid

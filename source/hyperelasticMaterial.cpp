@@ -40,4 +40,4 @@ namespace Solid
 
   template class HyperelasticMaterial<2>;
   template class HyperelasticMaterial<3>;
-}
+} // namespace Solid

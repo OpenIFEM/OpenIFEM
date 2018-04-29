@@ -92,6 +92,9 @@ namespace Fluid
       //! Run the simulation.
       void run();
 
+      //! Destructor
+      ~InsIMEX() { timer.print_summary(); }
+
       //! Return the solution for testing.
       PETScWrappers::MPI::BlockVector get_current_solution() const;
 
@@ -279,18 +282,16 @@ namespace Fluid
         const SmartPointer<const PETScWrappers::MPI::BlockSparseMatrix>
           mass_matrix;
         /**
-        * As discussed, \f${[B(diag(M_u))^{-1}B^T]}\f$ and its inverse
-        * need to be computed.
-        * We can either explicitly compute it out as a matrix, or define it as a
-        * class
-        * with a vmult operation. The second approach saves some computation to
-        * construct the matrix, but leads to slow convergence in CG solver
-        * because
-        * of the absence of preconditioner.
-        * Based on my tests, the first approach is more than 10 times faster so
-        * I
-        * go with this route.
-        */
+         * As discussed, \f${[B(diag(M_u))^{-1}B^T]}\f$ and its inverse
+         * need to be computed.
+         * We can either explicitly compute it out as a matrix, or define it as
+         * a class with a vmult operation. The second approach saves some
+         * computation to construct the matrix, but leads to slow convergence in
+         * CG solver because of the absence of preconditioner. Based on my
+         * tests, the first approach is more than 10 times faster so
+         * I
+         * go with this route.
+         */
         const SmartPointer<PETScWrappers::MPI::BlockSparseMatrix> mass_schur;
       };
 
@@ -306,7 +307,7 @@ namespace Fluid
         SymmetricTensor<2, dim> fsi_stress; //!< The stress term in FSI force.
       };
     };
-  }
-}
+  } // namespace MPI
+} // namespace Fluid
 
 #endif

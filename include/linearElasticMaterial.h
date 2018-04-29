@@ -29,6 +29,6 @@ namespace Solid
     double lambda; //!< First lame parameter
     double mu;     //!< Second lame parameter
   };
-}
+} // namespace Solid
 
 #endif

@@ -39,4 +39,4 @@ namespace Solid
   // explicit instantiation
   template class LinearElasticMaterial<2>;
   template class LinearElasticMaterial<3>;
-}
+} // namespace Solid

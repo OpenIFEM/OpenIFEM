@@ -389,4 +389,4 @@ namespace Solid
 
   template class LinearElasticSolver<2>;
   template class LinearElasticSolver<3>;
-}
+} // namespace Solid

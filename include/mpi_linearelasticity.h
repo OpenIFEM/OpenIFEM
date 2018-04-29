@@ -102,7 +102,11 @@ namespace Solid
     ParallelLinearElasticity(parallel::distributed::Triangulation<dim> &,
                              const Parameters::AllParameters &);
     /*! \brief Destructor. */
-    ~ParallelLinearElasticity() { dof_handler.clear(); }
+    ~ParallelLinearElasticity()
+    {
+      dof_handler.clear();
+      timer.print_summary();
+    }
     void run();
 
   private:
@@ -214,6 +218,6 @@ namespace Solid
 
     mutable TimerOutput timer;
   };
-}
+} // namespace Solid
 
 #endif
