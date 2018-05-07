@@ -4,13 +4,13 @@
 #include <deal.II/base/table_indices.h>
 #include <deal.II/physics/elasticity/standard_tensors.h>
 
-#include "navierstokes.h"
+#include "fluidSolver.h"
 #include "solidSolver.h"
 
 using namespace dealii;
 
-extern template class Fluid::NavierStokes<2>;
-extern template class Fluid::NavierStokes<3>;
+extern template class Fluid::FluidSolver<2>;
+extern template class Fluid::FluidSolver<3>;
 extern template class Solid::SolidSolver<2>;
 extern template class Solid::SolidSolver<3>;
 extern template class Utils::GridInterpolator<2, Vector<double>>;
@@ -22,7 +22,7 @@ template <int dim>
 class FSI
 {
 public:
-  FSI(Fluid::NavierStokes<dim> &,
+  FSI(Fluid::FluidSolver<dim> &,
       Solid::SolidSolver<dim> &,
       const Parameters::AllParameters &);
   void run();
@@ -70,7 +70,7 @@ private:
    */
   void find_fluid_bc();
 
-  Fluid::NavierStokes<dim> &fluid_solver;
+  Fluid::FluidSolver<dim> &fluid_solver;
   Solid::SolidSolver<dim> &solid_solver;
   Parameters::AllParameters parameters;
   Utils::Time time;

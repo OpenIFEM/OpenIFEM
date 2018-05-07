@@ -6,12 +6,12 @@
  * For real application, 2 should be used.
  * This test takes about 240s.
  */
-#include "navierstokes.h"
+#include "insim.h"
 #include "parameters.h"
 #include "utilities.h"
 
-extern template class Fluid::NavierStokes<2>;
-extern template class Fluid::NavierStokes<3>;
+extern template class Fluid::InsIM<2>;
+extern template class Fluid::InsIM<3>;
 extern template class Utils::GridCreator<2>;
 extern template class Utils::GridCreator<3>;
 
@@ -32,7 +32,7 @@ int main(int argc, char *argv[])
         {
           Triangulation<2> tria;
           Utils::GridCreator<2>::flow_around_cylinder(tria);
-          Fluid::NavierStokes<2> flow(tria, params);
+          Fluid::InsIM<2> flow(tria, params);
           flow.run();
           auto solution = flow.get_current_solution();
           // Check the max values of velocity and pressure
@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
         {
           Triangulation<3> tria;
           Utils::GridCreator<3>::flow_around_cylinder(tria);
-          Fluid::NavierStokes<3> flow(tria, params);
+          Fluid::InsIM<3> flow(tria, params);
           flow.run();
         }
       else

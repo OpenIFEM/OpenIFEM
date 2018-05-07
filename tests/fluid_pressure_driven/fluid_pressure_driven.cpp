@@ -5,12 +5,12 @@
  * the maximum velocity.
  * 2D test takes about 26.9s.
  */
-#include "navierstokes.h"
+#include "insim.h"
 #include "parameters.h"
 #include "utilities.h"
 
-extern template class Fluid::NavierStokes<2>;
-extern template class Fluid::NavierStokes<3>;
+extern template class Fluid::InsIM<2>;
+extern template class Fluid::InsIM<3>;
 
 int main(int argc, char *argv[])
 {
@@ -32,7 +32,7 @@ int main(int argc, char *argv[])
           Triangulation<2> tria;
           dealii::GridGenerator::subdivided_hyper_rectangle(
             tria, {100, 5}, Point<2>(0, 0), Point<2>(L, D / 2), true);
-          Fluid::NavierStokes<2> flow(tria, params);
+          Fluid::InsIM<2> flow(tria, params);
           flow.run();
           auto solution = flow.get_current_solution();
           // Assuming the mass is conserved and final velocity profile is
@@ -50,7 +50,7 @@ int main(int argc, char *argv[])
           dealii::GridGenerator::cylinder(tria, D / 2, L / 2);
           static const CylindricalManifold<3> cylinder;
           tria.set_manifold(0, cylinder);
-          Fluid::NavierStokes<3> flow(tria, params);
+          Fluid::InsIM<3> flow(tria, params);
           flow.run();
         }
       else
