@@ -46,6 +46,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <sstream>
 
 #include "parameters.h"
@@ -67,7 +68,11 @@ namespace Fluid
     friend FSI<dim>;
 
     //! Constructor
-    FluidSolver(Triangulation<dim> &, const Parameters::AllParameters &);
+    FluidSolver(Triangulation<dim> &,
+                const Parameters::AllParameters &,
+                std::shared_ptr<Function<dim>> bc =
+                  std::make_shared<Functions::ZeroFunction<dim>>(
+                    Functions::ZeroFunction<dim>(dim + 1)));
 
     //! Run the simulation
     virtual void run() = 0;
@@ -83,7 +88,8 @@ namespace Fluid
     struct CellProperty;
 
     //! Pure abstract function to run simulation for one step
-    virtual void run_one_step(bool) = 0;
+    virtual void run_one_step(bool apply_nonzero_constraints,
+                              bool assemble_system = true) = 0;
 
     //! Set up the dofs based on the finite element and renumber them.
     void setup_dofs();
@@ -133,23 +139,9 @@ namespace Fluid
     CellDataStorage<typename Triangulation<dim>::cell_iterator, CellProperty>
       cell_property;
 
-    /*! \brief Helper class to specify space/time-dependent Dirichlet BCs,
-     *         as the input file can only handle constant BC values.
-     *
-     *  It specifies a parabolic velocity profile at the left side boundary,
-     *  and all the remaining boundaries are considered as walls
-     *  except for the right side one.
-     */
-    class BoundaryValues : public Function<dim>
-    {
-    public:
-      BoundaryValues() : Function<dim>(dim + 1) {}
-      virtual double value(const Point<dim> &p,
-                           const unsigned int component) const;
-
-      virtual void vector_value(const Point<dim> &p,
-                                Vector<double> &values) const;
-    };
+    /// Hard-coded boundary values, only used when told so in the input
+    /// parameters.
+    std::shared_ptr<Function<dim>> boundary_values;
 
     /// A data structure that caches the real/artificial fluid indicator,
     /// FSI stress, and FSI acceleration terms at quadrature points, that

@@ -119,8 +119,9 @@ namespace Fluid
 
   template <int dim>
   InsIM<dim>::InsIM(Triangulation<dim> &tria,
-                    const Parameters::AllParameters &parameters)
-    : FluidSolver<dim>(tria, parameters)
+                    const Parameters::AllParameters &parameters,
+                    std::shared_ptr<Function<dim>> bc)
+    : FluidSolver<dim>(tria, parameters, bc)
   {
   }
 
@@ -355,7 +356,8 @@ namespace Fluid
   }
 
   template <int dim>
-  void InsIM<dim>::run_one_step(bool apply_nonzero_constraints)
+  void InsIM<dim>::run_one_step(bool apply_nonzero_constraints,
+                                bool assemble_system)
   {
     std::cout.precision(6);
     std::cout.width(12);

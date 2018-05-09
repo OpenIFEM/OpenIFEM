@@ -3,40 +3,6 @@
 namespace Fluid
 {
   template <int dim>
-  double
-  FluidSolver<dim>::BoundaryValues::value(const Point<dim> &p,
-                                          const unsigned int component) const
-  {
-    Assert(component < this->n_components,
-           ExcIndexRange(component, 0, this->n_components));
-    double left_boundary = (dim == 2 ? 0.3 : 0.0);
-    if (component == 0 && std::abs(p[0] - left_boundary) < 1e-10)
-      {
-        // For a parabolic velocity profile, Uavg = 2/3 * Umax in 2D,
-        // and 4/9 * Umax in 3D. If nu = 0.001, D = 0.1,
-        // then Re = 100 * Uavg
-        double Uavg = 0.2;
-        double Umax = (dim == 2 ? 3 * Uavg / 2 : 9 * Uavg / 4);
-        double value = 4 * Umax * p[1] * (0.41 - p[1]) / (0.41 * 0.41);
-        if (dim == 3)
-          {
-            value *= 4 * p[2] * (0.41 - p[2]) / (0.41 * 0.41);
-          }
-        return value;
-      }
-    return 0;
-  }
-
-  template <int dim>
-  void
-  FluidSolver<dim>::BoundaryValues::vector_value(const Point<dim> &p,
-                                                 Vector<double> &values) const
-  {
-    for (unsigned int c = 0; c < this->n_components; ++c)
-      values(c) = BoundaryValues::value(p, c);
-  }
-
-  template <int dim>
   BlockVector<double> FluidSolver<dim>::get_current_solution() const
   {
     return present_solution;
@@ -44,7 +10,8 @@ namespace Fluid
 
   template <int dim>
   FluidSolver<dim>::FluidSolver(Triangulation<dim> &tria,
-                                const Parameters::AllParameters &parameters)
+                                const Parameters::AllParameters &parameters,
+                                std::shared_ptr<Function<dim>> bc)
     : triangulation(tria),
       fe(FE_Q<dim>(parameters.fluid_degree + 1),
          dim,
@@ -58,7 +25,8 @@ namespace Fluid
            parameters.output_interval,
            parameters.refinement_interval),
       timer(std::cout, TimerOutput::never, TimerOutput::wall_times),
-      parameters(parameters)
+      parameters(parameters),
+      boundary_values(bc)
   {
   }
 
@@ -151,7 +119,7 @@ namespace Fluid
           {
             VectorTools::interpolate_boundary_values(dof_handler,
                                                      id,
-                                                     BoundaryValues(),
+                                                     *boundary_values,
                                                      nonzero_constraints,
                                                      ComponentMask(mask));
           }

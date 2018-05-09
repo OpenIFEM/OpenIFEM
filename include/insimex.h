@@ -37,7 +37,11 @@ namespace Fluid
     friend FSI<dim>;
 
     //! Constructor
-    InsIMEX(Triangulation<dim> &, const Parameters::AllParameters &);
+    InsIMEX(Triangulation<dim> &,
+            const Parameters::AllParameters &,
+            std::shared_ptr<Function<dim>> bc =
+              std::make_shared<Functions::ZeroFunction<dim>>(
+                Functions::ZeroFunction<dim>(dim + 1)));
 
     //! Run the simulation
     void run() override;
@@ -74,6 +78,7 @@ namespace Fluid
     using FluidSolver<dim>::timer;
     using FluidSolver<dim>::parameters;
     using FluidSolver<dim>::cell_property;
+    using FluidSolver<dim>::boundary_values;
 
     /// Specify the sparsity pattern and reinit matrices and vectors based on
     /// the dofs and constraints.
@@ -99,7 +104,8 @@ namespace Fluid
                                           bool assemble_system);
 
     /// Run the simulation for one time step.
-    void run_one_step(bool dummy = true) override;
+    void run_one_step(bool apply_nonzero_constraints,
+                      bool assemble_system = true) override;
 
     /// The increment at a certain time step.
     BlockVector<double> solution_increment;

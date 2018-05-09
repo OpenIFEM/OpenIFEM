@@ -109,8 +109,9 @@ namespace Fluid
 
   template <int dim>
   InsIMEX<dim>::InsIMEX(Triangulation<dim> &tria,
-                        const Parameters::AllParameters &parameters)
-    : FluidSolver<dim>(tria, parameters)
+                        const Parameters::AllParameters &parameters,
+                        std::shared_ptr<Function<dim>> bc)
+    : FluidSolver<dim>(tria, parameters, bc)
   {
   }
 
@@ -340,12 +341,9 @@ namespace Fluid
   }
 
   template <int dim>
-  void InsIMEX<dim>::run_one_step(bool dummy)
+  void InsIMEX<dim>::run_one_step(bool apply_nonzero_constraints,
+                                  bool assemble_system)
   {
-    // dummy parameter, just to be consistent with InsIM solver
-    // so that FSI solver can use a generic fluid solver.
-    dummy = false;
-
     std::cout.precision(6);
     std::cout.width(12);
 
@@ -361,11 +359,6 @@ namespace Fluid
 
     // Resetting
     solution_increment = 0;
-    // Only use nonzero constraints at the very first time step
-    bool apply_nonzero_constraints = (time.get_timestep() == 1);
-    // We have to assemble the LHS twice: once using nonzero_constraints,
-    // once using zero_constraints.
-    bool assemble_system = (time.get_timestep() < 3);
     assemble(apply_nonzero_constraints, assemble_system);
     auto state = solve(apply_nonzero_constraints, assemble_system);
 
@@ -396,7 +389,7 @@ namespace Fluid
     // Time loop.
     while (time.end() - time.current() > 1e-12)
       {
-        run_one_step();
+        run_one_step(time.get_timestep() == 0, time.get_timestep() < 2);
       }
   }
 
