@@ -1,9 +1,9 @@
 #include "fsi.h"
 #include "hyperelasticSolver.h"
-#include "navierstokes.h"
+#include "insim.h"
 
-extern template class Fluid::NavierStokes<2>;
-extern template class Fluid::NavierStokes<3>;
+extern template class Fluid::InsIM<2>;
+extern template class Fluid::InsIM<3>;
 extern template class Solid::HyperelasticSolver<2>;
 extern template class Solid::HyperelasticSolver<3>;
 extern template class Utils::GridCreator<2>;
@@ -37,7 +37,7 @@ int main(int argc, char *argv[])
             Point<2>(0, 0),
             Point<2>(W, -H),
             true);
-          Fluid::NavierStokes<2> fluid(fluid_tria, params);
+          Fluid::InsIM<2> fluid(fluid_tria, params);
 
           Triangulation<2> solid_tria;
           Point<2> center(L, -L);

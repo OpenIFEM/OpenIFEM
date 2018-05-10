@@ -1,47 +1,7 @@
-#include "navierstokes.h"
+#include "insim.h"
 
 namespace Fluid
 {
-  template <int dim>
-  double
-  NavierStokes<dim>::BoundaryValues::value(const Point<dim> &p,
-                                           const unsigned int component) const
-  {
-    Assert(component < this->n_components,
-           ExcIndexRange(component, 0, this->n_components));
-    double left_boundary = (dim == 2 ? 0.3 : 0.0);
-    if (component == 0 && std::abs(p[0] - left_boundary) < 1e-10)
-      {
-        // For a parabolic velocity profile, Uavg = 2/3 * Umax in 2D,
-        // and 4/9 * Umax in 3D. If nu = 0.001, D = 0.1,
-        // then Re = 100 * Uavg
-        double Uavg = 0.2;
-        double Umax = (dim == 2 ? 3 * Uavg / 2 : 9 * Uavg / 4);
-        double value = 4 * Umax * p[1] * (0.41 - p[1]) / (0.41 * 0.41);
-        if (dim == 3)
-          {
-            value *= 4 * p[2] * (0.41 - p[2]) / (0.41 * 0.41);
-          }
-        return value;
-      }
-    return 0;
-  }
-
-  template <int dim>
-  void
-  NavierStokes<dim>::BoundaryValues::vector_value(const Point<dim> &p,
-                                                  Vector<double> &values) const
-  {
-    for (unsigned int c = 0; c < this->n_components; ++c)
-      values(c) = BoundaryValues::value(p, c);
-  }
-
-  template <int dim>
-  BlockVector<double> NavierStokes<dim>::get_current_solution() const
-  {
-    return present_solution;
-  }
-
   /**
    * The initialization of the direct solver is expensive as it allocates
    * a lot of memory. The preconditioner is going to be applied several
@@ -50,7 +10,7 @@ namespace Fluid
    * this to iterative solvers.
    */
   template <int dim>
-  NavierStokes<dim>::BlockSchurPreconditioner::BlockSchurPreconditioner(
+  InsIM<dim>::BlockSchurPreconditioner::BlockSchurPreconditioner(
     TimerOutput &timer,
     double gamma,
     double viscosity,
@@ -94,7 +54,7 @@ namespace Fluid
    * BlockSchurPreconditioner. Conceptually it computes \f$u = P^{-1}v\f$.
    */
   template <int dim>
-  void NavierStokes<dim>::BlockSchurPreconditioner::vmult(
+  void InsIM<dim>::BlockSchurPreconditioner::vmult(
     BlockVector<double> &dst, const BlockVector<double> &src) const
   {
     // First, buffer the velocity block of src vector (\f$v_0\f$).
@@ -158,219 +118,30 @@ namespace Fluid
   }
 
   template <int dim>
-  NavierStokes<dim>::NavierStokes(Triangulation<dim> &tria,
-                                  const Parameters::AllParameters &parameters)
-    : viscosity(parameters.viscosity),
-      rho(parameters.fluid_rho),
-      gamma(parameters.grad_div),
-      degree(parameters.fluid_degree),
-      triangulation(tria),
-      fe(FE_Q<dim>(degree + 1), dim, FE_Q<dim>(degree), 1),
-      dof_handler(triangulation),
-      volume_quad_formula(degree + 2),
-      face_quad_formula(degree + 2),
-      tolerance(parameters.fluid_tolerance),
-      max_iteration(parameters.fluid_max_iterations),
-      time(parameters.end_time,
-           parameters.time_step,
-           parameters.output_interval,
-           parameters.refinement_interval),
-      timer(std::cout, TimerOutput::never, TimerOutput::wall_times),
-      parameters(parameters)
+  InsIM<dim>::InsIM(Triangulation<dim> &tria,
+                    const Parameters::AllParameters &parameters,
+                    std::shared_ptr<Function<dim>> bc)
+    : FluidSolver<dim>(tria, parameters, bc)
   {
   }
 
   template <int dim>
-  void NavierStokes<dim>::setup_dofs()
+  void InsIM<dim>::initialize_system()
   {
-    // The first step is to associate DoFs with a given mesh.
-    dof_handler.distribute_dofs(fe);
-
-    // We renumber the components to have all velocity DoFs come before
-    // the pressure DoFs to be able to split the solution vector in two blocks
-    // which are separately accessed in the block preconditioner.
-    DoFRenumbering::Cuthill_McKee(dof_handler);
-    std::vector<unsigned int> block_component(dim + 1, 0);
-    block_component[dim] = 1;
-    DoFRenumbering::component_wise(dof_handler, block_component);
-
-    dofs_per_block.resize(2);
-    DoFTools::count_dofs_per_block(
-      dof_handler, dofs_per_block, block_component);
-    unsigned int dof_u = dofs_per_block[0];
-    unsigned int dof_p = dofs_per_block[1];
-
-    std::cout << "   Number of active fluid cells: "
-              << triangulation.n_active_cells() << std::endl
-              << "   Number of degrees of freedom: " << dof_handler.n_dofs()
-              << " (" << dof_u << '+' << dof_p << ')' << std::endl;
-  }
-
-  template <int dim>
-  void NavierStokes<dim>::make_constraints()
-  {
-    // In Newton's scheme, we first apply the boundary condition on the solution
-    // obtained from the initial step. To make sure the boundary conditions
-    // remain
-    // satisfied during Newton's iteration, zero boundary conditions are used
-    // for
-    // the update \f$\delta u^k\f$. Therefore we set up two different constraint
-    // objects.
-    // Dirichlet boundary conditions are applied to both boundaries 0 and 1.
-
-    // For inhomogeneous BC, only constant input values can be read from
-    // the input file. If time or space dependent Dirichlet BCs are
-    // desired, they must be implemented in BoundaryValues.
-    nonzero_constraints.clear();
-    zero_constraints.clear();
-    DoFTools::make_hanging_node_constraints(dof_handler, nonzero_constraints);
-    DoFTools::make_hanging_node_constraints(dof_handler, zero_constraints);
-    for (auto itr = parameters.fluid_dirichlet_bcs.begin();
-         itr != parameters.fluid_dirichlet_bcs.end();
-         ++itr)
-      {
-        // First get the id, flag and value from the input file
-        unsigned int id = itr->first;
-        unsigned int flag = itr->second.first;
-        std::vector<double> value = itr->second.second;
-
-        // To make VectorTools::interpolate_boundary_values happy,
-        // a vector of bool and a vector of double which are of size
-        // dim + 1 are required.
-        std::vector<bool> mask(dim + 1, false);
-        std::vector<double> augmented_value(dim + 1, 0.0);
-        // 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
-        switch (flag)
-          {
-          case 1:
-            mask[0] = true;
-            augmented_value[0] = value[0];
-            break;
-          case 2:
-            mask[1] = true;
-            augmented_value[1] = value[0];
-            break;
-          case 3:
-            mask[0] = true;
-            mask[1] = true;
-            augmented_value[0] = value[0];
-            augmented_value[1] = value[1];
-            break;
-          case 4:
-            mask[2] = true;
-            augmented_value[2] = value[0];
-            break;
-          case 5:
-            mask[0] = true;
-            mask[2] = true;
-            augmented_value[0] = value[0];
-            augmented_value[2] = value[1];
-            break;
-          case 6:
-            mask[1] = true;
-            mask[2] = true;
-            augmented_value[1] = value[0];
-            augmented_value[2] = value[1];
-            break;
-          case 7:
-            mask[0] = true;
-            mask[1] = true;
-            mask[2] = true;
-            augmented_value[0] = value[0];
-            augmented_value[1] = value[1];
-            augmented_value[2] = value[2];
-            break;
-          default:
-            AssertThrow(false, ExcMessage("Unrecogonized component flag!"));
-            break;
-          }
-        if (parameters.use_hard_coded_values == 1)
-          {
-            VectorTools::interpolate_boundary_values(dof_handler,
-                                                     id,
-                                                     BoundaryValues(),
-                                                     nonzero_constraints,
-                                                     ComponentMask(mask));
-          }
-        else
-          {
-            VectorTools::interpolate_boundary_values(
-              dof_handler,
-              id,
-              Functions::ConstantFunction<dim>(augmented_value),
-              nonzero_constraints,
-              ComponentMask(mask));
-          }
-        VectorTools::interpolate_boundary_values(
-          dof_handler,
-          id,
-          Functions::ZeroFunction<dim>(dim + 1),
-          zero_constraints,
-          ComponentMask(mask));
-      }
-    nonzero_constraints.close();
-    zero_constraints.close();
-  }
-
-  template <int dim>
-  void NavierStokes<dim>::setup_cell_property()
-  {
-    std::cout << "   Setting up cell property..." << std::endl;
-    const unsigned int n_q_points = volume_quad_formula.size();
-    cell_property.initialize(
-      triangulation.begin_active(), triangulation.end(), n_q_points);
-    for (auto cell = triangulation.begin_active(); cell != triangulation.end();
-         ++cell)
-      {
-        const std::vector<std::shared_ptr<CellProperty>> p =
-          cell_property.get_data(cell);
-        Assert(p.size() == n_q_points,
-               ExcMessage("Wrong number of cell property!"));
-        for (unsigned int q = 0; q < n_q_points; ++q)
-          {
-            p[q]->indicator = 0;
-            p[q]->fsi_acceleration = 0;
-            p[q]->fsi_stress = 0;
-          }
-      }
-  }
-
-  template <int dim>
-  void NavierStokes<dim>::initialize_system()
-  {
+    FluidSolver<dim>::initialize_system();
     preconditioner.reset();
-    system_matrix.clear();
-    mass_matrix.clear();
-    mass_schur.clear();
-
-    BlockDynamicSparsityPattern dsp(dofs_per_block, dofs_per_block);
-    DoFTools::make_sparsity_pattern(dof_handler, dsp, nonzero_constraints);
-    sparsity_pattern.copy_from(dsp);
-
-    system_matrix.reinit(sparsity_pattern);
-    mass_matrix.reinit(sparsity_pattern);
-
-    present_solution.reinit(dofs_per_block);
     newton_update.reinit(dofs_per_block);
     evaluation_point.reinit(dofs_per_block);
-    system_rhs.reinit(dofs_per_block);
-
-    // Compute the sparsity pattern for mass schur in advance.
-    // It should be the same as \f$BB^T\f$.
-    DynamicSparsityPattern schur_pattern(dofs_per_block[1], dofs_per_block[1]);
-    schur_pattern.compute_mmult_pattern(sparsity_pattern.block(1, 0),
-                                        sparsity_pattern.block(0, 1));
-    mass_schur_pattern.copy_from(schur_pattern);
-    mass_schur.reinit(mass_schur_pattern);
-
-    // Cell property
-    setup_cell_property();
   }
 
   template <int dim>
-  void NavierStokes<dim>::assemble(const bool use_nonzero_constraints)
+  void InsIM<dim>::assemble(const bool use_nonzero_constraints)
   {
     TimerOutput::Scope timer_section(timer, "Assemble system");
+
+    const double viscosity = parameters.viscosity;
+    const double rho = parameters.fluid_rho;
+    const double gamma = parameters.grad_div;
 
     system_matrix = 0;
     mass_matrix = 0;
@@ -554,14 +325,14 @@ namespace Fluid
 
   template <int dim>
   std::pair<unsigned int, double>
-  NavierStokes<dim>::solve(const bool use_nonzero_constraints)
+  InsIM<dim>::solve(const bool use_nonzero_constraints)
   {
     TimerOutput::Scope timer_section(timer, "Solve linear system");
 
     preconditioner.reset(new BlockSchurPreconditioner(timer,
-                                                      gamma,
-                                                      viscosity,
-                                                      rho,
+                                                      parameters.grad_div,
+                                                      parameters.viscosity,
+                                                      parameters.fluid_rho,
                                                       time.get_delta_t(),
                                                       system_matrix,
                                                       mass_matrix,
@@ -585,56 +356,8 @@ namespace Fluid
   }
 
   template <int dim>
-  void NavierStokes<dim>::refine_mesh(const unsigned int min_grid_level,
-                                      const unsigned int max_grid_level)
-  {
-    TimerOutput::Scope timer_section(timer, "Refine mesh");
-
-    Vector<float> estimated_error_per_cell(triangulation.n_active_cells());
-    FEValuesExtractors::Vector velocity(0);
-    KellyErrorEstimator<dim>::estimate(dof_handler,
-                                       QGauss<dim - 1>(degree + 1),
-                                       typename FunctionMap<dim>::type(),
-                                       present_solution,
-                                       estimated_error_per_cell,
-                                       fe.component_mask(velocity));
-    GridRefinement::refine_and_coarsen_fixed_fraction(
-      triangulation, estimated_error_per_cell, 0.6, 0.4);
-    if (triangulation.n_levels() > max_grid_level)
-      {
-        for (auto cell = triangulation.begin_active(max_grid_level);
-             cell != triangulation.end();
-             ++cell)
-          {
-            cell->clear_refine_flag();
-          }
-      }
-
-    for (auto cell = triangulation.begin_active(min_grid_level);
-         cell != triangulation.end_active(min_grid_level);
-         ++cell)
-      {
-        cell->clear_coarsen_flag();
-      }
-
-    BlockVector<double> buffer(present_solution);
-    SolutionTransfer<dim, BlockVector<double>> solution_transfer(dof_handler);
-
-    triangulation.prepare_coarsening_and_refinement();
-    solution_transfer.prepare_for_coarsening_and_refinement(buffer);
-
-    triangulation.execute_coarsening_and_refinement();
-
-    setup_dofs();
-    make_constraints();
-    initialize_system();
-
-    solution_transfer.interpolate(buffer, present_solution);
-    nonzero_constraints.distribute(present_solution); // Is this line necessary?
-  }
-
-  template <int dim>
-  void NavierStokes<dim>::run_one_step(bool apply_nonzero_constraints)
+  void InsIM<dim>::run_one_step(bool apply_nonzero_constraints,
+                                bool assemble_system)
   {
     std::cout.precision(6);
     std::cout.width(12);
@@ -655,9 +378,10 @@ namespace Fluid
     double relative_residual = 1.0;
     unsigned int outer_iteration = 0;
     evaluation_point = present_solution;
-    while (relative_residual > tolerance && current_residual > 1e-14)
+    while (relative_residual > parameters.fluid_tolerance &&
+           current_residual > 1e-14)
       {
-        AssertThrow(outer_iteration < max_iteration,
+        AssertThrow(outer_iteration < parameters.fluid_max_iterations,
                     ExcMessage("Too many Newton iterations!"));
 
         newton_update = 0.0;
@@ -707,7 +431,7 @@ namespace Fluid
   }
 
   template <int dim>
-  void NavierStokes<dim>::run()
+  void InsIM<dim>::run()
   {
     triangulation.refine_global(parameters.global_refinement);
     setup_dofs();
@@ -726,62 +450,6 @@ namespace Fluid
       }
   }
 
-  template <int dim>
-  void NavierStokes<dim>::output_results(const unsigned int output_index) const
-  {
-    TimerOutput::Scope timer_section(timer, "Output results");
-
-    std::cout << "Writing results..." << std::endl;
-    std::vector<std::string> solution_names(dim, "velocity");
-    solution_names.push_back("pressure");
-
-    std::vector<DataComponentInterpretation::DataComponentInterpretation>
-      data_component_interpretation(
-        dim, DataComponentInterpretation::component_is_part_of_vector);
-    data_component_interpretation.push_back(
-      DataComponentInterpretation::component_is_scalar);
-    DataOut<dim> data_out;
-    data_out.attach_dof_handler(dof_handler);
-    data_out.add_data_vector(present_solution,
-                             solution_names,
-                             DataOut<dim>::type_dof_data,
-                             data_component_interpretation);
-
-    // Indicator
-    Vector<float> ind(triangulation.n_active_cells());
-    int i = 0;
-    for (auto cell = triangulation.begin_active(); cell != triangulation.end();
-         ++cell)
-      {
-        auto p = cell_property.get_data(cell);
-        bool artificial = false;
-        for (auto ptr : p)
-          {
-            if (ptr->indicator == 1)
-              {
-                artificial = true;
-                break;
-              }
-          }
-        ind[i++] = artificial;
-      }
-    data_out.add_data_vector(ind, "Indicator");
-
-    data_out.build_patches(parameters.fluid_degree + 1);
-
-    std::string basename = "navierstokes";
-    std::string filename =
-      basename + "-" + Utilities::int_to_string(output_index, 6) + ".vtu";
-
-    std::ofstream output(filename);
-    data_out.write_vtu(output);
-
-    static std::vector<std::pair<double, std::string>> times_and_names;
-    times_and_names.push_back({time.current(), filename});
-    std::ofstream pvd_output(basename + ".pvd");
-    DataOutBase::write_pvd_record(pvd_output, times_and_names);
-  }
-
-  template class NavierStokes<2>;
-  template class NavierStokes<3>;
+  template class InsIM<2>;
+  template class InsIM<3>;
 } // namespace Fluid

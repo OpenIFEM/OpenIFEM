@@ -2,7 +2,7 @@
 #include <iostream>
 
 template <int dim>
-FSI<dim>::FSI(Fluid::NavierStokes<dim> &f,
+FSI<dim>::FSI(Fluid::FluidSolver<dim> &f,
               Solid::SolidSolver<dim> &s,
               const Parameters::AllParameters &p)
   : fluid_solver(f),

@@ -1,61 +1,7 @@
 #ifndef INS_IMEX
 #define INS_IMEX
 
-#include <deal.II/base/function.h>
-#include <deal.II/base/logstream.h>
-#include <deal.II/base/quadrature_lib.h>
-#include <deal.II/base/quadrature_point_data.h>
-#include <deal.II/base/tensor.h>
-#include <deal.II/base/timer.h>
-#include <deal.II/base/utilities.h>
-
-#include <deal.II/lac/block_sparse_matrix.h>
-#include <deal.II/lac/block_vector.h>
-#include <deal.II/lac/constraint_matrix.h>
-#include <deal.II/lac/dynamic_sparsity_pattern.h>
-#include <deal.II/lac/full_matrix.h>
-#include <deal.II/lac/precondition.h>
-#include <deal.II/lac/solver_cg.h>
-#include <deal.II/lac/solver_gmres.h>
-#include <deal.II/lac/sparse_direct.h>
-
-#include <deal.II/grid/grid_generator.h>
-#include <deal.II/grid/grid_refinement.h>
-#include <deal.II/grid/grid_tools.h>
-#include <deal.II/grid/manifold_lib.h>
-#include <deal.II/grid/tria.h>
-#include <deal.II/grid/tria_accessor.h>
-#include <deal.II/grid/tria_iterator.h>
-
-#include <deal.II/dofs/dof_accessor.h>
-#include <deal.II/dofs/dof_handler.h>
-#include <deal.II/dofs/dof_renumbering.h>
-#include <deal.II/dofs/dof_tools.h>
-
-#include <deal.II/fe/fe_q.h>
-#include <deal.II/fe/fe_system.h>
-#include <deal.II/fe/fe_values.h>
-
-#include <deal.II/numerics/data_out.h>
-#include <deal.II/numerics/error_estimator.h>
-#include <deal.II/numerics/matrix_tools.h>
-#include <deal.II/numerics/vector_tools.h>
-
-// To transfer solutions between meshes, this file is included:
-#include <deal.II/numerics/solution_transfer.h>
-
-// This file includes UMFPACK: the direct solver:
-#include <deal.II/lac/sparse_direct.h>
-
-// And the one for ILU preconditioner:
-#include <deal.II/lac/sparse_ilu.h>
-
-#include <fstream>
-#include <iostream>
-#include <sstream>
-
-#include "parameters.h"
-#include "utilities.h"
+#include "fluidSolver.h"
 
 template <int>
 class FSI;
@@ -63,6 +9,9 @@ class FSI;
 namespace Fluid
 {
   using namespace dealii;
+
+  extern template class FluidSolver<2>;
+  extern template class FluidSolver<3>;
 
   /** \brief Incompressible Navier Stokes equation solver
    *        using implicit-explicit time scheme.
@@ -81,41 +30,59 @@ namespace Fluid
    * where GMRES solver is used as the outer solver.
    */
   template <int dim>
-  class InsIMEX
+  class InsIMEX : public FluidSolver<dim>
   {
   public:
     //! FSI solver need access to the private members of this solver.
     friend FSI<dim>;
 
     //! Constructor
-    InsIMEX(Triangulation<dim> &, const Parameters::AllParameters &);
+    InsIMEX(Triangulation<dim> &,
+            const Parameters::AllParameters &,
+            std::shared_ptr<Function<dim>> bc =
+              std::make_shared<Functions::ZeroFunction<dim>>(
+                Functions::ZeroFunction<dim>(dim + 1)));
 
     //! Run the simulation
-    void run();
+    void run() override;
 
     //! Destructor
-    ~InsIMEX() { timer.print_summary(); }
-
-    //! Return the solution for testing.
-    BlockVector<double> get_current_solution() const;
+    ~InsIMEX() {}
 
   private:
-    class BoundaryValues;
     class BlockSchurPreconditioner;
-    struct CellProperty;
 
-    //! Set up the dofs based on the finite element and renumber them.
-    void setup_dofs();
+    using FluidSolver<dim>::setup_dofs;
+    using FluidSolver<dim>::make_constraints;
+    using FluidSolver<dim>::setup_cell_property;
+    using FluidSolver<dim>::initialize_system;
+    using FluidSolver<dim>::refine_mesh;
+    using FluidSolver<dim>::output_results;
 
-    //! Set up the nonzero and zero constraints.
-    void make_constraints();
-
-    //! Initialize the cell properties, which only matters in FSI applications.
-    void setup_cell_property();
+    using FluidSolver<dim>::dofs_per_block;
+    using FluidSolver<dim>::triangulation;
+    using FluidSolver<dim>::fe;
+    using FluidSolver<dim>::dof_handler;
+    using FluidSolver<dim>::volume_quad_formula;
+    using FluidSolver<dim>::face_quad_formula;
+    using FluidSolver<dim>::zero_constraints;
+    using FluidSolver<dim>::nonzero_constraints;
+    using FluidSolver<dim>::sparsity_pattern;
+    using FluidSolver<dim>::system_matrix;
+    using FluidSolver<dim>::mass_matrix;
+    using FluidSolver<dim>::mass_schur_pattern;
+    using FluidSolver<dim>::mass_schur;
+    using FluidSolver<dim>::present_solution;
+    using FluidSolver<dim>::system_rhs;
+    using FluidSolver<dim>::time;
+    using FluidSolver<dim>::timer;
+    using FluidSolver<dim>::parameters;
+    using FluidSolver<dim>::cell_property;
+    using FluidSolver<dim>::boundary_values;
 
     /// Specify the sparsity pattern and reinit matrices and vectors based on
     /// the dofs and constraints.
-    void initialize_system();
+    void initialize_system() override;
 
     /*! \brief Assemble the system matrix, mass mass matrix, and the RHS.
      *
@@ -124,12 +91,6 @@ namespace Fluid
      *  constraints or zero constraints should be used.
      */
     void assemble(bool use_nonzero_constraints, bool assemble_system);
-
-    /// Mesh adaption.
-    void refine_mesh(const unsigned int, const unsigned int);
-
-    /// Output in vtu format.
-    void output_results(const unsigned int) const;
 
     /*! \brief Solve the linear system using FGMRES solver plus block
      *         preconditioner.
@@ -143,66 +104,14 @@ namespace Fluid
                                           bool assemble_system);
 
     /// Run the simulation for one time step.
-    void run_one_step();
+    void run_one_step(bool apply_nonzero_constraints,
+                      bool assemble_system = true) override;
 
-    double viscosity; //!< Dynamic viscosity
-    double rho;
-    double gamma;
-    const unsigned int degree;
-    std::vector<types::global_dof_index> dofs_per_block;
-
-    Triangulation<dim> &triangulation;
-    FESystem<dim> fe;
-    DoFHandler<dim> dof_handler;
-    QGauss<dim> volume_quad_formula;
-    QGauss<dim - 1> face_quad_formula;
-
-    ConstraintMatrix zero_constraints;
-    ConstraintMatrix nonzero_constraints;
-
-    BlockSparsityPattern sparsity_pattern;
-    BlockSparseMatrix<double> system_matrix;
-    BlockSparseMatrix<double> mass_matrix;
-    SparsityPattern mass_schur_pattern;
-    SparseMatrix<double> mass_schur;
-
-    /// The latest known solution.
-    BlockVector<double> present_solution;
     /// The increment at a certain time step.
     BlockVector<double> solution_increment;
-    BlockVector<double> system_rhs;
-
-    const double tolerance;
-    const unsigned int max_iteration;
-
-    Utils::Time time;
-    mutable TimerOutput timer;
-
-    Parameters::AllParameters parameters;
 
     /// The BlockSchurPreconditioner for the entire system.
     std::shared_ptr<BlockSchurPreconditioner> preconditioner;
-
-    CellDataStorage<typename Triangulation<dim>::cell_iterator, CellProperty>
-      cell_property;
-
-    /*! \brief Helper class to specify space/time-dependent Dirichlet BCs,
-     *         as the input file can only handle constant BC values.
-     *
-     *  It specifies a parabolic velocity profile at the left side boundary,
-     *  and all the remaining boundaries are considered as walls
-     *  except for the right side one.
-     */
-    class BoundaryValues : public Function<dim>
-    {
-    public:
-      BoundaryValues() : Function<dim>(dim + 1) {}
-      virtual double value(const Point<dim> &p,
-                           const unsigned int component) const;
-
-      virtual void vector_value(const Point<dim> &p,
-                                Vector<double> &values) const;
-    };
 
     /** \brief Block preconditioner for the system
      *
@@ -278,17 +187,6 @@ namespace Fluid
        * go with this route.
        */
       const SmartPointer<SparseMatrix<double>> mass_schur;
-    };
-
-    /// A data structure that caches the real/artificial fluid indicator,
-    /// FSI stress, and FSI acceleration terms at quadrature points, that
-    /// will only be used in FSI simulations.
-    struct CellProperty
-    {
-      int indicator; //!< Domain indicator: 1 for artificial fluid 0 for real
-                     //! fluid.
-      Tensor<1, dim> fsi_acceleration; //!< The acceleration term in FSI force.
-      SymmetricTensor<2, dim> fsi_stress; //!< The stress term in FSI force.
     };
   };
 } // namespace Fluid

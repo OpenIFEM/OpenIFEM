@@ -1,22 +1,25 @@
 # List all the source files here
-set(TARGET_SRC fsi.cpp
+set(TARGET_SRC fluidSolver.cpp
+               fsi.cpp
                hyperelasticMaterial.cpp
                hyperelasticSolver.cpp
+               insim.cpp
                insimex.cpp
                linearElasticMaterial.cpp
                linearElasticSolver.cpp
                mpi_insimex.cpp
                mpi_linearelasticity.cpp
                mpi_navierstokes.cpp
-               navierstokes.cpp
                parameters.cpp
                solidSolver.cpp
                utilities.cpp)
 
 # List all the header files here
-set(headers fsi.h
+set(headers fluidSolver.h
+            fsi.h
             hyperelasticMaterial.h
             hyperelasticSolver.h
+            insim.h
             insimex.h
             linearElasticMaterial.h
             linearElasticSolver.h
@@ -24,7 +27,6 @@ set(headers fsi.h
             mpi_insimex.h
             mpi_linearelasticity.h
             mpi_navierstokes.h
-            navierstokes.h
             neoHookean.h
             parameters.h
             solidSolver.h
