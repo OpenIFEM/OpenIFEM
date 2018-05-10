@@ -315,65 +315,14 @@ namespace Utils
                                 const Point<dim> &center,
                                 double radius)
   {
+    PolarManifold<dim> polar_manifold(center);
+    TransfiniteInterpolationManifold<dim> inner_manifold;
     GridGenerator::hyper_ball(tria, center, radius);
-    static const SphericalManifold<dim> boundary(center);
+    tria.set_all_manifold_ids(1);
     tria.set_all_manifold_ids_on_boundary(0);
-    tria.set_manifold(0, boundary);
-    const double core_radius = radius / 5.0, inner_radius = radius / 3.0;
-
-    for (auto cell = tria.begin_active(); cell != tria.end(); ++cell)
-      {
-        if (center.distance(cell->center()) < 1e-5 * radius)
-          {
-            for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
-                 ++v)
-              {
-                double scale = core_radius / center.distance(cell->vertex(v));
-                cell->vertex(v) =
-                  scale * cell->vertex(v) + (1.0 - scale) * center;
-              }
-          }
-      }
-
-    for (auto cell = tria.begin_active(); cell != tria.end(); ++cell)
-      {
-        if (center.distance(cell->center()) >= 1e-5 * radius)
-          {
-            cell->set_refine_flag();
-          }
-      }
-    tria.execute_coarsening_and_refinement();
-
-    for (auto cell = tria.begin_active(); cell != tria.end(); ++cell)
-      {
-        for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
-          {
-            const double dist = center.distance(cell->vertex(v));
-            if (dist > core_radius * 1.0001 && dist < 0.9999 * radius)
-              {
-                double scale = inner_radius / dist;
-                cell->vertex(v) =
-                  scale * cell->vertex(v) + (1.0 - scale) * center;
-              }
-          }
-      }
-
-    for (auto cell = tria.begin_active(); cell != tria.end(); ++cell)
-      {
-        bool is_in_inner_circle = false;
-        for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
-          {
-            if (center.distance(cell->vertex(v)) < inner_radius)
-              {
-                is_in_inner_circle = true;
-                break;
-              }
-          }
-        if (!is_in_inner_circle)
-          {
-            cell->set_all_manifold_ids(0);
-          }
-      }
+    tria.set_manifold (0, polar_manifold);
+    inner_manifold.initialize(tria);
+    tria.set_manifold (1, inner_manifold);
   }
 
   template class GridCreator<2>;
