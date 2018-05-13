@@ -320,9 +320,9 @@ namespace Utils
     GridGenerator::hyper_ball(tria, center, radius);
     tria.set_all_manifold_ids(1);
     tria.set_all_manifold_ids_on_boundary(0);
-    tria.set_manifold (0, polar_manifold);
+    tria.set_manifold(0, polar_manifold);
     inner_manifold.initialize(tria);
-    tria.set_manifold (1, inner_manifold);
+    tria.set_manifold(1, inner_manifold);
   }
 
   template class GridCreator<2>;

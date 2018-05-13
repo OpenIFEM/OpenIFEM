@@ -33,8 +33,10 @@ end
 # --------------------------------------------------------------------------------
 # Fluid solver
 subsection Fluid finite element system
-  # The degree of pressure element, which is one order lower than the velocity element
-  set Degree = 1
+  # The degree of pressure element
+  set Pressure degree = 1
+  # The degree of velocity element. For grad-div solver this must be one higher than pressure
+  set Velocity degree = 2
 end
 
 subsection Fluid material properties

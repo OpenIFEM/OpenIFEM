@@ -56,10 +56,14 @@ namespace Parameters
   {
     prm.enter_subsection("Fluid finite element system");
     {
-      prm.declare_entry("Degree",
+      prm.declare_entry("Pressure degree",
                         "1",
                         Patterns::Integer(1),
                         "Pressure element polynomial order");
+      prm.declare_entry("Velocity degree",
+                        "2",
+                        Patterns::Integer(1),
+                        "Velocity elemenet polynomial order");
     }
     prm.leave_subsection();
   }
@@ -68,7 +72,8 @@ namespace Parameters
   {
     prm.enter_subsection("Fluid finite element system");
     {
-      fluid_degree = prm.get_integer("Degree");
+      fluid_pressure_degree = prm.get_integer("Pressure degree");
+      fluid_velocity_degree = prm.get_integer("Velocity degree");
     }
     prm.leave_subsection();
   }
