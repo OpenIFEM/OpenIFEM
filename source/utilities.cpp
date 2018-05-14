@@ -315,12 +315,12 @@ namespace Utils
                                 const Point<dim> &center,
                                 double radius)
   {
-    PolarManifold<dim> polar_manifold(center);
+    SphericalManifold<dim> spherical_manifold(center);
     TransfiniteInterpolationManifold<dim> inner_manifold;
     GridGenerator::hyper_ball(tria, center, radius);
     tria.set_all_manifold_ids(1);
     tria.set_all_manifold_ids_on_boundary(0);
-    tria.set_manifold(0, polar_manifold);
+    tria.set_manifold(0, spherical_manifold);
     inner_manifold.initialize(tria);
     tria.set_manifold(1, inner_manifold);
   }

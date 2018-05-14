@@ -44,8 +44,7 @@ namespace Fluid
            std::shared_ptr<Function<dim>> bc =
              std::make_shared<Functions::ZeroFunction<dim>>(
                Functions::ZeroFunction<dim>(dim + 1)),
-           std::function<void(double)>
-             bc_reiniter = {},
+           std::function<void(double)> bc_reiniter = {},
            std::shared_ptr<Function<dim>> pml =
              std::make_shared<Functions::ZeroFunction<dim>>(
                Functions::ZeroFunction<dim>(dim + 1)));
@@ -146,8 +145,7 @@ namespace Fluid
      * Basically you only need one line in the initializer:
      * boudary_values.reset(new TimeDependentBC, t, dt)
      */
-    std::function<void(double)>
-      bc_initializer;
+    std::function<void(double)> bc_initializer;
 
     /** \brief sigma_pml_field
      * the sigma_pml_field is predefined outside the class. It specifies

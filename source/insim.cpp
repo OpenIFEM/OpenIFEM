@@ -125,7 +125,8 @@ namespace Fluid
   {
     Assert(
       parameters.fluid_velocity_degree - parameters.fluid_pressure_degree == 1,
-      ExcMessage("Wrong degrees of freedom!"));
+      ExcMessage(
+        "Velocity finite element should be one order higher than pressure!"));
   }
 
   template <int dim>

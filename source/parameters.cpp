@@ -63,7 +63,7 @@ namespace Parameters
       prm.declare_entry("Velocity degree",
                         "2",
                         Patterns::Integer(1),
-                        "Velocity elemenet polynomial order");
+                        "Velocity element polynomial order");
     }
     prm.leave_subsection();
   }

@@ -1,6 +1,6 @@
 # List all the serial tests
 set(serial_tests acoustic_duct_wave
-		             acoustic_pml
+                 acoustic_pml
                  fluid_cylinder
                  fluid_cylinder_insimex
                  fluid_pipe
