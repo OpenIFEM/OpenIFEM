@@ -27,7 +27,8 @@ namespace Parameters
 
   struct FluidFESystem
   {
-    unsigned int fluid_degree;
+    unsigned int fluid_pressure_degree;
+    unsigned int fluid_velocity_degree;
     static void declareParameters(ParameterHandler &);
     void parseParameters(ParameterHandler &);
   };

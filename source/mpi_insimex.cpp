@@ -170,7 +170,7 @@ namespace Fluid
       : viscosity(parameters.viscosity),
         rho(parameters.fluid_rho),
         gamma(parameters.grad_div),
-        degree(parameters.fluid_degree),
+        degree(parameters.fluid_pressure_degree),
         triangulation(tria),
         fe(FE_Q<dim>(degree + 1), dim, FE_Q<dim>(degree), 1),
         dof_handler(triangulation),
@@ -811,7 +811,7 @@ namespace Fluid
             }
         }
       data_out.add_data_vector(ind, "Indicator");
-      data_out.build_patches(parameters.fluid_degree + 1);
+      data_out.build_patches(parameters.fluid_velocity_degree);
 
       std::string basename =
         "navierstokes" + Utilities::int_to_string(output_index, 6) + "-";

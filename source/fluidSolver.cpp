@@ -13,13 +13,13 @@ namespace Fluid
                                 const Parameters::AllParameters &parameters,
                                 std::shared_ptr<Function<dim>> bc)
     : triangulation(tria),
-      fe(FE_Q<dim>(parameters.fluid_degree + 1),
+      fe(FE_Q<dim>(parameters.fluid_velocity_degree),
          dim,
-         FE_Q<dim>(parameters.fluid_degree),
+         FE_Q<dim>(parameters.fluid_pressure_degree),
          1),
       dof_handler(triangulation),
-      volume_quad_formula(parameters.fluid_degree + 2),
-      face_quad_formula(parameters.fluid_degree + 2),
+      volume_quad_formula(parameters.fluid_velocity_degree + 1),
+      face_quad_formula(parameters.fluid_velocity_degree + 1),
       time(parameters.end_time,
            parameters.time_step,
            parameters.output_interval,
@@ -204,7 +204,7 @@ namespace Fluid
     FEValuesExtractors::Vector velocity(0);
     KellyErrorEstimator<dim>::estimate(
       dof_handler,
-      QGauss<dim - 1>(parameters.fluid_degree + 1),
+      QGauss<dim - 1>(parameters.fluid_velocity_degree),
       typename FunctionMap<dim>::type(),
       present_solution,
       estimated_error_per_cell,
@@ -285,7 +285,7 @@ namespace Fluid
       }
     data_out.add_data_vector(ind, "Indicator");
 
-    data_out.build_patches(parameters.fluid_degree + 1);
+    data_out.build_patches(parameters.fluid_velocity_degree);
 
     std::string basename = "navierstokes";
     std::string filename =

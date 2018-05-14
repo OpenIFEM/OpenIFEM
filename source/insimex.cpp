@@ -113,6 +113,9 @@ namespace Fluid
                         std::shared_ptr<Function<dim>> bc)
     : FluidSolver<dim>(tria, parameters, bc)
   {
+    Assert(
+      parameters.fluid_velocity_degree - parameters.fluid_pressure_degree == 1,
+      ExcMessage("Wrong degrees of freedom!"));
   }
 
   template <int dim>

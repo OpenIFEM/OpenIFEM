@@ -123,6 +123,9 @@ namespace Fluid
                     std::shared_ptr<Function<dim>> bc)
     : FluidSolver<dim>(tria, parameters, bc)
   {
+    Assert(
+      parameters.fluid_velocity_degree - parameters.fluid_pressure_degree == 1,
+      ExcMessage("Wrong degrees of freedom!"));
   }
 
   template <int dim>
@@ -359,6 +362,7 @@ namespace Fluid
   void InsIM<dim>::run_one_step(bool apply_nonzero_constraints,
                                 bool assemble_system)
   {
+    (void)assemble_system;
     std::cout.precision(6);
     std::cout.width(12);
 
