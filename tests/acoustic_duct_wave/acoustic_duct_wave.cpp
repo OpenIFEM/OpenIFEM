@@ -18,23 +18,19 @@ template <int dim>
 class TimeDependentBoundaryValues : public Function<dim>
 {
 public:
-  TimeDependentBoundaryValues() : Function<dim>(dim + 1) { time = 0; }
-  TimeDependentBoundaryValues(double t, double dt_)
-    : Function<dim>(dim + 1), time(t), dt(dt_)
+  TimeDependentBoundaryValues() : Function<dim>(dim + 1) {}
+  TimeDependentBoundaryValues(double t, double dt)
+    : Function<dim>(dim + 1, t), dt(dt)
   {
   }
   virtual double value(const Point<dim> &p, const unsigned int component) const;
 
   virtual void vector_value(const Point<dim> &p, Vector<double> &values) const;
 
-  // This modifier is called in every time step to update the increment value
-  void set_time(const double t);
-
 private:
   double time_value(const Point<dim> &p,
                     const unsigned int component,
                     const double t) const;
-  double time;
   double dt;
 };
 
@@ -43,7 +39,8 @@ double
 TimeDependentBoundaryValues<dim>::value(const Point<dim> &p,
                                         const unsigned int component) const
 {
-  return time_value(p, component, time) - time_value(p, component, time - dt);
+  return time_value(p, component, this->get_time()) -
+         time_value(p, component, this->get_time() - dt);
 }
 
 template <int dim>
@@ -66,17 +63,6 @@ double TimeDependentBoundaryValues<dim>::time_value(
       return 6.0 * exp(-0.5 * pow((t - 0.5e-4) / 0.15e-4, 2));
     }
   return 0;
-}
-
-template <int dim>
-void TimeDependentBoundaryValues<dim>::set_time(const double t)
-{
-  time = t;
-}
-
-void initialize_bc(std::shared_ptr<TimeDependentBoundaryValues<2>> bc, double t)
-{
-  bc->set_time(t);
 }
 
 int main(int argc, char *argv[])
@@ -104,11 +90,7 @@ int main(int argc, char *argv[])
             std::make_shared<TimeDependentBoundaryValues<2>>(
               TimeDependentBoundaryValues<2>(params.time_step,
                                              params.time_step));
-          // solver does not recogonize timedependentBC class so we must
-          // conceal it by using std::bind
-          std::function<void(double)> bc_reinit =
-            std::bind(initialize_bc, ptr, std::placeholders::_1);
-          Fluid::SCnsIM<2> flow(tria, params, ptr, bc_reinit);
+          Fluid::SCnsIM<2> flow(tria, params, ptr);
           flow.run();
           auto solution = flow.get_current_solution();
           // After the computation the max velocity should be ~

@@ -139,15 +139,12 @@ namespace Fluid
   SCnsIM<dim>::SCnsIM(Triangulation<dim> &tria,
                       const Parameters::AllParameters &parameters,
                       std::shared_ptr<Function<dim>> bc,
-                      std::function<void(double)> bc_reiniter,
                       std::shared_ptr<Function<dim>> pml)
-    : FluidSolver<dim>(tria, parameters, bc),
-      bc_initializer(bc_reiniter),
-      sigma_pml_field(pml)
+    : FluidSolver<dim>(tria, parameters, bc), sigma_pml_field(pml)
   {
     AssertThrow(parameters.fluid_velocity_degree ==
                   parameters.fluid_pressure_degree,
-                ExcMessage("Wrong degrees of freedom!"));
+                ExcMessage("Velocity degree must the same as pressure!"));
   }
 
   template <int dim>
@@ -626,13 +623,8 @@ namespace Fluid
         if (parameters.use_hard_coded_values)
           {
             // Only for time dependent BCs!
-            // The consructor args format must be:
-            // (t)
-            AssertThrow(
-              bc_initializer,
-              ExcMessage(
-                "Must specify a bc initializer for time dependent BC!"));
-            bc_initializer(time.current() + time.get_delta_t());
+            // Advance the time by delta_t and make constraints
+            boundary_values->advance_time(time.get_delta_t());
             make_constraints();
             run_one_step(true);
           }

@@ -19,23 +19,19 @@ template <int dim>
 class TimeDependentBoundaryValues : public Function<dim>
 {
 public:
-  TimeDependentBoundaryValues() : Function<dim>(dim + 1) { time = 0; }
-  TimeDependentBoundaryValues(double t, double dt_)
-    : Function<dim>(dim + 1), time(t), dt(dt_)
+  TimeDependentBoundaryValues() : Function<dim>(dim + 1) {}
+  TimeDependentBoundaryValues(double t, double dt)
+    : Function<dim>(dim + 1, t), dt(dt)
   {
   }
   virtual double value(const Point<dim> &p, const unsigned int component) const;
 
   virtual void vector_value(const Point<dim> &p, Vector<double> &values) const;
 
-  // This modifier is called in every time step to update the increment value
-  void set_time(const double t);
-
 private:
   double time_value(const Point<dim> &p,
                     const unsigned int component,
                     const double t) const;
-  double time;
   double dt;
 };
 
@@ -63,7 +59,8 @@ double
 TimeDependentBoundaryValues<dim>::value(const Point<dim> &p,
                                         const unsigned int component) const
 {
-  return time_value(p, component, time) - time_value(p, component, time - dt);
+  return time_value(p, component, this->get_time()) -
+         time_value(p, component, this->get_time() - dt);
 }
 
 template <int dim>
@@ -89,12 +86,6 @@ double TimeDependentBoundaryValues<dim>::time_value(
 }
 
 template <int dim>
-void TimeDependentBoundaryValues<dim>::set_time(const double t)
-{
-  time = t;
-}
-
-template <int dim>
 double SigmaPMLField<dim>::value(const Point<dim> &p,
                                  const unsigned int component) const
 {
@@ -117,11 +108,6 @@ void SigmaPMLField<dim>::value_list(const std::vector<Point<dim>> &points,
   (void)component;
   for (unsigned int i = 0; i < points.size(); ++i)
     values[i] = this->value(points[i]);
-}
-
-void initialize_bc(std::shared_ptr<TimeDependentBoundaryValues<2>> bc, double t)
-{
-  bc->set_time(t);
 }
 
 int main(int argc, char *argv[])
@@ -150,14 +136,10 @@ int main(int argc, char *argv[])
             std::make_shared<TimeDependentBoundaryValues<2>>(
               TimeDependentBoundaryValues<2>(params.time_step,
                                              params.time_step));
-          // solver does not recogonize timedependentBC class so we must
-          // conceal it by using std::bind
-          std::function<void(double)> bc_reinit =
-            std::bind(initialize_bc, ptr, std::placeholders::_1);
           // initialize the pml field
           auto pml = std::make_shared<SigmaPMLField<2>>(
             SigmaPMLField<2>(SigmaMax, PMLlength));
-          Fluid::SCnsIM<2> flow(tria, params, ptr, bc_reinit, pml);
+          Fluid::SCnsIM<2> flow(tria, params, ptr, pml);
           flow.run();
           auto solution = flow.get_current_solution();
           // The wave is absorbed at last, so the solution should be zero.

@@ -44,7 +44,6 @@ namespace Fluid
            std::shared_ptr<Function<dim>> bc =
              std::make_shared<Functions::ZeroFunction<dim>>(
                Functions::ZeroFunction<dim>(dim + 1)),
-           std::function<void(double)> bc_reiniter = {},
            std::shared_ptr<Function<dim>> pml =
              std::make_shared<Functions::ZeroFunction<dim>>(
                Functions::ZeroFunction<dim>(dim + 1)));
@@ -132,20 +131,6 @@ namespace Fluid
 
     /// The BlockIncompSchurPreconditioner for the entire system.
     std::shared_ptr<BlockIncompSchurPreconditioner> preconditioner;
-
-    /** \brief boundary condition initializer
-     * For time dependent boundary conditions, the bc object needs
-     * to be reinited in every time step. We cannot take some specific
-     * object in the constructor so we cannot directly reinit the object.
-     * Using bc initializer which is a std::function, we can reinit the bc
-     * with a pre-defined function taken as an argument in the constructor.
-     * NOTE: the pre-defined function must be:
-     * <shared_ptr<Function<dim>>, double, double>
-     * as the pointer to the bc, current time and time step.
-     * Basically you only need one line in the initializer:
-     * boudary_values.reset(new TimeDependentBC, t, dt)
-     */
-    std::function<void(double)> bc_initializer;
 
     /** \brief sigma_pml_field
      * the sigma_pml_field is predefined outside the class. It specifies
