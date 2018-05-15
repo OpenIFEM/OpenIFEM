@@ -15,7 +15,8 @@ set(serial_tests acoustic_duct_wave
 # List all the mpi tests
 set(mpi_tests fluid_cylinder_mpi
               fluid_cylinder_mpi_insimex
-              fluid_pipe_mpi)
+              fluid_pipe_mpi
+              solid_beam_bending_mpi_linearelastic)
 
 set(tests ${serial_tests} ${mpi_tests})
 
