@@ -47,6 +47,13 @@ namespace Fluid
     dofs_per_block.resize(2);
     DoFTools::count_dofs_per_block(
       dof_handler, dofs_per_block, block_component);
+    unsigned int dof_u = dofs_per_block[0];
+    unsigned int dof_p = dofs_per_block[1];
+
+    std::cout << "   Number of active fluid cells: "
+              << triangulation.n_active_cells() << std::endl
+              << "   Number of degrees of freedom: " << dof_handler.n_dofs()
+              << " (" << dof_u << '+' << dof_p << ')' << std::endl;
   }
 
   template <int dim>
