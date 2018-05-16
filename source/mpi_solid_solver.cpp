@@ -116,6 +116,9 @@ namespace Solid
       system_matrix.reinit(
         locally_owned_dofs, locally_owned_dofs, dsp, mpi_communicator);
 
+      mass_matrix.reinit(
+        locally_owned_dofs, locally_owned_dofs, dsp, mpi_communicator);
+
       stiffness_matrix.reinit(
         locally_owned_dofs, locally_owned_dofs, dsp, mpi_communicator);
 
@@ -143,7 +146,7 @@ namespace Solid
     {
       TimerOutput::Scope timer_section(timer, "Solve linear system");
 
-      SolverControl solver_control(dof_handler.n_dofs(), 1e-6 * b.l2_norm());
+      SolverControl solver_control(dof_handler.n_dofs(), 1e-8 * b.l2_norm());
 
       PETScWrappers::SolverCG cg(solver_control, mpi_communicator);
 

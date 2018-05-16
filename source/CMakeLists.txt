@@ -7,6 +7,7 @@ set(TARGET_SRC fluidSolver.cpp
                insimex.cpp
                linearElasticMaterial.cpp
                linearElasticSolver.cpp
+               mpi_hyper_elasticity.cpp
                mpi_insimex.cpp
                mpi_linear_elasticity.cpp
                mpi_navierstokes.cpp
@@ -27,6 +28,7 @@ set(headers fluidSolver.h
             linearElasticMaterial.h
             linearElasticSolver.h
             material.h
+            mpi_hyper_elasticity.h
             mpi_insimex.h
             mpi_linear_elasticity.h
             mpi_navierstokes.h
