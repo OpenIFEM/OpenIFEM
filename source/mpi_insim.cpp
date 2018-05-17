@@ -1,11 +1,16 @@
-#include "mpi_insimex.h"
+#include "mpi_insim.h"
 
 namespace Fluid
 {
   namespace MPI
   {
+    /**
+     * In serial code, we initialize the direct solver in the constructor
+     * to avoid repeatedly allocating memory. However it seems we can't
+     * do the same thing to the PETSc direct solver.
+     */
     template <int dim>
-    InsIMEX<dim>::BlockSchurPreconditioner::BlockSchurPreconditioner(
+    InsIM<dim>::BlockSchurPreconditioner::BlockSchurPreconditioner(
       TimerOutput &timer,
       double gamma,
       double viscosity,
@@ -22,7 +27,8 @@ namespace Fluid
         dt(dt),
         system_matrix(&system),
         mass_matrix(&mass),
-        mass_schur(&schur)
+        mass_schur(&schur),
+        A_inverse(dummy_sc, system_matrix->get_mpi_communicator())
     {
       TimerOutput::Scope timer_section(timer, "CG for Sm");
       // The sparsity pattern of mass_schur is already set,
@@ -48,27 +54,27 @@ namespace Fluid
      * BlockSchurPreconditioner. Conceptually it computes \f$u = P^{-1}v\f$.
      */
     template <int dim>
-    void InsIMEX<dim>::BlockSchurPreconditioner::vmult(
+    void InsIM<dim>::BlockSchurPreconditioner::vmult(
       PETScWrappers::MPI::BlockVector &dst,
       const PETScWrappers::MPI::BlockVector &src) const
     {
-      // Temporary vectors
+      // First, buffer the velocity block of src vector (\f$v_0\f$).
       PETScWrappers::MPI::Vector utmp(src.block(0));
       PETScWrappers::MPI::Vector tmp(src.block(1));
       tmp = 0;
-
       // This function is part of "solve linear system", but it
       // is further profiled to get a better idea of how time
       // is spent on different solvers.
-
-      // This block computes \f$u_1 = \tilde{S}^{-1} v_1\f$,
-      // where CG solvers are used for \f$M_p^{-1}\f$ and \f$S_m^{-1}\f$.
+      // The next two blocks computes \f$u_1 = \tilde{S}^{-1} v_1\f$.
       {
         TimerOutput::Scope timer_section(timer, "CG for Mp");
-        SolverControl mp_control(src.block(1).size(),
-                                 1e-6 * src.block(1).l2_norm());
-        PETScWrappers::SolverCG cg_mp(mp_control,
+
+        // CG solver used for \f$M_p^{-1}\f$ and \f$S_m^{-1}\f$.
+        SolverControl solver_control(src.block(1).size(),
+                                     1e-6 * src.block(1).l2_norm());
+        PETScWrappers::SolverCG cg_mp(solver_control,
                                       mass_schur->get_mpi_communicator());
+
         // \f$-(\mu + \gamma\rho)M_p^{-1}v_1\f$
         PETScWrappers::PreconditionBlockJacobi Mp_preconditioner;
         Mp_preconditioner.initialize(mass_matrix->block(1, 1));
@@ -77,24 +83,25 @@ namespace Fluid
         tmp *= -(viscosity + gamma * rho);
       }
 
-      // FIXME: There is a mysterious bug here. After refine_mesh is called,
-      // the initialization of Sm_preconditioner will complain about zero
-      // entries on the diagonal which causes division by 0 since
-      // PreconditionBlockJacobi uses ILU(0) underneath. This is similar to the
-      // serial code where SparseILU is used. However, 1. if we do not use a
-      // preconditioner here, the code runs fine, suggesting that mass_schur is
-      // correct; 2. if we do not call refine_mesh, the code also runs fine. So
-      // the question is, why would refine_mesh generate diagonal zeros?
-      //
-      // \f$-\frac{1}{dt}S_m^{-1}v_1\f$
       {
         TimerOutput::Scope timer_section(timer, "CG for Sm");
-        SolverControl sm_control(src.block(1).size(),
-                                 1e-6 * src.block(1).l2_norm());
-        PETScWrappers::SolverCG cg_sm(sm_control,
-                                      mass_schur->get_mpi_communicator());
+        SolverControl solver_control(src.block(1).size(),
+                                     1e-6 * src.block(1).l2_norm());
+        // FIXME: There is a mysterious bug here. After refine_mesh is called,
+        // the initialization of Sm_preconditioner will complain about zero
+        // entries on the diagonal which causes division by 0 since
+        // PreconditionBlockJacobi uses ILU(0) underneath. This is similar to
+        // the serial code where SparseILU is used. However, 1. if we do not use
+        // a preconditioner here, the code runs fine, suggesting that mass_schur
+        // is correct; 2. if we do not call refine_mesh, the code also runs
+        // fine. So the question is, why would refine_mesh generate diagonal
+        // zeros?
+        //
+        // \f$-\frac{1}{dt}S_m^{-1}v_1\f$
         PETScWrappers::PreconditionBlockJacobi Sm_preconditioner;
         Sm_preconditioner.initialize(mass_schur->block(1, 1));
+        PETScWrappers::SolverCG cg_sm(solver_control,
+                                      mass_schur->get_mpi_communicator());
         cg_sm.solve(mass_schur->block(1, 1),
                     dst.block(1),
                     src.block(1),
@@ -104,30 +111,26 @@ namespace Fluid
         dst.block(1) += tmp;
       }
 
-      // Compute \f$v_0 - B^T\tilde{S}^{-1}v_1\f$ based on \f$u_1\f$.
-      system_matrix->block(0, 1).vmult(utmp, dst.block(1));
-      utmp *= -1.0;
-      utmp += src.block(0);
-
-      // Finally, compute the product of \f$\tilde{A}^{-1}\f$ and utmp
-      // using another CG solver.
+      // This block computes \f$v_0 - B^T\tilde{S}^{-1}v_1\f$ based on
+      // \f$u_1\f$.
       {
-        TimerOutput::Scope timer_section(timer, "CG for A");
-        SolverControl a_control(src.block(0).size(),
-                                1e-6 * src.block(0).l2_norm());
-        PETScWrappers::SolverCG cg_a(a_control,
-                                     mass_schur->get_mpi_communicator());
-        PETScWrappers::PreconditionNone A_preconditioner;
-        A_preconditioner.initialize(system_matrix->block(0, 0));
-        cg_a.solve(
-          system_matrix->block(0, 0), dst.block(0), utmp, A_preconditioner);
+        system_matrix->block(0, 1).vmult(utmp, dst.block(1));
+        utmp *= -1.0;
+        utmp += src.block(0);
+      }
+
+      // Finally, compute the product of \f$\tilde{A}^{-1}\f$ and utmp with
+      // the direct solver.
+      {
+        TimerOutput::Scope timer_section(timer, "MUMPS for A_inv");
+        A_inverse.solve(system_matrix->block(0, 0), dst.block(0), utmp);
       }
     }
 
     template <int dim>
-    InsIMEX<dim>::InsIMEX(parallel::distributed::Triangulation<dim> &tria,
-                          const Parameters::AllParameters &parameters,
-                          std::shared_ptr<Function<dim>> bc)
+    InsIM<dim>::InsIM(parallel::distributed::Triangulation<dim> &tria,
+                      const Parameters::AllParameters &parameters,
+                      std::shared_ptr<Function<dim>> bc)
       : FluidSolver<dim>(tria, parameters, bc)
     {
       Assert(
@@ -138,18 +141,17 @@ namespace Fluid
     }
 
     template <int dim>
-    void InsIMEX<dim>::initialize_system()
+    void InsIM<dim>::initialize_system()
     {
       FluidSolver<dim>::initialize_system();
       preconditioner.reset();
-      // newton_update is non-ghosted because the linear solver needs
-      // a completely distributed vector.
-      solution_increment.reinit(owned_partitioning, mpi_communicator);
+      newton_update.reinit(owned_partitioning, mpi_communicator);
+      evaluation_point.reinit(
+        owned_partitioning, relevant_partitioning, mpi_communicator);
     }
 
     template <int dim>
-    void InsIMEX<dim>::assemble(bool use_nonzero_constraints,
-                                bool assemble_system)
+    void InsIM<dim>::assemble(const bool use_nonzero_constraints)
     {
       TimerOutput::Scope timer_section(timer, "Assemble system");
 
@@ -157,11 +159,8 @@ namespace Fluid
       const double rho = parameters.fluid_rho;
       const double gamma = parameters.grad_div;
 
-      if (assemble_system)
-        {
-          system_matrix = 0;
-          mass_matrix = 0;
-        }
+      system_matrix = 0;
+      mass_matrix = 0;
       system_rhs = 0;
 
       FEValues<dim> fe_values(fe,
@@ -175,8 +174,13 @@ namespace Fluid
                                          update_JxW_values);
 
       const unsigned int dofs_per_cell = fe.dofs_per_cell;
+      const unsigned int u_dofs = fe.base_element(0).dofs_per_cell;
+      const unsigned int p_dofs = fe.base_element(1).dofs_per_cell;
       const unsigned int n_q_points = volume_quad_formula.size();
       const unsigned int n_face_q_points = face_quad_formula.size();
+
+      Assert(u_dofs * dim + p_dofs == dofs_per_cell,
+             ExcMessage("Wrong partitioning of dofs!"));
 
       const FEValuesExtractors::Vector velocities(0);
       const FEValuesExtractors::Scalar pressure(dim);
@@ -189,8 +193,8 @@ namespace Fluid
 
       std::vector<Tensor<1, dim>> current_velocity_values(n_q_points);
       std::vector<Tensor<2, dim>> current_velocity_gradients(n_q_points);
-      std::vector<double> current_velocity_divergences(n_q_points);
       std::vector<double> current_pressure_values(n_q_points);
+      std::vector<Tensor<1, dim>> present_velocity_values(n_q_points);
 
       std::vector<double> div_phi_u(dofs_per_cell);
       std::vector<Tensor<1, dim>> phi_u(dofs_per_cell);
@@ -206,24 +210,21 @@ namespace Fluid
 
               fe_values.reinit(cell);
 
-              if (assemble_system)
-                {
-                  local_matrix = 0;
-                  local_mass_matrix = 0;
-                }
+              local_matrix = 0;
+              local_mass_matrix = 0;
               local_rhs = 0;
 
               fe_values[velocities].get_function_values(
-                present_solution, current_velocity_values);
+                evaluation_point, current_velocity_values);
 
               fe_values[velocities].get_function_gradients(
-                present_solution, current_velocity_gradients);
+                evaluation_point, current_velocity_gradients);
 
-              fe_values[velocities].get_function_divergences(
-                present_solution, current_velocity_divergences);
-
-              fe_values[pressure].get_function_values(present_solution,
+              fe_values[pressure].get_function_values(evaluation_point,
                                                       current_pressure_values);
+
+              fe_values[velocities].get_function_values(
+                present_solution, present_velocity_values);
 
               // Assemble the system matrix and mass matrix simultaneouly.
               // The mass matrix only uses the (0, 0) and (1, 1) blocks.
@@ -241,34 +242,51 @@ namespace Fluid
 
                   for (unsigned int i = 0; i < dofs_per_cell; ++i)
                     {
-                      if (assemble_system)
+                      for (unsigned int j = 0; j < dofs_per_cell; ++j)
                         {
-                          for (unsigned int j = 0; j < dofs_per_cell; ++j)
-                            {
-                              local_matrix(i, j) +=
-                                (viscosity * scalar_product(grad_phi_u[j],
-                                                            grad_phi_u[i]) -
-                                 div_phi_u[i] * phi_p[j] -
-                                 phi_p[i] * div_phi_u[j] +
-                                 gamma * div_phi_u[j] * div_phi_u[i] * rho +
-                                 phi_u[i] * phi_u[j] / time.get_delta_t() *
-                                   rho) *
-                                fe_values.JxW(q);
-                              local_mass_matrix(i, j) +=
-                                (phi_u[i] * phi_u[j] + phi_p[i] * phi_p[j]) *
-                                fe_values.JxW(q);
-                            }
+                          // Let the linearized diffusion, continuity and
+                          // Grad-Div
+                          // term be written as
+                          // the bilinear operator: \f$A = a((\delta{u},
+                          // \delta{p}), (\delta{v}, \delta{q}))\f$,
+                          // the linearized convection term be: \f$C =
+                          // c(u;\delta{u}, \delta{v})\f$,
+                          // and the linearized inertial term be:
+                          // \f$M = m(\delta{u}, \delta{v})$, then LHS is: $(A +
+                          // C) + M/{\Delta{t}}\f$
+                          local_matrix(i, j) +=
+                            (viscosity *
+                               scalar_product(grad_phi_u[j], grad_phi_u[i]) +
+                             current_velocity_gradients[q] * phi_u[j] *
+                               phi_u[i] * rho +
+                             grad_phi_u[j] * current_velocity_values[q] *
+                               phi_u[i] * rho -
+                             div_phi_u[i] * phi_p[j] - phi_p[i] * div_phi_u[j] +
+                             gamma * div_phi_u[j] * div_phi_u[i] * rho +
+                             phi_u[i] * phi_u[j] / time.get_delta_t() * rho) *
+                            fe_values.JxW(q);
+                          local_mass_matrix(i, j) +=
+                            (phi_u[i] * phi_u[j] + phi_p[i] * phi_p[j]) *
+                            fe_values.JxW(q);
                         }
-                      local_rhs(i) -=
-                        (viscosity *
-                           scalar_product(current_velocity_gradients[q],
-                                          grad_phi_u[i]) -
-                         current_velocity_divergences[q] * phi_p[i] -
-                         current_pressure_values[q] * div_phi_u[i] +
-                         gamma * current_velocity_divergences[q] *
-                           div_phi_u[i] * rho +
-                         current_velocity_gradients[q] *
-                           current_velocity_values[q] * phi_u[i] * rho) *
+
+                      // RHS is \f$-(A_{current} + C_{current}) -
+                      // M_{present-current}/\Delta{t}\f$.
+                      double current_velocity_divergence =
+                        trace(current_velocity_gradients[q]);
+                      local_rhs(i) +=
+                        ((-viscosity *
+                            scalar_product(current_velocity_gradients[q],
+                                           grad_phi_u[i]) -
+                          current_velocity_gradients[q] *
+                            current_velocity_values[q] * phi_u[i] * rho +
+                          current_pressure_values[q] * div_phi_u[i] +
+                          current_velocity_divergence * phi_p[i] -
+                          gamma * current_velocity_divergence * div_phi_u[i] *
+                            rho) -
+                         (current_velocity_values[q] -
+                          present_velocity_values[q]) *
+                           phi_u[i] / time.get_delta_t() * rho) *
                         fe_values.JxW(q);
                       if (ind == 1)
                         {
@@ -320,50 +338,35 @@ namespace Fluid
               const ConstraintMatrix &constraints_used = use_nonzero_constraints
                                                            ? nonzero_constraints
                                                            : zero_constraints;
-              if (assemble_system)
-                {
-                  constraints_used.distribute_local_to_global(local_matrix,
-                                                              local_rhs,
-                                                              local_dof_indices,
-                                                              system_matrix,
-                                                              system_rhs);
-                  constraints_used.distribute_local_to_global(
-                    local_mass_matrix, local_dof_indices, mass_matrix);
-                }
-              else
-                {
-                  constraints_used.distribute_local_to_global(
-                    local_rhs, local_dof_indices, system_rhs);
-                }
+              constraints_used.distribute_local_to_global(local_matrix,
+                                                          local_rhs,
+                                                          local_dof_indices,
+                                                          system_matrix,
+                                                          system_rhs);
+              constraints_used.distribute_local_to_global(
+                local_mass_matrix, local_dof_indices, mass_matrix);
             }
         }
 
-      if (assemble_system)
-        {
-          system_matrix.compress(VectorOperation::add);
-          mass_matrix.compress(VectorOperation::add);
-        }
+      system_matrix.compress(VectorOperation::add);
+      mass_matrix.compress(VectorOperation::add);
       system_rhs.compress(VectorOperation::add);
     }
 
     template <int dim>
     std::pair<unsigned int, double>
-    InsIMEX<dim>::solve(bool use_nonzero_constraints, bool assemble_system)
+    InsIM<dim>::solve(const bool use_nonzero_constraints)
     {
       TimerOutput::Scope timer_section(timer, "Solve linear system");
-      if (assemble_system)
-        {
-          preconditioner.reset(
-            new BlockSchurPreconditioner(timer,
-                                         parameters.grad_div,
-                                         parameters.viscosity,
-                                         parameters.fluid_rho,
-                                         time.get_delta_t(),
-                                         owned_partitioning,
-                                         system_matrix,
-                                         mass_matrix,
-                                         mass_schur));
-        }
+      preconditioner.reset(new BlockSchurPreconditioner(timer,
+                                                        parameters.grad_div,
+                                                        parameters.viscosity,
+                                                        parameters.fluid_rho,
+                                                        time.get_delta_t(),
+                                                        owned_partitioning,
+                                                        system_matrix,
+                                                        mass_matrix,
+                                                        mass_schur));
 
       SolverControl solver_control(
         system_matrix.m(), 1e-8 * system_rhs.l2_norm(), true);
@@ -374,20 +377,20 @@ namespace Fluid
                                                           vector_memory);
 
       // The solution vector must be non-ghosted
-      gmres.solve(
-        system_matrix, solution_increment, system_rhs, *preconditioner);
+      gmres.solve(system_matrix, newton_update, system_rhs, *preconditioner);
 
       const ConstraintMatrix &constraints_used =
         use_nonzero_constraints ? nonzero_constraints : zero_constraints;
-      constraints_used.distribute(solution_increment);
+      constraints_used.distribute(newton_update);
 
       return {solver_control.last_step(), solver_control.last_value()};
     }
 
     template <int dim>
-    void InsIMEX<dim>::run_one_step(bool apply_nonzero_constraints,
-                                    bool assemble_system)
+    void InsIM<dim>::run_one_step(bool apply_nonzero_constraints,
+                                  bool assemble_system)
     {
+      static_cast<void>(assemble_system);
       std::cout.precision(6);
       std::cout.width(12);
 
@@ -402,20 +405,57 @@ namespace Fluid
             << ", at t = " << std::scientific << time.current() << std::endl;
 
       // Resetting
-      solution_increment = 0;
-      assemble(apply_nonzero_constraints, assemble_system);
-      auto state = solve(apply_nonzero_constraints, assemble_system);
+      double current_residual = 1.0;
+      double initial_residual = 1.0;
+      double relative_residual = 1.0;
+      unsigned int outer_iteration = 0;
+      evaluation_point = present_solution;
+      while (relative_residual > parameters.fluid_tolerance &&
+             current_residual > 1e-14)
+        {
+          AssertThrow(outer_iteration < parameters.fluid_max_iterations,
+                      ExcMessage("Too many Newton iterations!"));
 
-      // Note we have to use a non-ghosted vector in order to do addition.
-      PETScWrappers::MPI::BlockVector tmp;
-      tmp.reinit(owned_partitioning, mpi_communicator);
-      tmp = present_solution;
-      tmp += solution_increment;
-      present_solution = tmp;
+          newton_update = 0;
 
-      pcout << std::scientific << std::left << " GMRES_ITR = " << std::setw(3)
-            << state.first << " GMRES_RES = " << state.second << std::endl;
+          // Since evaluation_point changes at every iteration,
+          // we have to reassemble both the lhs and rhs of the system
+          // before solving it.
+          // If the Dirichlet BCs are time-dependent, nonzero_constraints
+          // should be applied at the first iteration of every time step;
+          // if they are time-independent, nonzero_constraints should be
+          // applied only at the first iteration of the first time step.
+          assemble(apply_nonzero_constraints && outer_iteration == 0);
+          auto state = solve(apply_nonzero_constraints && outer_iteration == 0);
+          current_residual = system_rhs.l2_norm();
 
+          // Update evaluation_point. Since newton_update has been set to
+          // the correct bc values, there is no need to distribute the
+          // evaluation_point again. Note we have to use a non-ghosted
+          // vector as a buffer in order to do addition.
+          PETScWrappers::MPI::BlockVector tmp;
+          tmp.reinit(owned_partitioning, mpi_communicator);
+          tmp = evaluation_point;
+          tmp += newton_update;
+          nonzero_constraints.distribute(tmp);
+          evaluation_point = tmp;
+
+          if (outer_iteration == 0)
+            {
+              initial_residual = current_residual;
+            }
+          relative_residual = current_residual / initial_residual;
+
+          pcout << std::scientific << std::left << " ITR = " << std::setw(2)
+                << outer_iteration << " ABS_RES = " << current_residual
+                << " REL_RES = " << relative_residual
+                << " GMRES_ITR = " << std::setw(3) << state.first
+                << " GMRES_RES = " << state.second << std::endl;
+
+          outer_iteration++;
+        }
+      // Newton iteration converges, update time and solution
+      present_solution = evaluation_point;
       // Output
       if (time.time_to_output())
         {
@@ -428,7 +468,7 @@ namespace Fluid
     }
 
     template <int dim>
-    void InsIMEX<dim>::run()
+    void InsIM<dim>::run()
     {
       pcout << "Running with PETSc on "
             << Utilities::MPI::n_mpi_processes(mpi_communicator)
@@ -440,16 +480,18 @@ namespace Fluid
       initialize_system();
 
       // Time loop.
+      // use_nonzero_constraints is set to true only at the first time step,
+      // which means nonzero_constraints will be applied at the first iteration
+      // in the first time step only, and never be used again.
+      // This corresponds to time-independent Dirichlet BCs.
+      run_one_step(true);
       while (time.end() - time.current() > 1e-12)
         {
-          // Only use nonzero constraints at the very first time step
-          // We have to assemble the LHS twice: once using nonzero_constraints,
-          // once using zero_constraints.
-          run_one_step(time.get_timestep() == 0, time.get_timestep() < 2);
+          run_one_step(false);
         }
     }
 
-    template class InsIMEX<2>;
-    template class InsIMEX<3>;
+    template class InsIM<2>;
+    template class InsIM<3>;
   } // namespace MPI
 } // namespace Fluid

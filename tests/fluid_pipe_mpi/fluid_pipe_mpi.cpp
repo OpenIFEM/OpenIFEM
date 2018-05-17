@@ -5,12 +5,12 @@
  * the mass conservation by integration at the inlet and outlet.
  * 2D test takes about 260 on 2 ranks (sad).
  */
-#include "mpi_navierstokes.h"
+#include "mpi_insim.h"
 #include "parameters.h"
 #include "utilities.h"
 
-extern template class Fluid::ParallelNavierStokes<2>;
-extern template class Fluid::ParallelNavierStokes<3>;
+extern template class Fluid::MPI::InsIM<2>;
+extern template class Fluid::MPI::InsIM<3>;
 
 int main(int argc, char *argv[])
 {
@@ -34,7 +34,7 @@ int main(int argc, char *argv[])
           parallel::distributed::Triangulation<2> tria(MPI_COMM_WORLD);
           dealii::GridGenerator::subdivided_hyper_rectangle(
             tria, {100, 5}, Point<2>(0, 0), Point<2>(L, D / 2), true);
-          Fluid::ParallelNavierStokes<2> flow(tria, params);
+          Fluid::MPI::InsIM<2> flow(tria, params);
           flow.run();
           auto solution = flow.get_current_solution();
           // Assuming the mass is conserved and final velocity profile is
@@ -52,7 +52,7 @@ int main(int argc, char *argv[])
           dealii::GridGenerator::cylinder(tria, D / 2, L / 2);
           static const CylindricalManifold<3> cylinder;
           tria.set_manifold(0, cylinder);
-          Fluid::ParallelNavierStokes<3> flow(tria, params);
+          Fluid::MPI::InsIM<3> flow(tria, params);
           flow.run();
         }
       else

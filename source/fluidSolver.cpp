@@ -294,7 +294,7 @@ namespace Fluid
 
     data_out.build_patches(parameters.fluid_velocity_degree);
 
-    std::string basename = "navierstokes";
+    std::string basename = "fluid";
     std::string filename =
       basename + "-" + Utilities::int_to_string(output_index, 6) + ".vtu";
 
