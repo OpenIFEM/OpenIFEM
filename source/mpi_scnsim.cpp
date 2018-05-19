@@ -115,10 +115,11 @@ namespace Fluid
            r < ReverseRowSum.block(0).local_range().second;
            ++r)
         {
-          cache_vector.push_back(ReverseRowSum.block(0)(r));
+          cache_vector.push_back(1/(RowSumAvv.block(0)(r)));
           cache_rows.push_back(r);
         }
       ReverseRowSum.block(0).set(cache_rows, cache_vector);
+      ReverseRowSum.compress(VectorOperation::insert);
 
       // Compute Schur matrix Apv*rowsum(|Avv|)^(-1)*Avp
       system_matrix->block(1, 0).mmult(
