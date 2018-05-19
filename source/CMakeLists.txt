@@ -12,7 +12,7 @@ set(TARGET_SRC fluidSolver.cpp
                mpi_insimex.cpp
                mpi_linear_elasticity.cpp
                mpi_insim.cpp
-	             mpi_scnsim.cpp
+               mpi_scnsim.cpp
                mpi_solid_solver.cpp
                parameters.cpp
                preconditionerPilut.cpp
@@ -35,7 +35,7 @@ set(headers fluidSolver.h
             mpi_insimex.h
             mpi_linear_elasticity.h
             mpi_insim.h
-	          mpi_scnsim.h
+            mpi_scnsim.h
             mpi_solid_solver.h
             neoHookean.h
             parameters.h
