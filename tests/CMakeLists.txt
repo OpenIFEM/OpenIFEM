@@ -13,7 +13,9 @@ set(serial_tests acoustic_duct_wave
                  solid_gravity_linearelastic)
 
 # List all the mpi tests
-set(mpi_tests fluid_cylinder_mpi
+set(mpi_tests acoustic_duct_wave_mpi
+	            acoustic_pml_mpi
+	            fluid_cylinder_mpi
               fluid_cylinder_mpi_insimex
               fluid_pipe_mpi
               solid_beam_bending_mpi_linearelastic
