@@ -1,4 +1,4 @@
-#include "solidSolver.h"
+#include "solid_solver.h"
 
 namespace Solid
 {

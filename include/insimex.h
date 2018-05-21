@@ -1,7 +1,7 @@
 #ifndef INS_IMEX
 #define INS_IMEX
 
-#include "fluidSolver.h"
+#include "fluid_solver.h"
 
 template <int>
 class FSI;

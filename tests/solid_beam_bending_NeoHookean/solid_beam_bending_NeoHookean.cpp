@@ -3,12 +3,12 @@
  * Constant traction is applied to the upper surface.
  * This test takes 2 sec for 2D and 100 sec for 3D.
  */
-#include "hyperelasticSolver.h"
+#include "hyper_elasticity.h"
 #include "parameters.h"
 #include "utilities.h"
 
-extern template class Solid::HyperelasticSolver<2>;
-extern template class Solid::HyperelasticSolver<3>;
+extern template class Solid::HyperElasticity<2>;
+extern template class Solid::HyperElasticity<3>;
 
 int main(int argc, char *argv[])
 {
@@ -33,7 +33,7 @@ int main(int argc, char *argv[])
             Point<2>(0, 0),
             Point<2>(L, H),
             true);
-          Solid::HyperelasticSolver<2> solid(tria, params);
+          Solid::HyperElasticity<2> solid(tria, params);
           solid.run();
           u = solid.get_current_solution();
         }
@@ -46,7 +46,7 @@ int main(int argc, char *argv[])
             Point<3>(0, 0, 0),
             Point<3>(L, H, H),
             true);
-          Solid::HyperelasticSolver<3> solid(tria, params);
+          Solid::HyperElasticity<3> solid(tria, params);
           solid.run();
           u = solid.get_current_solution();
         }

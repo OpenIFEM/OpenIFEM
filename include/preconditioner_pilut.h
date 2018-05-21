@@ -1,5 +1,5 @@
-#ifndef dealii_petsc_precondition_Pilut
-#define dealii_petsc_precondition_Pilut
+#ifndef DEAL_II_PETSC_PRECONDITION_PILUT
+#define DEAL_II_PETSC_PRECONDITION_PILUT
 
 #include <cmath>
 #include <deal.II/base/utilities.h>

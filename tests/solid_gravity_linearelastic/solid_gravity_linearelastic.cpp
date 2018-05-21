@@ -1,14 +1,14 @@
 /**
- * This program tests serial LinearElasticSolver with a 2D ball dropping case.
+ * This program tests serial LinearElasticity with a 2D ball dropping case.
  * In a free falling case, we know the velocity and displacement at a certain
  * time.
  */
-#include "linearElasticSolver.h"
+#include "linear_elasticity.h"
 #include "parameters.h"
 #include "utilities.h"
 
-extern template class Solid::LinearElasticSolver<2>;
-extern template class Solid::LinearElasticSolver<3>;
+extern template class Solid::LinearElasticity<2>;
+extern template class Solid::LinearElasticity<3>;
 extern template class Utils::GridCreator<2>;
 extern template class Utils::GridCreator<3>;
 
@@ -33,7 +33,7 @@ int main(int argc, char *argv[])
           Triangulation<2> solid_tria;
           Point<2> center(0, 0);
           Utils::GridCreator<2>::sphere(solid_tria, center, R);
-          Solid::LinearElasticSolver<2> solid(solid_tria, params);
+          Solid::LinearElasticity<2> solid(solid_tria, params);
           solid.run();
           u = solid.get_current_solution();
         }
@@ -42,7 +42,7 @@ int main(int argc, char *argv[])
           Triangulation<3> solid_tria;
           Point<3> center(0, 0, 0);
           Utils::GridCreator<3>::sphere(solid_tria, center, R);
-          Solid::LinearElasticSolver<3> solid(solid_tria, params);
+          Solid::LinearElasticity<3> solid(solid_tria, params);
           solid.run();
           u = solid.get_current_solution();
         }

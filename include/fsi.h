@@ -4,8 +4,8 @@
 #include <deal.II/base/table_indices.h>
 #include <deal.II/physics/elasticity/standard_tensors.h>
 
-#include "fluidSolver.h"
-#include "solidSolver.h"
+#include "fluid_solver.h"
+#include "solid_solver.h"
 
 using namespace dealii;
 

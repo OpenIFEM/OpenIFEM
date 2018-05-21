@@ -1,12 +1,12 @@
 # List all the source files here
-set(TARGET_SRC fluidSolver.cpp
+set(TARGET_SRC fluid_solver.cpp
                fsi.cpp
-               hyperelasticMaterial.cpp
-               hyperelasticSolver.cpp
+               hyper_elastic_material.cpp
+               hyper_elasticity.cpp
                insim.cpp
                insimex.cpp
-               linearElasticMaterial.cpp
-               linearElasticSolver.cpp
+               linear_elastic_material.cpp
+               linear_elasticity.cpp
                mpi_fluid_solver.cpp
                mpi_hyper_elasticity.cpp
                mpi_insimex.cpp
@@ -15,20 +15,20 @@ set(TARGET_SRC fluidSolver.cpp
                mpi_scnsim.cpp
                mpi_solid_solver.cpp
                parameters.cpp
-               preconditionerPilut.cpp
+               preconditioner_pilut.cpp
                scnsim.cpp
-               solidSolver.cpp
+               solid_solver.cpp
                utilities.cpp)
 
 # List all the header files here
-set(headers fluidSolver.h
+set(headers fluid_solver.h
             fsi.h
-            hyperelasticMaterial.h
-            hyperelasticSolver.h
+            hyper_elastic_material.h
+            hyper_elasticity.h
             insim.h
             insimex.h
-            linearElasticMaterial.h
-            linearElasticSolver.h
+            linear_elastic_material.h
+            linear_elasticity.h
             material.h
             mpi_fluid_solver.h
             mpi_hyper_elasticity.h
@@ -39,9 +39,9 @@ set(headers fluidSolver.h
             mpi_solid_solver.h
             neoHookean.h
             parameters.h
-            preconditionerPilut.h
+            preconditioner_pilut.h
             scnsim.h
-            solidSolver.h
+            solid_solver.h
             utilities.h)
 
 # Prefix the header files with the path to include directory

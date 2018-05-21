@@ -1,5 +1,5 @@
-#ifndef HYPERELASTIC_SOLVER
-#define HYPERELASTIC_SOLVER
+#ifndef HYPER_ELASTICITY
+#define HYPER_ELASTICITY
 
 #include <deal.II/base/symmetric_tensor.h>
 #include <deal.II/base/tensor.h>
@@ -9,8 +9,8 @@
 #include <deal.II/physics/elasticity/kinematics.h>
 #include <deal.II/physics/elasticity/standard_tensors.h>
 
-#include "neoHookean.h"
-#include "solidSolver.h"
+#include "neo_hookean.h"
+#include "solid_solver.h"
 
 template <int>
 class FSI;
@@ -60,7 +60,7 @@ namespace Internal
 
   private:
     /** The specific hyperelastic material to use. */
-    std::shared_ptr<Solid::HyperelasticMaterial<dim>> material;
+    std::shared_ptr<Solid::HyperElasticMaterial<dim>> material;
     Tensor<2, dim> F_inv;
     SymmetricTensor<2, dim> tau;
     SymmetricTensor<4, dim> Jc;
@@ -75,8 +75,8 @@ namespace Solid
 
   extern template class SolidSolver<2>;
   extern template class SolidSolver<3>;
-  extern template class HyperelasticMaterial<2>;
-  extern template class HyperelasticMaterial<3>;
+  extern template class HyperElasticMaterial<2>;
+  extern template class HyperElasticMaterial<3>;
 
   /** \brief Solver for hyperelastic materials
    *
@@ -89,13 +89,13 @@ namespace Solid
    * (http://www.dealii.org/8.5.0/doxygen/deal.II/step_44.html)
    */
   template <int dim>
-  class HyperelasticSolver : public SolidSolver<dim>
+  class HyperElasticity : public SolidSolver<dim>
   {
   public:
     friend FSI<dim>;
 
-    HyperelasticSolver(Triangulation<dim> &, const Parameters::AllParameters &);
-    ~HyperelasticSolver() {}
+    HyperElasticity(Triangulation<dim> &, const Parameters::AllParameters &);
+    ~HyperElasticity() {}
 
   private:
     /**

@@ -2,7 +2,7 @@
 #define MPI_SCNSIM
 
 #include "mpi_fluid_solver.h"
-#include "preconditionerPilut.h"
+#include "preconditioner_pilut.h"
 
 namespace Fluid
 {

@@ -1,11 +1,11 @@
-#include "hyperelasticMaterial.h"
+#include "hyper_elastic_material.h"
 
 namespace Solid
 {
   using namespace dealii;
 
   template <int dim>
-  void HyperelasticMaterial<dim>::update_data(const dealii::Tensor<2, dim> &F)
+  void HyperElasticMaterial<dim>::update_data(const dealii::Tensor<2, dim> &F)
   {
     det_F = dealii::determinant(F);
     const dealii::Tensor<2, dim> FBar =
@@ -15,7 +15,7 @@ namespace Solid
   }
 
   template <int dim>
-  dealii::SymmetricTensor<4, dim> HyperelasticMaterial<dim>::get_Jc_vol() const
+  dealii::SymmetricTensor<4, dim> HyperElasticMaterial<dim>::get_Jc_vol() const
   {
     double p = get_dPsi_vol_dJ();
     double p_tilde = p + det_F * get_d2Psi_vol_dJ2();
@@ -23,7 +23,7 @@ namespace Solid
   }
 
   template <int dim>
-  dealii::SymmetricTensor<4, dim> HyperelasticMaterial<dim>::get_Jc_iso() const
+  dealii::SymmetricTensor<4, dim> HyperElasticMaterial<dim>::get_Jc_iso() const
   {
     const dealii::SymmetricTensor<2, dim> tau_bar = get_tau_bar();
     const dealii::SymmetricTensor<2, dim> tau_iso = get_tau_iso();
@@ -38,6 +38,6 @@ namespace Solid
            ST::dev_P * ccBar * ST::dev_P;
   }
 
-  template class HyperelasticMaterial<2>;
-  template class HyperelasticMaterial<3>;
+  template class HyperElasticMaterial<2>;
+  template class HyperElasticMaterial<3>;
 } // namespace Solid

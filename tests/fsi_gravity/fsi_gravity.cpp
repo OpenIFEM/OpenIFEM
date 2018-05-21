@@ -1,11 +1,11 @@
 #include "fsi.h"
-#include "hyperelasticSolver.h"
+#include "hyper_elasticity.h"
 #include "insim.h"
 
 extern template class Fluid::InsIM<2>;
 extern template class Fluid::InsIM<3>;
-extern template class Solid::HyperelasticSolver<2>;
-extern template class Solid::HyperelasticSolver<3>;
+extern template class Solid::HyperElasticity<2>;
+extern template class Solid::HyperElasticity<3>;
 extern template class Utils::GridCreator<2>;
 extern template class Utils::GridCreator<3>;
 
@@ -42,7 +42,7 @@ int main(int argc, char *argv[])
           Triangulation<2> solid_tria;
           Point<2> center(L, -L);
           Utils::GridCreator<2>::sphere(solid_tria, center, R);
-          Solid::HyperelasticSolver<2> solid(solid_tria, params);
+          Solid::HyperElasticity<2> solid(solid_tria, params);
 
           FSI<2> fsi(fluid, solid, params);
           fsi.run();

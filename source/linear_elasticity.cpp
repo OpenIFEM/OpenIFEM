@@ -1,11 +1,11 @@
-#include "linearElasticSolver.h"
+#include "linear_elasticity.h"
 
 namespace Solid
 {
   using namespace dealii;
 
   template <int dim>
-  LinearElasticSolver<dim>::LinearElasticSolver(
+  LinearElasticity<dim>::LinearElasticity(
     Triangulation<dim> &tria, const Parameters::AllParameters &parameters)
     : SolidSolver<dim>(tria, parameters),
       material(parameters.E, parameters.nu, parameters.solid_rho)
@@ -13,7 +13,7 @@ namespace Solid
   }
 
   template <int dim>
-  void LinearElasticSolver<dim>::assemble(bool is_initial, bool assemble_matrix)
+  void LinearElasticity<dim>::assemble(bool is_initial, bool assemble_matrix)
   {
     TimerOutput::Scope timer_section(timer, "Assemble system");
 
@@ -215,20 +215,20 @@ namespace Solid
   }
 
   template <int dim>
-  void LinearElasticSolver<dim>::assemble_system(bool is_initial)
+  void LinearElasticity<dim>::assemble_system(bool is_initial)
   {
     assemble(is_initial, true);
   }
 
   template <int dim>
-  void LinearElasticSolver<dim>::assemble_rhs()
+  void LinearElasticity<dim>::assemble_rhs()
   {
     // In case of assembling rhs only, the first boolean does not matter.
     assemble(false, false);
   }
 
   template <int dim>
-  void LinearElasticSolver<dim>::run_one_step(bool first_step)
+  void LinearElasticity<dim>::run_one_step(bool first_step)
   {
     std::cout.precision(6);
     std::cout.width(12);
@@ -306,7 +306,7 @@ namespace Solid
   }
 
   template <int dim>
-  void LinearElasticSolver<dim>::update_strain_and_stress() const
+  void LinearElasticity<dim>::update_strain_and_stress() const
   {
     // The strain and stress tensors are stored as 2D vectors of shape dim*dim
     // at cell and quadrature point level.
@@ -387,6 +387,6 @@ namespace Solid
       }
   }
 
-  template class LinearElasticSolver<2>;
-  template class LinearElasticSolver<3>;
+  template class LinearElasticity<2>;
+  template class LinearElasticity<3>;
 } // namespace Solid

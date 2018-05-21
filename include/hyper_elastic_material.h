@@ -1,5 +1,5 @@
-#ifndef HYPERELASTIC_MATERIAL
-#define HYPERELASTIC_MATERIAL
+#ifndef HYPER_ELASTIC_MATERIAL
+#define HYPER_ELASTIC_MATERIAL
 
 #include <deal.II/base/tensor.h>
 #include <deal.II/physics/elasticity/kinematics.h>
@@ -26,22 +26,22 @@ namespace Solid
    *  assuming the volumetric part of the energy potential is 1/2*kappa*(J-1)^2.
    */
   template <int dim>
-  class HyperelasticMaterial : public Material<dim>
+  class HyperElasticMaterial : public Material<dim>
   {
     using ST = typename dealii::Physics::Elasticity::StandardTensors<dim>;
 
   public:
-    HyperelasticMaterial()
+    HyperElasticMaterial()
       : Material<dim>(), kappa(0.0), det_F(1.0), b_bar(ST::I)
     {
     }
 
-    HyperelasticMaterial(double k, double rho = 0.0)
+    HyperElasticMaterial(double k, double rho = 0.0)
       : Material<dim>(rho), kappa(k), det_F(1.0), b_bar(ST::I)
     {
     }
 
-    virtual ~HyperelasticMaterial() {}
+    virtual ~HyperElasticMaterial() {}
 
     /** Update the material model with deformation data. */
     virtual void update_data(const dealii::Tensor<2, dim> &);

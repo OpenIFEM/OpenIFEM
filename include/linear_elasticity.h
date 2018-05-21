@@ -1,8 +1,8 @@
-#ifndef LINEAR_ELASTIC_SOLVER
-#define LINEAR_ELASTIC_SOLVER
+#ifndef LINEAR_ELASTICITY
+#define LINEAR_ELASTICITY
 
-#include "linearElasticMaterial.h"
-#include "solidSolver.h"
+#include "linear_elastic_material.h"
+#include "solid_solver.h"
 
 template <int>
 class FSI;
@@ -24,7 +24,7 @@ namespace Solid
    * average acceleration method.
    */
   template <int dim>
-  class LinearElasticSolver : public SolidSolver<dim>
+  class LinearElasticity : public SolidSolver<dim>
   {
   public:
     friend FSI<dim>;
@@ -35,10 +35,10 @@ namespace Solid
      * from Abaqus input file.
      * Also we use a parameter handler to specify all the input parameters.
      */
-    LinearElasticSolver(Triangulation<dim> &,
+    LinearElasticity(Triangulation<dim> &,
                         const Parameters::AllParameters &);
     /*! \brief Destructor. */
-    ~LinearElasticSolver(){};
+    ~LinearElasticity(){};
 
   private:
     /**

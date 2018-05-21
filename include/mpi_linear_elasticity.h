@@ -1,7 +1,7 @@
 #ifndef MPI_LINEAR_ELASTICITY
 #define MPI_LINEAR_ELASTICITY
 
-#include "linearElasticMaterial.h"
+#include "linear_elastic_material.h"
 #include "mpi_solid_solver.h"
 
 namespace Solid

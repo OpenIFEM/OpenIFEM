@@ -1,4 +1,4 @@
-#include "linearElasticMaterial.h"
+#include "linear_elastic_material.h"
 
 namespace Solid
 {

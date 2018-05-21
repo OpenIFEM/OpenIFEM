@@ -1,12 +1,12 @@
 #ifndef NEO_HOOKEAN
 #define NEO_HOOKEAN
 
-#include "hyperelasticMaterial.h"
+#include "hyper_elastic_material.h"
 
 namespace Solid
 {
-  extern template class HyperelasticMaterial<2>;
-  extern template class HyperelasticMaterial<3>;
+  extern template class HyperElasticMaterial<2>;
+  extern template class HyperElasticMaterial<3>;
 
   /*! \brief Neo-Hookean material.
    *
@@ -14,12 +14,12 @@ namespace Solid
    * model is written as \f$ C_1(\bar{I}_1 -3) \f$.
    */
   template <int dim>
-  class NeoHookean : public HyperelasticMaterial<dim>
+  class NeoHookean : public HyperElasticMaterial<dim>
   {
   public:
-    NeoHookean() : HyperelasticMaterial<dim>(), c1(0.0) {}
+    NeoHookean() : HyperElasticMaterial<dim>(), c1(0.0) {}
     NeoHookean(double param1, double param2, double rho = 0.0)
-      : HyperelasticMaterial<dim>(param2, rho), c1(param1)
+      : HyperElasticMaterial<dim>(param2, rho), c1(param1)
     {
     }
 

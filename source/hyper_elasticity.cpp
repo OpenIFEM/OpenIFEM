@@ -1,4 +1,4 @@
-#include "hyperelasticSolver.h"
+#include "hyper_elasticity.h"
 
 namespace Internal
 {
@@ -48,14 +48,14 @@ namespace Solid
   using namespace dealii;
 
   template <int dim>
-  HyperelasticSolver<dim>::HyperelasticSolver(
+  HyperElasticity<dim>::HyperElasticity(
     Triangulation<dim> &tria, const Parameters::AllParameters &params)
     : SolidSolver<dim>(tria, params)
   {
   }
 
   template <int dim>
-  void HyperelasticSolver<dim>::run_one_step(bool first_step)
+  void HyperElasticity<dim>::run_one_step(bool first_step)
   {
     double gamma = 0.5 + parameters.damping;
     double beta = gamma / 2;
@@ -180,14 +180,14 @@ namespace Solid
   }
 
   template <int dim>
-  void HyperelasticSolver<dim>::initialize_system()
+  void HyperElasticity<dim>::initialize_system()
   {
     SolidSolver<dim>::initialize_system();
     setup_qph();
   }
 
   template <int dim>
-  void HyperelasticSolver<dim>::setup_qph()
+  void HyperElasticity<dim>::setup_qph()
   {
     const unsigned int n_q_points = volume_quad_formula.size();
     quad_point_history.initialize(
@@ -207,7 +207,7 @@ namespace Solid
 
   template <int dim>
   void
-  HyperelasticSolver<dim>::update_qph(const Vector<double> &evaluation_point)
+  HyperElasticity<dim>::update_qph(const Vector<double> &evaluation_point)
   {
     timer.enter_subsection("Update QPH data");
 
@@ -238,7 +238,7 @@ namespace Solid
   }
 
   template <int dim>
-  double HyperelasticSolver<dim>::compute_volume() const
+  double HyperElasticity<dim>::compute_volume() const
   {
     const unsigned int n_q_points = volume_quad_formula.size();
     double volume = 0.0;
@@ -262,7 +262,7 @@ namespace Solid
   }
 
   template <int dim>
-  void HyperelasticSolver<dim>::get_error_residual(double &error_residual)
+  void HyperElasticity<dim>::get_error_residual(double &error_residual)
   {
     Vector<double> res(dof_handler.n_dofs());
     for (unsigned int i = 0; i < dof_handler.n_dofs(); ++i)
@@ -277,7 +277,7 @@ namespace Solid
 
   template <int dim>
   void
-  HyperelasticSolver<dim>::get_error_update(const Vector<double> &newton_update,
+  HyperElasticity<dim>::get_error_update(const Vector<double> &newton_update,
                                             double &error_update)
   {
     Vector<double> error(dof_handler.n_dofs());
@@ -292,7 +292,7 @@ namespace Solid
   }
 
   template <int dim>
-  void HyperelasticSolver<dim>::assemble_system(bool initial_step)
+  void HyperElasticity<dim>::assemble_system(bool initial_step)
   {
     timer.enter_subsection("Assemble tangent matrix");
 
@@ -507,11 +507,11 @@ namespace Solid
   }
 
   template <int dim>
-  void HyperelasticSolver<dim>::update_strain_and_stress() const
+  void HyperElasticity<dim>::update_strain_and_stress() const
   {
     // To be implemented...
   }
 
-  template class HyperelasticSolver<2>;
-  template class HyperelasticSolver<3>;
+  template class HyperElasticity<2>;
+  template class HyperElasticity<3>;
 } // namespace Solid

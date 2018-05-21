@@ -1,14 +1,14 @@
 /**
- * This program tests serial HyperelasticSolver with a 2D ball dropping case.
+ * This program tests serial HyperElasticity with a 2D ball dropping case.
  * In a free falling case, we know the velocity and displacement at a certain
  * time.
  */
-#include "hyperelasticSolver.h"
+#include "hyper_elasticity.h"
 #include "parameters.h"
 #include "utilities.h"
 
-extern template class Solid::HyperelasticSolver<2>;
-extern template class Solid::HyperelasticSolver<3>;
+extern template class Solid::HyperElasticity<2>;
+extern template class Solid::HyperElasticity<3>;
 extern template class Utils::GridCreator<2>;
 extern template class Utils::GridCreator<3>;
 
@@ -33,7 +33,7 @@ int main(int argc, char *argv[])
           Triangulation<2> solid_tria;
           Point<2> center(0, 0);
           Utils::GridCreator<2>::sphere(solid_tria, center, R);
-          Solid::HyperelasticSolver<2> solid(solid_tria, params);
+          Solid::HyperElasticity<2> solid(solid_tria, params);
           solid.run();
           u = solid.get_current_solution();
         }
@@ -42,7 +42,7 @@ int main(int argc, char *argv[])
           Triangulation<3> solid_tria;
           Point<3> center(0, 0, 0);
           Utils::GridCreator<3>::sphere(solid_tria, center, R);
-          Solid::HyperelasticSolver<3> solid(solid_tria, params);
+          Solid::HyperElasticity<3> solid(solid_tria, params);
           solid.run();
           u = solid.get_current_solution();
         }

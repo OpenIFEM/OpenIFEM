@@ -1,7 +1,7 @@
 #ifndef INS_IM
 #define INS_IM
 
-#include "fluidSolver.h"
+#include "fluid_solver.h"
 
 template <int>
 class FSI;

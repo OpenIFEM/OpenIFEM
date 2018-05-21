@@ -1,7 +1,7 @@
 #ifndef SCNS_IM
 #define SCNS_IM
 
-#include "fluidSolver.h"
+#include "fluid_solver.h"
 #include <functional>
 
 template <int>

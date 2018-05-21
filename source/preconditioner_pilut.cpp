@@ -1,4 +1,4 @@
-#include "preconditionerPilut.h"
+#include "preconditioner_pilut.h"
 #include <_hypre_parcsr_ls.h>
 #include <petsc/private/pcimpl.h> /*I "petscpc.h" I*/
 /* this include is needed ONLY to allow access to the private data inside the

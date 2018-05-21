@@ -10,7 +10,7 @@
 #include <deal.II/physics/elasticity/standard_tensors.h>
 
 #include "mpi_solid_solver.h"
-#include "neoHookean.h"
+#include "neo_hookean.h"
 
 namespace Internal
 {
@@ -57,7 +57,7 @@ namespace Internal
 
   private:
     /** The specific hyperelastic material to use. */
-    std::shared_ptr<Solid::HyperelasticMaterial<dim>> material;
+    std::shared_ptr<Solid::HyperElasticMaterial<dim>> material;
     Tensor<2, dim> F_inv;
     SymmetricTensor<2, dim> tau;
     SymmetricTensor<4, dim> Jc;
@@ -68,8 +68,8 @@ namespace Internal
 
 namespace Solid
 {
-  extern template class HyperelasticMaterial<2>;
-  extern template class HyperelasticMaterial<3>;
+  extern template class HyperElasticMaterial<2>;
+  extern template class HyperElasticMaterial<3>;
 
   namespace MPI
   {

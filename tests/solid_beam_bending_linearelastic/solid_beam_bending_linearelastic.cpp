@@ -2,12 +2,12 @@
  * This program tests serial linear elastic solver with a 2D bending beam case.
  * Constant traction is applied to the upper surface.
  */
-#include "linearElasticSolver.h"
+#include "linear_elasticity.h"
 #include "parameters.h"
 #include "utilities.h"
 
-extern template class Solid::LinearElasticSolver<2>;
-extern template class Solid::LinearElasticSolver<3>;
+extern template class Solid::LinearElasticity<2>;
+extern template class Solid::LinearElasticity<3>;
 
 int main(int argc, char *argv[])
 {
@@ -30,7 +30,7 @@ int main(int argc, char *argv[])
           Triangulation<2> tria;
           dealii::GridGenerator::subdivided_hyper_rectangle(
             tria, {32, 4}, Point<2>(0, 0), Point<2>(L, H), true);
-          Solid::LinearElasticSolver<2> solid(tria, params);
+          Solid::LinearElasticity<2> solid(tria, params);
           solid.run();
           u = solid.get_current_solution();
         }
@@ -39,7 +39,7 @@ int main(int argc, char *argv[])
           Triangulation<3> tria;
           dealii::GridGenerator::subdivided_hyper_rectangle(
             tria, {32, 4, 4}, Point<3>(0, 0, 0), Point<3>(L, H, H), true);
-          Solid::LinearElasticSolver<3> solid(tria, params);
+          Solid::LinearElasticity<3> solid(tria, params);
           solid.run();
           u = solid.get_current_solution();
         }
