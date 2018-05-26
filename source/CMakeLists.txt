@@ -13,6 +13,9 @@ set(TARGET_SRC fluid_solver.cpp
                mpi_linear_elasticity.cpp
                mpi_insim.cpp
                mpi_scnsim.cpp
+               mpi_shared_hyper_elasticity.cpp
+               mpi_shared_linear_elasticity.cpp
+               mpi_shared_solid_solver.cpp
                mpi_solid_solver.cpp
                parameters.cpp
                preconditioner_pilut.cpp
@@ -36,6 +39,9 @@ set(headers fluid_solver.h
             mpi_linear_elasticity.h
             mpi_insim.h
             mpi_scnsim.h
+            mpi_shared_hyper_elasticity.h
+            mpi_shared_linear_elasticity.h
+            mpi_shared_solid_solver.h
             mpi_solid_solver.h
             neoHookean.h
             parameters.h
