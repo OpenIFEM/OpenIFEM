@@ -43,6 +43,17 @@ One or both of the aforementioned combinations of prerequisites are not met by y
     )
 endif()
 
+if(NOT DEAL_II_WITH_METIS)
+  message(FATAL_ERROR "
+Error! OpenIFEM requires a deal.ii libray that was configured with the following options:
+    DEAL_II_WITH_METIS = ON
+However, the deal.II library found at ${DEAL_II_PATH} was configured with these options
+    DEAL_II_WITH_METIS = ${DEAL_II_WITH_METIS}
+which conflict with the requirements.
+The prerequisite are not met by your installation, but this is required for OpenIFEM."
+   )
+endif()
+
 deal_ii_initialize_cached_variables()
 
 project(OpenIFEM)
