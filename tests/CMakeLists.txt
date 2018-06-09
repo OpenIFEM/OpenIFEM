@@ -3,6 +3,7 @@ set(serial_tests acoustic_duct_wave
                  acoustic_pml
                  fluid_cylinder
                  fluid_cylinder_insimex
+                 fluid_gravity
                  fluid_pipe
                  fluid_pressure_driven
                  fsi_gravity

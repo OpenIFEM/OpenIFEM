@@ -35,8 +35,7 @@ namespace Solid
      * from Abaqus input file.
      * Also we use a parameter handler to specify all the input parameters.
      */
-    LinearElasticity(Triangulation<dim> &,
-                        const Parameters::AllParameters &);
+    LinearElasticity(Triangulation<dim> &, const Parameters::AllParameters &);
     /*! \brief Destructor. */
     ~LinearElasticity(){};
 

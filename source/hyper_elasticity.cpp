@@ -48,8 +48,8 @@ namespace Solid
   using namespace dealii;
 
   template <int dim>
-  HyperElasticity<dim>::HyperElasticity(
-    Triangulation<dim> &tria, const Parameters::AllParameters &params)
+  HyperElasticity<dim>::HyperElasticity(Triangulation<dim> &tria,
+                                        const Parameters::AllParameters &params)
     : SolidSolver<dim>(tria, params)
   {
   }
@@ -206,8 +206,7 @@ namespace Solid
   }
 
   template <int dim>
-  void
-  HyperElasticity<dim>::update_qph(const Vector<double> &evaluation_point)
+  void HyperElasticity<dim>::update_qph(const Vector<double> &evaluation_point)
   {
     timer.enter_subsection("Update QPH data");
 
@@ -278,7 +277,7 @@ namespace Solid
   template <int dim>
   void
   HyperElasticity<dim>::get_error_update(const Vector<double> &newton_update,
-                                            double &error_update)
+                                         double &error_update)
   {
     Vector<double> error(dof_handler.n_dofs());
     for (unsigned int i = 0; i < dof_handler.n_dofs(); ++i)

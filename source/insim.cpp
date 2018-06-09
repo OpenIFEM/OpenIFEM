@@ -146,6 +146,9 @@ namespace Fluid
     const double viscosity = parameters.viscosity;
     const double rho = parameters.fluid_rho;
     const double gamma = parameters.grad_div;
+    Tensor<1, dim> gravity;
+    for (unsigned int i = 0; i < dim; ++i)
+      gravity[i] = parameters.gravity[i];
 
     system_matrix = 0;
     mass_matrix = 0;
@@ -268,7 +271,8 @@ namespace Fluid
                     current_velocity_divergence * phi_p[i] -
                     gamma * current_velocity_divergence * div_phi_u[i] * rho) -
                    (current_velocity_values[q] - present_velocity_values[q]) *
-                     phi_u[i] / time.get_delta_t() * rho) *
+                     phi_u[i] / time.get_delta_t() * rho +
+                   gravity * phi_u[i] * rho) *
                   fe_values.JxW(q);
                 if (ind == 1)
                   {

@@ -195,6 +195,9 @@ namespace Fluid
 
     const double viscosity = parameters.viscosity;
     const double rho = parameters.fluid_rho;
+    Tensor<1, dim> gravity;
+    for (unsigned int i = 0; i < dim; ++i)
+      gravity[i] = parameters.gravity[i];
 
     system_matrix = 0;
     system_rhs = 0;
@@ -410,7 +413,8 @@ namespace Fluid
                     current_pressure_values[q] * div_phi_u[i]) -
                    rho *
                      (current_velocity_values[q] - present_velocity_values[q]) *
-                     phi_u[i] / time.get_delta_t()) *
+                     phi_u[i] / time.get_delta_t() +
+                   gravity * phi_u[i] * rho) *
                   fe_values.JxW(q);
                 local_rhs(i) +=
                   -(rho * sigma_pml[q] * current_velocity_values[q] * phi_u[i] +
