@@ -90,7 +90,7 @@ namespace Solid
     /**
      * Update the cached strain and stress to output.
      */
-    virtual void update_strain_and_stress() const = 0;
+    virtual void update_strain_and_stress() = 0;
 
     /**
      * Run one time step.
@@ -108,7 +108,7 @@ namespace Solid
     /**
      * Output the time-dependent solution in vtu format.
      */
-    void output_results(const unsigned int) const;
+    void output_results(const unsigned int);
 
     /**
      * Refine mesh and transfer solution.

@@ -137,7 +137,7 @@ namespace Solid
   }
 
   template <int dim>
-  void SolidSolver<dim>::output_results(const unsigned int output_index) const
+  void SolidSolver<dim>::output_results(const unsigned int output_index)
   {
     TimerOutput::Scope timer_section(timer, "Output results");
 

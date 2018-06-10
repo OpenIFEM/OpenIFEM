@@ -306,7 +306,7 @@ namespace Solid
   }
 
   template <int dim>
-  void LinearElasticity<dim>::update_strain_and_stress() const
+  void LinearElasticity<dim>::update_strain_and_stress()
   {
     // The strain and stress tensors are stored as 2D vectors of shape dim*dim
     // at cell and quadrature point level.

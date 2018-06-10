@@ -92,7 +92,7 @@ namespace Solid
     /**
      * Update the strain and stress, used in output_results and FSI.
      */
-    void update_strain_and_stress() const;
+    virtual void update_strain_and_stress() override;
 
     /**
      * Run one time step.

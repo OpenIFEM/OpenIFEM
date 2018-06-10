@@ -131,7 +131,7 @@ namespace Solid
 
     void initialize_system();
 
-    void update_strain_and_stress() const;
+    virtual void update_strain_and_stress() override;
 
     /** Assemble the lhs and rhs at the same time. */
     void assemble_system(bool);
