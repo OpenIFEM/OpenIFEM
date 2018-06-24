@@ -1,4 +1,5 @@
 #include "fsi.h"
+#include <complex>
 #include <iostream>
 
 template <int dim>
@@ -120,6 +121,15 @@ void FSI<dim>::find_fluid_bc()
   std::vector<SymmetricTensor<2, dim>> sym_grad_v(n_q_points);
   std::vector<double> p(n_q_points);
 
+  const std::vector<Point<dim>> &unit_points =
+    fluid_solver.fe.get_unit_support_points();
+  Quadrature<dim> dummy_q(unit_points.size());
+  MappingQGeneric<dim> mapping(1);
+  FEValues<dim> dummy_fe_values(
+    mapping, fluid_solver.fe, dummy_q, update_quadrature_points);
+  std::vector<types::global_dof_index> dof_indices(
+    fluid_solver.fe.dofs_per_cell);
+
   for (auto f_cell = fluid_solver.dof_handler.begin_active();
        f_cell != fluid_solver.dof_handler.end();
        ++f_cell)
@@ -130,30 +140,50 @@ void FSI<dim>::find_fluid_bc()
           continue;
         }
       fe_values.reinit(f_cell);
+      dummy_fe_values.reinit(f_cell);
+      f_cell->get_dof_indices(dof_indices);
+      auto support_points = dummy_fe_values.get_quadrature_points();
       // Fluid symmetric velocity gradient
       fe_values[velocities].get_function_symmetric_gradients(
         fluid_solver.present_solution, sym_grad_v);
       // Fluid pressure
       fe_values[pressure].get_function_values(fluid_solver.present_solution, p);
-      // Loop over the vertices to set Dirichlet BCs.
-      for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
+      // Loop over the support points to set Dirichlet BCs.
+      for (unsigned int i = 0; i < unit_points.size(); ++i)
         {
-          auto point = f_cell->vertex(v);
+          auto base_index = fluid_solver.fe.system_to_base_index(i);
+          const unsigned int i_group = base_index.first.first;
+          Assert(
+            i_group < 2,
+            ExcMessage("There should be only 2 groups of finite element!"));
+          if (i_group == 1)
+            continue; // skip the pressure dofs
+          bool inside = true;
+          for (unsigned int d = 0; d < dim; ++d)
+            if (std::abs(unit_points[i][d]) < 1e-5)
+              {
+                inside = false;
+                break;
+              }
+          if (inside)
+            continue; // skip the in-cell support point
+          // Same as fluid_solver.fe.system_to_base_index(i).first.second;
+          const unsigned int index =
+            fluid_solver.fe.system_to_component_index(i).first;
+          Assert(index < dim,
+                 ExcMessage("Vector component should be less than dim!"));
           Vector<double> fluid_velocity(dim);
           VectorTools::point_value(solid_solver.dof_handler,
                                    solid_solver.current_velocity,
-                                   point,
+                                   support_points[i],
                                    fluid_velocity);
-          for (unsigned int i = 0; i < dim; ++i)
-            {
-              auto line = f_cell->vertex_dof_index(v, i);
-              inner_nonzero.add_line(line);
-              inner_zero.add_line(line);
-              // Note that we are setting the value of the constraint to the
-              // velocity delta!
-              inner_nonzero.set_inhomogeneity(
-                line, fluid_velocity[i] - fluid_solver.present_solution(line));
-            }
+          auto line = dof_indices[i];
+          inner_nonzero.add_line(line);
+          inner_zero.add_line(line);
+          // Note that we are setting the value of the constraint to the
+          // velocity delta!
+          inner_nonzero.set_inhomogeneity(
+            line, fluid_velocity[index] - fluid_solver.present_solution(line));
         }
       // Loop over all quadrature points to set FSI forces.
       for (unsigned int q = 0; q < n_q_points; ++q)
@@ -175,7 +205,6 @@ void FSI<dim>::find_fluid_bc()
             parameters.viscosity * sym_grad_v[q];
         }
     }
-
   inner_nonzero.close();
   inner_zero.close();
   fluid_solver.nonzero_constraints.merge(
