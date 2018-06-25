@@ -346,7 +346,8 @@ namespace Fluid
                                                           local_rhs,
                                                           local_dof_indices,
                                                           system_matrix,
-                                                          system_rhs);
+                                                          system_rhs,
+                                                          true);
               constraints_used.distribute_local_to_global(
                 local_mass_matrix, local_dof_indices, mass_matrix);
             }

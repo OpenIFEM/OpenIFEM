@@ -499,7 +499,8 @@ namespace Fluid
                                                         local_rhs,
                                                         local_dof_indices,
                                                         system_matrix,
-                                                        system_rhs);
+                                                        system_rhs,
+                                                        true);
           }
       }
   }
