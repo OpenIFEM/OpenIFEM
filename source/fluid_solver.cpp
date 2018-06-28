@@ -187,6 +187,7 @@ namespace Fluid
     mass_matrix.reinit(sparsity_pattern);
 
     present_solution.reinit(dofs_per_block);
+    solution_increment.reinit(dofs_per_block);
     system_rhs.reinit(dofs_per_block);
 
     // Compute the sparsity pattern for mass schur in advance.

@@ -144,7 +144,6 @@ namespace Fluid
     TimerOutput::Scope timer_section(timer, "Assemble system");
 
     const double viscosity = parameters.viscosity;
-    const double rho = parameters.fluid_rho;
     const double gamma = parameters.grad_div;
     Tensor<1, dim> gravity;
     for (unsigned int i = 0; i < dim; ++i)
@@ -221,6 +220,7 @@ namespace Fluid
         for (unsigned int q = 0; q < n_q_points; ++q)
           {
             const int ind = p[q]->indicator;
+            const double rho = (ind == 1 ? parameters.solid_rho : parameters.fluid_rho);
             for (unsigned int k = 0; k < dofs_per_cell; ++k)
               {
                 div_phi_u[k] = fe_values[velocities].divergence(k, q);
@@ -389,7 +389,7 @@ namespace Fluid
     unsigned int outer_iteration = 0;
     evaluation_point = present_solution;
     while (relative_residual > parameters.fluid_tolerance &&
-           current_residual > 1e-14)
+           current_residual > 1e-11)
       {
         AssertThrow(outer_iteration < parameters.fluid_max_iterations,
                     ExcMessage("Too many Newton iterations!"));
@@ -427,6 +427,9 @@ namespace Fluid
 
         outer_iteration++;
       }
+    // Update solution increment, which is used in FSI application.
+    solution_increment = evaluation_point;
+    solution_increment -= present_solution;
     // Newton iteration converges, update time and solution
     present_solution = evaluation_point;
     // Output

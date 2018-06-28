@@ -72,6 +72,7 @@ namespace Fluid
     using FluidSolver<dim>::mass_schur_pattern;
     using FluidSolver<dim>::mass_schur;
     using FluidSolver<dim>::present_solution;
+    using FluidSolver<dim>::solution_increment;
     using FluidSolver<dim>::system_rhs;
     using FluidSolver<dim>::time;
     using FluidSolver<dim>::timer;

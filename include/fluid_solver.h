@@ -129,6 +129,7 @@ namespace Fluid
 
     /// The latest known solution.
     BlockVector<double> present_solution;
+    BlockVector<double> solution_increment;
     BlockVector<double> system_rhs;
 
     Utils::Time time;

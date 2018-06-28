@@ -12,10 +12,10 @@ subsection Simulation
 
   # Level of global refinement before running,
   # which applies to all the solvers
-  set Global refinement = 3
+  set Global refinement = 2
 
   # The end time of the simulation in second
-  set End time = 1.0
+  set End time = 1e-2
 
   # The time step in second
   set Time step size = 1e-3
@@ -27,7 +27,7 @@ subsection Simulation
   set Refinement interval = 100
 
   # Body force which applies to both fluid and solid (acceleration)
-  set Gravity = 0.0, -980.0
+  set Gravity = 0.0, -100.0
 end
 
 # --------------------------------------------------------------------------------
@@ -42,7 +42,7 @@ end
 
 subsection Fluid material properties
   # The dynamic viscosity
-  set Dynamic viscosity = 1.0
+  set Dynamic viscosity = 1
 
   # Fluid density
   set Fluid density = 1
@@ -107,7 +107,7 @@ subsection Solid material properties
   set Solid type = NeoHookean
 
   # Solid density, used by all solid solvers
-  set Solid density = 2.0
+  set Solid density = 2
 
   # E and nu are only used by linearElasticMaterial
   set Young's modulus = 1.0e4
@@ -115,7 +115,7 @@ subsection Solid material properties
   set Poisson's ratio = 0.48
 
   # A list of parameters used by hyperelasticMaterial
-  set Hyperelastic parameters = 1.69e3, 2.5e5 # E = 1e4, nu = 0.48
+  set Hyperelastic parameters = 1.69e4, 2.5e6 # E = 1e4, nu = 0.48
 end
 
 subsection Solid solver control

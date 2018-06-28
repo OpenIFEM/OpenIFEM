@@ -49,7 +49,24 @@ int main(int argc, char *argv[])
         }
       else
         {
-          AssertThrow(false, ExcNotImplemented());
+          Triangulation<3> fluid_tria;
+          dealii::GridGenerator::subdivided_hyper_rectangle(
+            fluid_tria,
+            {static_cast<unsigned int>(W / h),
+             static_cast<unsigned int>(W / h),
+             static_cast<unsigned int>(H / h)},
+            Point<3>(0, 0, 0),
+            Point<3>(W, W, -H),
+            true);
+          Fluid::InsIM<3> fluid(fluid_tria, params);
+
+          Triangulation<3> solid_tria;
+          Point<3> center(L, L, -L);
+          Utils::GridCreator<3>::sphere(solid_tria, center, R);
+          Solid::HyperElasticity<3> solid(solid_tria, params);
+
+          FSI<3> fsi(fluid, solid, params);
+          fsi.run();
         }
     }
   catch (std::exception &exc)

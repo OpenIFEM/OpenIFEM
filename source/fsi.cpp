@@ -14,10 +14,6 @@ FSI<dim>::FSI(Fluid::FluidSolver<dim> &f,
          parameters.output_interval,
          parameters.refinement_interval)
 {
-  std::cout << "  Number of fluid active cells: "
-            << fluid_solver.triangulation.n_active_cells() << std::endl
-            << "  Number of solid active cells: "
-            << solid_solver.triangulation.n_active_cells() << std::endl;
 }
 
 template <int dim>
@@ -68,7 +64,7 @@ bool FSI<dim>::point_in_mesh(const DoFHandler<dim> &df, const Point<dim> &point)
 
 // Dirichlet bcs are applied to artificial fluid cells, so fluid nodes should
 // be marked as artificial or real. Meanwhile, additional body force is
-// acted at the artificial fluid quadrature points. To accomodate these two
+// applied to the artificial fluid quadrature points. To accomodate these two
 // settings, we define indicator at quadrature points, but only when all
 // of the vertices of a fluid cell are found to be in solid domain,
 // set the indicators at all quadrature points to be 1.
@@ -76,11 +72,15 @@ template <int dim>
 void FSI<dim>::update_indicator()
 {
   move_solid_mesh(true);
+  FEValues<dim> fe_values(fluid_solver.fe,
+                          fluid_solver.volume_quad_formula,
+                          update_quadrature_points);
   const unsigned int n_q_points = fluid_solver.volume_quad_formula.size();
   for (auto f_cell = fluid_solver.dof_handler.begin_active();
        f_cell != fluid_solver.dof_handler.end();
        ++f_cell)
     {
+      fe_values.reinit(f_cell);
       auto p = fluid_solver.cell_property.get_data(f_cell);
       bool is_solid = true;
       for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
@@ -107,6 +107,8 @@ void FSI<dim>::find_fluid_bc()
 {
   move_solid_mesh(true);
 
+  // The nonzero Dirichlet BCs (to set the velocity) and zero Dirichlet
+  // BCs (to set the velocity increment) for the artificial fluid domain.
   ConstraintMatrix inner_nonzero, inner_zero;
   inner_nonzero.clear();
   inner_zero.clear();
@@ -120,6 +122,9 @@ void FSI<dim>::find_fluid_bc()
   const FEValuesExtractors::Scalar pressure(dim);
   std::vector<SymmetricTensor<2, dim>> sym_grad_v(n_q_points);
   std::vector<double> p(n_q_points);
+  std::vector<Tensor<2, dim>> grad_v(n_q_points);
+  std::vector<Tensor<1, dim>> v(n_q_points);
+  std::vector<Tensor<1, dim>> dv(n_q_points);
 
   const std::vector<Point<dim>> &unit_points =
     fluid_solver.fe.get_unit_support_points();
@@ -143,6 +148,10 @@ void FSI<dim>::find_fluid_bc()
       dummy_fe_values.reinit(f_cell);
       f_cell->get_dof_indices(dof_indices);
       auto support_points = dummy_fe_values.get_quadrature_points();
+      // Fluid velocity increment
+      fe_values[velocities].get_function_values(fluid_solver.solution_increment, dv);
+      // Fluid velocity gradient
+      fe_values[velocities].get_function_gradients(fluid_solver.present_solution, grad_v);
       // Fluid symmetric velocity gradient
       fe_values[velocities].get_function_symmetric_gradients(
         fluid_solver.present_solution, sym_grad_v);
@@ -172,6 +181,7 @@ void FSI<dim>::find_fluid_bc()
             fluid_solver.fe.system_to_component_index(i).first;
           Assert(index < dim,
                  ExcMessage("Vector component should be less than dim!"));
+          // if (!point_in_mesh(solid_solver.dof_handler, support_points[i])) continue;
           Vector<double> fluid_velocity(dim);
           VectorTools::point_value(solid_solver.dof_handler,
                                    solid_solver.current_velocity,
@@ -189,20 +199,35 @@ void FSI<dim>::find_fluid_bc()
       for (unsigned int q = 0; q < n_q_points; ++q)
         {
           Point<dim> point = fe_values.quadrature_point(q);
-          // acceleration
-          Vector<double> fluid_acc(dim);
+          if (!ptr[q]->indicator) continue;
+          // acceleration: Dv^f/Dt - Dv^s/Dt
+          Tensor<1, dim> fluid_acc = dv[q] / time.get_delta_t() + grad_v[q] * v[q];
+          Vector<double> solid_acc(dim);
           VectorTools::point_value(solid_solver.dof_handler,
                                    solid_solver.current_acceleration,
                                    point,
-                                   fluid_acc);
+                                   solid_acc);
           for (unsigned int i = 0; i < dim; ++i)
             {
-              ptr[q]->fsi_acceleration[i] = fluid_acc[i];
+              ptr[q]->fsi_acceleration[i] = solid_acc[i]; //fluid_acc[i] - solid_acc[i];
             }
-          // stress
+          // stress: sigma^f - sigma^s
+          SymmetricTensor<2, dim> solid_sigma;
+          for (unsigned int i = 0; i < dim; ++i)
+            {
+              for (unsigned int j = 0; j < dim; ++j)
+                {
+                  Vector<double> sigma_ij(1);
+                  VectorTools::point_value(solid_solver.dg_dof_handler,
+                                           solid_solver.stress[i][j],
+                                           point,
+                                           sigma_ij);
+                  solid_sigma[i][j] = sigma_ij[0];
+                }
+            }
           ptr[q]->fsi_stress =
             -p[q] * Physics::Elasticity::StandardTensors<dim>::I +
-            parameters.viscosity * sym_grad_v[q];
+            parameters.viscosity * sym_grad_v[q];// - solid_sigma;
         }
     }
   inner_nonzero.close();
@@ -282,13 +307,19 @@ void FSI<dim>::find_solid_bc()
 template <int dim>
 void FSI<dim>::run()
 {
-  solid_solver.triangulation.refine_global(parameters.global_refinement);
+  solid_solver.triangulation.refine_global(parameters.global_refinement + 1);
   solid_solver.setup_dofs();
   solid_solver.initialize_system();
   fluid_solver.triangulation.refine_global(parameters.global_refinement);
   fluid_solver.setup_dofs();
   fluid_solver.make_constraints();
   fluid_solver.initialize_system();
+
+  std::cout << "  Number of fluid active cells: "
+            << fluid_solver.triangulation.n_active_cells() << std::endl
+            << "  Number of solid active cells: "
+            << solid_solver.triangulation.n_active_cells() << std::endl;
+
   bool first_step = true;
   while (time.end() - time.current() > 1e-12)
     {
