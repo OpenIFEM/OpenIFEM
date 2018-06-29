@@ -67,6 +67,10 @@ namespace Solid
           // Only operates on the locally owned cells
           if (cell->subdomain_id() == this_mpi_process)
             {
+              auto p = cell_property.get_data(cell);
+              Assert(p.size() ==
+                       n_f_q_points * GeometryInfo<dim>::faces_per_cell,
+                     ExcMessage("Wrong number of cell data!"));
               local_matrix = 0;
               local_stiffness = 0;
               local_rhs = 0;
@@ -124,8 +128,13 @@ namespace Solid
                       if (parameters.solid_neumann_bcs.find(id) !=
                           parameters.solid_neumann_bcs.end())
                         {
-                          std::vector<double> value =
-                            parameters.solid_neumann_bcs[id];
+                          std::vector<double> value;
+                          if (parameters.solid_neumann_bc_type != "FSI")
+                            {
+                              // In stand-alone simulation, the boundary value
+                              // is prescribed by the user.
+                              value = parameters.solid_neumann_bcs[id];
+                            }
                           Tensor<1, dim> traction;
                           if (parameters.solid_neumann_bc_type == "Traction")
                             {
@@ -145,6 +154,12 @@ namespace Solid
                                   // configuration!
                                   traction = fe_face_values.normal_vector(q);
                                   traction *= value[0];
+                                }
+                              else if (parameters.solid_neumann_bc_type ==
+                                       "FSI")
+                                {
+                                  traction =
+                                    p[face * n_f_q_points + q]->fsi_traction;
                                 }
                               for (unsigned int j = 0; j < dofs_per_cell; ++j)
                                 {

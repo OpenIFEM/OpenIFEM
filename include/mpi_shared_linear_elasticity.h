@@ -75,6 +75,7 @@ namespace Solid
       using SharedSolidSolver<dim>::timer;
       using SharedSolidSolver<dim>::locally_owned_dofs;
       using SharedSolidSolver<dim>::locally_relevant_dofs;
+      using SharedSolidSolver<dim>::cell_property;
 
       /**
        * Assembles lhs and rhs. At time step 0, the lhs is the mass matrix;

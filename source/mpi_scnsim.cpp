@@ -115,7 +115,7 @@ namespace Fluid
            r < ReverseRowSum.block(0).local_range().second;
            ++r)
         {
-          cache_vector.push_back(1/(RowSumAvv.block(0)(r)));
+          cache_vector.push_back(1 / (RowSumAvv.block(0)(r)));
           cache_rows.push_back(r);
         }
       ReverseRowSum.block(0).set(cache_rows, cache_vector);
@@ -699,7 +699,6 @@ namespace Fluid
           tmp.reinit(owned_partitioning, mpi_communicator);
           tmp = evaluation_point;
           tmp += newton_update;
-          nonzero_constraints.distribute(tmp);
           evaluation_point = tmp;
 
           if (outer_iteration == 0)

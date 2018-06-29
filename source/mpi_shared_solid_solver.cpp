@@ -132,6 +132,13 @@ namespace Solid
       previous_velocity.reinit(locally_owned_dofs, mpi_communicator);
 
       previous_displacement.reinit(locally_owned_dofs, mpi_communicator);
+
+      // Set up cell property, which contains the FSI traction required in FSI
+      // simulation
+      const unsigned int n_data =
+        face_quad_formula.size() * GeometryInfo<dim>::faces_per_cell;
+      cell_property.initialize(
+        triangulation.begin_active(), triangulation.end(), n_data);
     }
 
     // Solve linear system \f$Ax = b\f$ using CG solver.
@@ -143,11 +150,12 @@ namespace Solid
     {
       TimerOutput::Scope timer_section(timer, "Solve linear system");
 
-      SolverControl solver_control(dof_handler.n_dofs(), 1e-8 * b.l2_norm());
+      SolverControl solver_control(dof_handler.n_dofs() * 2,
+                                   1e-8 * b.l2_norm());
 
       PETScWrappers::SolverCG cg(solver_control, mpi_communicator);
 
-      PETScWrappers::PreconditionBlockJacobi preconditioner(A);
+      PETScWrappers::PreconditionNone preconditioner(A);
 
       cg.solve(A, x, b, preconditioner);
 

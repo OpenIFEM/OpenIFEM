@@ -335,6 +335,10 @@ namespace Solid
         {
           if (cell->subdomain_id() != this_mpi_process)
             continue;
+
+          auto p = cell_property.get_data(cell);
+          Assert(p.size() == n_f_q_points * GeometryInfo<dim>::faces_per_cell,
+                 ExcMessage("Wrong number of cell data!"));
           fe_values.reinit(cell);
           cell->get_dof_indices(local_dof_indices);
 
@@ -461,6 +465,11 @@ namespace Solid
                       traction = fe_face_values.normal_vector(q);
                       traction *= prescribed_value[0];
                     }
+                  else if (parameters.solid_neumann_bc_type == "FSI")
+                    {
+                      traction = p[face * n_f_q_points + q]->fsi_traction;
+                    }
+
                   for (unsigned int j = 0; j < dofs_per_cell; ++j)
                     {
                       const unsigned int component_j =

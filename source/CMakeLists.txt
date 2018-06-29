@@ -8,6 +8,7 @@ set(TARGET_SRC fluid_solver.cpp
                linear_elastic_material.cpp
                linear_elasticity.cpp
                mpi_fluid_solver.cpp
+               mpi_fsi.cpp
                mpi_hyper_elasticity.cpp
                mpi_insimex.cpp
                mpi_linear_elasticity.cpp
@@ -34,6 +35,7 @@ set(headers fluid_solver.h
             linear_elasticity.h
             material.h
             mpi_fluid_solver.h
+            mpi_fsi.h
             mpi_hyper_elasticity.h
             mpi_insimex.h
             mpi_linear_elasticity.h

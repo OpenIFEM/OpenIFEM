@@ -61,6 +61,12 @@
 #include "parameters.h"
 #include "utilities.h"
 
+namespace MPI
+{
+  template <int dim>
+  class FSI;
+}
+
 namespace Solid
 {
   namespace MPI
@@ -72,6 +78,9 @@ namespace Solid
     class SharedSolidSolver
     {
     public:
+      //! FSI solver need access to the private members of this solver.
+      friend ::MPI::FSI<dim>;
+
       SharedSolidSolver(Triangulation<dim> &,
                         const Parameters::AllParameters &);
       ~SharedSolidSolver();
@@ -79,6 +88,7 @@ namespace Solid
       PETScWrappers::MPI::Vector get_current_solution() const;
 
     protected:
+      struct CellProperty;
       /**
        * Set up the DofHandler, reorder the grid, sparsity pattern.
        */
@@ -169,6 +179,17 @@ namespace Solid
       mutable TimerOutput timer;
       IndexSet locally_owned_dofs;
       IndexSet locally_relevant_dofs;
+
+      CellDataStorage<typename Triangulation<dim>::cell_iterator, CellProperty>
+        cell_property;
+
+      /**
+       * The fluid traction in FSI simulation, which should be set by the FSI.
+       */
+      struct CellProperty
+      {
+        Tensor<1, dim> fsi_traction;
+      };
     };
   } // namespace MPI
 } // namespace Solid

@@ -345,7 +345,6 @@ namespace Fluid
 
       // Indicator
       Vector<float> ind(triangulation.n_active_cells());
-      int cnt = 0;
       for (auto cell = triangulation.begin_active();
            cell != triangulation.end();
            ++cell)
@@ -362,7 +361,7 @@ namespace Fluid
                       break;
                     }
                 }
-              ind[cnt++] = artificial;
+              ind[cell->active_cell_index()] = artificial;
             }
         }
       data_out.add_data_vector(ind, "Indicator");

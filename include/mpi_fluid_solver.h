@@ -59,6 +59,12 @@
 #include "parameters.h"
 #include "utilities.h"
 
+namespace MPI
+{
+  template <int dim>
+  class FSI;
+}
+
 namespace Fluid
 {
   using namespace dealii;
@@ -70,6 +76,9 @@ namespace Fluid
     class FluidSolver
     {
     public:
+      //! FSI solver need access to the private members of this solver.
+      friend ::MPI::FSI<dim>;
+
       //! Constructor.
       FluidSolver(parallel::distributed::Triangulation<dim> &,
                   const Parameters::AllParameters &,
