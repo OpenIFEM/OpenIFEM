@@ -19,8 +19,11 @@ set(mpi_tests acoustic_duct_wave_mpi
               fluid_cylinder_mpi
               fluid_cylinder_mpi_insimex
               fluid_pipe_mpi
+              fsi_leaflet_mpi
               solid_beam_bending_mpi_linearelastic
-              solid_beam_bending_mpi_NeoHookean)
+              solid_beam_bending_mpi_NeoHookean
+              solid_beam_bending_mpi_shared_linearelastic
+              solid_beam_bending_mpi_shared_NeoHookean)
 
 set(tests ${serial_tests} ${mpi_tests})
 

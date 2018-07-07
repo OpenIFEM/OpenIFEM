@@ -106,6 +106,8 @@ namespace Utils
   template class GridInterpolator<3, Vector<double>>;
   template class GridInterpolator<2, BlockVector<double>>;
   template class GridInterpolator<3, BlockVector<double>>;
+  template class GridInterpolator<2, PETScWrappers::MPI::BlockVector>;
+  template class GridInterpolator<3, PETScWrappers::MPI::BlockVector>;
 
   // The code to create triangulation is copied from [Martin Kronbichler's code]
   // (https://github.com/kronbichler/adaflo/blob/master/tests/flow_past_cylinder.cc)

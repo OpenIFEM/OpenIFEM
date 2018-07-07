@@ -704,7 +704,6 @@ namespace Fluid
           tmp.reinit(owned_partitioning, mpi_communicator);
           tmp = evaluation_point;
           tmp += newton_update;
-          nonzero_constraints.distribute(tmp);
           evaluation_point = tmp;
 
           if (outer_iteration == 0)
