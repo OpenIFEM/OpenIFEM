@@ -209,7 +209,7 @@ void FSI<dim>::find_fluid_bc()
                                    solid_acc);
           for (unsigned int i = 0; i < dim; ++i)
             {
-              ptr[q]->fsi_acceleration[i] = solid_acc[i]; //fluid_acc[i] - solid_acc[i];
+              ptr[q]->fsi_acceleration[i] = -parameters.gravity[i]; //fluid_acc[i] - solid_acc[i];
             }
           // stress: sigma^f - sigma^s
           SymmetricTensor<2, dim> solid_sigma;
@@ -225,9 +225,11 @@ void FSI<dim>::find_fluid_bc()
                   solid_sigma[i][j] = sigma_ij[0];
                 }
             }
-          ptr[q]->fsi_stress =
+          ptr[q]->fsi_stress = 0;
+            /*
             -p[q] * Physics::Elasticity::StandardTensors<dim>::I +
             parameters.viscosity * sym_grad_v[q];// - solid_sigma;
+            */
         }
     }
   inner_nonzero.close();
