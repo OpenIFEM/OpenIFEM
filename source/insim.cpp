@@ -92,7 +92,7 @@ namespace Fluid
       // would refine_mesh generate diagonal zeros?
       //
       // \f$-\frac{1}{dt}S_m^{-1}v_1\f$
-      SparseILU<double> Sm_preconditioner;
+      PreconditionIdentity Sm_preconditioner;
       Sm_preconditioner.initialize(*mass_schur);
       SolverCG<> cg_sm(solver_control);
       cg_sm.solve(*mass_schur, dst.block(1), src.block(1), Sm_preconditioner);

@@ -137,7 +137,7 @@ namespace Fluid
 
     Parameters::AllParameters parameters;
 
-    CellDataStorage<typename Triangulation<dim>::cell_iterator, CellProperty>
+    CellDataStorage<typename Triangulation<dim>::active_cell_iterator, CellProperty>
       cell_property;
 
     /// Hard-coded boundary values, only used when told so in the input
