@@ -11,7 +11,8 @@ FSI<dim>::FSI(Fluid::FluidSolver<dim> &f,
     time(parameters.end_time,
          parameters.time_step,
          parameters.output_interval,
-         parameters.refinement_interval)
+         parameters.refinement_interval,
+         parameters.save_interval)
 {
   std::cout << "  Number of fluid active cells: "
             << fluid_solver.triangulation.n_active_cells() << std::endl

@@ -31,7 +31,8 @@ namespace Fluid
         time(parameters.end_time,
              parameters.time_step,
              parameters.output_interval,
-             parameters.refinement_interval),
+             parameters.refinement_interval,
+             parameters.save_interval),
         timer(
           mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times),
         boundary_values(bc)
@@ -378,7 +379,6 @@ namespace Fluid
       std::ofstream output(filename);
       data_out.write_vtu(output);
 
-      static std::vector<std::pair<double, std::string>> times_and_names;
       if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
         {
           for (unsigned int i = 0;
@@ -392,6 +392,110 @@ namespace Fluid
           std::ofstream pvd_output("fluid.pvd");
           DataOutBase::write_pvd_record(pvd_output, times_and_names);
         }
+    }
+
+    template <int dim>
+    void FluidSolver<dim>::save_checkpoint(const int output_index)
+    {
+      // Specify the current working path
+      fs::path local_path = fs::current_path();
+      // A set to store all the filenames for checkpoints
+      std::set<fs::path> checkpoints;
+      // Find the checkpoints and remove excess ones
+      // Only keep the latest one
+      for (const auto &p : fs::directory_iterator(local_path))
+        {
+          if (p.path().extension() == ".checkpoint")
+            {
+              checkpoints.insert(p.path());
+            }
+        }
+      while (checkpoints.size() > 1)
+        {
+          pcout << "Removing " << *checkpoints.begin() << std::endl;
+          fs::path to_be_removed(*checkpoints.begin());
+          fs::remove(to_be_removed);
+          to_be_removed.replace_extension(".checkpoint.info");
+          fs::remove(to_be_removed);
+          checkpoints.erase(checkpoints.begin());
+        }
+      // Name the checkpoint file
+      std::string checkpoint_file = Utilities::int_to_string(output_index, 6);
+      checkpoint_file.append(".checkpoint");
+      // Save the solution
+      parallel::distributed::SolutionTransfer<dim,
+                                              PETScWrappers::MPI::BlockVector>
+        sol_trans(dof_handler);
+      sol_trans.prepare_serialization(present_solution);
+      triangulation.save(checkpoint_file.c_str());
+      pcout << "Checkpoint file successfully saved at time step "
+            << output_index << "!" << std::endl;
+    }
+
+    template <int dim>
+    bool FluidSolver<dim>::load_checkpoint()
+    {
+      // Specify the current working path
+      fs::path local_path = fs::current_path();
+      fs::path checkpoint_file(local_path);
+      // Find the latest checkpoint
+      for (const auto &p : fs::directory_iterator(local_path))
+        {
+          if (p.path().extension() == ".checkpoint" &&
+              (std::string(p.path().stem()) >
+                 std::string(checkpoint_file.stem()) ||
+               checkpoint_file == local_path))
+            {
+              checkpoint_file = p.path();
+            }
+        }
+      // if no restart file is found, return false
+      if (checkpoint_file == local_path)
+        {
+          pcout << "Did not find checkpoint files. Start from the beginning !"
+                << std::endl;
+          return false;
+        }
+      // set time step load the checkpoint file
+      pcout << "Loading checkpoint file " << checkpoint_file.filename().c_str()
+            << "!" << std::endl;
+      triangulation.load(checkpoint_file.filename().c_str());
+      setup_dofs();
+      make_constraints();
+      initialize_system();
+      parallel::distributed::SolutionTransfer<dim,
+                                              PETScWrappers::MPI::BlockVector>
+        sol_trans(dof_handler);
+      PETScWrappers::MPI::BlockVector tmp;
+      tmp.reinit(owned_partitioning, mpi_communicator);
+      sol_trans.deserialize(tmp);
+      present_solution = tmp;
+      // Update the time and names to set the current time and write
+      // correct .pvd file.
+
+      for (int i = 0; i < Utilities::string_to_int(checkpoint_file.stem()); ++i)
+        {
+          if ((time.current() == 0 || time.time_to_output()) &&
+              Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+            {
+              std::string basename =
+                "fluid" + Utilities::int_to_string(time.get_timestep(), 6) +
+                "-";
+              for (unsigned int j = 0;
+                   j < Utilities::MPI::n_mpi_processes(mpi_communicator);
+                   ++j)
+                {
+                  times_and_names.push_back(
+                    {time.current(),
+                     basename + Utilities::int_to_string(j, 4) + ".vtu"});
+                }
+            }
+          time.increment();
+        }
+
+      pcout << "Checkpoint file successfully loaded from time step "
+            << time.get_timestep() << "!" << std::endl;
+      return true;
     }
 
     template class FluidSolver<2>;

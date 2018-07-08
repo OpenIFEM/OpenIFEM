@@ -24,6 +24,8 @@ namespace Parameters
                         Patterns::Double(0.0),
                         "Refinement interval");
       prm.declare_entry(
+        "Save interval", "1.0", Patterns::Double(0.0), "Save interval");
+      prm.declare_entry(
         "Gravity",
         "",
         Patterns::List(dealii::Patterns::Double()),
@@ -42,6 +44,7 @@ namespace Parameters
       time_step = prm.get_double("Time step size");
       output_interval = prm.get_double("Output interval");
       refinement_interval = prm.get_double("Refinement interval");
+      save_interval = prm.get_double("Save interval");
       std::string raw_input = prm.get("Gravity");
       std::vector<std::string> parsed_input =
         Utilities::split_string_list(raw_input);

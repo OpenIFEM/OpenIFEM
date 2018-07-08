@@ -52,12 +52,15 @@
 #include <deal.II/distributed/solution_transfer.h>
 #include <deal.II/distributed/tria.h>
 
+#include <experimental/filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 
 #include "parameters.h"
 #include "utilities.h"
+
+namespace fs = std::experimental::filesystem;
 
 namespace MPI
 {
@@ -123,6 +126,12 @@ namespace Fluid
       /// Output in vtu format.
       void output_results(const unsigned int) const;
 
+      /// Save checkpoint for restart.
+      void save_checkpoint(const int);
+
+      /// Load from checkpoint to restart.
+      bool load_checkpoint();
+
       std::vector<types::global_dof_index> dofs_per_block;
 
       parallel::distributed::Triangulation<dim> &triangulation;
@@ -158,6 +167,9 @@ namespace Fluid
       /// The IndexSet of all relevant dofs. This seems to be redundant but
       /// handy.
       IndexSet locally_relevant_dofs;
+
+      /// The vector to store vtu filenames that will be written into pvd file.
+      mutable std::vector<std::pair<double, std::string>> times_and_names;
 
       Utils::Time time;
       mutable TimerOutput timer;

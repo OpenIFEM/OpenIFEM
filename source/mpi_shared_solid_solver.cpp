@@ -24,7 +24,8 @@ namespace Solid
         time(parameters.end_time,
              parameters.time_step,
              parameters.output_interval,
-             parameters.refinement_interval),
+             parameters.refinement_interval,
+             parameters.save_interval),
         timer(
           mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times)
     {
