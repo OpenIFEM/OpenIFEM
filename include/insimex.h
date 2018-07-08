@@ -95,10 +95,10 @@ namespace Fluid
     /*! \brief Solve the linear system using FGMRES solver plus block
      *         preconditioner.
      *
-     *  After solving the linear system, the same ConstraintMatrix as used
-     *  in assembly must be used again, to set the constrained value.
-     *  The second argument is used to determine
-     *  whether the block preconditioner should be reset or not.
+     *  After solving the linear system, the same AffineConstraints<double> as
+     * used in assembly must be used again, to set the constrained value. The
+     * second argument is used to determine whether the block preconditioner
+     * should be reset or not.
      */
     std::pair<unsigned int, double> solve(bool use_nonzero_constraints,
                                           bool assemble_system);

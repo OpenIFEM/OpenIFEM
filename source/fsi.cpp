@@ -109,7 +109,7 @@ void FSI<dim>::find_fluid_bc()
 
   // The nonzero Dirichlet BCs (to set the velocity) and zero Dirichlet
   // BCs (to set the velocity increment) for the artificial fluid domain.
-  ConstraintMatrix inner_nonzero, inner_zero;
+  AffineConstraints<double> inner_nonzero, inner_zero;
   inner_nonzero.clear();
   inner_zero.clear();
 
@@ -149,9 +149,11 @@ void FSI<dim>::find_fluid_bc()
       f_cell->get_dof_indices(dof_indices);
       auto support_points = dummy_fe_values.get_quadrature_points();
       // Fluid velocity increment
-      fe_values[velocities].get_function_values(fluid_solver.solution_increment, dv);
+      fe_values[velocities].get_function_values(fluid_solver.solution_increment,
+                                                dv);
       // Fluid velocity gradient
-      fe_values[velocities].get_function_gradients(fluid_solver.present_solution, grad_v);
+      fe_values[velocities].get_function_gradients(
+        fluid_solver.present_solution, grad_v);
       // Fluid symmetric velocity gradient
       fe_values[velocities].get_function_symmetric_gradients(
         fluid_solver.present_solution, sym_grad_v);
@@ -181,7 +183,8 @@ void FSI<dim>::find_fluid_bc()
             fluid_solver.fe.system_to_component_index(i).first;
           Assert(index < dim,
                  ExcMessage("Vector component should be less than dim!"));
-          // if (!point_in_mesh(solid_solver.dof_handler, support_points[i])) continue;
+          // if (!point_in_mesh(solid_solver.dof_handler, support_points[i]))
+          // continue;
           Vector<double> fluid_velocity(dim);
           VectorTools::point_value(solid_solver.dof_handler,
                                    solid_solver.current_velocity,
@@ -199,9 +202,11 @@ void FSI<dim>::find_fluid_bc()
       for (unsigned int q = 0; q < n_q_points; ++q)
         {
           Point<dim> point = fe_values.quadrature_point(q);
-          if (!ptr[q]->indicator) continue;
+          if (!ptr[q]->indicator)
+            continue;
           // acceleration: Dv^f/Dt - Dv^s/Dt
-          Tensor<1, dim> fluid_acc = dv[q] / time.get_delta_t() + grad_v[q] * v[q];
+          Tensor<1, dim> fluid_acc =
+            dv[q] / time.get_delta_t() + grad_v[q] * v[q];
           Vector<double> solid_acc(dim);
           VectorTools::point_value(solid_solver.dof_handler,
                                    solid_solver.current_acceleration,
@@ -209,7 +214,8 @@ void FSI<dim>::find_fluid_bc()
                                    solid_acc);
           for (unsigned int i = 0; i < dim; ++i)
             {
-              ptr[q]->fsi_acceleration[i] = -parameters.gravity[i]; //fluid_acc[i] - solid_acc[i];
+              ptr[q]->fsi_acceleration[i] =
+                -parameters.gravity[i]; // fluid_acc[i] - solid_acc[i];
             }
           // stress: sigma^f - sigma^s
           SymmetricTensor<2, dim> solid_sigma;
@@ -226,18 +232,20 @@ void FSI<dim>::find_fluid_bc()
                 }
             }
           ptr[q]->fsi_stress = 0;
-            /*
-            -p[q] * Physics::Elasticity::StandardTensors<dim>::I +
-            parameters.viscosity * sym_grad_v[q];// - solid_sigma;
-            */
+          /*
+          -p[q] * Physics::Elasticity::StandardTensors<dim>::I +
+          parameters.viscosity * sym_grad_v[q];// - solid_sigma;
+          */
         }
     }
   inner_nonzero.close();
   inner_zero.close();
   fluid_solver.nonzero_constraints.merge(
-    inner_nonzero, ConstraintMatrix::MergeConflictBehavior::left_object_wins);
+    inner_nonzero,
+    AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
   fluid_solver.zero_constraints.merge(
-    inner_zero, ConstraintMatrix::MergeConflictBehavior::left_object_wins);
+    inner_zero,
+    AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
 
   move_solid_mesh(false);
 }

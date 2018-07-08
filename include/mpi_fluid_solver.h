@@ -9,9 +9,9 @@
 #include <deal.II/base/timer.h>
 #include <deal.II/base/utilities.h>
 
+#include <deal.II/lac/affine_constraints.h>
 #include <deal.II/lac/block_sparse_matrix.h>
 #include <deal.II/lac/block_vector.h>
-#include <deal.II/lac/constraint_matrix.h>
 #include <deal.II/lac/dynamic_sparsity_pattern.h>
 #include <deal.II/lac/full_matrix.h>
 #include <deal.II/lac/precondition.h>
@@ -131,8 +131,8 @@ namespace Fluid
       QGauss<dim> volume_quad_formula;
       QGauss<dim - 1> face_quad_formula;
 
-      ConstraintMatrix zero_constraints;
-      ConstraintMatrix nonzero_constraints;
+      AffineConstraints<double> zero_constraints;
+      AffineConstraints<double> nonzero_constraints;
 
       BlockSparsityPattern sparsity_pattern;
       PETScWrappers::MPI::BlockSparseMatrix system_matrix;

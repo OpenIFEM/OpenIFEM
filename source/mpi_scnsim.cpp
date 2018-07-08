@@ -602,9 +602,9 @@ namespace Fluid
 
               cell->get_dof_indices(local_dof_indices);
 
-              const ConstraintMatrix &constraints_used = use_nonzero_constraints
-                                                           ? nonzero_constraints
-                                                           : zero_constraints;
+              const AffineConstraints<double> &constraints_used =
+                use_nonzero_constraints ? nonzero_constraints
+                                        : zero_constraints;
 
               constraints_used.distribute_local_to_global(local_matrix,
                                                           local_rhs,
@@ -646,7 +646,7 @@ namespace Fluid
       // The solution vector must be non-ghosted
       gmres.solve(system_matrix, newton_update, system_rhs, *preconditioner);
 
-      const ConstraintMatrix &constraints_used =
+      const AffineConstraints<double> &constraints_used =
         use_nonzero_constraints ? nonzero_constraints : zero_constraints;
       constraints_used.distribute(newton_update);
 

@@ -40,9 +40,9 @@ namespace Solid
     DoFRenumbering::Cuthill_McKee(dof_handler);
     dg_dof_handler.distribute_dofs(dg_fe);
 
-    // The Dirichlet boundary conditions are stored in the ConstraintMatrix
-    // object. It does not need to modify the sparse matrix after assembly,
-    // because it is applied in the assembly process,
+    // The Dirichlet boundary conditions are stored in the
+    // AffineConstraints<double> object. It does not need to modify the sparse
+    // matrix after assembly, because it is applied in the assembly process,
     // therefore is better compared with apply_boundary_values approach.
     // Note that ZeroFunction is used here for convenience. In more
     // complicated applications, write a BoundaryValue class to replace it.
@@ -199,9 +199,10 @@ namespace Solid
     TimerOutput::Scope timer_section(timer, "Refine mesh");
 
     Vector<float> estimated_error_per_cell(triangulation.n_active_cells());
+    using type = std::map<types::boundary_id, const Function<dim, double> *>;
     KellyErrorEstimator<dim>::estimate(dof_handler,
                                        face_quad_formula,
-                                       typename FunctionMap<dim>::type(),
+                                       type(),
                                        current_displacement,
                                        estimated_error_per_cell);
     GridRefinement::refine_and_coarsen_fixed_fraction(

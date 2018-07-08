@@ -52,9 +52,9 @@ namespace Solid
       DoFTools::extract_locally_relevant_dofs(dof_handler,
                                               locally_relevant_dofs);
 
-      // The Dirichlet boundary conditions are stored in the ConstraintMatrix
-      // object. It does not need to modify the sparse matrix after assembly,
-      // because it is applied in the assembly process,
+      // The Dirichlet boundary conditions are stored in the
+      // AffineConstraints<double> object. It does not need to modify the sparse
+      // matrix after assembly, because it is applied in the assembly process,
       // therefore is better compared with apply_boundary_values approach.
       // Note that ZeroFunction is used here for convenience. In more
       // complicated applications, write a BoundaryValue class to replace it.
@@ -233,9 +233,10 @@ namespace Solid
       solution.reinit(
         locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
       solution = current_displacement;
+      using type = std::map<types::boundary_id, const Function<dim, double> *>;
       KellyErrorEstimator<dim>::estimate(dof_handler,
                                          face_quad_formula,
-                                         typename FunctionMap<dim>::type(),
+                                         type(),
                                          solution,
                                          estimated_error_per_cell);
 

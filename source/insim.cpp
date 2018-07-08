@@ -220,7 +220,8 @@ namespace Fluid
         for (unsigned int q = 0; q < n_q_points; ++q)
           {
             const int ind = p[q]->indicator;
-            const double rho = (ind == 1 ? parameters.solid_rho : parameters.fluid_rho);
+            const double rho =
+              (ind == 1 ? parameters.solid_rho : parameters.fluid_rho);
             for (unsigned int k = 0; k < dofs_per_cell; ++k)
               {
                 div_phi_u[k] = fe_values[velocities].divergence(k, q);
@@ -319,7 +320,7 @@ namespace Fluid
 
         cell->get_dof_indices(local_dof_indices);
 
-        const ConstraintMatrix &constraints_used =
+        const AffineConstraints<double> &constraints_used =
           use_nonzero_constraints ? nonzero_constraints : zero_constraints;
         constraints_used.distribute_local_to_global(local_matrix,
                                                     local_rhs,
@@ -357,7 +358,7 @@ namespace Fluid
 
     gmres.solve(system_matrix, newton_update, system_rhs, *preconditioner);
 
-    const ConstraintMatrix &constraints_used =
+    const AffineConstraints<double> &constraints_used =
       use_nonzero_constraints ? nonzero_constraints : zero_constraints;
     constraints_used.distribute(newton_update);
 

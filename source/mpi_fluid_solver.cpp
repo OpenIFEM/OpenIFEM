@@ -262,9 +262,10 @@ namespace Fluid
 
       Vector<float> estimated_error_per_cell(triangulation.n_active_cells());
       FEValuesExtractors::Vector velocity(0);
+      using type = std::map<types::boundary_id, const Function<dim, double> *>;
       KellyErrorEstimator<dim>::estimate(dof_handler,
                                          face_quad_formula,
-                                         typename FunctionMap<dim>::type(),
+                                         type(),
                                          present_solution,
                                          estimated_error_per_cell,
                                          fe.component_mask(velocity));
