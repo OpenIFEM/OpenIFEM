@@ -30,7 +30,7 @@ template <int dim>
 double BoundaryValues<dim>::value(const Point<dim> &p,
                                   const unsigned int component) const
 {
-  double left_boundary = (dim == 2 ? 0.3 : 0.0);
+  double left_boundary = (dim == 2 ? 0.0 : -0.3);
   if (component == 0 && std::abs(p[0] - left_boundary) < 1e-10)
     {
       // For a parabolic velocity profile, Uavg = 2/3 * Umax in 2D,
@@ -81,8 +81,8 @@ int main(int argc, char *argv[])
           auto v = solution.block(0), p = solution.block(1);
           double vmax = v.max();
           double pmax = p.max();
-          double verror = std::abs(vmax - 0.381898) / 0.381898;
-          double perror = std::abs(pmax - 46.4883) / 46.4883;
+          double verror = std::abs(vmax - 0.374235) / 0.374235;
+          double perror = std::abs(pmax - 46.5226) / 46.5226;
           AssertThrow(verror < 1e-3 && perror < 1e-3,
                       ExcMessage("Maximum velocity or pressure is incorrect!"));
         }

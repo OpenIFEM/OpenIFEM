@@ -109,117 +109,145 @@ namespace Utils
   template class GridInterpolator<2, PETScWrappers::MPI::BlockVector>;
   template class GridInterpolator<3, PETScWrappers::MPI::BlockVector>;
 
-  // The code to create triangulation is copied from [Martin Kronbichler's code]
-  // (https://github.com/kronbichler/adaflo/blob/master/tests/flow_past_cylinder.cc)
-  // with very few modifications.
-  // Helper function used in both 2d and 3d:
+  // Written by Davis Wells on dealii mailing list.
   template <int dim>
   void GridCreator<dim>::flow_around_cylinder_2d(Triangulation<2> &tria,
                                                  bool compute_in_2d)
   {
-    SphericalManifold<2> boundary(Point<2>(0.5, 0.2));
-    Triangulation<2> left, middle, right, tmp, tmp2;
-    GridGenerator::subdivided_hyper_rectangle(
-      left,
-      std::vector<unsigned int>({3U, 4U}),
-      Point<2>(),
-      Point<2>(0.3, 0.41),
-      false);
-    GridGenerator::subdivided_hyper_rectangle(
-      right,
-      std::vector<unsigned int>({18U, 4U}),
-      Point<2>(0.7, 0),
-      Point<2>(2.5, 0.41),
-      false);
+    double left = compute_in_2d ? 0.0 : -0.3;
 
-    // Create middle part first as a hyper shell.
-    GridGenerator::hyper_shell(middle, Point<2>(0.5, 0.2), 0.05, 0.2, 4, true);
-    middle.reset_all_manifolds();
-    for (Triangulation<2>::cell_iterator cell = middle.begin();
-         cell != middle.end();
-         ++cell)
-      for (unsigned int f = 0; f < GeometryInfo<2>::faces_per_cell; ++f)
-        {
-          bool is_inner_rim = true;
-          for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_face; ++v)
-            {
-              Point<2> &vertex = cell->face(f)->vertex(v);
-              if (std::abs(vertex.distance(Point<2>(0.5, 0.2)) - 0.05) > 1e-10)
+    // set up the bulk triangulation
+    Triangulation<2> bulk_triangulation;
+    GridGenerator::subdivided_hyper_rectangle(
+      bulk_triangulation, {compute_in_2d ? 22u : 25u, 4u}, Point<2>(left, 0.0), Point<2>(2.2, 0.41));
+    std::set<Triangulation<2>::active_cell_iterator> cells_to_remove;
+    Tensor<1, 2> cylinder_triangulation_offset;
+    for (const auto cell : bulk_triangulation.active_cell_iterators())
+      {
+        if ((cell->center() - Point<2>(0.2, 0.2)).norm() < 0.15)
+          cells_to_remove.insert(cell);
+
+        if (cylinder_triangulation_offset == Point<2>())
+          {
+            for (unsigned int vertex_n = 0;
+                 vertex_n < GeometryInfo<2>::vertices_per_cell;
+                 ++vertex_n)
+              if (cell->vertex(vertex_n) == Point<2>(left, 0.0))
                 {
-                  is_inner_rim = false;
+                  // skip two cells in the bottom left corner
+                  cylinder_triangulation_offset =
+                    2.0 * (cell->vertex(3) - Point<2>(left, 0.0));
                   break;
                 }
-            }
-          if (is_inner_rim)
-            cell->face(f)->set_manifold_id(1);
-        }
-    middle.set_manifold(1, boundary);
-    middle.refine_global(1);
+          }
+      }
+    Triangulation<2> result_1;
+    GridGenerator::create_triangulation_with_removed_cells(
+      bulk_triangulation, cells_to_remove, result_1);
 
-    // Then move the vertices to the points where we want them to be to create a
-    // slightly asymmetric cube with a hole
-    for (Triangulation<2>::cell_iterator cell = middle.begin();
-         cell != middle.end();
-         ++cell)
-      for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_cell; ++v)
+    // set up the cylinder triangulation
+    Triangulation<2> cylinder_triangulation;
+    GridGenerator::hyper_cube_with_cylindrical_hole(
+      cylinder_triangulation, 0.05, 0.41 / 4.0);
+    GridTools::shift(cylinder_triangulation_offset, cylinder_triangulation);
+    // dumb hack
+    for (const auto cell : cylinder_triangulation.active_cell_iterators())
+      cell->set_material_id(2);
+
+    // merge them together
+    auto minimal_line_length = [](const Triangulation<2> &tria) -> double {
+      double min_line_length = 1000.0;
+
+      for (const auto cell : tria.active_cell_iterators())
         {
-          Point<2> &vertex = cell->vertex(v);
-          if (std::abs(vertex[0] - 0.7) < 1e-10 &&
-              std::abs(vertex[1] - 0.2) < 1e-10)
-            vertex = Point<2>(0.7, 0.205);
-          else if (std::abs(vertex[0] - 0.6) < 1e-10 &&
-                   std::abs(vertex[1] - 0.3) < 1e-10)
-            vertex = Point<2>(0.7, 0.41);
-          else if (std::abs(vertex[0] - 0.6) < 1e-10 &&
-                   std::abs(vertex[1] - 0.1) < 1e-10)
-            vertex = Point<2>(0.7, 0);
-          else if (std::abs(vertex[0] - 0.5) < 1e-10 &&
-                   std::abs(vertex[1] - 0.4) < 1e-10)
-            vertex = Point<2>(0.5, 0.41);
-          else if (std::abs(vertex[0] - 0.5) < 1e-10 &&
-                   std::abs(vertex[1] - 0.0) < 1e-10)
-            vertex = Point<2>(0.5, 0.0);
-          else if (std::abs(vertex[0] - 0.4) < 1e-10 &&
-                   std::abs(vertex[1] - 0.3) < 1e-10)
-            vertex = Point<2>(0.3, 0.41);
-          else if (std::abs(vertex[0] - 0.4) < 1e-10 &&
-                   std::abs(vertex[1] - 0.1) < 1e-10)
-            vertex = Point<2>(0.3, 0);
-          else if (std::abs(vertex[0] - 0.3) < 1e-10 &&
-                   std::abs(vertex[1] - 0.2) < 1e-10)
-            vertex = Point<2>(0.3, 0.205);
-          else if (std::abs(vertex[0] - 0.56379) < 1e-4 &&
-                   std::abs(vertex[1] - 0.13621) < 1e-4)
-            vertex = Point<2>(0.59, 0.11);
-          else if (std::abs(vertex[0] - 0.56379) < 1e-4 &&
-                   std::abs(vertex[1] - 0.26379) < 1e-4)
-            vertex = Point<2>(0.59, 0.29);
-          else if (std::abs(vertex[0] - 0.43621) < 1e-4 &&
-                   std::abs(vertex[1] - 0.13621) < 1e-4)
-            vertex = Point<2>(0.41, 0.11);
-          else if (std::abs(vertex[0] - 0.43621) < 1e-4 &&
-                   std::abs(vertex[1] - 0.26379) < 1e-4)
-            vertex = Point<2>(0.41, 0.29);
+
+          min_line_length = std::min(
+            min_line_length, (cell->vertex(0) - cell->vertex(1)).norm());
+          min_line_length = std::min(
+            min_line_length, (cell->vertex(0) - cell->vertex(2)).norm());
+          min_line_length = std::min(
+            min_line_length, (cell->vertex(1) - cell->vertex(3)).norm());
+          min_line_length = std::min(
+            min_line_length, (cell->vertex(2) - cell->vertex(3)).norm());
         }
+      return min_line_length;
+    };
 
-    // Refine once to create the same level of refinement as in the
-    // neighboring domains:
-    middle.refine_global(1);
+    // the cylindrical triangulation might not match the Cartesian grid: as a
+    // result the vertices might not be lined up. Get around this by deleting
+    // duplicated vertices with a very low numerical tolerance.
+    const double tolerance =
+      std::min(minimal_line_length(result_1),
+               minimal_line_length(cylinder_triangulation)) /
+      2.0;
 
-    // Must copy the triangulation because we cannot merge triangulations with
-    // refinement:
-    GridGenerator::flatten_triangulation(middle, tmp2);
+    GridGenerator::merge_triangulations(
+      result_1, cylinder_triangulation, tria, tolerance);
 
-    // Left domain is requred in 3d only.
-    if (compute_in_2d)
+    const types::manifold_id tfi_id = 1;
+
+    const types::manifold_id polar_id = 0;
+    for (const auto cell : tria.active_cell_iterators())
+
       {
-        GridGenerator::merge_triangulations(tmp2, right, tria);
+        // set all non-boundary manifold ids to the new TFI manifold id.
+
+        if (cell->material_id() == 2)
+          {
+
+            cell->set_manifold_id(tfi_id);
+            for (unsigned int face_n = 0;
+                 face_n < GeometryInfo<2>::faces_per_cell;
+                 ++face_n)
+              {
+
+                if (cell->face(face_n)->at_boundary())
+                  cell->face(face_n)->set_manifold_id(polar_id);
+                else
+                  cell->face(face_n)->set_manifold_id(tfi_id);
+              }
+          }
       }
-    else
+
+    PolarManifold<2> polar_manifold(Point<2>(0.2, 0.2));
+    tria.set_manifold(polar_id, polar_manifold);
+    TransfiniteInterpolationManifold<2> inner_manifold;
+    inner_manifold.initialize(tria);
+    tria.set_manifold(tfi_id, inner_manifold);
+
+    std::vector<Point<2> *> inner_pointers;
+    for (const auto cell : tria.active_cell_iterators())
       {
-        GridGenerator::merge_triangulations(left, tmp2, tmp);
-        GridGenerator::merge_triangulations(tmp, right, tria);
+
+        for (unsigned int face_n = 0; face_n < GeometryInfo<2>::faces_per_cell;
+             ++face_n)
+          {
+
+            if (cell->face(face_n)->manifold_id() == polar_id)
+              {
+                inner_pointers.push_back(&cell->face(face_n)->vertex(0));
+                inner_pointers.push_back(&cell->face(face_n)->vertex(1));
+              }
+          }
       }
+    // de-duplicate
+    std::sort(inner_pointers.begin(), inner_pointers.end());
+    inner_pointers.erase(
+      std::unique(inner_pointers.begin(), inner_pointers.end()),
+      inner_pointers.end());
+
+    // find the current center...
+    Point<2> center;
+    for (const Point<2> *const ptr : inner_pointers)
+      center += *ptr / double(inner_pointers.size());
+
+    // and recenter at (0.2, 0.2)
+    for (Point<2> *const ptr : inner_pointers)
+      *ptr += Point<2>(0.2, 0.2) - center;
+
+    Point<2> center2;
+    for (const Point<2> *const ptr : inner_pointers)
+      center2 += *ptr / double(inner_pointers.size());
   }
 
   // Create 2D triangulation:
@@ -237,11 +265,11 @@ namespace Utils
           {
             if (cell->face(f)->at_boundary())
               {
-                if (std::abs(cell->face(f)->center()[0] - 2.5) < 1e-12)
+                if (std::abs(cell->face(f)->center()[0] - 2.2) < 1e-12)
                   {
                     cell->face(f)->set_all_boundary_ids(1);
                   }
-                else if (std::abs(cell->face(f)->center()[0] - 0.3) < 1e-12)
+                else if (std::abs(cell->face(f)->center()[0] - 0.0) < 1e-12)
                   {
                     cell->face(f)->set_all_boundary_ids(0);
                   }
@@ -268,7 +296,7 @@ namespace Utils
   {
     Triangulation<2> tria_2d;
     flow_around_cylinder_2d(tria_2d, false);
-    GridGenerator::extrude_triangulation(tria_2d, 5, 0.41, tria);
+    GridGenerator::extrude_triangulation(tria_2d, 9, 0.41, tria);
     // Set boundaries in x direction to 0 and 1; y direction to 2 and 3;
     // z direction to 4 and 5; the cylindrical surface 6.
     for (Triangulation<3>::active_cell_iterator cell = tria.begin();
@@ -279,11 +307,11 @@ namespace Utils
           {
             if (cell->face(f)->at_boundary())
               {
-                if (std::abs(cell->face(f)->center()[0] - 2.5) < 1e-12)
+                if (std::abs(cell->face(f)->center()[0] - 2.2) < 1e-12)
                   {
                     cell->face(f)->set_all_boundary_ids(1);
                   }
-                else if (std::abs(cell->face(f)->center()[0]) < 1e-12)
+                else if (std::abs(cell->face(f)->center()[0] + 0.3) < 1e-12)
                   {
                     cell->face(f)->set_all_boundary_ids(0);
                   }
