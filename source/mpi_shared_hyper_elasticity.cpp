@@ -181,6 +181,10 @@ namespace Solid
         {
           this->output_results(time.get_timestep());
         }
+      if (time.time_to_save())
+        {
+          this->save_checkpoint(time.get_timestep());
+        }
     }
 
     template <int dim>

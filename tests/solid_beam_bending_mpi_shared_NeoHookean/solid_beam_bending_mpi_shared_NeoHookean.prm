@@ -27,7 +27,7 @@ subsection Simulation
   set Refinement interval = 10
 
   # Checkpoint save interval in second
-  set Save interval = 100
+  set Save interval = 0.05
 
   # Body force which applies to both fluid and solid (acceleration)
   set Gravity = 0.0, 0.0

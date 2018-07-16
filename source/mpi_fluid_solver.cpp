@@ -405,7 +405,7 @@ namespace Fluid
       // Only keep the latest one
       for (const auto &p : fs::directory_iterator(local_path))
         {
-          if (p.path().extension() == ".checkpoint")
+          if (p.path().extension() == ".fluid_checkpoint")
             {
               checkpoints.insert(p.path());
             }
@@ -415,13 +415,13 @@ namespace Fluid
           pcout << "Removing " << *checkpoints.begin() << std::endl;
           fs::path to_be_removed(*checkpoints.begin());
           fs::remove(to_be_removed);
-          to_be_removed.replace_extension(".checkpoint.info");
+          to_be_removed.replace_extension(".fluid_checkpoint.info");
           fs::remove(to_be_removed);
           checkpoints.erase(checkpoints.begin());
         }
       // Name the checkpoint file
       std::string checkpoint_file = Utilities::int_to_string(output_index, 6);
-      checkpoint_file.append(".checkpoint");
+      checkpoint_file.append(".fluid_checkpoint");
       // Save the solution
       parallel::distributed::SolutionTransfer<dim,
                                               PETScWrappers::MPI::BlockVector>
@@ -441,7 +441,7 @@ namespace Fluid
       // Find the latest checkpoint
       for (const auto &p : fs::directory_iterator(local_path))
         {
-          if (p.path().extension() == ".checkpoint" &&
+          if (p.path().extension() == ".fluid_checkpoint" &&
               (std::string(p.path().stem()) >
                  std::string(checkpoint_file.stem()) ||
                checkpoint_file == local_path))
@@ -473,7 +473,8 @@ namespace Fluid
       // Update the time and names to set the current time and write
       // correct .pvd file.
 
-      for (int i = 0; i < Utilities::string_to_int(checkpoint_file.stem()); ++i)
+      for (int i = 0; i <= Utilities::string_to_int(checkpoint_file.stem());
+           ++i)
         {
           if ((time.current() == 0 || time.time_to_output()) &&
               Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
@@ -490,6 +491,8 @@ namespace Fluid
                      basename + Utilities::int_to_string(j, 4) + ".vtu"});
                 }
             }
+          if (i == Utilities::string_to_int(checkpoint_file.stem()))
+            break;
           time.increment();
         }
 

@@ -201,14 +201,13 @@ namespace Solid
           data_out.build_patches();
 
           std::string basename =
-            "solid-" + Utilities::int_to_string(output_index, 6) + "-";
+            "solid-" + Utilities::int_to_string(output_index, 6);
 
           std::string filename = basename + ".vtu";
 
           std::ofstream output(filename);
           data_out.write_vtu(output);
 
-          static std::vector<std::pair<double, std::string>> times_and_names;
           times_and_names.push_back({time.current(), filename});
           std::ofstream pvd_output("solid.pvd");
           DataOutBase::write_pvd_record(pvd_output, times_and_names);
@@ -296,11 +295,19 @@ namespace Solid
     void SharedSolidSolver<dim>::run()
     {
       triangulation.refine_global(parameters.global_refinement);
-      setup_dofs();
-      initialize_system();
+      bool success_load = load_checkpoint();
+      if (!success_load)
+        {
+          setup_dofs();
+          initialize_system();
+        }
 
       // Time loop
-      run_one_step(true);
+      if (!success_load)
+        run_one_step(true);
+      else
+        // If we load from previous task, we need to assemble the mass matrix
+        assemble_system(true);
       while (time.end() - time.current() > 1e-12)
         {
           run_one_step(false);
@@ -312,6 +319,131 @@ namespace Solid
     SharedSolidSolver<dim>::get_current_solution() const
     {
       return current_displacement;
+    }
+
+    template <int dim>
+    void SharedSolidSolver<dim>::save_checkpoint(const int output_index)
+    {
+      // Specify the current working path
+      fs::path local_path = fs::current_path();
+      // A set to store all the filenames for checkpoints
+      std::set<fs::path> checkpoints;
+      // Find the checkpoints and remove excess ones
+      // Only keep the latest one
+      for (const auto &p : fs::directory_iterator(local_path))
+        {
+          if (p.path().extension() == ".solid_checkpoint_displacement")
+            {
+              checkpoints.insert(p.path());
+            }
+        }
+      while (checkpoints.size() > 1)
+        {
+          pcout << "Removing " << *checkpoints.begin() << std::endl;
+          fs::path to_be_removed(*checkpoints.begin());
+          fs::remove(to_be_removed);
+          to_be_removed.replace_extension(".solid_checkpoint_velocity");
+          fs::remove(to_be_removed);
+          to_be_removed.replace_extension(".solid_checkpoint_acceleration");
+          fs::remove(to_be_removed);
+          checkpoints.erase(checkpoints.begin());
+        }
+      // Name the checkpoint file
+      fs::path checkpoint_file(local_path);
+      checkpoint_file.append(Utilities::int_to_string(output_index, 6));
+      // Save the solution
+      Vector<double> localized_disp(current_displacement);
+      Vector<double> localized_vel(current_velocity);
+      Vector<double> localized_acc(current_acceleration);
+
+      if (this_mpi_process == 0)
+        {
+          checkpoint_file.replace_extension(".solid_checkpoint_displacement");
+          pcout << "Prepare to save to " << checkpoint_file << std::endl;
+          std::ofstream disp(checkpoint_file);
+          checkpoint_file.replace_extension(".solid_checkpoint_velocity");
+          pcout << "Prepare to save to " << checkpoint_file << std::endl;
+          std::ofstream vel(checkpoint_file);
+          checkpoint_file.replace_extension(".solid_checkpoint_acceleration");
+          std::ofstream acc(checkpoint_file);
+          pcout << "Prepare to save to " << checkpoint_file << std::endl;
+          localized_disp.block_write(disp);
+          localized_vel.block_write(vel);
+          localized_acc.block_write(acc);
+        }
+
+      pcout << "Checkpoint file successfully saved at time step "
+            << output_index << "!" << std::endl;
+    }
+
+    template <int dim>
+    bool SharedSolidSolver<dim>::load_checkpoint()
+    {
+      // Specify the current working path
+      fs::path local_path = fs::current_path();
+      fs::path checkpoint_file(local_path);
+      // Find the latest checkpoint
+      for (const auto &p : fs::directory_iterator(local_path))
+        {
+          if (p.path().extension() == ".solid_checkpoint_displacement" &&
+              (std::string(p.path().stem()) >
+                 std::string(checkpoint_file.stem()) ||
+               checkpoint_file == local_path))
+            {
+              checkpoint_file = p.path();
+            }
+        }
+      // if no restart file is found, return false
+      if (checkpoint_file == local_path)
+        {
+          pcout << "Did not find checkpoint files. Start from the beginning !"
+                << std::endl;
+          return false;
+        }
+      // set time step load the checkpoint file
+      setup_dofs();
+      initialize_system();
+      Vector<double> localized_disp(current_displacement);
+      Vector<double> localized_vel(current_velocity);
+      Vector<double> localized_acc(current_acceleration);
+      std::ifstream disp(checkpoint_file);
+      checkpoint_file.replace_extension(".solid_checkpoint_velocity");
+      std::ifstream vel(checkpoint_file);
+      checkpoint_file.replace_extension(".solid_checkpoint_acceleration");
+      std::ifstream acc(checkpoint_file);
+      localized_disp.block_read(disp);
+      localized_vel.block_read(vel);
+      localized_acc.block_read(acc);
+
+      current_displacement = localized_disp;
+      current_velocity = localized_vel;
+      current_acceleration = localized_acc;
+      previous_displacement = current_displacement;
+      previous_velocity = current_velocity;
+      previous_acceleration = current_acceleration;
+      // Update the time and names to set the current time and write
+      // correct .pvd file.
+
+      for (int i = 0; i <= Utilities::string_to_int(checkpoint_file.stem());
+           ++i)
+        {
+          if ((time.current() == 0 || time.time_to_output()) &&
+              Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+            {
+              std::string basename =
+                "solid-" + Utilities::int_to_string(time.get_timestep(), 6);
+              std::string filename = basename + ".vtu";
+
+              times_and_names.push_back({time.current(), filename});
+            }
+          if (i == Utilities::string_to_int(checkpoint_file.stem()))
+            break;
+          time.increment();
+        }
+
+      pcout << "Checkpoint file successfully loaded from time step "
+            << time.get_timestep() << "!" << std::endl;
+      return true;
     }
 
     template class SharedSolidSolver<2>;
