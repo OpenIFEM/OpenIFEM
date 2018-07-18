@@ -21,10 +21,10 @@ subsection Simulation
   set Time step size = 1e-3
 
   # The output interval in second
-  set Output interval = 1e-3
+  set Output interval = 5e-3
 
   # Mesh refinement interval in second
-  set Refinement interval = 100
+  set Refinement interval = 5e-3
 
   # Body force which applies to both fluid and solid (acceleration)
   set Gravity = 0.0, -100.0

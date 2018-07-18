@@ -118,8 +118,10 @@ namespace Utils
 
     // set up the bulk triangulation
     Triangulation<2> bulk_triangulation;
-    GridGenerator::subdivided_hyper_rectangle(
-      bulk_triangulation, {compute_in_2d ? 22u : 25u, 4u}, Point<2>(left, 0.0), Point<2>(2.2, 0.41));
+    GridGenerator::subdivided_hyper_rectangle(bulk_triangulation,
+                                              {compute_in_2d ? 22u : 25u, 4u},
+                                              Point<2>(left, 0.0),
+                                              Point<2>(2.2, 0.41));
     std::set<Triangulation<2>::active_cell_iterator> cells_to_remove;
     Tensor<1, 2> cylinder_triangulation_offset;
     for (const auto cell : bulk_triangulation.active_cell_iterators())

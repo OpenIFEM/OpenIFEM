@@ -315,6 +315,59 @@ void FSI<dim>::find_solid_bc()
 }
 
 template <int dim>
+void FSI<dim>::refine_mesh(const unsigned int min_grid_level,
+                           const unsigned int max_grid_level)
+{
+  move_solid_mesh(true);
+  for (auto f_cell : fluid_solver.dof_handler.active_cell_iterators())
+    {
+      auto center = f_cell->center();
+      double dist = 1000;
+      for (auto s_cell : solid_solver.dof_handler.active_cell_iterators())
+        {
+          dist = std::min(center.distance(s_cell->center()), dist);
+        }
+      if (dist < 0.1)
+        f_cell->set_refine_flag();
+      else
+        f_cell->set_coarsen_flag();
+    }
+  move_solid_mesh(false);
+  if (fluid_solver.triangulation.n_levels() > max_grid_level)
+    {
+      for (auto cell = fluid_solver.triangulation.begin_active(max_grid_level);
+           cell != fluid_solver.triangulation.end();
+           ++cell)
+        {
+          cell->clear_refine_flag();
+        }
+    }
+
+  for (auto cell = fluid_solver.triangulation.begin_active(min_grid_level);
+       cell != fluid_solver.triangulation.end_active(min_grid_level);
+       ++cell)
+    {
+      cell->clear_coarsen_flag();
+    }
+
+  BlockVector<double> buffer(fluid_solver.present_solution);
+  SolutionTransfer<dim, BlockVector<double>> solution_transfer(
+    fluid_solver.dof_handler);
+
+  fluid_solver.triangulation.prepare_coarsening_and_refinement();
+  solution_transfer.prepare_for_coarsening_and_refinement(buffer);
+
+  fluid_solver.triangulation.execute_coarsening_and_refinement();
+
+  fluid_solver.setup_dofs();
+  fluid_solver.make_constraints();
+  fluid_solver.initialize_system();
+
+  solution_transfer.interpolate(buffer, fluid_solver.present_solution);
+  fluid_solver.nonzero_constraints.distribute(fluid_solver.present_solution);
+}
+
+template <int dim>
 void FSI<dim>::run()
 {
   solid_solver.triangulation.refine_global(parameters.global_refinement + 1);
@@ -331,6 +384,7 @@ void FSI<dim>::run()
             << solid_solver.triangulation.n_active_cells() << std::endl;
 
   bool first_step = true;
+  refine_mesh(parameters.global_refinement, parameters.global_refinement + 2);
   while (time.end() - time.current() > 1e-12)
     {
       find_solid_bc();
@@ -347,6 +401,9 @@ void FSI<dim>::run()
       fluid_solver.run_one_step(true);
       first_step = false;
       time.increment();
+      if (time.time_to_refine())
+        refine_mesh(parameters.global_refinement,
+                    parameters.global_refinement + 2);
     }
 }
 

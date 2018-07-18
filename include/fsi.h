@@ -70,6 +70,9 @@ private:
    */
   void find_fluid_bc();
 
+  /// Mesh adaption.
+  void refine_mesh(const unsigned int, const unsigned int);
+
   Fluid::FluidSolver<dim> &fluid_solver;
   Solid::SolidSolver<dim> &solid_solver;
   Parameters::AllParameters parameters;
