@@ -27,7 +27,7 @@ subsection Simulation
   set Refinement interval = 5e-3
 
   # Body force which applies to both fluid and solid (acceleration)
-  set Gravity = 0.0, -100.0
+  set Gravity = 0.0, -980.0
 end
 
 # --------------------------------------------------------------------------------
@@ -42,7 +42,7 @@ end
 
 subsection Fluid material properties
   # The dynamic viscosity
-  set Dynamic viscosity = 1
+  set Dynamic viscosity = 0.1
 
   # Fluid density
   set Fluid density = 1
@@ -67,20 +67,20 @@ subsection Fluid Dirichlet BCs
   set Use hard-coded boundary values = 0
 
   # Number of boundaries with Dirichlet BCs
-  set Number of Dirichlet BCs = 3
+  set Number of Dirichlet BCs = 4
 
   # List all the boundaries with Dirichlet BCs
-  set Dirichlet boundary id = 0, 1, 3
+  set Dirichlet boundary id = 0, 1, 2, 3
 
   # List the constrained components of these boundaries
   # One decimal number indicates one set of constrained components:
   # 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
   # To make sense of the numbering, convert decimals to binaries (zyx)
-  set Dirichlet boundary components = 3, 3, 3
+  set Dirichlet boundary components = 3, 3, 3, 1
 
   # Specify the values of the Dirichlet BCs, including both homogeneous and
   # inhomogeneous ones.
-  set Dirichlet boundary values = 0, 0, 0, 0, 0, 0
+  set Dirichlet boundary values = 0, 0, 0, 0, 0, 0, 0
 end
 
 subsection Fluid Neumann BCs
@@ -115,7 +115,7 @@ subsection Solid material properties
   set Poisson's ratio = 0.48
 
   # A list of parameters used by hyperelasticMaterial
-  set Hyperelastic parameters = 1.69e5, 2.5e7 # E = 1e4, nu = 0.48
+  set Hyperelastic parameters = 1.69e6, 8.33e7 # E = 1e7, nu = 0.48
 end
 
 subsection Solid solver control
