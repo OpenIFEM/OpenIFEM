@@ -57,7 +57,7 @@ namespace Solid
         DoFTools::locally_owned_dofs_per_subdomain(dof_handler);
       locally_owned_dofs = locally_owned_dofs_per_proc[this_mpi_process];
 
-      // The Dirichlet boundary conditions are stored in the ConstraintMatrix
+      // The Dirichlet boundary conditions are stored in the AffineConstraints
       // object. It does not need to modify the sparse matrix after assembly,
       // because it is applied in the assembly process,
       // therefore is better compared with apply_boundary_values approach.
@@ -226,9 +226,10 @@ namespace Solid
       // In order to estimate error, the vector must has the entire solution.
       Vector<double> solution(current_displacement);
 
+      using type = std::map<types::boundary_id, const Function<dim, double> *>;
       KellyErrorEstimator<dim>::estimate(dof_handler,
                                          face_quad_formula,
-                                         typename FunctionMap<dim>::type(),
+                                         type(),
                                          solution,
                                          estimated_error_per_cell);
 

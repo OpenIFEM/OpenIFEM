@@ -119,7 +119,7 @@ namespace MPI
   {
     move_solid_mesh(true);
 
-    ConstraintMatrix inner_nonzero, inner_zero;
+    AffineConstraints<double> inner_nonzero, inner_zero;
     inner_nonzero.clear();
     inner_zero.clear();
 
@@ -205,9 +205,11 @@ namespace MPI
     inner_nonzero.close();
     inner_zero.close();
     fluid_solver.nonzero_constraints.merge(
-      inner_nonzero, ConstraintMatrix::MergeConflictBehavior::left_object_wins);
+      inner_nonzero,
+      AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
     fluid_solver.zero_constraints.merge(
-      inner_zero, ConstraintMatrix::MergeConflictBehavior::left_object_wins);
+      inner_zero,
+      AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
 
     move_solid_mesh(false);
   }

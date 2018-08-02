@@ -30,7 +30,7 @@
 #include <deal.II/grid/tria_accessor.h>
 #include <deal.II/grid/tria_iterator.h>
 
-#include <deal.II/lac/constraint_matrix.h>
+#include <deal.II/lac/affine_constraints.h>
 #include <deal.II/lac/dynamic_sparsity_pattern.h>
 #include <deal.II/lac/full_matrix.h>
 #include <deal.II/lac/generic_linear_algebra.h>
@@ -160,7 +160,7 @@ namespace Solid
        * Constraints to handle both hanging nodes and Dirichlet boundary
        * conditions.
        */
-      ConstraintMatrix constraints;
+      AffineConstraints<double> constraints;
 
       PETScWrappers::MPI::SparseMatrix
         system_matrix; //!< \f$ M + \beta{\Delta{t}}^2K \f$.
