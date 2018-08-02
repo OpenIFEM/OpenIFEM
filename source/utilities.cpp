@@ -14,6 +14,12 @@ namespace Utils
     return (timestep >= delta && timestep % delta == 0);
   }
 
+  bool Time::time_to_save() const
+  {
+    unsigned int delta = save_interval / delta_t;
+    return (timestep >= delta && timestep % delta == 0);
+  }
+
   void Time::increment()
   {
     time_current += delta_t;

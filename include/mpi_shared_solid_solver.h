@@ -55,11 +55,14 @@
 #include <deal.II/distributed/solution_transfer.h>
 #include <deal.II/distributed/tria.h>
 
+#include <experimental/filesystem>
 #include <fstream>
 #include <iostream>
 
 #include "parameters.h"
 #include "utilities.h"
+
+namespace fs = std::experimental::filesystem;
 
 namespace MPI
 {
@@ -130,6 +133,16 @@ namespace Solid
        */
       void refine_mesh(const unsigned int, const unsigned int);
 
+      /**
+       * Save the checkpoint for restart (only global refinement supported)
+       */
+      void save_checkpoint(const int);
+
+      /**
+       * Load from checkpoint to restart
+       */
+      bool load_checkpoint();
+
       Triangulation<dim> &triangulation;
       Parameters::AllParameters parameters;
       DoFHandler<dim> dof_handler;
@@ -179,6 +192,7 @@ namespace Solid
       mutable TimerOutput timer;
       IndexSet locally_owned_dofs;
       IndexSet locally_relevant_dofs;
+      mutable std::vector<std::pair<double, std::string>> times_and_names;
 
       CellDataStorage<typename Triangulation<dim>::cell_iterator, CellProperty>
         cell_property;

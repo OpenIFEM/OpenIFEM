@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.5.0)
 
+SET(CMAKE_CXX_STANDARD 17)
+
 find_package(deal.II QUIET
   HINTS ${deal.II_DIR} ${DEAL_II_DIR} ../ ../../ $ENV{DEAL_II_DIR}
   )

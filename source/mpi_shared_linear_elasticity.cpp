@@ -273,6 +273,11 @@ namespace Solid
           tmp3.reinit(locally_owned_dofs, mpi_communicator);
           assemble_system(false);
         }
+
+      if (time.time_to_save())
+        {
+          this->save_checkpoint(time.get_timestep());
+        }
     }
 
     template class SharedLinearElasticity<2>;

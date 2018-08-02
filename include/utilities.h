@@ -24,13 +24,15 @@ namespace Utils
     Time(const double time_end,
          const double delta_t,
          const double output_interval,
-         const double refinement_interval)
+         const double refinement_interval,
+         const double save_interval)
       : timestep(0),
         time_current(0.0),
         time_end(time_end),
         delta_t(delta_t),
         output_interval(output_interval),
-        refinement_interval(refinement_interval)
+        refinement_interval(refinement_interval),
+        save_interval(save_interval)
     {
     }
     double current() const { return time_current; }
@@ -39,6 +41,7 @@ namespace Utils
     unsigned int get_timestep() const { return timestep; }
     bool time_to_output() const;
     bool time_to_refine() const;
+    bool time_to_save() const;
     void increment();
 
   private:
@@ -48,6 +51,7 @@ namespace Utils
     const double delta_t;
     const double output_interval;
     const double refinement_interval;
+    const double save_interval;
   };
 
   /*! \brief A helper class to generate triangulations and specify boundary ids.

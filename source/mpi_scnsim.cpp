@@ -728,6 +728,11 @@ namespace Fluid
         {
           output_results(time.get_timestep());
         }
+      // Save checkpoint
+      if (time.time_to_save())
+        {
+          save_checkpoint(time.get_timestep());
+        }
       if (time.time_to_refine())
         {
           refine_mesh(1, 3);
@@ -741,17 +746,23 @@ namespace Fluid
             << Utilities::MPI::n_mpi_processes(mpi_communicator)
             << " MPI rank(s)..." << std::endl;
 
-      triangulation.refine_global(parameters.global_refinement);
-      setup_dofs();
-      make_constraints();
-      initialize_system();
+      // Try load from previous computation.
+      bool success_load = load_checkpoint();
+      if (!success_load)
+        {
+          triangulation.refine_global(parameters.global_refinement);
+          setup_dofs();
+          make_constraints();
+          initialize_system();
+        }
 
       // Time loop.
       // use_nonzero_constraints is set to true only at the first time step,
       // which means nonzero_constraints will be applied at the first iteration
       // in the first time step only, and never be used again.
       // This corresponds to time-independent Dirichlet BCs.
-      run_one_step(true);
+      if (!success_load)
+        run_one_step(true);
       while (time.end() - time.current() > 1e-12)
         {
           if (parameters.use_hard_coded_values)

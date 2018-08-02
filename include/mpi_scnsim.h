@@ -56,6 +56,8 @@ namespace Fluid
       using FluidSolver<dim>::setup_cell_property;
       using FluidSolver<dim>::refine_mesh;
       using FluidSolver<dim>::output_results;
+      using FluidSolver<dim>::save_checkpoint;
+      using FluidSolver<dim>::load_checkpoint;
 
       using FluidSolver<dim>::dofs_per_block;
       using FluidSolver<dim>::triangulation;
@@ -75,6 +77,7 @@ namespace Fluid
       using FluidSolver<dim>::owned_partitioning;
       using FluidSolver<dim>::relevant_partitioning;
       using FluidSolver<dim>::locally_relevant_dofs;
+      using FluidSolver<dim>::times_and_names;
       using FluidSolver<dim>::time;
       using FluidSolver<dim>::timer;
       using FluidSolver<dim>::cell_property;

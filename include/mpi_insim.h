@@ -76,6 +76,7 @@ namespace Fluid
       using FluidSolver<dim>::owned_partitioning;
       using FluidSolver<dim>::relevant_partitioning;
       using FluidSolver<dim>::locally_relevant_dofs;
+      using FluidSolver<dim>::times_and_names;
       using FluidSolver<dim>::time;
       using FluidSolver<dim>::timer;
       using FluidSolver<dim>::cell_property;

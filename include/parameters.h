@@ -20,6 +20,7 @@ namespace Parameters
     double time_step;
     double output_interval;
     double refinement_interval;
+    double save_interval;
     std::vector<double> gravity;
     static void declareParameters(ParameterHandler &);
     void parseParameters(ParameterHandler &);

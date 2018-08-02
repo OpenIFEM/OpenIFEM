@@ -35,7 +35,7 @@ foreach(test ${tests})
   add_executable(${test} ${CMAKE_CURRENT_SOURCE_DIR}/${test}/${test}.cpp)
   target_include_directories(${test} PUBLIC "${CMAKE_SOURCE_DIR}/include")
   deal_ii_setup_target(${test})
-  target_link_libraries(${test} openifem)
+  target_link_libraries(${test} openifem stdc++fs)
   list(FIND mpi_tests ${test} index)
   if(${index} GREATER -1)
     # FIXME: it is not good practice to specify the number of processors in this way
