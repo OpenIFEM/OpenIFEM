@@ -27,7 +27,7 @@ subsection Simulation
   set Output interval = 5e-3
 
   # Mesh refinement interval in second
-  set Refinement interval = 5e-2
+  set Refinement interval = 5e2
 
   # Checkpoint save interval in second
   set Save interval = 100
@@ -70,7 +70,7 @@ subsection Fluid Dirichlet BCs
   # Note: even if this variable is set to 1, the following 3 variables
   # will still be used so that the hard-coded values BCs applies to the
   # target boundaries and directions only.
-  set Use hard-coded boundary values = 0
+  set Use hard-coded boundary values = 1
 
   # Number of boundaries with Dirichlet BCs
   set Number of Dirichlet BCs = 3

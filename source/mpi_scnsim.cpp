@@ -733,7 +733,7 @@ namespace Fluid
         {
           save_checkpoint(time.get_timestep());
         }
-      if (time.time_to_refine())
+      if (parameters.simulation_type == "Fluid" && time.time_to_refine())
         {
           refine_mesh(1, 3);
         }

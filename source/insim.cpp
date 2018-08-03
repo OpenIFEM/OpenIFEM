@@ -220,8 +220,7 @@ namespace Fluid
         for (unsigned int q = 0; q < n_q_points; ++q)
           {
             const int ind = p[q]->indicator;
-            const double rho =
-              (ind == 1 ? parameters.solid_rho : parameters.fluid_rho);
+            const double rho = parameters.fluid_rho;
             for (unsigned int k = 0; k < dofs_per_cell; ++k)
               {
                 div_phi_u[k] = fe_values[velocities].divergence(k, q);
@@ -438,7 +437,7 @@ namespace Fluid
       {
         output_results(time.get_timestep());
       }
-    if (time.time_to_refine())
+    if (parameters.simulation_type == "Fluid" && time.time_to_refine())
       {
         refine_mesh(1, 3);
       }
