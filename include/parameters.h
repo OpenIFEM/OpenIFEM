@@ -14,8 +14,9 @@ namespace Parameters
 
   struct Simulation
   {
+    std::string simulation_type;
     int dimension;
-    unsigned int global_refinement;
+    std::vector<int> global_refinements;
     double end_time;
     double time_step;
     double output_interval;

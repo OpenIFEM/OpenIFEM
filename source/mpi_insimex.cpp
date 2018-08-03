@@ -439,7 +439,7 @@ namespace Fluid
             << Utilities::MPI::n_mpi_processes(mpi_communicator)
             << " MPI rank(s)..." << std::endl;
 
-      triangulation.refine_global(parameters.global_refinement);
+      triangulation.refine_global(parameters.global_refinements[0]);
       setup_dofs();
       make_constraints();
       initialize_system();

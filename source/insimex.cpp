@@ -389,7 +389,7 @@ namespace Fluid
   template <int dim>
   void InsIMEX<dim>::run()
   {
-    triangulation.refine_global(parameters.global_refinement);
+    triangulation.refine_global(parameters.global_refinements[0]);
     setup_dofs();
     make_constraints();
     initialize_system();

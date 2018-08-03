@@ -295,7 +295,7 @@ namespace Solid
     template <int dim>
     void SharedSolidSolver<dim>::run()
     {
-      triangulation.refine_global(parameters.global_refinement);
+      triangulation.refine_global(parameters.global_refinements[1]);
       bool success_load = load_checkpoint();
       if (!success_load)
         {

@@ -371,10 +371,10 @@ void FSI<dim>::refine_mesh(const unsigned int min_grid_level,
 template <int dim>
 void FSI<dim>::run()
 {
-  solid_solver.triangulation.refine_global(parameters.global_refinement + 1);
+  solid_solver.triangulation.refine_global(parameters.global_refinements[1]);
   solid_solver.setup_dofs();
   solid_solver.initialize_system();
-  fluid_solver.triangulation.refine_global(parameters.global_refinement);
+  fluid_solver.triangulation.refine_global(parameters.global_refinements[0]);
   fluid_solver.setup_dofs();
   fluid_solver.make_constraints();
   fluid_solver.initialize_system();
@@ -385,7 +385,8 @@ void FSI<dim>::run()
             << solid_solver.triangulation.n_active_cells() << std::endl;
 
   bool first_step = true;
-  refine_mesh(parameters.global_refinement, parameters.global_refinement + 2);
+  refine_mesh(parameters.global_refinements[0],
+              parameters.global_refinements[0] + 2);
   while (time.end() - time.current() > 1e-12)
     {
       find_solid_bc();
@@ -403,8 +404,8 @@ void FSI<dim>::run()
       first_step = false;
       time.increment();
       if (time.time_to_refine())
-        refine_mesh(parameters.global_refinement,
-                    parameters.global_refinement + 2);
+        refine_mesh(parameters.global_refinements[0],
+                    parameters.global_refinements[0] + 2);
     }
 }
 

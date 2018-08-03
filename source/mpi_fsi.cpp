@@ -294,10 +294,10 @@ namespace MPI
   template <int dim>
   void FSI<dim>::run()
   {
-    solid_solver.triangulation.refine_global(parameters.global_refinement);
+    solid_solver.triangulation.refine_global(parameters.global_refinements[1]);
     solid_solver.setup_dofs();
     solid_solver.initialize_system();
-    fluid_solver.triangulation.refine_global(parameters.global_refinement);
+    fluid_solver.triangulation.refine_global(parameters.global_refinements[0]);
     fluid_solver.setup_dofs();
     fluid_solver.make_constraints();
     fluid_solver.initialize_system();

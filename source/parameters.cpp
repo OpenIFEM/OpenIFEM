@@ -8,12 +8,16 @@ namespace Parameters
   {
     prm.enter_subsection("Simulation");
     {
+      prm.declare_entry("Simulation type",
+                        "FSI",
+                        Patterns::Selection("FSI|Fluid|Solid"),
+                        "Simulation type");
       prm.declare_entry(
         "Dimension", "2", Patterns::Integer(2), "Dimension of the problem");
-      prm.declare_entry("Global refinement",
-                        "0",
-                        Patterns::Integer(0),
-                        "Level of global refinement");
+      prm.declare_entry("Global refinements",
+                        "",
+                        Patterns::List(dealii::Patterns::Integer()),
+                        "Level of global refinements");
       prm.declare_entry("End time", "1.0", Patterns::Double(0.0), "End time");
       prm.declare_entry(
         "Time step size", "1.0", Patterns::Double(0.0), "Time step size");
@@ -38,16 +42,21 @@ namespace Parameters
   {
     prm.enter_subsection("Simulation");
     {
+      simulation_type = prm.get("Simulation type");
       dimension = prm.get_integer("Dimension");
-      global_refinement = prm.get_integer("Global refinement");
+      std::string raw_input = prm.get("Global refinements");
+      std::vector<std::string> parsed_input =
+        Utilities::split_string_list(raw_input);
+      global_refinements = Utilities::string_to_int(parsed_input);
+      AssertThrow(static_cast<int>(global_refinements.size()) == 2,
+                  ExcMessage("Incorrect dimension of global_refinements!"));
       end_time = prm.get_double("End time");
       time_step = prm.get_double("Time step size");
       output_interval = prm.get_double("Output interval");
       refinement_interval = prm.get_double("Refinement interval");
       save_interval = prm.get_double("Save interval");
-      std::string raw_input = prm.get("Gravity");
-      std::vector<std::string> parsed_input =
-        Utilities::split_string_list(raw_input);
+      raw_input = prm.get("Gravity");
+      parsed_input = Utilities::split_string_list(raw_input);
       gravity = Utilities::string_to_double(parsed_input);
       AssertThrow(static_cast<int>(gravity.size()) == dimension,
                   ExcMessage("Inconsistent dimension of gravity!"));
@@ -431,7 +440,7 @@ namespace Parameters
                         "Ids of the boundaries with Neumann BCs");
       prm.declare_entry("Neumann boundary type",
                         "Traction",
-                        Patterns::Selection("Traction|Pressure|FSI"),
+                        Patterns::Selection("Traction|Pressure"),
                         "Type of Neumann BC");
       prm.declare_entry("Neumann boundary values",
                         "",

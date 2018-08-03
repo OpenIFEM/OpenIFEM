@@ -7,12 +7,15 @@
 # --------------------------------------------------------------------------------
 # Simulation parameters
 subsection Simulation
+  # Type of simulation: FSI/Fluid/Solid
+  set Simulation type =  Fluid
+
   # The dimension of the simulation
   set Dimension = 2
 
   # Level of global refinement before running,
   # which applies to all the solvers
-  set Global refinement = 3
+  set Global refinements = 3, 0
 
   # The end time of the simulation in second
   set End time = 1e-2

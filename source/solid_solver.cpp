@@ -254,7 +254,7 @@ namespace Solid
   template <int dim>
   void SolidSolver<dim>::run()
   {
-    triangulation.refine_global(parameters.global_refinement);
+    triangulation.refine_global(parameters.global_refinements[1]);
     setup_dofs();
     initialize_system();
 

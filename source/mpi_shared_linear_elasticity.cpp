@@ -129,14 +129,15 @@ namespace Solid
                           parameters.solid_neumann_bcs.end())
                         {
                           std::vector<double> value;
-                          if (parameters.solid_neumann_bc_type != "FSI")
+                          if (parameters.simulation_type != "FSI")
                             {
                               // In stand-alone simulation, the boundary value
                               // is prescribed by the user.
                               value = parameters.solid_neumann_bcs[id];
                             }
                           Tensor<1, dim> traction;
-                          if (parameters.solid_neumann_bc_type == "Traction")
+                          if (parameters.simulation_type != "FSI" &&
+                              parameters.solid_neumann_bc_type == "Traction")
                             {
                               for (unsigned int i = 0; i < dim; ++i)
                                 {
@@ -147,8 +148,9 @@ namespace Solid
                           fe_face_values.reinit(cell, face);
                           for (unsigned int q = 0; q < n_f_q_points; ++q)
                             {
-                              if (parameters.solid_neumann_bc_type ==
-                                  "Pressure")
+                              if (parameters.simulation_type != "FSI" &&
+                                  parameters.solid_neumann_bc_type ==
+                                    "Pressure")
                                 {
                                   // The normal is w.r.t. reference
                                   // configuration!
