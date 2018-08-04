@@ -13,7 +13,6 @@
 #include <deal.II/dofs/dof_tools.h>
 
 #include <deal.II/fe/fe.h>
-#include <deal.II/fe/fe_dgq.h>
 #include <deal.II/fe/fe_q.h>
 #include <deal.II/fe/fe_system.h>
 #include <deal.II/fe/fe_tools.h>
@@ -118,10 +117,9 @@ namespace Solid
     Triangulation<dim> &triangulation;
     Parameters::AllParameters parameters;
     DoFHandler<dim> dof_handler;
-    DoFHandler<dim>
-      dg_dof_handler; //!< Dof handler for dg_fe, which has one dof per vertex.
+    DoFHandler<dim> scalar_dof_handler; //!< Scalar-valued DoFHandler.
     FESystem<dim> fe;
-    FE_DGQ<dim> dg_fe; //!< Discontinous Glerkin FE for the nodal strain/stress
+    FE_Q<dim> scalar_fe; //!< Scalar FE for nodal strain/stress.
     const QGauss<dim>
       volume_quad_formula; //!< Quadrature formula for volume integration.
     const QGauss<dim - 1>
@@ -157,12 +155,10 @@ namespace Solid
     Vector<double> previous_displacement;
 
     /**
-     * strain and stress. Each of them contains dim*dim
-     * Vectors,
-     * where every Vector has dg_dof_handler.n_dofs() components.
-     * In linear elasticity, these are infinitesimal strain and Cauchy stress,
-     * while in hyper elasticity, they are deformation tensor and
-     * Cauchy stress.
+     * Nodal strain and stress obtained by taking the average of surrounding
+     * cell-averaged strains and stresses. Their sizes are
+     * [dim, dim, scalar_dof_handler.n_dofs()], i.e., stress[i][j][k]
+     * denotes sigma_{ij} at vertex k.
      */
     mutable std::vector<std::vector<Vector<double>>> strain, stress;
 

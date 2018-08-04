@@ -310,14 +310,25 @@ namespace Solid
   template <int dim>
   void LinearElasticity<dim>::update_strain_and_stress()
   {
+    for (unsigned int i = 0; i < dim; ++i)
+      {
+        for (unsigned int j = 0; j < dim; ++j)
+          {
+            strain[i][j] = 0.0;
+            stress[i][j] = 0.0;
+          }
+      }
+    std::vector<int> surrounding_cells(scalar_dof_handler.n_dofs(), 0);
     // The strain and stress tensors are stored as 2D vectors of shape dim*dim
     // at cell and quadrature point level.
     std::vector<std::vector<Vector<double>>> cell_strain(
       dim,
-      std::vector<Vector<double>>(dim, Vector<double>(dg_fe.dofs_per_cell)));
+      std::vector<Vector<double>>(dim,
+                                  Vector<double>(scalar_fe.dofs_per_cell)));
     std::vector<std::vector<Vector<double>>> cell_stress(
       dim,
-      std::vector<Vector<double>>(dim, Vector<double>(dg_fe.dofs_per_cell)));
+      std::vector<Vector<double>>(dim,
+                                  Vector<double>(scalar_fe.dofs_per_cell)));
     std::vector<std::vector<Vector<double>>> quad_strain(
       dim,
       std::vector<Vector<double>>(dim,
@@ -332,10 +343,10 @@ namespace Solid
       volume_quad_formula.size());
 
     // The projection matrix from quadrature points to the dofs.
-    FullMatrix<double> qpt_to_dof(dg_fe.dofs_per_cell,
+    FullMatrix<double> qpt_to_dof(scalar_fe.dofs_per_cell,
                                   volume_quad_formula.size());
     FETools::compute_projection_from_quadrature_points_matrix(
-      dg_fe, volume_quad_formula, volume_quad_formula, qpt_to_dof);
+      scalar_fe, volume_quad_formula, volume_quad_formula, qpt_to_dof);
 
     const SymmetricTensor<4, dim> elasticity = material.get_elasticity();
     const FEValuesExtractors::Vector displacements(0);
@@ -345,9 +356,11 @@ namespace Solid
                             update_values | update_gradients |
                               update_quadrature_points | update_JxW_values);
     auto cell = dof_handler.begin_active();
-    auto dg_cell = dg_dof_handler.begin_active();
-    for (; cell != dof_handler.end(); ++cell, ++dg_cell)
+    auto scalar_cell = scalar_dof_handler.begin_active();
+    std::vector<types::global_dof_index> dof_indices(scalar_fe.dofs_per_cell);
+    for (; cell != dof_handler.end(); ++cell, ++scalar_cell)
       {
+        scalar_cell->get_dof_indices(dof_indices);
         fe_values.reinit(cell);
         fe_values[displacements].get_function_gradients(
           current_displacement, current_displacement_gradients);
@@ -382,8 +395,25 @@ namespace Solid
               {
                 qpt_to_dof.vmult(cell_strain[i][j], quad_strain[i][j]);
                 qpt_to_dof.vmult(cell_stress[i][j], quad_stress[i][j]);
-                dg_cell->set_dof_values(cell_strain[i][j], strain[i][j]);
-                dg_cell->set_dof_values(cell_stress[i][j], stress[i][j]);
+                for (unsigned int k = 0; k < scalar_fe.dofs_per_cell; ++k)
+                  {
+                    strain[i][j][dof_indices[k]] += cell_strain[i][j][k];
+                    stress[i][j][dof_indices[k]] += cell_stress[i][j][k];
+                    if (i == 0 && j == 0)
+                      surrounding_cells[dof_indices[k]]++;
+                  }
+              }
+          }
+      }
+
+    for (unsigned int i = 0; i < dim; ++i)
+      {
+        for (unsigned int j = 0; j < dim; ++j)
+          {
+            for (unsigned int k = 0; k < scalar_dof_handler.n_dofs(); ++k)
+              {
+                strain[i][j][k] /= surrounding_cells[k];
+                stress[i][j][k] /= surrounding_cells[k];
               }
           }
       }

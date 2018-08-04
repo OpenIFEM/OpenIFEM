@@ -10,9 +10,9 @@ namespace Solid
     : triangulation(tria),
       parameters(parameters),
       dof_handler(triangulation),
-      dg_dof_handler(triangulation),
+      scalar_dof_handler(triangulation),
       fe(FE_Q<dim>(parameters.solid_degree), dim),
-      dg_fe(FE_DGQ<dim>(parameters.solid_degree)),
+      scalar_fe(parameters.solid_degree),
       volume_quad_formula(parameters.solid_degree + 1),
       face_quad_formula(parameters.solid_degree + 1),
       time(parameters.end_time,
@@ -27,7 +27,7 @@ namespace Solid
   template <int dim>
   SolidSolver<dim>::~SolidSolver()
   {
-    dg_dof_handler.clear();
+    scalar_dof_handler.clear();
     dof_handler.clear();
     timer.print_summary();
   }
@@ -39,7 +39,7 @@ namespace Solid
 
     dof_handler.distribute_dofs(fe);
     DoFRenumbering::Cuthill_McKee(dof_handler);
-    dg_dof_handler.distribute_dofs(dg_fe);
+    scalar_dof_handler.distribute_dofs(scalar_fe);
 
     // The Dirichlet boundary conditions are stored in the
     // AffineConstraints<double> object. It does not need to modify the sparse
@@ -104,11 +104,11 @@ namespace Solid
     strain = std::vector<std::vector<Vector<double>>>(
       dim,
       std::vector<Vector<double>>(dim,
-                                  Vector<double>(dg_dof_handler.n_dofs())));
+                                  Vector<double>(scalar_dof_handler.n_dofs())));
     stress = std::vector<std::vector<Vector<double>>>(
       dim,
       std::vector<Vector<double>>(dim,
-                                  Vector<double>(dg_dof_handler.n_dofs())));
+                                  Vector<double>(scalar_dof_handler.n_dofs())));
 
     // Set up cell property, which contains the FSI traction required in FSI
     // simulation
@@ -162,20 +162,20 @@ namespace Solid
 
     // strain and stress
     update_strain_and_stress();
-    data_out.add_data_vector(dg_dof_handler, strain[0][0], "Exx");
-    data_out.add_data_vector(dg_dof_handler, strain[0][1], "Exy");
-    data_out.add_data_vector(dg_dof_handler, strain[1][1], "Eyy");
-    data_out.add_data_vector(dg_dof_handler, stress[0][0], "Sxx");
-    data_out.add_data_vector(dg_dof_handler, stress[0][1], "Sxy");
-    data_out.add_data_vector(dg_dof_handler, stress[1][1], "Syy");
+    data_out.add_data_vector(scalar_dof_handler, strain[0][0], "Exx");
+    data_out.add_data_vector(scalar_dof_handler, strain[0][1], "Exy");
+    data_out.add_data_vector(scalar_dof_handler, strain[1][1], "Eyy");
+    data_out.add_data_vector(scalar_dof_handler, stress[0][0], "Sxx");
+    data_out.add_data_vector(scalar_dof_handler, stress[0][1], "Sxy");
+    data_out.add_data_vector(scalar_dof_handler, stress[1][1], "Syy");
     if (dim == 3)
       {
-        data_out.add_data_vector(dg_dof_handler, strain[0][2], "Exz");
-        data_out.add_data_vector(dg_dof_handler, strain[1][2], "Eyz");
-        data_out.add_data_vector(dg_dof_handler, strain[2][2], "Ezz");
-        data_out.add_data_vector(dg_dof_handler, stress[0][2], "Sxz");
-        data_out.add_data_vector(dg_dof_handler, stress[1][2], "Syz");
-        data_out.add_data_vector(dg_dof_handler, stress[2][2], "Szz");
+        data_out.add_data_vector(scalar_dof_handler, strain[0][2], "Exz");
+        data_out.add_data_vector(scalar_dof_handler, strain[1][2], "Eyz");
+        data_out.add_data_vector(scalar_dof_handler, strain[2][2], "Ezz");
+        data_out.add_data_vector(scalar_dof_handler, stress[0][2], "Sxz");
+        data_out.add_data_vector(scalar_dof_handler, stress[1][2], "Syz");
+        data_out.add_data_vector(scalar_dof_handler, stress[2][2], "Szz");
       }
 
     data_out.build_patches();

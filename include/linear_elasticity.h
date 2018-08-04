@@ -49,9 +49,9 @@ namespace Solid
     using SolidSolver<dim>::triangulation;
     using SolidSolver<dim>::parameters;
     using SolidSolver<dim>::dof_handler;
-    using SolidSolver<dim>::dg_dof_handler;
+    using SolidSolver<dim>::scalar_dof_handler;
     using SolidSolver<dim>::fe;
-    using SolidSolver<dim>::dg_fe;
+    using SolidSolver<dim>::scalar_fe;
     using SolidSolver<dim>::volume_quad_formula;
     using SolidSolver<dim>::face_quad_formula;
     using SolidSolver<dim>::constraints;
