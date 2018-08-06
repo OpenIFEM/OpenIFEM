@@ -278,7 +278,8 @@ namespace Fluid
                   {
                     local_rhs(i) +=
                       (scalar_product(grad_phi_u[i], p[q]->fsi_stress) +
-                       (p[q]->fsi_acceleration * rho * phi_u[i])) *
+                       ((parameters.solid_rho - parameters.fluid_rho) *
+                        p[q]->fsi_acceleration * phi_u[i])) *
                       fe_values.JxW(q);
                   }
               }
@@ -351,7 +352,7 @@ namespace Fluid
     // as opposed to SolverGMRES which allows both left and right
     // preconditoners.
     SolverControl solver_control(
-      system_matrix.m(), 1e-3 * system_rhs.l2_norm(), true);
+      system_matrix.m(), 1e-4 * system_rhs.l2_norm(), true);
     GrowingVectorMemory<BlockVector<double>> vector_memory;
     SolverFGMRES<BlockVector<double>> gmres(solver_control, vector_memory);
 

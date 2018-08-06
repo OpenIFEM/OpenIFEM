@@ -29,8 +29,7 @@ template <int dim>
 double BoundaryValues<dim>::value(const Point<dim> &p,
                                   const unsigned int component) const
 {
-  if (component == 0 && std::abs(p[0]) < 1e-10 &&
-      std::abs(p[1]) > 1e-10 && std::abs(p[1] - H) > 1e-10)
+  if (component == 0 && std::abs(p[0]) < 1e-10 && std::abs(p[1]) > 1e-10)
     {
       return U;
     }
