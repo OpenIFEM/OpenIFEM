@@ -67,6 +67,17 @@ int main(int argc, char *argv[])
             Point<2>(0, 0),
             Point<2>(L, H),
             true);
+          // Refine the middle part
+          for (auto cell : fluid_tria.active_cell_iterators())
+            {
+              auto center = cell->center();
+              if (center[0] >= L / 4 - 2 * a && center[0] <= L / 4 + 3 * a)
+                {
+                  cell->set_refine_flag();
+                }
+            }
+          fluid_tria.execute_coarsening_and_refinement();
+
           auto ptr = std::make_shared<BoundaryValues<2>>(BoundaryValues<2>());
           Fluid::InsIM<2> fluid(fluid_tria, params, ptr);
 
