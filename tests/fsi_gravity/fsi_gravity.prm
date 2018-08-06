@@ -15,7 +15,7 @@ subsection Simulation
 
   # Level of global refinement before running,
   # which applies to all the solvers
-  set Global refinements = 2, 0
+  set Global refinements = 2, 3
 
   # The end time of the simulation in second
   set End time = 1e0
@@ -24,10 +24,10 @@ subsection Simulation
   set Time step size = 1e-3
 
   # The output interval in second
-  set Output interval = 5e-3
+  set Output interval = 1e-3
 
   # Mesh refinement interval in second
-  set Refinement interval = 5e-3
+  set Refinement interval = 5e3
 
   # Checkpoint save interval in second
   set Save interval = 100
@@ -113,7 +113,7 @@ subsection Solid material properties
   set Solid type = NeoHookean
 
   # Solid density, used by all solid solvers
-  set Solid density = 2
+  set Solid density = 1.25
 
   # E and nu are only used by linearElasticMaterial
   set Young's modulus = 1.0e4
@@ -141,16 +141,16 @@ end
 # Only homogeneous Dirichlet BC is supported, i.e., the prescribed value is always 0.
 subsection Solid Dirichlet BCs
   # Dirichlet BCs can be applied to multiple boundaries.
-  set Number of Dirichlet BCs = 0
+  set Number of Dirichlet BCs = 1
 
   # List all the constrained boundaries here
-  set Dirichlet boundary id = 2
+  set Dirichlet boundary id = 0
 
   # List the constrained components of these boundaries
   # One decimal number indicates one set of constrained components:
   # 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
   # To make sense of the numbering, convert decimals to binaries (zyx)
-  set Dirichlet boundary components = 3
+  set Dirichlet boundary components = 1
 end
 
 # Two types of Neumann BCs are supported: traction and pressure.

@@ -217,7 +217,7 @@ void FSI<dim>::find_fluid_bc()
             {
               if (ptr[q]->indicator == 0)
                 ptr[q]->fsi_acceleration[i] =
-                  -(solid_acc[i] - parameters.gravity[i]);
+                  parameters.gravity[i] - solid_acc[i];
             }
           // stress: sigma^f - sigma^s
           SymmetricTensor<2, dim> solid_sigma;
@@ -235,9 +235,8 @@ void FSI<dim>::find_fluid_bc()
             }
           if (ptr[q]->indicator == 0)
             ptr[q]->fsi_stress =
-              solid_sigma +
-              p[q] * Physics::Elasticity::StandardTensors<dim>::I -
-              parameters.viscosity * sym_grad_v[q];
+              -p[q] * Physics::Elasticity::StandardTensors<dim>::I +
+              parameters.viscosity * sym_grad_v[q] - solid_sigma;
         }
     }
   inner_nonzero.close();
@@ -276,10 +275,7 @@ void FSI<dim>::find_solid_bc()
       for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
         {
           // Current face is at boundary and without Dirichlet bc.
-          if (s_cell->face(f)->at_boundary() &&
-              parameters.solid_dirichlet_bcs.find(
-                s_cell->face(f)->boundary_id()) ==
-                parameters.solid_dirichlet_bcs.end())
+          if (s_cell->face(f)->at_boundary())
             {
               fe_face_values.reinit(s_cell, f);
               for (unsigned int q = 0; q < n_face_q_points; ++q)
@@ -380,10 +376,12 @@ void FSI<dim>::run()
   fluid_solver.make_constraints();
   fluid_solver.initialize_system();
 
-  std::cout << "  Number of fluid active cells: "
-            << fluid_solver.triangulation.n_active_cells() << std::endl
-            << "  Number of solid active cells: "
-            << solid_solver.triangulation.n_active_cells() << std::endl;
+  std::cout << "Number of fluid active cells and dofs: ["
+            << fluid_solver.triangulation.n_active_cells() << ", "
+            << fluid_solver.dof_handler.n_dofs() << "]" << std::endl
+            << "Number of solid active cells and dofs: ["
+            << solid_solver.triangulation.n_active_cells() << ", "
+            << solid_solver.dof_handler.n_dofs() << "]" << std::endl;
 
   bool first_step = true;
   while (time.end() - time.current() > 1e-12)
