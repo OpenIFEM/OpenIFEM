@@ -18,7 +18,7 @@ subsection Simulation
   set Global refinements = 2, 3
 
   # The end time of the simulation in second
-  set End time = 1e0
+  set End time = 3e-1
 
   # The time step in second
   set Time step size = 1e-3
@@ -48,7 +48,7 @@ end
 
 subsection Fluid material properties
   # The dynamic viscosity
-  set Dynamic viscosity = 0.1
+  set Dynamic viscosity = 1.0
 
   # Fluid density
   set Fluid density = 1
@@ -113,7 +113,7 @@ subsection Solid material properties
   set Solid type = NeoHookean
 
   # Solid density, used by all solid solvers
-  set Solid density = 1.25
+  set Solid density = 2
 
   # E and nu are only used by linearElasticMaterial
   set Young's modulus = 1.0e4

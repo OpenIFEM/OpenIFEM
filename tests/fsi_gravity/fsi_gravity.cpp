@@ -25,7 +25,7 @@ int main(int argc, char *argv[])
         }
       Parameters::AllParameters params(infile);
 
-      double L = 1, W = 2, H = 6, R = 0.125, h = 0.25;
+      double L = 1, W = 2, H = 5, R = 0.125, h = 0.25;
 
       if (params.dimension == 2)
         {
