@@ -307,15 +307,21 @@ namespace Parameters
                         "LinearElastic",
                         Patterns::Selection("LinearElastic|NeoHookean"),
                         "Type of solid material");
-      prm.declare_entry(
-        "Solid density", "1.0", Patterns::Double(0.0), "Solid density");
+      prm.declare_entry("Number of solid parts",
+                        "1",
+                        Patterns::Integer(0),
+                        "Number of different materials used in solid");
+      prm.declare_entry("Solid density",
+                        "1.0",
+                        Patterns::List(dealii::Patterns::Double(0)),
+                        "Solid density");
       prm.declare_entry("Young's modulus",
                         "0.0",
-                        Patterns::Double(0.0),
+                        Patterns::List(dealii::Patterns::Double(0)),
                         "Young's modulus, only used by linear elastic solver");
       prm.declare_entry("Poisson's ratio",
                         "0.0",
-                        Patterns::Double(0.0, 0.5),
+                        Patterns::List(dealii::Patterns::Double(0, 0.5)),
                         "Poisson's ratio, only used by linear elastic solver");
       const char *text = "A list of material constants separated by comma, "
                          "only used by hyperelastic materials."
@@ -333,12 +339,26 @@ namespace Parameters
     prm.enter_subsection("Solid material properties");
     {
       solid_type = prm.get("Solid type");
+      n_solid_parts = prm.get_integer("Number of solid parts");
+      AssertThrow(n_solid_parts > 0,
+                  ExcMessage("Number of solid part less than 1!"));
+      E.resize(n_solid_parts, 0);
+      nu.resize(n_solid_parts, 0);
       solid_rho = prm.get_double("Solid density");
-      E = prm.get_double("Young's modulus");
-      nu = prm.get_double("Poisson's ratio");
-      std::string raw_input = prm.get("Hyperelastic parameters");
+      std::string raw_input = prm.get("Young's modulus");
       std::vector<std::string> parsed_input =
         Utilities::split_string_list(raw_input);
+      E = Utilities::string_to_double(parsed_input);
+      AssertThrow(E.size() == n_solid_parts,
+                  ExcMessage("Inconsistent Youngs' moduli!"));
+      raw_input = prm.get("Poisson's ratio");
+      parsed_input = Utilities::split_string_list(raw_input);
+      nu = Utilities::string_to_double(parsed_input);
+      AssertThrow(nu.size() == n_solid_parts,
+                  ExcMessage("Inconsistent Poisson's ratios!"));
+      // For now, hyperelastic does not support multiple materials
+      raw_input = prm.get("Hyperelastic parameters");
+      parsed_input = Utilities::split_string_list(raw_input);
       C = Utilities::string_to_double(parsed_input);
     }
     prm.leave_subsection();

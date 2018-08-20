@@ -10,9 +10,15 @@ namespace Solid
     LinearElasticity<dim>::LinearElasticity(
       parallel::distributed::Triangulation<dim> &tria,
       const Parameters::AllParameters &parameters)
-      : SolidSolver<dim>(tria, parameters),
-        material(parameters.E, parameters.nu, parameters.solid_rho)
+      : SolidSolver<dim>(tria, parameters)
     {
+      material.resize(parameters.n_solid_parts, LinearElasticMaterial<dim>());
+      for (unsigned int i = 0; i < parameters.n_solid_parts; ++i)
+        {
+          LinearElasticMaterial<dim> tmp(
+            parameters.E[i], parameters.nu[i], parameters.solid_rho);
+          material[i] = tmp;
+        }
     }
 
     template <int dim>
@@ -38,8 +44,8 @@ namespace Solid
         update_values | update_quadrature_points | update_normal_vectors |
           update_JxW_values);
 
-      const SymmetricTensor<4, dim> elasticity = material.get_elasticity();
-      const double rho = material.get_density();
+      SymmetricTensor<4, dim> elasticity;
+      const double rho = material[0].get_density();
       const double dt = time.get_delta_t();
 
       const unsigned int dofs_per_cell = fe.dofs_per_cell;
@@ -73,6 +79,10 @@ namespace Solid
               local_rhs = 0;
 
               fe_values.reinit(cell);
+              int mat_id = cell->material_id();
+              if (material.size() == 1)
+                mat_id = 1;
+              elasticity = material[mat_id - 1].get_elasticity();
 
               // Loop over quadrature points
               for (unsigned int q = 0; q < n_q_points; ++q)

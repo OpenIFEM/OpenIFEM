@@ -99,7 +99,7 @@ namespace Solid
      */
     void run_one_step(bool);
 
-    LinearElasticMaterial<dim> material;
+    std::vector<LinearElasticMaterial<dim>> material;
   };
 } // namespace Solid
 

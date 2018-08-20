@@ -93,10 +93,11 @@ namespace Parameters
   struct SolidMaterial
   {
     std::string solid_type;
-    double solid_rho;      //!< density, used by all types.
-    double E;              //!< Young's modulus, linear elastic material only.
-    double nu;             //!< Poisson's ratio, linear elastic material only.
-    std::vector<double> C; //!< Hyperelastic material constants.
+    unsigned int n_solid_parts;
+    double solid_rho;       //!< density, used by all types.
+    std::vector<double> E;  //!< Young's modulus, linear elastic material only.
+    std::vector<double> nu; //!< Poisson's ratio, linear elastic material only.
+    std::vector<double> C;  //!< Hyperelastic material constants.
     static void declareParameters(ParameterHandler &);
     void parseParameters(ParameterHandler &);
   };

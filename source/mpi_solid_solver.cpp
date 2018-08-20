@@ -190,6 +190,17 @@ namespace Solid
         }
       data_out.add_data_vector(subdomain, "subdomain");
 
+      // material ID
+      Vector<float> mat(triangulation.n_active_cells());
+      int i = 0;
+      for (auto cell = triangulation.begin_active();
+           cell != triangulation.end();
+           ++cell)
+        {
+          mat[i++] = cell->material_id();
+        }
+      data_out.add_data_vector(mat, "material_id");
+
       data_out.build_patches();
 
       std::string basename =

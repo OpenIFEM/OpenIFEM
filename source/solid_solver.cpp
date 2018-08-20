@@ -148,6 +148,8 @@ namespace Solid
       data_component_interpretation(
         dim, DataComponentInterpretation::component_is_part_of_vector);
     DataOut<dim> data_out;
+    data_out.attach_dof_handler(dof_handler);
+
     // displacements
     data_out.add_data_vector(dof_handler,
                              current_displacement,
@@ -159,6 +161,16 @@ namespace Solid
                              current_velocity,
                              solution_names,
                              data_component_interpretation);
+
+    // material ID
+    Vector<float> mat(triangulation.n_active_cells());
+    int i = 0;
+    for (auto cell = triangulation.begin_active(); cell != triangulation.end();
+         ++cell)
+      {
+        mat[i++] = cell->material_id();
+      }
+    data_out.add_data_vector(mat, "material_id");
 
     // strain and stress
     update_strain_and_stress();

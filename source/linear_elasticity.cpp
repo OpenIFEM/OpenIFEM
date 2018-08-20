@@ -7,9 +7,15 @@ namespace Solid
   template <int dim>
   LinearElasticity<dim>::LinearElasticity(
     Triangulation<dim> &tria, const Parameters::AllParameters &parameters)
-    : SolidSolver<dim>(tria, parameters),
-      material(parameters.E, parameters.nu, parameters.solid_rho)
+    : SolidSolver<dim>(tria, parameters)
   {
+    material.resize(parameters.n_solid_parts, LinearElasticMaterial<dim>());
+    for (unsigned int i = 0; i < parameters.n_solid_parts; ++i)
+      {
+        LinearElasticMaterial<dim> tmp(
+          parameters.E[i], parameters.nu[i], parameters.solid_rho);
+        material[i] = tmp;
+      }
   }
 
   template <int dim>
@@ -38,8 +44,8 @@ namespace Solid
                                        update_normal_vectors |
                                        update_JxW_values);
 
-    const SymmetricTensor<4, dim> elasticity = material.get_elasticity();
-    const double rho = material.get_density();
+    SymmetricTensor<4, dim> elasticity;
+    const double rho = material[0].get_density();
     const double dt = time.get_delta_t();
 
     const unsigned int dofs_per_cell = fe.dofs_per_cell;
@@ -66,6 +72,10 @@ namespace Solid
          ++cell)
       {
         auto p = cell_property.get_data(cell);
+        int mat_id = cell->material_id();
+        if (material.size() == 1)
+          mat_id = 1;
+        elasticity = material[mat_id - 1].get_elasticity();
         Assert(p.size() == n_f_q_points * GeometryInfo<dim>::faces_per_cell,
                ExcMessage("Wrong number of cell data!"));
         local_matrix = 0;
@@ -348,7 +358,7 @@ namespace Solid
     FETools::compute_projection_from_quadrature_points_matrix(
       scalar_fe, volume_quad_formula, volume_quad_formula, qpt_to_dof);
 
-    const SymmetricTensor<4, dim> elasticity = material.get_elasticity();
+    SymmetricTensor<4, dim> elasticity;
     const FEValuesExtractors::Vector displacements(0);
 
     FEValues<dim> fe_values(fe,
@@ -364,6 +374,10 @@ namespace Solid
         fe_values.reinit(cell);
         fe_values[displacements].get_function_gradients(
           current_displacement, current_displacement_gradients);
+        int mat_id = cell->material_id();
+        if (!mat_id)
+          mat_id = 1;
+        elasticity = material[mat_id - 1].get_elasticity();
 
         for (unsigned int q = 0; q < volume_quad_formula.size(); ++q)
           {

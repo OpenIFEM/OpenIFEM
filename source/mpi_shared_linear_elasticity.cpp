@@ -9,9 +9,15 @@ namespace Solid
     template <int dim>
     SharedLinearElasticity<dim>::SharedLinearElasticity(
       Triangulation<dim> &tria, const Parameters::AllParameters &parameters)
-      : SharedSolidSolver<dim>(tria, parameters),
-        material(parameters.E, parameters.nu, parameters.solid_rho)
+      : SharedSolidSolver<dim>(tria, parameters)
     {
+      material.resize(parameters.n_solid_parts, LinearElasticMaterial<dim>());
+      for (unsigned int i = 0; i < parameters.n_solid_parts; ++i)
+        {
+          LinearElasticMaterial<dim> tmp(
+            parameters.E[i], parameters.nu[i], parameters.solid_rho);
+          material[i] = tmp;
+        }
     }
 
     template <int dim>
@@ -37,8 +43,8 @@ namespace Solid
         update_values | update_quadrature_points | update_normal_vectors |
           update_JxW_values);
 
-      const SymmetricTensor<4, dim> elasticity = material.get_elasticity();
-      const double rho = material.get_density();
+      SymmetricTensor<4, dim> elasticity;
+      const double rho = material[0].get_density();
       const double dt = time.get_delta_t();
 
       const unsigned int dofs_per_cell = fe.dofs_per_cell;
@@ -68,6 +74,10 @@ namespace Solid
           if (cell->subdomain_id() == this_mpi_process)
             {
               auto p = cell_property.get_data(cell);
+              int mat_id = cell->material_id();
+              if (material.size() == 1)
+                mat_id = 1;
+              elasticity = material[mat_id - 1].get_elasticity();
               Assert(p.size() ==
                        n_f_q_points * GeometryInfo<dim>::faces_per_cell,
                      ExcMessage("Wrong number of cell data!"));
