@@ -1,11 +1,13 @@
 # List all the serial tests
 set(serial_tests acoustic_duct_wave
                  acoustic_pml
+                 fluid_cavity
                  fluid_cylinder
                  fluid_cylinder_insimex
                  fluid_gravity
                  fluid_pipe
                  fluid_pressure_driven
+                 fsi_cavity
                  fsi_gravity
                  fsi_leaflet
                  solid_beam_bending_linearelastic
