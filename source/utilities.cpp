@@ -1,4 +1,5 @@
 #include "utilities.h"
+#include <bitset>
 
 namespace Utils
 {
@@ -24,6 +25,70 @@ namespace Utils
   {
     time_current += delta_t;
     ++timestep;
+  }
+
+  template <int dim, typename VectorType>
+  DiracDeltaInterpolator<dim, VectorType>::DiracDeltaInterpolator(
+    const DoFHandler<dim> &dof_handler, const Point<dim> &point, double h)
+    : dof_handler(dof_handler), target(point), h(h)
+  {
+    const FiniteElement<dim> &fe = dof_handler.get_fe();
+    const std::vector<Point<dim>> &unit_points = fe.get_unit_support_points();
+    Quadrature<dim> dummy_q(unit_points.size());
+    MappingQGeneric<dim> mapping(1);
+    FEValues<dim> dummy_fe_values(
+      mapping, fe, dummy_q, update_quadrature_points);
+    std::vector<types::global_dof_index> dof_indices(fe.dofs_per_cell);
+    for (auto cell : dof_handler.active_cell_iterators())
+      {
+        dummy_fe_values.reinit(cell);
+        cell->get_dof_indices(dof_indices);
+        // Real coordinates of the current cell's support points
+        auto support_points = dummy_fe_values.get_quadrature_points();
+        for (unsigned int v = 0; v < unit_points.size(); ++v)
+          {
+            // Compute the weight of each support point
+            double weight = 1;
+            for (unsigned int d = 0; d < dim; ++d)
+              {
+                double xbar = (unit_points[v][d] - target[d]) / h;
+                weight *= (std::abs(xbar) <= 2 ? xbar * 0.25 * (1 +
+                           std::cos(M_PI * xbar / 2)) : 0);
+              }
+            // If weight is nonzero then it is an influential point
+            if (weight > 0)
+              {
+                sources.push_back(std::make_tuple(cell, v, weight));
+              }
+          }
+      }
+  }
+
+  template <int dim, typename VectorType>
+  void DiracDeltaInterpolator<dim, VectorType>::interpolate(
+      const VectorType &source_vector,
+      Vector<typename VectorType::value_type> &target_vector)
+  {
+    std::vector<bool> bs(dof_handler.n_dofs(), false);
+    target_vector = 0;
+    const FiniteElement<dim> &fe = dof_handler.get_fe();
+    std::vector<types::global_dof_index> dof_indices(fe.dofs_per_cell);
+    for (auto p : sources)
+      {
+        std::get<0>(p)->get_dof_indices(dof_indices);
+        // Vector component of this support point
+        auto d = fe.system_to_component_index(std::get<1>(p)).first;
+        AssertThrow(d < dim, ExcMessage("Vector component not less than dim!"));
+        // Global dof index of this support point
+        auto index = dof_indices[std::get<1>(p)];
+        AssertThrow(index < dof_handler.n_dofs(), ExcMessage("Wrong index of global dof!"));
+        if (!bs[index])
+          {
+            // Interpolate
+            target_vector[d] += std::get<2>(p) * source_vector[index];
+            bs[index] = true;
+          }
+      }
   }
 
   template <int dim, typename VectorType>
@@ -107,13 +172,6 @@ namespace Utils
     fe_values.get_function_gradients(fe_function, u_gradient);
     gradient = u_gradient[0];
   }
-
-  template class GridInterpolator<2, Vector<double>>;
-  template class GridInterpolator<3, Vector<double>>;
-  template class GridInterpolator<2, BlockVector<double>>;
-  template class GridInterpolator<3, BlockVector<double>>;
-  template class GridInterpolator<2, PETScWrappers::MPI::BlockVector>;
-  template class GridInterpolator<3, PETScWrappers::MPI::BlockVector>;
 
   // Written by Davis Wells on dealii mailing list.
   template <int dim>
@@ -365,4 +423,12 @@ namespace Utils
 
   template class GridCreator<2>;
   template class GridCreator<3>;
+  template class GridInterpolator<2, Vector<double>>;
+  template class GridInterpolator<3, Vector<double>>;
+  template class GridInterpolator<2, BlockVector<double>>;
+  template class GridInterpolator<3, BlockVector<double>>;
+  template class GridInterpolator<2, PETScWrappers::MPI::BlockVector>;
+  template class GridInterpolator<3, PETScWrappers::MPI::BlockVector>;
+  template class DiracDeltaInterpolator<2, Vector<double>>;
+  template class DiracDeltaInterpolator<3, Vector<double>>;
 } // namespace Utils
