@@ -52,8 +52,9 @@ namespace Utils
             for (unsigned int d = 0; d < dim; ++d)
               {
                 double xbar = (unit_points[v][d] - target[d]) / h;
-                weight *= (std::abs(xbar) <= 2 ? xbar * 0.25 * (1 +
-                           std::cos(M_PI * xbar / 2)) : 0);
+                weight *= (std::abs(xbar) <= 2
+                             ? xbar * 0.25 * (1 + std::cos(M_PI * xbar / 2))
+                             : 0);
               }
             // If weight is nonzero then it is an influential point
             if (weight > 0)
@@ -66,8 +67,8 @@ namespace Utils
 
   template <int dim, typename VectorType>
   void DiracDeltaInterpolator<dim, VectorType>::interpolate(
-      const VectorType &source_vector,
-      Vector<typename VectorType::value_type> &target_vector)
+    const VectorType &source_vector,
+    Vector<typename VectorType::value_type> &target_vector)
   {
     std::vector<bool> bs(dof_handler.n_dofs(), false);
     target_vector = 0;
@@ -81,7 +82,8 @@ namespace Utils
         AssertThrow(d < dim, ExcMessage("Vector component not less than dim!"));
         // Global dof index of this support point
         auto index = dof_indices[std::get<1>(p)];
-        AssertThrow(index < dof_handler.n_dofs(), ExcMessage("Wrong index of global dof!"));
+        AssertThrow(index < dof_handler.n_dofs(),
+                    ExcMessage("Wrong index of global dof!"));
         if (!bs[index])
           {
             // Interpolate

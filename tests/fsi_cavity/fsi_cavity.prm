@@ -8,7 +8,7 @@
 # Simulation parameters
 subsection Simulation
   # Type of simulation: FSI/Fluid/Solid
-  set Simulation type =  Fluid
+  set Simulation type =  FSI
 
   # The dimension of the simulation
   set Dimension = 2
@@ -121,7 +121,7 @@ subsection Solid material properties
   set Poisson's ratio = 0.25
 
   # A list of parameters used by hyperelasticMaterial
-  set Hyperelastic parameters = 0.05, 2.5
+  set Hyperelastic parameters = 5, 250
 end
 
 subsection Solid solver control

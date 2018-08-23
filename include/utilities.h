@@ -148,8 +148,9 @@ namespace Utils
      * as there is no convenient way to express "global node id".
      */
     std::vector<std::tuple<typename DoFHandler<dim>::active_cell_iterator,
-                unsigned int,
-                double>> sources;
+                           unsigned int,
+                           double>>
+      sources;
   };
 } // namespace Utils
 
