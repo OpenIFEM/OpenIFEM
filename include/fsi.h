@@ -56,6 +56,12 @@ private:
    */
   void find_solid_bc();
 
+  /*! \brief Interpolate the fluid velocity to solid vertices.
+   *
+   *  This is IFEM, not mIFEM.
+   */
+  void update_solid_displacement();
+
   /*! \brief Compute the Dirichlet BCs on the artificial fluid using solid
    * velocity,
    *         as well as the fsi stress and acceleration terms at the artificial
