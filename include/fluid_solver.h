@@ -110,11 +110,16 @@ namespace Fluid
     /// Output in vtu format.
     void output_results(const unsigned int) const;
 
+    /// Update stress to output
+    virtual void update_stress();
+
     std::vector<types::global_dof_index> dofs_per_block;
 
     Triangulation<dim> &triangulation;
     FESystem<dim> fe;
+    FE_Q<dim> scalar_fe;
     DoFHandler<dim> dof_handler;
+    DoFHandler<dim> scalar_dof_handler;
     QGauss<dim> volume_quad_formula;
     QGauss<dim - 1> face_quad_formula;
 
@@ -131,6 +136,14 @@ namespace Fluid
     BlockVector<double> present_solution;
     BlockVector<double> solution_increment;
     BlockVector<double> system_rhs;
+
+    /**
+     * Nodal strain and stress obtained by taking the average of surrounding
+     * cell-averaged strains and stresses. Their sizes are
+     * [dim, dim, scalar_dof_handler.n_dofs()], i.e., stress[i][j][k]
+     * denotes sigma_{ij} at vertex k.
+     */
+    mutable std::vector<std::vector<Vector<double>>> stress;
 
     Utils::Time time;
     mutable TimerOutput timer;

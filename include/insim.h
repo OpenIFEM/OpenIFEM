@@ -61,7 +61,9 @@ namespace Fluid
     using FluidSolver<dim>::dofs_per_block;
     using FluidSolver<dim>::triangulation;
     using FluidSolver<dim>::fe;
+    using FluidSolver<dim>::scalar_fe;
     using FluidSolver<dim>::dof_handler;
+    using FluidSolver<dim>::scalar_dof_handler;
     using FluidSolver<dim>::volume_quad_formula;
     using FluidSolver<dim>::face_quad_formula;
     using FluidSolver<dim>::zero_constraints;
@@ -79,6 +81,7 @@ namespace Fluid
     using FluidSolver<dim>::parameters;
     using FluidSolver<dim>::cell_property;
     using FluidSolver<dim>::boundary_values;
+    using FluidSolver<dim>::stress;
 
     /// Specify the sparsity pattern and reinit matrices and vectors based on
     /// the dofs and constraints.
@@ -117,6 +120,8 @@ namespace Fluid
      */
     void run_one_step(bool apply_nonzero_constraints,
                       bool assemble_system = true) override;
+
+    void update_stress() override;
 
     /// The increment at a certain Newton iteration.
     BlockVector<double> newton_update;
