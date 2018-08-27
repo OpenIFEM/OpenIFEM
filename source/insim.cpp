@@ -1,6 +1,6 @@
 #include "insim.h"
-#include <deal.II/physics/elasticity/standard_tensors.h>
 #include <deal.II/physics/elasticity/kinematics.h>
+#include <deal.II/physics/elasticity/standard_tensors.h>
 
 namespace Fluid
 {
@@ -280,8 +280,7 @@ namespace Fluid
                   {
                     local_rhs(i) +=
                       (scalar_product(grad_phi_u[i], p[q]->fsi_stress) +
-                       ((parameters.solid_rho - parameters.fluid_rho) *
-                        p[q]->fsi_acceleration * phi_u[i])) *
+                       p[q]->fsi_acceleration * phi_u[i]) *
                       fe_values.JxW(q);
                   }
               }
@@ -515,8 +514,8 @@ namespace Fluid
         fe_values.reinit(cell);
 
         // Fluid symmetric velocity gradient
-        fe_values[velocities].get_function_symmetric_gradients(
-          present_solution, sym_grad_v);
+        fe_values[velocities].get_function_symmetric_gradients(present_solution,
+                                                               sym_grad_v);
         // Fluid pressure
         fe_values[pressure].get_function_values(present_solution, p);
 
@@ -525,7 +524,7 @@ namespace Fluid
           {
             SymmetricTensor<2, dim> sigma =
               -p[q] * Physics::Elasticity::StandardTensors<dim>::I +
-                parameters.viscosity * sym_grad_v[q];
+              2 * parameters.viscosity * sym_grad_v[q];
             for (unsigned int i = 0; i < dim; ++i)
               {
                 for (unsigned int j = 0; j < dim; ++j)

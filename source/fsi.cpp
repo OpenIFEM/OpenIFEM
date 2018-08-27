@@ -73,11 +73,12 @@ void FSI<dim>::update_solid_displacement()
     {
       for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
         {
-          if (!vertex_touched[cell->vertex_index(v)])
+          if (!vertex_touched[cell->vertex_index(v)] &&
+              !solid_solver.constraints.is_constrained(cell->vertex_index(v)))
             {
               vertex_touched[cell->vertex_index(v)] = true;
               Point<dim> point = cell->vertex(v);
-              Vector<double> tmp(dim+1);
+              Vector<double> tmp(dim + 1);
               VectorTools::point_value(fluid_solver.dof_handler,
                                        fluid_solver.present_solution,
                                        point,
@@ -190,7 +191,8 @@ void FSI<dim>::find_fluid_bc()
           for (unsigned int i = 0; i < dim; ++i)
             {
               ptr[q]->fsi_acceleration[i] =
-                parameters.gravity[i] - solid_acc[i];
+                (parameters.solid_rho - parameters.fluid_rho) *
+                (parameters.gravity[i] - solid_acc[i]);
             }
           // stress: sigma^f - sigma^s
           SymmetricTensor<2, dim> solid_sigma;
@@ -208,7 +210,7 @@ void FSI<dim>::find_fluid_bc()
             }
           ptr[q]->fsi_stress =
             -p[q] * Physics::Elasticity::StandardTensors<dim>::I +
-            parameters.viscosity * sym_grad_v[q] - solid_sigma;
+            2 * parameters.viscosity * sym_grad_v[q] - solid_sigma;
         }
     }
   move_solid_mesh(false);
@@ -266,7 +268,7 @@ void FSI<dim>::find_solid_bc()
                   // \f$ \sigma = -p\bold{I} + \mu\nabla^S v\f$
                   SymmetricTensor<2, dim> stress =
                     -value[dim] * Physics::Elasticity::StandardTensors<dim>::I +
-                    parameters.viscosity * sym_deformation;
+                    2 * parameters.viscosity * sym_deformation;
                   ptr[f * n_face_q_points + q]->fsi_traction = stress * normal;
                 }
             }
