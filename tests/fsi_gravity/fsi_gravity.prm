@@ -121,7 +121,7 @@ subsection Solid material properties
   set Poisson's ratio = 0.48
 
   # A list of parameters used by hyperelasticMaterial
-  set Hyperelastic parameters = 1.69e7, 8.33e8 # E = 1e7, nu = 0.48
+  set Hyperelastic parameters = 1.69e6, 8.33e7 # E = 1e7, nu = 0.48
 end
 
 subsection Solid solver control
