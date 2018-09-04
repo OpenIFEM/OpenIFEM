@@ -1,4 +1,6 @@
 #include "insim.h"
+#include <deal.II/physics/elasticity/kinematics.h>
+#include <deal.II/physics/elasticity/standard_tensors.h>
 
 namespace Fluid
 {
@@ -66,8 +68,8 @@ namespace Fluid
       TimerOutput::Scope timer_section(timer, "CG for Mp");
 
       // CG solver used for \f$M_p^{-1}\f$ and \f$S_m^{-1}\f$.
-      SolverControl solver_control(src.block(1).size(),
-                                   1e-6 * src.block(1).l2_norm());
+      SolverControl solver_control(
+        src.block(1).size(), std::max(1e-6 * src.block(1).l2_norm(), 1e-10));
       SolverCG<> cg_mp(solver_control);
 
       // \f$-(\mu + \gamma\rho)M_p^{-1}v_1\f$
@@ -80,8 +82,8 @@ namespace Fluid
 
     {
       TimerOutput::Scope timer_section(timer, "CG for Sm");
-      SolverControl solver_control(src.block(1).size(),
-                                   1e-6 * src.block(1).l2_norm());
+      SolverControl solver_control(
+        src.block(1).size(), std::max(1e-3 * src.block(1).l2_norm(), 1e-10));
       // FIXME: There is a mysterious bug here. After refine_mesh is called,
       // the initialization of Sm_preconditioner will complain about zero
       // entries on the diagonal which causes division by 0. Same thing happens
@@ -278,8 +280,7 @@ namespace Fluid
                   {
                     local_rhs(i) +=
                       (scalar_product(grad_phi_u[i], p[q]->fsi_stress) +
-                       ((parameters.solid_rho - parameters.fluid_rho) *
-                        p[q]->fsi_acceleration * phi_u[i])) *
+                       p[q]->fsi_acceleration * phi_u[i]) *
                       fe_values.JxW(q);
                   }
               }
@@ -352,7 +353,7 @@ namespace Fluid
     // as opposed to SolverGMRES which allows both left and right
     // preconditoners.
     SolverControl solver_control(
-      system_matrix.m(), 1e-4 * system_rhs.l2_norm(), true);
+      system_matrix.m(), std::max(1e-4 * system_rhs.l2_norm(), 1e-12), true);
     GrowingVectorMemory<BlockVector<double>> vector_memory;
     SolverFGMRES<BlockVector<double>> gmres(solver_control, vector_memory);
 
@@ -433,6 +434,8 @@ namespace Fluid
     solution_increment -= present_solution;
     // Newton iteration converges, update time and solution
     present_solution = evaluation_point;
+    // Update stress for output
+    update_stress();
     // Output
     if (time.time_to_output())
       {
@@ -461,6 +464,100 @@ namespace Fluid
     while (time.end() - time.current() > 1e-12)
       {
         run_one_step(false);
+      }
+  }
+
+  template <int dim>
+  void InsIM<dim>::update_stress()
+  {
+    for (unsigned int i = 0; i < dim; ++i)
+      {
+        for (unsigned int j = 0; j < dim; ++j)
+          {
+            stress[i][j] = 0.0;
+          }
+      }
+    std::vector<int> surrounding_cells(scalar_dof_handler.n_dofs(), 0);
+    // The stress tensors are stored as 2D vectors of shape dim*dim
+    // at cell and quadrature point level.
+    std::vector<std::vector<Vector<double>>> cell_stress(
+      dim,
+      std::vector<Vector<double>>(dim,
+                                  Vector<double>(scalar_fe.dofs_per_cell)));
+    std::vector<std::vector<Vector<double>>> quad_stress(
+      dim,
+      std::vector<Vector<double>>(dim,
+                                  Vector<double>(volume_quad_formula.size())));
+
+    // The projection matrix from quadrature points to the dofs.
+    FullMatrix<double> qpt_to_dof(scalar_fe.dofs_per_cell,
+                                  volume_quad_formula.size());
+    FETools::compute_projection_from_quadrature_points_matrix(
+      scalar_fe, volume_quad_formula, volume_quad_formula, qpt_to_dof);
+
+    FEValues<dim> fe_values(fe,
+                            volume_quad_formula,
+                            update_values | update_gradients |
+                              update_quadrature_points | update_JxW_values);
+    const unsigned int n_q_points = volume_quad_formula.size();
+    const FEValuesExtractors::Vector velocities(0);
+    const FEValuesExtractors::Scalar pressure(dim);
+    std::vector<SymmetricTensor<2, dim>> sym_grad_v(n_q_points);
+    std::vector<double> p(n_q_points);
+
+    auto cell = dof_handler.begin_active();
+    auto scalar_cell = scalar_dof_handler.begin_active();
+    std::vector<types::global_dof_index> dof_indices(scalar_fe.dofs_per_cell);
+    for (; cell != dof_handler.end(); ++cell, ++scalar_cell)
+      {
+        scalar_cell->get_dof_indices(dof_indices);
+        fe_values.reinit(cell);
+
+        // Fluid symmetric velocity gradient
+        fe_values[velocities].get_function_symmetric_gradients(present_solution,
+                                                               sym_grad_v);
+        // Fluid pressure
+        fe_values[pressure].get_function_values(present_solution, p);
+
+        // Loop over all quadrature points to set FSI forces.
+        for (unsigned int q = 0; q < volume_quad_formula.size(); ++q)
+          {
+            SymmetricTensor<2, dim> sigma =
+              -p[q] * Physics::Elasticity::StandardTensors<dim>::I +
+              2 * parameters.viscosity * sym_grad_v[q];
+            for (unsigned int i = 0; i < dim; ++i)
+              {
+                for (unsigned int j = 0; j < dim; ++j)
+                  {
+                    quad_stress[i][j][q] = sigma[i][j];
+                  }
+              }
+          }
+
+        for (unsigned int i = 0; i < dim; ++i)
+          {
+            for (unsigned int j = 0; j < dim; ++j)
+              {
+                qpt_to_dof.vmult(cell_stress[i][j], quad_stress[i][j]);
+                for (unsigned int k = 0; k < scalar_fe.dofs_per_cell; ++k)
+                  {
+                    stress[i][j][dof_indices[k]] += cell_stress[i][j][k];
+                    if (i == 0 && j == 0)
+                      surrounding_cells[dof_indices[k]]++;
+                  }
+              }
+          }
+      }
+
+    for (unsigned int i = 0; i < dim; ++i)
+      {
+        for (unsigned int j = 0; j < dim; ++j)
+          {
+            for (unsigned int k = 0; k < scalar_dof_handler.n_dofs(); ++k)
+              {
+                stress[i][j][k] /= surrounding_cells[k];
+              }
+          }
       }
   }
 

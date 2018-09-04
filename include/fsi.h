@@ -6,6 +6,7 @@
 
 #include "fluid_solver.h"
 #include "solid_solver.h"
+#include "utilities.h"
 
 using namespace dealii;
 
@@ -17,6 +18,8 @@ extern template class Utils::GridInterpolator<2, Vector<double>>;
 extern template class Utils::GridInterpolator<3, Vector<double>>;
 extern template class Utils::GridInterpolator<2, BlockVector<double>>;
 extern template class Utils::GridInterpolator<3, BlockVector<double>>;
+extern template class Utils::DiracDeltaInterpolator<2, Vector<double>>;
+extern template class Utils::DiracDeltaInterpolator<3, Vector<double>>;
 
 template <int dim>
 class FSI
@@ -52,6 +55,12 @@ private:
    *  those points, based on which the fluid traction is calculated.
    */
   void find_solid_bc();
+
+  /*! \brief Interpolate the fluid velocity to solid vertices.
+   *
+   *  This is IFEM, not mIFEM.
+   */
+  void update_solid_displacement();
 
   /*! \brief Compute the Dirichlet BCs on the artificial fluid using solid
    * velocity,

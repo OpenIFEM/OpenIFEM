@@ -63,6 +63,38 @@ bool FSI<dim>::point_in_mesh(const DoFHandler<dim> &df, const Point<dim> &point)
   return false;
 }
 
+template <int dim>
+void FSI<dim>::update_solid_displacement()
+{
+  move_solid_mesh(true);
+  auto displacement = solid_solver.current_displacement;
+  std::vector<bool> vertex_touched(solid_solver.dof_handler.n_dofs(), false);
+  for (auto cell : solid_solver.dof_handler.active_cell_iterators())
+    {
+      for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
+        {
+          if (!vertex_touched[cell->vertex_index(v)] &&
+              !solid_solver.constraints.is_constrained(cell->vertex_index(v)))
+            {
+              vertex_touched[cell->vertex_index(v)] = true;
+              Point<dim> point = cell->vertex(v);
+              Vector<double> tmp(dim + 1);
+              VectorTools::point_value(fluid_solver.dof_handler,
+                                       fluid_solver.present_solution,
+                                       point,
+                                       tmp);
+              for (unsigned int d = 0; d < dim; ++d)
+                {
+                  displacement[cell->vertex_dof_index(v, d)] +=
+                    tmp[d] * time.get_delta_t();
+                }
+            }
+        }
+    }
+  move_solid_mesh(false);
+  solid_solver.current_displacement = displacement;
+}
+
 // Dirichlet bcs are applied to artificial fluid cells, so fluid nodes should
 // be marked as artificial or real. Meanwhile, additional body force is
 // applied to the artificial fluid quadrature points. To accomodate these two
@@ -303,7 +335,7 @@ void FSI<dim>::find_solid_bc()
                   // \f$ \sigma = -p\bold{I} + \mu\nabla^S v\f$
                   SymmetricTensor<2, dim> stress =
                     -value[dim] * Physics::Elasticity::StandardTensors<dim>::I +
-                    parameters.viscosity * sym_deformation;
+                    2 * parameters.viscosity * sym_deformation;
                   ptr[f * n_face_q_points + q]->fsi_traction = stress * normal;
                 }
             }

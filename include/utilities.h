@@ -125,6 +125,33 @@ namespace Utils
     std::pair<typename DoFHandler<dim>::active_cell_iterator, Point<dim>>
       cell_point;
   };
+
+  template <int dim, typename VectorType>
+  class DiracDeltaInterpolator
+  {
+  public:
+    DiracDeltaInterpolator(const DoFHandler<dim> &, const Point<dim> &, double);
+    void interpolate(const VectorType &,
+                     Vector<typename VectorType::value_type> &);
+
+  private:
+    /// Source DoFHandler
+    const DoFHandler<dim> &dof_handler;
+    /// Target point to interpolate to
+    const Point<dim> &target;
+    /// Background mesh size
+    double h;
+    /**
+     * Source nodes that contribute to the target point,
+     * denoted as pairs of cell iterator, supporting point id,
+     * and weight
+     * as there is no convenient way to express "global node id".
+     */
+    std::vector<std::tuple<typename DoFHandler<dim>::active_cell_iterator,
+                           unsigned int,
+                           double>>
+      sources;
+  };
 } // namespace Utils
 
 #endif

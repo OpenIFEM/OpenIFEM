@@ -17,7 +17,9 @@ namespace Fluid
          dim,
          FE_Q<dim>(parameters.fluid_pressure_degree),
          1),
+      scalar_fe(parameters.fluid_velocity_degree),
       dof_handler(triangulation),
+      scalar_dof_handler(triangulation),
       volume_quad_formula(parameters.fluid_velocity_degree + 1),
       face_quad_formula(parameters.fluid_velocity_degree + 1),
       time(parameters.end_time,
@@ -36,6 +38,7 @@ namespace Fluid
   {
     // The first step is to associate DoFs with a given mesh.
     dof_handler.distribute_dofs(fe);
+    scalar_dof_handler.distribute_dofs(scalar_fe);
 
     // We renumber the components to have all velocity DoFs come before
     // the pressure DoFs to be able to split the solution vector in two blocks
@@ -201,6 +204,11 @@ namespace Fluid
 
     // Cell property
     setup_cell_property();
+
+    stress = std::vector<std::vector<Vector<double>>>(
+      dim,
+      std::vector<Vector<double>>(dim,
+                                  Vector<double>(scalar_dof_handler.n_dofs())));
   }
 
   template <int dim>
@@ -295,6 +303,17 @@ namespace Fluid
       }
     data_out.add_data_vector(ind, "Indicator");
 
+    // stress
+    data_out.add_data_vector(scalar_dof_handler, stress[0][0], "Sxx");
+    data_out.add_data_vector(scalar_dof_handler, stress[0][1], "Sxy");
+    data_out.add_data_vector(scalar_dof_handler, stress[1][1], "Syy");
+    if (dim == 3)
+      {
+        data_out.add_data_vector(scalar_dof_handler, stress[0][2], "Sxz");
+        data_out.add_data_vector(scalar_dof_handler, stress[1][2], "Syz");
+        data_out.add_data_vector(scalar_dof_handler, stress[2][2], "Szz");
+      }
+
     data_out.build_patches(parameters.fluid_velocity_degree);
 
     std::string basename = "fluid";
@@ -308,6 +327,18 @@ namespace Fluid
     times_and_names.push_back({time.current(), filename});
     std::ofstream pvd_output(basename + ".pvd");
     DataOutBase::write_pvd_record(pvd_output, times_and_names);
+  }
+
+  template <int dim>
+  void FluidSolver<dim>::update_stress()
+  {
+    for (unsigned int i = 0; i < dim; ++i)
+      {
+        for (unsigned int j = 0; j < dim; ++j)
+          {
+            stress[i][j] = 0;
+          }
+      }
   }
 
   template class FluidSolver<2>;
