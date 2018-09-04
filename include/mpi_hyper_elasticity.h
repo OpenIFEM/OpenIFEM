@@ -41,7 +41,7 @@ namespace Internal
     }
     virtual ~PointHistory() {}
     /** Initialize the members with the input parameters */
-    void setup(const Parameters::AllParameters &);
+    void setup(const Parameters::AllParameters &, const unsigned int &);
     /**
      * Update the state with the displacement gradient
      * in the reference configuration.

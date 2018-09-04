@@ -344,6 +344,7 @@ namespace Parameters
                   ExcMessage("Number of solid part less than 1!"));
       E.resize(n_solid_parts, 0);
       nu.resize(n_solid_parts, 0);
+      C.resize(n_solid_parts);
       solid_rho = prm.get_double("Solid density");
       std::string raw_input = prm.get("Young's modulus");
       std::vector<std::string> parsed_input =
@@ -356,10 +357,22 @@ namespace Parameters
       nu = Utilities::string_to_double(parsed_input);
       AssertThrow(nu.size() == n_solid_parts,
                   ExcMessage("Inconsistent Poisson's ratios!"));
-      // For now, hyperelastic does not support multiple materials
       raw_input = prm.get("Hyperelastic parameters");
       parsed_input = Utilities::split_string_list(raw_input);
-      C = Utilities::string_to_double(parsed_input);
+      // declare the size for each vector defining one hyperelastic material
+      unsigned int size_per_material;
+      if (solid_type == "NeoHooken")
+        // Only NeoHooken for now
+        size_per_material = 2;
+      AssertThrow(parsed_input.size() >= size_per_material * n_solid_parts,
+                  ExcMessage("Insufficient material properties input!"));
+      std::vector<double> tmp_C = Utilities::string_to_double(parsed_input);
+      for (unsigned int i = 0; i < n_solid_parts; ++i)
+        {
+          C[i].resize(size_per_material, 0);
+          for (unsigned int j = 0; j < size_per_material; ++j)
+            C[i][j] = tmp_C[i * size_per_material + j];
+        }
     }
     prm.leave_subsection();
   }

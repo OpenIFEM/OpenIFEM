@@ -5,13 +5,15 @@ namespace Internal
   using namespace dealii;
 
   template <int dim>
-  void PointHistory<dim>::setup(const Parameters::AllParameters &parameters)
+  void PointHistory<dim>::setup(const Parameters::AllParameters &parameters,
+                                const unsigned int &mat_id)
   {
     if (parameters.solid_type == "NeoHookean")
       {
-        Assert(parameters.C.size() >= 2, ExcInternalError());
-        material.reset(new Solid::NeoHookean<dim>(
-          parameters.C[0], parameters.C[1], parameters.solid_rho));
+        Assert(parameters.C[mat_id - 1].size() >= 2, ExcInternalError());
+        material.reset(new Solid::NeoHookean<dim>(parameters.C[mat_id - 1][0],
+                                                  parameters.C[mat_id - 1][1],
+                                                  parameters.solid_rho));
         update(parameters, Tensor<2, dim>());
       }
     else
@@ -204,13 +206,16 @@ namespace Solid
         {
           if (cell->subdomain_id() != this_mpi_process)
             continue;
+          unsigned int mat_id = cell->material_id();
+          if (parameters.n_solid_parts == 1)
+            mat_id = 1;
           quad_point_history.initialize(cell, n_q_points);
           const std::vector<std::shared_ptr<Internal::PointHistory<dim>>> lqph =
             quad_point_history.get_data(cell);
           Assert(lqph.size() == n_q_points, ExcInternalError());
           for (unsigned int q = 0; q < n_q_points; ++q)
             {
-              lqph[q]->setup(parameters);
+              lqph[q]->setup(parameters, mat_id);
             }
         }
     }
