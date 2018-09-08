@@ -19,6 +19,8 @@ extern template class Utils::GridInterpolator<2,
                                               PETScWrappers::MPI::BlockVector>;
 extern template class Utils::GridInterpolator<3,
                                               PETScWrappers::MPI::BlockVector>;
+extern template class Utils::DiracDeltaInterpolator<2, Vector<double>>;
+extern template class Utils::DiracDeltaInterpolator<3, Vector<double>>;
 
 namespace MPI
 {
@@ -57,6 +59,12 @@ namespace MPI
      * at those points, based on which the fluid traction is calculated.
      */
     void find_solid_bc();
+
+    /*! \brief Interpolate the fluid velocity to solid vertices.
+     *
+     *  This is IFEM, not mIFEM.
+     */
+    void update_solid_displacement();
 
     /*! \brief Compute the Dirichlet BCs on the artificial fluid using solid
      * velocity,

@@ -523,6 +523,19 @@ namespace Solid
       timer.leave_subsection();
     }
 
+    template <int dim>
+    void SharedHyperElasticity<dim>::update_strain_and_stress()
+    {
+      for (unsigned int i = 0; i < dim; ++i)
+        {
+          for (unsigned int j = 0; j < dim; ++j)
+            {
+              strain[i][j] = 0.0;
+              stress[i][j] = 0.0;
+            }
+        }
+    }
+
     template class SharedHyperElasticity<2>;
     template class SharedHyperElasticity<3>;
   } // namespace MPI

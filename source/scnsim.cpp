@@ -163,6 +163,7 @@ namespace Fluid
 
     present_solution.reinit(dofs_per_block);
     newton_update.reinit(dofs_per_block);
+    solution_increment.reinit(dofs_per_block);
     evaluation_point.reinit(dofs_per_block);
     system_rhs.reinit(dofs_per_block);
 
@@ -596,6 +597,9 @@ namespace Fluid
 
         outer_iteration++;
       }
+    // Update solution increment, which is used in FSI application.
+    solution_increment = evaluation_point;
+    solution_increment -= present_solution;
     // Newton iteration converges, update time and solution
     present_solution = evaluation_point;
     // Output

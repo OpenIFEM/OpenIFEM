@@ -70,6 +70,7 @@ namespace Fluid
     using FluidSolver<dim>::sparsity_pattern;
     using FluidSolver<dim>::system_matrix;
     using FluidSolver<dim>::present_solution;
+    using FluidSolver<dim>::solution_increment;
     using FluidSolver<dim>::system_rhs;
     using FluidSolver<dim>::time;
     using FluidSolver<dim>::timer;

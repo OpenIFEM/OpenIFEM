@@ -52,9 +52,9 @@ namespace Solid
       using SharedSolidSolver<dim>::triangulation;
       using SharedSolidSolver<dim>::parameters;
       using SharedSolidSolver<dim>::dof_handler;
-      using SharedSolidSolver<dim>::dg_dof_handler;
+      using SharedSolidSolver<dim>::scalar_dof_handler;
       using SharedSolidSolver<dim>::fe;
-      using SharedSolidSolver<dim>::dg_fe;
+      using SharedSolidSolver<dim>::scalar_fe;
       using SharedSolidSolver<dim>::volume_quad_formula;
       using SharedSolidSolver<dim>::face_quad_formula;
       using SharedSolidSolver<dim>::constraints;
@@ -67,6 +67,8 @@ namespace Solid
       using SharedSolidSolver<dim>::previous_acceleration;
       using SharedSolidSolver<dim>::previous_velocity;
       using SharedSolidSolver<dim>::previous_displacement;
+      using SharedSolidSolver<dim>::strain;
+      using SharedSolidSolver<dim>::stress;
       using SharedSolidSolver<dim>::mpi_communicator;
       using SharedSolidSolver<dim>::n_mpi_processes;
       using SharedSolidSolver<dim>::this_mpi_process;
@@ -83,6 +85,11 @@ namespace Solid
        * at all the following steps, it is \f$ M + \beta{\Delta{t}}^2K \f$.
        */
       void assemble_system(bool is_initial);
+
+      /**
+       * Update the strain and stress, used in output_results and FSI.
+       */
+      virtual void update_strain_and_stress() override;
 
       void run_one_step(bool first_step);
 

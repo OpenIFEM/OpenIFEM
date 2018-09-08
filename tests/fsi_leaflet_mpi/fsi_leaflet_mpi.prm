@@ -15,10 +15,10 @@ subsection Simulation
 
   # Level of global refinement before running,
   # which applies to all the solvers
-  set Global refinements = 1, 0
+  set Global refinements = 0, 2
 
   # The end time of the simulation in second
-  set End time = 1e0
+  set End time = 2e0
 
   # The time step in second
   set Time step size = 5e-3
@@ -27,7 +27,7 @@ subsection Simulation
   set Output interval = 5e-3
 
   # Mesh refinement interval in second
-  set Refinement interval = 100
+  set Refinement interval = 5e2
 
   # Checkpoint save interval in second
   set Save interval = 100
@@ -70,7 +70,7 @@ subsection Fluid Dirichlet BCs
   # Note: even if this variable is set to 1, the following 3 variables
   # will still be used so that the hard-coded values BCs applies to the
   # target boundaries and directions only.
-  set Use hard-coded boundary values = 0
+  set Use hard-coded boundary values = 1
 
   # Number of boundaries with Dirichlet BCs
   set Number of Dirichlet BCs = 3
@@ -113,7 +113,7 @@ subsection Solid material properties
   set Solid type = NeoHookean
 
   # Solid density, used by all solid solvers
-  set Solid density = 7.8
+  set Solid density = 6
 
   # E and nu are only used by linearElasticMaterial
   set Young's modulus = 2.78e4
@@ -121,12 +121,12 @@ subsection Solid material properties
   set Poisson's ratio = 0.48
 
   # A list of parameters used by hyperelasticMaterial
-  set Hyperelastic parameters = 1.69e3, 2.5e5 # E = 1e4, nu = 0.48
+  set Hyperelastic parameters = 1.69e4, 8.33e5 # E = 1e5, nu = 0.48
 end
 
 subsection Solid solver control
   # Artifitial damping.
-  set Damping = 0.0
+  set Damping = 0.1
 
   # Number of Newton-Raphson iterations allowed, used by hyperelastic solver only
   set Max Newton iterations = 10
@@ -164,7 +164,7 @@ subsection Solid Neumann BCs
   set Neumann boundary id = 0
 
   # Traction/Pressure, currently they cannot coexist.
-  set Neumann boundary type = FSI
+  set Neumann boundary type = Pressure
 
   # If traction, dim*n_solid_neumann_bcs components are expected;
   # if pressure, n_solid_neumann_bcs components are expected.

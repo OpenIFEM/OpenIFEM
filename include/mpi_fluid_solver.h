@@ -126,6 +126,9 @@ namespace Fluid
       /// Output in vtu format.
       void output_results(const unsigned int) const;
 
+      /// Update stress to output
+      virtual void update_stress();
+
       /// Save checkpoint for restart.
       void save_checkpoint(const int);
 
@@ -150,7 +153,16 @@ namespace Fluid
 
       /// The latest known solution.
       PETScWrappers::MPI::BlockVector present_solution;
+      PETScWrappers::MPI::BlockVector solution_increment;
       PETScWrappers::MPI::BlockVector system_rhs;
+
+      /**
+       * Nodal strain and stress obtained by taking the average of surrounding
+       * cell-averaged strains and stresses. Their sizes are
+       * [dim, dim, scalar_dof_handler.n_dofs()], i.e., stress[i][j][k]
+       * denotes sigma_{ij} at vertex k.
+       */
+      mutable std::vector<std::vector<PETScWrappers::MPI::Vector>> stress;
 
       Parameters::AllParameters parameters;
 

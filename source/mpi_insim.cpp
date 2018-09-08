@@ -459,8 +459,18 @@ namespace Fluid
 
           outer_iteration++;
         }
+      // Update solution increment, which is used in FSI application.
+      PETScWrappers::MPI::BlockVector tmp1, tmp2;
+      tmp1.reinit(owned_partitioning, mpi_communicator);
+      tmp2.reinit(owned_partitioning, mpi_communicator);
+      tmp1 = evaluation_point;
+      tmp2 = present_solution;
+      tmp2 -= tmp1;
+      solution_increment = tmp2;
       // Newton iteration converges, update time and solution
       present_solution = evaluation_point;
+      // Update stress for output
+      update_stress();
       // Output
       if (time.time_to_output())
         {

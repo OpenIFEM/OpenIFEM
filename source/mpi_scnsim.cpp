@@ -252,6 +252,13 @@ namespace Fluid
       // output and mesh refinement functions.
       present_solution.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
+      solution_increment.reinit(
+        owned_partitioning, relevant_partitioning, mpi_communicator);
+      stress = std::vector<std::vector<PETScWrappers::MPI::Vector>>(
+        dim,
+        std::vector<PETScWrappers::MPI::Vector>(
+          dim,
+          PETScWrappers::MPI::Vector(owned_partitioning[1], mpi_communicator)));
       // newton_update is non-ghosted because the linear solver needs
       // a completely distributed vector.
       newton_update.reinit(owned_partitioning, mpi_communicator);
@@ -721,8 +728,18 @@ namespace Fluid
                 << preconditioner->get_Tpp_itr_count() << std::endl;
           outer_iteration++;
         }
+      // Update solution increment, which is used in FSI application.
+      PETScWrappers::MPI::BlockVector tmp1, tmp2;
+      tmp1.reinit(owned_partitioning, mpi_communicator);
+      tmp2.reinit(owned_partitioning, mpi_communicator);
+      tmp1 = evaluation_point;
+      tmp2 = present_solution;
+      tmp2 -= tmp1;
+      solution_increment = tmp2;
       // Newton iteration converges, update time and solution
       present_solution = evaluation_point;
+      // Update stress for output
+      update_stress();
       // Output
       if (time.time_to_output())
         {

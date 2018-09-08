@@ -247,6 +247,13 @@ namespace Fluid
       // output and mesh refinement functions.
       present_solution.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
+      solution_increment.reinit(
+        owned_partitioning, relevant_partitioning, mpi_communicator);
+      stress = std::vector<std::vector<PETScWrappers::MPI::Vector>>(
+        dim,
+        std::vector<PETScWrappers::MPI::Vector>(
+          dim,
+          PETScWrappers::MPI::Vector(owned_partitioning[1], mpi_communicator)));
       // system_rhs is non-ghosted because it is only used in the linear
       // solver and residual evaluation.
       system_rhs.reinit(owned_partitioning, mpi_communicator);
@@ -500,6 +507,18 @@ namespace Fluid
       pcout << "Checkpoint file successfully loaded from time step "
             << time.get_timestep() << "!" << std::endl;
       return true;
+    }
+
+    template <int dim>
+    void FluidSolver<dim>::update_stress()
+    {
+      for (unsigned int i = 0; i < dim; ++i)
+        {
+          for (unsigned int j = 0; j < dim; ++j)
+            {
+              stress[i][j] = 0;
+            }
+        }
     }
 
     template class FluidSolver<2>;

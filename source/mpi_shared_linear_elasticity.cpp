@@ -292,6 +292,19 @@ namespace Solid
         }
     }
 
+    template <int dim>
+    void SharedLinearElasticity<dim>::update_strain_and_stress()
+    {
+      for (unsigned int i = 0; i < dim; ++i)
+        {
+          for (unsigned int j = 0; j < dim; ++j)
+            {
+              strain[i][j] = 0.0;
+              stress[i][j] = 0.0;
+            }
+        }
+    }
+
     template class SharedLinearElasticity<2>;
     template class SharedLinearElasticity<3>;
   } // namespace MPI

@@ -55,6 +55,7 @@ namespace Fluid
       using FluidSolver<dim>::initialize_system;
       using FluidSolver<dim>::refine_mesh;
       using FluidSolver<dim>::output_results;
+      using FluidSolver<dim>::update_stress;
 
       using FluidSolver<dim>::dofs_per_block;
       using FluidSolver<dim>::triangulation;
@@ -69,7 +70,9 @@ namespace Fluid
       using FluidSolver<dim>::mass_matrix;
       using FluidSolver<dim>::mass_schur;
       using FluidSolver<dim>::present_solution;
+      using FluidSolver<dim>::solution_increment;
       using FluidSolver<dim>::system_rhs;
+      using FluidSolver<dim>::stress;
       using FluidSolver<dim>::parameters;
       using FluidSolver<dim>::mpi_communicator;
       using FluidSolver<dim>::pcout;
