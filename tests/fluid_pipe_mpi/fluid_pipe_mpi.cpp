@@ -27,13 +27,18 @@ int main(int argc, char *argv[])
         }
       Parameters::AllParameters params(infile);
 
-      double L = 2.0, D = 0.2;
+      double L = 2.0, D = 0.2, h = 0.04;
 
       if (params.dimension == 2)
         {
           parallel::distributed::Triangulation<2> tria(MPI_COMM_WORLD);
           dealii::GridGenerator::subdivided_hyper_rectangle(
-            tria, {100, 5}, Point<2>(0, 0), Point<2>(L, D / 2), true);
+            tria,
+            {static_cast<unsigned int>(L / h),
+             static_cast<unsigned int>(D / (2 * h))},
+            Point<2>(0, 0),
+            Point<2>(L, D / 2),
+            true);
           Fluid::MPI::InsIM<2> flow(tria, params);
           flow.run();
           auto solution = flow.get_current_solution();
@@ -43,15 +48,20 @@ int main(int argc, char *argv[])
           auto v = solution.block(0);
           double vmax = v.max();
           double verror = std::abs(vmax - 1.5) / 1.5;
-          AssertThrow(verror < 1e-3,
+          AssertThrow(verror < 1e-2,
                       ExcMessage("Maximum velocity is incorrect!"));
         }
       else if (params.dimension == 3)
         {
           parallel::distributed::Triangulation<3> tria(MPI_COMM_WORLD);
-          dealii::GridGenerator::cylinder(tria, D / 2, L / 2);
-          static const CylindricalManifold<3> cylinder;
-          tria.set_manifold(0, cylinder);
+          dealii::GridGenerator::subdivided_hyper_rectangle(
+            tria,
+            {static_cast<unsigned int>(D / (2 * h)),
+             static_cast<unsigned int>(D / (2 * h)),
+             static_cast<unsigned int>(L / h)},
+            Point<3>(0, 0, 0),
+            Point<3>(D / 2, D / 2, L),
+            true);
           Fluid::MPI::InsIM<3> flow(tria, params);
           flow.run();
         }
