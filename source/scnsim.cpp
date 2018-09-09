@@ -598,6 +598,8 @@ namespace Fluid
       }
     // Newton iteration converges, update time and solution
     present_solution = evaluation_point;
+    // Update stress for output
+    update_stress();
     // Output
     if (time.time_to_output())
       {
