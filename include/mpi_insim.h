@@ -79,6 +79,7 @@ namespace Fluid
       using FluidSolver<dim>::times_and_names;
       using FluidSolver<dim>::time;
       using FluidSolver<dim>::timer;
+      using FluidSolver<dim>::timer2;
       using FluidSolver<dim>::cell_property;
       using FluidSolver<dim>::boundary_values;
 
@@ -173,6 +174,7 @@ namespace Fluid
         /// Constructor.
         BlockSchurPreconditioner(
           TimerOutput &timer,
+          TimerOutput &timer2,
           double gamma,
           double viscosity,
           double rho,
@@ -188,6 +190,7 @@ namespace Fluid
 
       private:
         TimerOutput &timer;
+        TimerOutput &timer2;
         const double gamma;
         const double viscosity;
         const double rho;

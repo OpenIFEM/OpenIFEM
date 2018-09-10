@@ -12,6 +12,7 @@ namespace Fluid
     template <int dim>
     InsIM<dim>::BlockSchurPreconditioner::BlockSchurPreconditioner(
       TimerOutput &timer,
+      TimerOutput &timer2,
       double gamma,
       double viscosity,
       double rho,
@@ -21,6 +22,7 @@ namespace Fluid
       const PETScWrappers::MPI::BlockSparseMatrix &mass,
       PETScWrappers::MPI::BlockSparseMatrix &schur)
       : timer(timer),
+        timer2(timer2),
         gamma(gamma),
         viscosity(viscosity),
         rho(rho),
@@ -30,7 +32,7 @@ namespace Fluid
         mass_schur(&schur),
         A_inverse(dummy_sc, system_matrix->get_mpi_communicator())
     {
-      TimerOutput::Scope timer_section(timer, "CG for Sm");
+      TimerOutput::Scope timer_section(timer2, "CG for Sm");
       // The sparsity pattern of mass_schur is already set,
       // we calculate its value in the following.
       PETScWrappers::MPI::BlockVector tmp1, tmp2;
@@ -67,11 +69,11 @@ namespace Fluid
       // is spent on different solvers.
       // The next two blocks computes \f$u_1 = \tilde{S}^{-1} v_1\f$.
       {
-        TimerOutput::Scope timer_section(timer, "CG for Mp");
+        TimerOutput::Scope timer_section(timer2, "CG for Mp");
 
         // CG solver used for \f$M_p^{-1}\f$ and \f$S_m^{-1}\f$.
-        SolverControl solver_control(src.block(1).size(),
-                                     1e-6 * src.block(1).l2_norm());
+        SolverControl solver_control(
+          src.block(1).size(), std::max(1e-10, 1e-6 * src.block(1).l2_norm()));
         PETScWrappers::SolverCG cg_mp(solver_control,
                                       mass_schur->get_mpi_communicator());
 
@@ -84,9 +86,9 @@ namespace Fluid
       }
 
       {
-        TimerOutput::Scope timer_section(timer, "CG for Sm");
-        SolverControl solver_control(src.block(1).size(),
-                                     1e-6 * src.block(1).l2_norm());
+        TimerOutput::Scope timer_section(timer2, "CG for Sm");
+        SolverControl solver_control(
+          src.block(1).size(), std::max(1e-10, 1e-3 * src.block(1).l2_norm()));
         // FIXME: There is a mysterious bug here. After refine_mesh is called,
         // the initialization of Sm_preconditioner will complain about zero
         // entries on the diagonal which causes division by 0 since
@@ -122,7 +124,7 @@ namespace Fluid
       // Finally, compute the product of \f$\tilde{A}^{-1}\f$ and utmp with
       // the direct solver.
       {
-        TimerOutput::Scope timer_section(timer, "MUMPS for A_inv");
+        TimerOutput::Scope timer_section(timer2, "MUMPS for A_inv");
         A_inverse.solve(system_matrix->block(0, 0), dst.block(0), utmp);
       }
     }
@@ -364,6 +366,7 @@ namespace Fluid
     {
       TimerOutput::Scope timer_section(timer, "Solve linear system");
       preconditioner.reset(new BlockSchurPreconditioner(timer,
+                                                        timer2,
                                                         parameters.grad_div,
                                                         parameters.viscosity,
                                                         parameters.fluid_rho,
@@ -374,7 +377,7 @@ namespace Fluid
                                                         mass_schur));
 
       SolverControl solver_control(
-        system_matrix.m(), 1e-8 * system_rhs.l2_norm(), true);
+        system_matrix.m(), std::max(1e-12, 1e-4 * system_rhs.l2_norm()), true);
       // Because PETScWrappers::SolverGMRES requires preconditioner derived
       // from PETScWrappers::PreconditionBase, we use dealii SolverFGMRES.
       GrowingVectorMemory<PETScWrappers::MPI::BlockVector> vector_memory;
@@ -416,7 +419,7 @@ namespace Fluid
       unsigned int outer_iteration = 0;
       evaluation_point = present_solution;
       while (relative_residual > parameters.fluid_tolerance &&
-             current_residual > 1e-14)
+             current_residual > 1e-11)
         {
           AssertThrow(outer_iteration < parameters.fluid_max_iterations,
                       ExcMessage("Too many Newton iterations!"));
