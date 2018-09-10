@@ -124,6 +124,7 @@ namespace Solid
       using SharedSolidSolver<dim>::time;
       using SharedSolidSolver<dim>::timer;
       using SharedSolidSolver<dim>::locally_owned_dofs;
+      using SharedSolidSolver<dim>::locally_owned_scalar_dofs;
       using SharedSolidSolver<dim>::locally_relevant_dofs;
       using SharedSolidSolver<dim>::times_and_names;
       using SharedSolidSolver<dim>::cell_property;

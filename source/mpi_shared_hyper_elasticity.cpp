@@ -534,6 +534,111 @@ namespace Solid
               stress[i][j] = 0.0;
             }
         }
+      PETScWrappers::MPI::Vector surrounding_cells(locally_owned_scalar_dofs,
+                                                   mpi_communicator);
+      surrounding_cells = 0.0;
+      // The strain and stress tensors are stored as 2D vectors of shape dim*dim
+      // at cell and quadrature point level.
+      std::vector<std::vector<Vector<double>>> cell_strain(
+        dim,
+        std::vector<Vector<double>>(dim,
+                                    Vector<double>(scalar_fe.dofs_per_cell)));
+      std::vector<std::vector<Vector<double>>> cell_stress(
+        dim,
+        std::vector<Vector<double>>(dim,
+                                    Vector<double>(scalar_fe.dofs_per_cell)));
+      std::vector<std::vector<Vector<double>>> quad_strain(
+        dim,
+        std::vector<Vector<double>>(
+          dim, Vector<double>(volume_quad_formula.size())));
+      std::vector<std::vector<Vector<double>>> quad_stress(
+        dim,
+        std::vector<Vector<double>>(
+          dim, Vector<double>(volume_quad_formula.size())));
+
+      // Displacement gradients at quadrature points.
+      std::vector<Tensor<2, dim>> current_displacement_gradients(
+        volume_quad_formula.size());
+
+      // The projection matrix from quadrature points to the dofs.
+      FullMatrix<double> qpt_to_dof(scalar_fe.dofs_per_cell,
+                                    volume_quad_formula.size());
+      FETools::compute_projection_from_quadrature_points_matrix(
+        scalar_fe, volume_quad_formula, volume_quad_formula, qpt_to_dof);
+
+      const FEValuesExtractors::Vector displacements(0);
+
+      FEValues<dim> fe_values(fe,
+                              volume_quad_formula,
+                              update_values | update_gradients |
+                                update_quadrature_points | update_JxW_values);
+      auto cell = dof_handler.begin_active();
+      auto scalar_cell = scalar_dof_handler.begin_active();
+      Vector<double> local_sorrounding_cells(scalar_fe.dofs_per_cell);
+      local_sorrounding_cells = 1.0;
+
+      Vector<double> localized_current_displacement(current_displacement);
+
+      for (; cell != dof_handler.end(); ++cell, ++scalar_cell)
+        {
+          if (cell->subdomain_id() == this_mpi_process)
+            {
+              fe_values.reinit(cell);
+              const std::vector<std::shared_ptr<Internal::PointHistory<dim>>>
+                lqph = quad_point_history.get_data(cell);
+
+              for (unsigned int q = 0; q < volume_quad_formula.size(); ++q)
+                {
+                  const SymmetricTensor<2, dim> tau = lqph[q]->get_tau();
+                  const Tensor<2, dim> F = invert(lqph[q]->get_F_inv());
+                  const double J = lqph[q]->get_det_F();
+                  for (unsigned int i = 0; i < dim; ++i)
+                    {
+                      for (unsigned int j = 0; j < dim; ++j)
+                        {
+                          quad_strain[i][j][q] = F[i][j];
+                          quad_stress[i][j][q] = tau[i][j] / J;
+                        }
+                    }
+                }
+
+              for (unsigned int i = 0; i < dim; ++i)
+                {
+                  for (unsigned int j = 0; j < dim; ++j)
+                    {
+                      qpt_to_dof.vmult(cell_strain[i][j], quad_strain[i][j]);
+                      qpt_to_dof.vmult(cell_stress[i][j], quad_stress[i][j]);
+                      scalar_cell->distribute_local_to_global(cell_strain[i][j],
+                                                              strain[i][j]);
+                      scalar_cell->distribute_local_to_global(cell_stress[i][j],
+                                                              stress[i][j]);
+                    }
+                }
+              scalar_cell->distribute_local_to_global(local_sorrounding_cells,
+                                                      surrounding_cells);
+            }
+        }
+      surrounding_cells.compress(VectorOperation::add);
+
+      for (unsigned int i = 0; i < dim; ++i)
+        {
+          for (unsigned int j = 0; j < dim; ++j)
+            {
+              strain[i][j].compress(VectorOperation::add);
+              stress[i][j].compress(VectorOperation::add);
+              const unsigned int local_begin =
+                surrounding_cells.local_range().first;
+              const unsigned int local_end =
+                surrounding_cells.local_range().second;
+              for (unsigned int k = local_begin; k < local_end; ++k)
+                {
+                  strain[i][j][k] /= surrounding_cells[k];
+                  stress[i][j][k] /= surrounding_cells[k];
+                }
+              strain[i][j].compress(VectorOperation::insert);
+              stress[i][j].compress(VectorOperation::insert);
+            }
+        }
     }
 
     template class SharedHyperElasticity<2>;
