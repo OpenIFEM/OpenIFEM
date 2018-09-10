@@ -175,6 +175,8 @@ namespace Solid
               << "Displacement:\t" << normalized_error_update << std::endl
               << "Force: \t\t" << normalized_error_residual << std::endl;
 
+    update_strain_and_stress();
+
     if (time.time_to_output())
       {
         this->output_results(time.get_timestep());

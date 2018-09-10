@@ -93,7 +93,7 @@ namespace Fluid
       virtual void run() = 0;
 
       //! Destructor
-      ~FluidSolver() { timer.print_summary(); }
+      ~FluidSolver();
 
       //! Return the solution for testing.
       PETScWrappers::MPI::BlockVector get_current_solution() const;
@@ -185,6 +185,7 @@ namespace Fluid
 
       Utils::Time time;
       mutable TimerOutput timer;
+      mutable TimerOutput timer2;
 
       CellDataStorage<
         typename parallel::distributed::Triangulation<dim>::cell_iterator,

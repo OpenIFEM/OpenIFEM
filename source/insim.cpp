@@ -1,6 +1,4 @@
 #include "insim.h"
-#include <deal.II/physics/elasticity/kinematics.h>
-#include <deal.II/physics/elasticity/standard_tensors.h>
 
 namespace Fluid
 {
@@ -464,100 +462,6 @@ namespace Fluid
     while (time.end() - time.current() > 1e-12)
       {
         run_one_step(false);
-      }
-  }
-
-  template <int dim>
-  void InsIM<dim>::update_stress()
-  {
-    for (unsigned int i = 0; i < dim; ++i)
-      {
-        for (unsigned int j = 0; j < dim; ++j)
-          {
-            stress[i][j] = 0.0;
-          }
-      }
-    std::vector<int> surrounding_cells(scalar_dof_handler.n_dofs(), 0);
-    // The stress tensors are stored as 2D vectors of shape dim*dim
-    // at cell and quadrature point level.
-    std::vector<std::vector<Vector<double>>> cell_stress(
-      dim,
-      std::vector<Vector<double>>(dim,
-                                  Vector<double>(scalar_fe.dofs_per_cell)));
-    std::vector<std::vector<Vector<double>>> quad_stress(
-      dim,
-      std::vector<Vector<double>>(dim,
-                                  Vector<double>(volume_quad_formula.size())));
-
-    // The projection matrix from quadrature points to the dofs.
-    FullMatrix<double> qpt_to_dof(scalar_fe.dofs_per_cell,
-                                  volume_quad_formula.size());
-    FETools::compute_projection_from_quadrature_points_matrix(
-      scalar_fe, volume_quad_formula, volume_quad_formula, qpt_to_dof);
-
-    FEValues<dim> fe_values(fe,
-                            volume_quad_formula,
-                            update_values | update_gradients |
-                              update_quadrature_points | update_JxW_values);
-    const unsigned int n_q_points = volume_quad_formula.size();
-    const FEValuesExtractors::Vector velocities(0);
-    const FEValuesExtractors::Scalar pressure(dim);
-    std::vector<SymmetricTensor<2, dim>> sym_grad_v(n_q_points);
-    std::vector<double> p(n_q_points);
-
-    auto cell = dof_handler.begin_active();
-    auto scalar_cell = scalar_dof_handler.begin_active();
-    std::vector<types::global_dof_index> dof_indices(scalar_fe.dofs_per_cell);
-    for (; cell != dof_handler.end(); ++cell, ++scalar_cell)
-      {
-        scalar_cell->get_dof_indices(dof_indices);
-        fe_values.reinit(cell);
-
-        // Fluid symmetric velocity gradient
-        fe_values[velocities].get_function_symmetric_gradients(present_solution,
-                                                               sym_grad_v);
-        // Fluid pressure
-        fe_values[pressure].get_function_values(present_solution, p);
-
-        // Loop over all quadrature points to set FSI forces.
-        for (unsigned int q = 0; q < volume_quad_formula.size(); ++q)
-          {
-            SymmetricTensor<2, dim> sigma =
-              -p[q] * Physics::Elasticity::StandardTensors<dim>::I +
-              2 * parameters.viscosity * sym_grad_v[q];
-            for (unsigned int i = 0; i < dim; ++i)
-              {
-                for (unsigned int j = 0; j < dim; ++j)
-                  {
-                    quad_stress[i][j][q] = sigma[i][j];
-                  }
-              }
-          }
-
-        for (unsigned int i = 0; i < dim; ++i)
-          {
-            for (unsigned int j = 0; j < dim; ++j)
-              {
-                qpt_to_dof.vmult(cell_stress[i][j], quad_stress[i][j]);
-                for (unsigned int k = 0; k < scalar_fe.dofs_per_cell; ++k)
-                  {
-                    stress[i][j][dof_indices[k]] += cell_stress[i][j][k];
-                    if (i == 0 && j == 0)
-                      surrounding_cells[dof_indices[k]]++;
-                  }
-              }
-          }
-      }
-
-    for (unsigned int i = 0; i < dim; ++i)
-      {
-        for (unsigned int j = 0; j < dim; ++j)
-          {
-            for (unsigned int k = 0; k < scalar_dof_handler.n_dofs(); ++k)
-              {
-                stress[i][j][k] /= surrounding_cells[k];
-              }
-          }
       }
   }
 

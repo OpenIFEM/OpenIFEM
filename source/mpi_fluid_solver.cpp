@@ -5,6 +5,13 @@ namespace Fluid
   namespace MPI
   {
     template <int dim>
+    FluidSolver<dim>::~FluidSolver()
+    {
+      timer.print_summary();
+      timer2.print_summary();
+    }
+
+    template <int dim>
     PETScWrappers::MPI::BlockVector
     FluidSolver<dim>::get_current_solution() const
     {
@@ -34,6 +41,8 @@ namespace Fluid
              parameters.refinement_interval,
              parameters.save_interval),
         timer(
+          mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times),
+        timer2(
           mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times),
         boundary_values(bc)
     {

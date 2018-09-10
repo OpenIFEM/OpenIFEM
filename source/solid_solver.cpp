@@ -173,7 +173,6 @@ namespace Solid
     data_out.add_data_vector(mat, "material_id");
 
     // strain and stress
-    update_strain_and_stress();
     data_out.add_data_vector(scalar_dof_handler, strain[0][0], "Exx");
     data_out.add_data_vector(scalar_dof_handler, strain[0][1], "Exy");
     data_out.add_data_vector(scalar_dof_handler, strain[1][1], "Eyy");

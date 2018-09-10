@@ -57,6 +57,7 @@ namespace Fluid
     using FluidSolver<dim>::initialize_system;
     using FluidSolver<dim>::refine_mesh;
     using FluidSolver<dim>::output_results;
+    using FluidSolver<dim>::update_stress;
 
     using FluidSolver<dim>::dofs_per_block;
     using FluidSolver<dim>::triangulation;
@@ -120,8 +121,6 @@ namespace Fluid
      */
     void run_one_step(bool apply_nonzero_constraints,
                       bool assemble_system = true) override;
-
-    void update_stress() override;
 
     /// The increment at a certain Newton iteration.
     BlockVector<double> newton_update;
