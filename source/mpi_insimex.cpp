@@ -421,6 +421,9 @@ namespace Fluid
       pcout << std::scientific << std::left << " GMRES_ITR = " << std::setw(3)
             << state.first << " GMRES_RES = " << state.second << std::endl;
 
+      // Update stress for output
+      update_stress();
+
       // Output
       if (time.time_to_output())
         {

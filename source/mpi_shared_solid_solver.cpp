@@ -196,8 +196,7 @@ namespace Solid
       // to sned their data to process 0, which is automatically done
       // in this copy constructor.
       Vector<double> solution(current_displacement);
-      // strain and stress
-      update_strain_and_stress();
+
       std::vector<std::vector<Vector<double>>> localized_strain(
         dim, std::vector<Vector<double>>(dim));
       std::vector<std::vector<Vector<double>>> localized_stress(

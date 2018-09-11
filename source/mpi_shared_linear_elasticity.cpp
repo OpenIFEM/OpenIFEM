@@ -272,6 +272,9 @@ namespace Solid
       pcout << std::scientific << std::left << " CG iteration: " << std::setw(3)
             << state.first << " CG residual: " << state.second << std::endl;
 
+      // strain and stress
+      update_strain_and_stress();
+
       if (time.time_to_output())
         {
           this->output_results(time.get_timestep());
