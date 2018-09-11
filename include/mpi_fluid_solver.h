@@ -26,6 +26,8 @@
 #include <deal.II/lac/petsc_sparse_matrix.h>
 #include <deal.II/lac/petsc_vector.h>
 
+#include <deal.II/physics/elasticity/standard_tensors.h>
+
 #include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/grid_refinement.h>
 #include <deal.II/grid/grid_tools.h>
@@ -139,7 +141,9 @@ namespace Fluid
 
       parallel::distributed::Triangulation<dim> &triangulation;
       FESystem<dim> fe;
+      FE_Q<dim> scalar_fe;
       DoFHandler<dim> dof_handler;
+      DoFHandler<dim> scalar_dof_handler;
       QGauss<dim> volume_quad_formula;
       QGauss<dim - 1> face_quad_formula;
 
@@ -175,6 +179,11 @@ namespace Fluid
 
       /// The IndexSets of relevant velocity and pressure respectively.
       std::vector<IndexSet> relevant_partitioning;
+
+      /// The IndexSets of owned and relevant sclalar dofs for stress
+      /// computation.
+      IndexSet locally_owned_scalar_dofs;
+      IndexSet locally_relevant_scalar_dofs;
 
       /// The IndexSet of all relevant dofs. This seems to be redundant but
       /// handy.

@@ -254,11 +254,6 @@ namespace Fluid
         owned_partitioning, relevant_partitioning, mpi_communicator);
       solution_increment.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
-      stress = std::vector<std::vector<PETScWrappers::MPI::Vector>>(
-        dim,
-        std::vector<PETScWrappers::MPI::Vector>(
-          dim,
-          PETScWrappers::MPI::Vector(owned_partitioning[1], mpi_communicator)));
       // newton_update is non-ghosted because the linear solver needs
       // a completely distributed vector.
       newton_update.reinit(owned_partitioning, mpi_communicator);
@@ -271,6 +266,13 @@ namespace Fluid
 
       // Cell property
       setup_cell_property();
+
+      stress = std::vector<std::vector<PETScWrappers::MPI::Vector>>(
+        dim,
+        std::vector<PETScWrappers::MPI::Vector>(
+          dim,
+          PETScWrappers::MPI::Vector(locally_owned_scalar_dofs,
+                                     mpi_communicator)));
     }
 
     template <int dim>

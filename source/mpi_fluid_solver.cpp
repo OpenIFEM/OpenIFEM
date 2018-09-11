@@ -28,7 +28,9 @@ namespace Fluid
            dim,
            FE_Q<dim>(parameters.fluid_pressure_degree),
            1),
+        scalar_fe(parameters.fluid_velocity_degree),
         dof_handler(triangulation),
+        scalar_dof_handler(triangulation),
         volume_quad_formula(parameters.fluid_velocity_degree + 1),
         face_quad_formula(parameters.fluid_velocity_degree + 1),
         parameters(parameters),
@@ -53,6 +55,7 @@ namespace Fluid
     {
       // The first step is to associate DoFs with a given mesh.
       dof_handler.distribute_dofs(fe);
+      scalar_dof_handler.distribute_dofs(scalar_fe);
 
       // We renumber the components to have all velocity DoFs come before
       // the pressure DoFs to be able to split the solution vector in two blocks
@@ -61,6 +64,7 @@ namespace Fluid
       std::vector<unsigned int> block_component(dim + 1, 0);
       block_component[dim] = 1;
       DoFRenumbering::component_wise(dof_handler, block_component);
+      DoFRenumbering::component_wise(scalar_dof_handler);
 
       dofs_per_block.resize(2);
       DoFTools::count_dofs_per_block(
@@ -84,6 +88,10 @@ namespace Fluid
       relevant_partitioning[0] = locally_relevant_dofs.get_view(0, dof_u);
       relevant_partitioning[1] =
         locally_relevant_dofs.get_view(dof_u, dof_u + dof_p);
+
+      locally_owned_scalar_dofs = scalar_dof_handler.locally_owned_dofs();
+      DoFTools::extract_locally_relevant_dofs(scalar_dof_handler,
+                                              locally_relevant_scalar_dofs);
 
       pcout << "   Number of active fluid cells: "
             << triangulation.n_global_active_cells() << std::endl
@@ -258,17 +266,19 @@ namespace Fluid
         owned_partitioning, relevant_partitioning, mpi_communicator);
       solution_increment.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
-      stress = std::vector<std::vector<PETScWrappers::MPI::Vector>>(
-        dim,
-        std::vector<PETScWrappers::MPI::Vector>(
-          dim,
-          PETScWrappers::MPI::Vector(owned_partitioning[1], mpi_communicator)));
       // system_rhs is non-ghosted because it is only used in the linear
       // solver and residual evaluation.
       system_rhs.reinit(owned_partitioning, mpi_communicator);
 
       // Cell property
       setup_cell_property();
+
+      stress = std::vector<std::vector<PETScWrappers::MPI::Vector>>(
+        dim,
+        std::vector<PETScWrappers::MPI::Vector>(
+          dim,
+          PETScWrappers::MPI::Vector(locally_owned_scalar_dofs,
+                                     mpi_communicator)));
     }
 
     template <int dim>
@@ -340,6 +350,16 @@ namespace Fluid
       std::vector<std::string> solution_names(dim, "velocity");
       solution_names.push_back("pressure");
 
+      std::vector<std::vector<PETScWrappers::MPI::Vector>> tmp_stress =
+        std::vector<std::vector<PETScWrappers::MPI::Vector>>(
+          dim,
+          std::vector<PETScWrappers::MPI::Vector>(
+            dim,
+            PETScWrappers::MPI::Vector(locally_owned_scalar_dofs,
+                                       locally_relevant_scalar_dofs,
+                                       mpi_communicator)));
+      tmp_stress = stress;
+
       std::vector<DataComponentInterpretation::DataComponentInterpretation>
         data_component_interpretation(
           dim, DataComponentInterpretation::component_is_part_of_vector);
@@ -383,6 +403,18 @@ namespace Fluid
             }
         }
       data_out.add_data_vector(ind, "Indicator");
+
+      // stress
+      data_out.add_data_vector(scalar_dof_handler, tmp_stress[0][0], "Sxx");
+      data_out.add_data_vector(scalar_dof_handler, tmp_stress[0][1], "Sxy");
+      data_out.add_data_vector(scalar_dof_handler, tmp_stress[1][1], "Syy");
+      if (dim == 3)
+        {
+          data_out.add_data_vector(scalar_dof_handler, tmp_stress[0][2], "Sxz");
+          data_out.add_data_vector(scalar_dof_handler, tmp_stress[1][2], "Syz");
+          data_out.add_data_vector(scalar_dof_handler, tmp_stress[2][2], "Szz");
+        }
+
       data_out.build_patches(parameters.fluid_velocity_degree);
 
       std::string basename =
@@ -526,6 +558,97 @@ namespace Fluid
           for (unsigned int j = 0; j < dim; ++j)
             {
               stress[i][j] = 0;
+            }
+        }
+      PETScWrappers::MPI::Vector surrounding_cells(locally_owned_scalar_dofs,
+                                                   mpi_communicator);
+      surrounding_cells = 0.0;
+      // The stress tensors are stored as 2D vectors of shape dim*dim
+      // at cell and quadrature point level.
+      std::vector<std::vector<Vector<double>>> cell_stress(
+        dim,
+        std::vector<Vector<double>>(dim,
+                                    Vector<double>(scalar_fe.dofs_per_cell)));
+      std::vector<std::vector<Vector<double>>> quad_stress(
+        dim,
+        std::vector<Vector<double>>(
+          dim, Vector<double>(volume_quad_formula.size())));
+
+      // The projection matrix from quadrature points to the dofs.
+      FullMatrix<double> qpt_to_dof(scalar_fe.dofs_per_cell,
+                                    volume_quad_formula.size());
+      FETools::compute_projection_from_quadrature_points_matrix(
+        scalar_fe, volume_quad_formula, volume_quad_formula, qpt_to_dof);
+
+      FEValues<dim> fe_values(fe,
+                              volume_quad_formula,
+                              update_values | update_gradients |
+                                update_quadrature_points | update_JxW_values);
+      const unsigned int n_q_points = volume_quad_formula.size();
+      const FEValuesExtractors::Vector velocities(0);
+      const FEValuesExtractors::Scalar pressure(dim);
+      std::vector<SymmetricTensor<2, dim>> sym_grad_v(n_q_points);
+      std::vector<double> p(n_q_points);
+
+      auto cell = dof_handler.begin_active();
+      auto scalar_cell = scalar_dof_handler.begin_active();
+      Vector<double> local_sorrounding_cells(scalar_fe.dofs_per_cell);
+      local_sorrounding_cells = 1.0;
+      for (; cell != dof_handler.end(); ++cell, ++scalar_cell)
+        {
+          if (!cell->is_locally_owned())
+            continue;
+          fe_values.reinit(cell);
+
+          // Fluid symmetric velocity gradient
+          fe_values[velocities].get_function_symmetric_gradients(
+            present_solution, sym_grad_v);
+          // Fluid pressure
+          fe_values[pressure].get_function_values(present_solution, p);
+
+          // Loop over all quadrature points to set FSI forces.
+          for (unsigned int q = 0; q < volume_quad_formula.size(); ++q)
+            {
+              SymmetricTensor<2, dim> sigma =
+                -p[q] * Physics::Elasticity::StandardTensors<dim>::I +
+                2 * parameters.viscosity * sym_grad_v[q];
+              for (unsigned int i = 0; i < dim; ++i)
+                {
+                  for (unsigned int j = 0; j < dim; ++j)
+                    {
+                      quad_stress[i][j][q] = sigma[i][j];
+                    }
+                }
+            }
+
+          for (unsigned int i = 0; i < dim; ++i)
+            {
+              for (unsigned int j = 0; j < dim; ++j)
+                {
+                  qpt_to_dof.vmult(cell_stress[i][j], quad_stress[i][j]);
+                  scalar_cell->distribute_local_to_global(cell_stress[i][j],
+                                                          stress[i][j]);
+                }
+            }
+          scalar_cell->distribute_local_to_global(local_sorrounding_cells,
+                                                  surrounding_cells);
+        }
+      surrounding_cells.compress(VectorOperation::add);
+
+      for (unsigned int i = 0; i < dim; ++i)
+        {
+          for (unsigned int j = 0; j < dim; ++j)
+            {
+              stress[i][j].compress(VectorOperation::add);
+              const unsigned int local_begin =
+                surrounding_cells.local_range().first;
+              const unsigned int local_end =
+                surrounding_cells.local_range().second;
+              for (unsigned int k = local_begin; k < local_end; ++k)
+                {
+                  stress[i][j][k] /= surrounding_cells[k];
+                }
+              stress[i][j].compress(VectorOperation::insert);
             }
         }
     }

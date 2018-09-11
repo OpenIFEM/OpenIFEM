@@ -73,6 +73,7 @@ namespace Fluid
     using FluidSolver<dim>::present_solution;
     using FluidSolver<dim>::solution_increment;
     using FluidSolver<dim>::system_rhs;
+    using FluidSolver<dim>::stress;
     using FluidSolver<dim>::time;
     using FluidSolver<dim>::timer;
     using FluidSolver<dim>::parameters;

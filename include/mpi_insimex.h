@@ -55,7 +55,9 @@ namespace Fluid
       using FluidSolver<dim>::dofs_per_block;
       using FluidSolver<dim>::triangulation;
       using FluidSolver<dim>::fe;
+      using FluidSolver<dim>::scalar_fe;
       using FluidSolver<dim>::dof_handler;
+      using FluidSolver<dim>::scalar_dof_handler;
       using FluidSolver<dim>::volume_quad_formula;
       using FluidSolver<dim>::face_quad_formula;
       using FluidSolver<dim>::zero_constraints;
@@ -71,7 +73,9 @@ namespace Fluid
       using FluidSolver<dim>::pcout;
       using FluidSolver<dim>::owned_partitioning;
       using FluidSolver<dim>::relevant_partitioning;
+      using FluidSolver<dim>::locally_owned_scalar_dofs;
       using FluidSolver<dim>::locally_relevant_dofs;
+      using FluidSolver<dim>::locally_relevant_scalar_dofs;
       using FluidSolver<dim>::times_and_names;
       using FluidSolver<dim>::time;
       using FluidSolver<dim>::timer;
