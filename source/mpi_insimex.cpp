@@ -7,6 +7,7 @@ namespace Fluid
     template <int dim>
     InsIMEX<dim>::BlockSchurPreconditioner::BlockSchurPreconditioner(
       TimerOutput &timer,
+      TimerOutput &timer2,
       double gamma,
       double viscosity,
       double rho,
@@ -16,6 +17,7 @@ namespace Fluid
       const PETScWrappers::MPI::BlockSparseMatrix &mass,
       PETScWrappers::MPI::BlockSparseMatrix &schur)
       : timer(timer),
+        timer2(timer2),
         gamma(gamma),
         viscosity(viscosity),
         rho(rho),
@@ -24,7 +26,7 @@ namespace Fluid
         mass_matrix(&mass),
         mass_schur(&schur)
     {
-      TimerOutput::Scope timer_section(timer, "CG for Sm");
+      TimerOutput::Scope timer_section(timer2, "CG for Sm");
       // The sparsity pattern of mass_schur is already set,
       // we calculate its value in the following.
       PETScWrappers::MPI::BlockVector tmp1, tmp2;
@@ -64,9 +66,9 @@ namespace Fluid
       // This block computes \f$u_1 = \tilde{S}^{-1} v_1\f$,
       // where CG solvers are used for \f$M_p^{-1}\f$ and \f$S_m^{-1}\f$.
       {
-        TimerOutput::Scope timer_section(timer, "CG for Mp");
-        SolverControl mp_control(src.block(1).size(),
-                                 1e-6 * src.block(1).l2_norm());
+        TimerOutput::Scope timer_section(timer2, "CG for Mp");
+        SolverControl mp_control(
+          src.block(1).size(), std::max(1e-10, 1e-6 * src.block(1).l2_norm()));
         PETScWrappers::SolverCG cg_mp(mp_control,
                                       mass_schur->get_mpi_communicator());
         // \f$-(\mu + \gamma\rho)M_p^{-1}v_1\f$
@@ -88,9 +90,9 @@ namespace Fluid
       //
       // \f$-\frac{1}{dt}S_m^{-1}v_1\f$
       {
-        TimerOutput::Scope timer_section(timer, "CG for Sm");
-        SolverControl sm_control(src.block(1).size(),
-                                 1e-6 * src.block(1).l2_norm());
+        TimerOutput::Scope timer_section(timer2, "CG for Sm");
+        SolverControl sm_control(
+          src.block(1).size(), std::max(1e-10, 1e-3 * src.block(1).l2_norm()));
         PETScWrappers::SolverCG cg_sm(sm_control,
                                       mass_schur->get_mpi_communicator());
         PETScWrappers::PreconditionBlockJacobi Sm_preconditioner;
@@ -112,9 +114,9 @@ namespace Fluid
       // Finally, compute the product of \f$\tilde{A}^{-1}\f$ and utmp
       // using another CG solver.
       {
-        TimerOutput::Scope timer_section(timer, "CG for A");
+        TimerOutput::Scope timer_section(timer2, "CG for A");
         SolverControl a_control(src.block(0).size(),
-                                1e-6 * src.block(0).l2_norm());
+                                std::max(1e-12, 1e-4 * src.block(0).l2_norm()));
         PETScWrappers::SolverCG cg_a(a_control,
                                      mass_schur->get_mpi_communicator());
         PETScWrappers::PreconditionNone A_preconditioner;
@@ -360,6 +362,7 @@ namespace Fluid
         {
           preconditioner.reset(
             new BlockSchurPreconditioner(timer,
+                                         timer2,
                                          parameters.grad_div,
                                          parameters.viscosity,
                                          parameters.fluid_rho,
