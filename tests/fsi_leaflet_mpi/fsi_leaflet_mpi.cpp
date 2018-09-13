@@ -78,6 +78,8 @@ int main(int argc, char *argv[])
                   cell->set_refine_flag();
                 }
             }
+          fluid_tria.execute_coarsening_and_refinement();
+
           auto ptr = std::make_shared<BoundaryValues<2>>(BoundaryValues<2>());
           Fluid::MPI::SCnsIM<2> fluid(fluid_tria, params, ptr);
 

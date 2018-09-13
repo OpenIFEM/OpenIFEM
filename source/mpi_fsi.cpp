@@ -206,11 +206,12 @@ namespace MPI
          f_cell != fluid_solver.dof_handler.end();
          ++f_cell)
       {
-        if (!f_cell->is_locally_owned())
+        // Use is_artificial() instead of !is_locally_owned() because ghost
+        // elements must be taken care of to set correct Dirichlet BCs!
+        if (f_cell->is_artificial())
           {
             continue;
           }
-        auto ptr = fluid_solver.cell_property.get_data(f_cell);
         fe_values.reinit(f_cell);
         dummy_fe_values.reinit(f_cell);
         f_cell->get_dof_indices(dof_indices);
@@ -268,13 +269,16 @@ namespace MPI
               fluid_velocity[index] - fluid_solver.present_solution(line));
           }
         // Loop over all quadrature points to set FSI forces.
+        // Now skip the ghost elements because it's not store in cell property.
+        if (!f_cell->is_locally_owned())
+        continue;
+        auto ptr = fluid_solver.cell_property.get_data(f_cell);
         for (unsigned int q = 0; q < n_q_points; ++q)
           {
             Point<dim> point = fe_values.quadrature_point(q);
-            ptr[q]->indicator = point_in_mesh(solid_solver.dof_handler, point);
-            ptr[q]->fsi_acceleration = 0;
-            ptr[q]->fsi_stress = 0;
-            if (ptr[q]->indicator == 0)
+            ptr[q]->indicator = point_in_mesh(solid_solver.dof_handler,
+            point); ptr[q]->fsi_acceleration = 0; ptr[q]->fsi_stress = 0; if
+            (ptr[q]->indicator == 0)
               continue;
             // acceleration: Dv^f/Dt - Dv^s/Dt
             Tensor<1, dim> fluid_acc =
@@ -320,7 +324,6 @@ namespace MPI
     fluid_solver.zero_constraints.merge(
       inner_zero,
       AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
-
     move_solid_mesh(false);
   }
 
