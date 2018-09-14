@@ -271,14 +271,15 @@ namespace MPI
         // Loop over all quadrature points to set FSI forces.
         // Now skip the ghost elements because it's not store in cell property.
         if (!f_cell->is_locally_owned())
-        continue;
+          continue;
         auto ptr = fluid_solver.cell_property.get_data(f_cell);
         for (unsigned int q = 0; q < n_q_points; ++q)
           {
             Point<dim> point = fe_values.quadrature_point(q);
-            ptr[q]->indicator = point_in_mesh(solid_solver.dof_handler,
-            point); ptr[q]->fsi_acceleration = 0; ptr[q]->fsi_stress = 0; if
-            (ptr[q]->indicator == 0)
+            ptr[q]->indicator = point_in_mesh(solid_solver.dof_handler, point);
+            ptr[q]->fsi_acceleration = 0;
+            ptr[q]->fsi_stress = 0;
+            if (ptr[q]->indicator == 0)
               continue;
             // acceleration: Dv^f/Dt - Dv^s/Dt
             Tensor<1, dim> fluid_acc =
