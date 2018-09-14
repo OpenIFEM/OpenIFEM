@@ -268,7 +268,7 @@ void FSI<dim>::find_fluid_bc()
           if (ptr[q]->indicator == 0)
             ptr[q]->fsi_stress =
               -p[q] * Physics::Elasticity::StandardTensors<dim>::I +
-              parameters.viscosity * sym_grad_v[q] - solid_sigma;
+              2 * parameters.viscosity * sym_grad_v[q] - solid_sigma;
         }
     }
   inner_nonzero.close();
