@@ -23,7 +23,7 @@ extern template class Utils::GridCreator<3>;
 
 using namespace dealii;
 
-double L = 1.0, R = 0.1, X = 0.6, Y = 0.5;
+double L = 1.0, R = 0.1, X = 0.6, Y = 0.6;
 
 int main(int argc, char *argv[])
 {
