@@ -185,12 +185,6 @@ void FSI<dim>::find_fluid_bc()
   TimerOutput::Scope timer_section(timer, "Find fluid BC");
   move_solid_mesh(true);
 
-  // The nonzero Dirichlet BCs (to set the velocity) and zero Dirichlet
-  // BCs (to set the velocity increment) for the artificial fluid domain.
-  AffineConstraints<double> inner_nonzero, inner_zero;
-  inner_nonzero.clear();
-  inner_zero.clear();
-
   const unsigned int n_q_points = fluid_solver.volume_quad_formula.size();
   FEValues<dim> fe_values(fluid_solver.fe,
                           fluid_solver.volume_quad_formula,
@@ -204,24 +198,12 @@ void FSI<dim>::find_fluid_bc()
   std::vector<Tensor<1, dim>> v(n_q_points);
   std::vector<Tensor<1, dim>> dv(n_q_points);
 
-  const std::vector<Point<dim>> &unit_points =
-    fluid_solver.fe.get_unit_support_points();
-  Quadrature<dim> dummy_q(unit_points);
-  MappingQGeneric<dim> mapping(1);
-  FEValues<dim> dummy_fe_values(
-    mapping, fluid_solver.fe, dummy_q, update_quadrature_points);
-  std::vector<types::global_dof_index> dof_indices(
-    fluid_solver.fe.dofs_per_cell);
-
   for (auto f_cell = fluid_solver.dof_handler.begin_active();
        f_cell != fluid_solver.dof_handler.end();
        ++f_cell)
     {
       auto ptr = fluid_solver.cell_property.get_data(f_cell);
       fe_values.reinit(f_cell);
-      dummy_fe_values.reinit(f_cell);
-      f_cell->get_dof_indices(dof_indices);
-      auto support_points = dummy_fe_values.get_quadrature_points();
       // Fluid velocity increment
       fe_values[velocities].get_function_values(fluid_solver.solution_increment,
                                                 dv);
@@ -233,50 +215,10 @@ void FSI<dim>::find_fluid_bc()
         fluid_solver.present_solution, sym_grad_v);
       // Fluid pressure
       fe_values[pressure].get_function_values(fluid_solver.present_solution, p);
-      // Loop over the support points to set Dirichlet BCs.
-      for (unsigned int i = 0; i < unit_points.size(); ++i)
-        {
-          auto base_index = fluid_solver.fe.system_to_base_index(i);
-          const unsigned int i_group = base_index.first.first;
-          Assert(
-            i_group < 2,
-            ExcMessage("There should be only 2 groups of finite element!"));
-          if (i_group == 1)
-            continue; // skip the pressure dofs
-          bool inside = true;
-          for (unsigned int d = 0; d < dim; ++d)
-            if (std::abs(unit_points[i][d]) < 1e-5)
-              {
-                inside = false;
-                break;
-              }
-          if (inside)
-            continue; // skip the in-cell support point
-          // Same as fluid_solver.fe.system_to_base_index(i).first.second;
-          const unsigned int index =
-            fluid_solver.fe.system_to_component_index(i).first;
-          Assert(index < dim,
-                 ExcMessage("Vector component should be less than dim!"));
-          if (!point_in_solid(solid_solver.dof_handler, support_points[i]))
-            continue;
-          Vector<double> fluid_velocity(dim);
-          VectorTools::point_value(solid_solver.dof_handler,
-                                   solid_solver.current_velocity,
-                                   support_points[i],
-                                   fluid_velocity);
-          auto line = dof_indices[i];
-          inner_nonzero.add_line(line);
-          inner_zero.add_line(line);
-          // Note that we are setting the value of the constraint to the
-          // velocity delta!
-          inner_nonzero.set_inhomogeneity(
-            line, fluid_velocity[index] - fluid_solver.present_solution(line));
-        }
       // Loop over all quadrature points to set FSI forces.
       for (unsigned int q = 0; q < n_q_points; ++q)
         {
           Point<dim> point = fe_values.quadrature_point(q);
-          ptr[q]->indicator = point_in_solid(solid_solver.dof_handler, point);
           ptr[q]->fsi_acceleration = 0;
           ptr[q]->fsi_stress = 0;
           if (ptr[q]->indicator == 0)
@@ -292,10 +234,9 @@ void FSI<dim>::find_fluid_bc()
                                    solid_acc);
           for (unsigned int i = 0; i < dim; ++i)
             {
-              if (ptr[q]->indicator == 0)
-                ptr[q]->fsi_acceleration[i] =
-                  (parameters.solid_rho - parameters.fluid_rho) *
-                  (parameters.gravity[i] - solid_acc[i]);
+              ptr[q]->fsi_acceleration[i] =
+                (parameters.solid_rho - parameters.fluid_rho) *
+                (parameters.gravity[i] - solid_acc[i]);
             }
           // stress: sigma^f - sigma^s
           SymmetricTensor<2, dim> solid_sigma;
@@ -311,21 +252,11 @@ void FSI<dim>::find_fluid_bc()
                   solid_sigma[i][j] = sigma_ij[0];
                 }
             }
-          if (ptr[q]->indicator == 0)
-            ptr[q]->fsi_stress =
-              -p[q] * Physics::Elasticity::StandardTensors<dim>::I +
-              2 * parameters.viscosity * sym_grad_v[q] - solid_sigma;
+          ptr[q]->fsi_stress =
+            -p[q] * Physics::Elasticity::StandardTensors<dim>::I +
+            2 * parameters.viscosity * sym_grad_v[q] - solid_sigma;
         }
     }
-  inner_nonzero.close();
-  inner_zero.close();
-  fluid_solver.nonzero_constraints.merge(
-    inner_nonzero,
-    AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
-  fluid_solver.zero_constraints.merge(
-    inner_zero,
-    AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
-
   move_solid_mesh(false);
 }
 
@@ -477,18 +408,11 @@ void FSI<dim>::run()
         solid_solver.run_one_step(first_step);
       }
       update_solid_box();
-      // update_indicator();
-      fluid_solver.make_constraints();
-      if (!first_step)
-        {
-          fluid_solver.nonzero_constraints.clear();
-          fluid_solver.nonzero_constraints.copy_from(
-            fluid_solver.zero_constraints);
-        }
+      update_indicator();
       find_fluid_bc();
       {
         TimerOutput::Scope timer_section(timer, "Run fluid solver");
-        fluid_solver.run_one_step(true);
+        fluid_solver.run_one_step(first_step);
       }
       first_step = false;
       time.increment();
