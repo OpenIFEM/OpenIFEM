@@ -360,9 +360,9 @@ namespace Parameters
       raw_input = prm.get("Hyperelastic parameters");
       parsed_input = Utilities::split_string_list(raw_input);
       // declare the size for each vector defining one hyperelastic material
-      unsigned int size_per_material;
-      if (solid_type == "NeoHooken")
-        // Only NeoHooken for now
+      unsigned int size_per_material = 1;
+      if (solid_type == "NeoHookean")
+        // Only NeoHookean for now
         size_per_material = 2;
       AssertThrow(parsed_input.size() >= size_per_material * n_solid_parts,
                   ExcMessage("Insufficient material properties input!"));
