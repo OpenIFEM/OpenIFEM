@@ -352,10 +352,7 @@ namespace MPI
         for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
           {
             // Current face is at boundary and without Dirichlet bc.
-            if (s_cell->face(f)->at_boundary() &&
-                parameters.solid_dirichlet_bcs.find(
-                  s_cell->face(f)->boundary_id()) ==
-                  parameters.solid_dirichlet_bcs.end())
+            if (s_cell->face(f)->at_boundary())
               {
                 fe_face_values.reinit(s_cell, f);
                 for (unsigned int q = 0; q < n_face_q_points; ++q)
@@ -372,15 +369,16 @@ namespace MPI
                                                          Tensor<1, dim>());
                     interpolator.point_gradient(fluid_solver.present_solution,
                                                 gradient);
-                    // Communication
+                    Vector<double> global_value(dim + 1);
+                    std::vector<Tensor<1, dim>> global_gradient(
+                      dim + 1, Tensor<1, dim>());
                     for (unsigned int i = 0; i < dim + 1; ++i)
                       {
-                        Utilities::MPI::sum(value[i],
-                                            fluid_solver.mpi_communicator);
-                        Utilities::MPI::sum(gradient[i],
-                                            fluid_solver.mpi_communicator);
+                        global_value[i] =
+                          Utilities::MPI::sum(value[i], MPI_COMM_WORLD);
+                        Utilities::MPI::sum(
+                          gradient[i], MPI_COMM_WORLD, global_gradient[i]);
                       }
-
                     // Compute stress
                     SymmetricTensor<2, dim> sym_deformation;
                     for (unsigned int i = 0; i < dim; ++i)
@@ -388,12 +386,13 @@ namespace MPI
                         for (unsigned int j = 0; j < dim; ++j)
                           {
                             sym_deformation[i][j] =
-                              (gradient[i][j] + gradient[j][i]) / 2;
+                              (global_gradient[i][j] + global_gradient[j][i]) /
+                              2;
                           }
                       }
                     // \f$ \sigma = -p\bold{I} + \mu\nabla^S v\f$
                     SymmetricTensor<2, dim> stress =
-                      -value[dim] *
+                      -global_value[dim] *
                         Physics::Elasticity::StandardTensors<dim>::I +
                       2 * parameters.viscosity * sym_deformation;
                     ptr[f * n_face_q_points + q]->fsi_traction =
