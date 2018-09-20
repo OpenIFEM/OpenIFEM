@@ -360,7 +360,7 @@ namespace Parameters
       raw_input = prm.get("Hyperelastic parameters");
       parsed_input = Utilities::split_string_list(raw_input);
       // declare the size for each vector defining one hyperelastic material
-      unsigned int size_per_material;
+      unsigned int size_per_material = 1;
       if (solid_type == "NeoHooken")
         // Only NeoHooken for now
         size_per_material = 2;
