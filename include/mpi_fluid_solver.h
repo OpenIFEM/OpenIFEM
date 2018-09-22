@@ -6,6 +6,7 @@
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/base/quadrature_point_data.h>
 #include <deal.II/base/tensor.h>
+#include <deal.II/base/tensor_function.h>
 #include <deal.II/base/timer.h>
 #include <deal.II/base/utilities.h>
 

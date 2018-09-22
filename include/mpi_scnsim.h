@@ -43,7 +43,10 @@ namespace Fluid
                  Functions::ZeroFunction<dim>(dim + 1)),
              std::shared_ptr<Function<dim>> pml =
                std::make_shared<Functions::ZeroFunction<dim>>(
-                 Functions::ZeroFunction<dim>(dim + 1)));
+                 Functions::ZeroFunction<dim>(dim + 1)),
+             std::shared_ptr<TensorFunction<1, dim>> bf =
+               std::make_shared<ZeroTensorFunction<1, dim>>(
+                 ZeroTensorFunction<1, dim>()));
       ~SCnsIM(){};
       //! Run the simulation.
       void run();
@@ -150,6 +153,9 @@ namespace Fluid
        * but reflects more slow waves/vortices.
        */
       std::shared_ptr<Function<dim>> sigma_pml_field;
+
+      /// Hard-coded body force. It will be added onto gravity.
+      std::shared_ptr<TensorFunction<1, dim>> body_force;
 
       /** \brief Incomplete Schur Complement Block Preconditioner
        * The format of this preconditioner is as follow:

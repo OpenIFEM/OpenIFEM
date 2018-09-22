@@ -193,8 +193,11 @@ namespace Fluid
     SCnsIM<dim>::SCnsIM(parallel::distributed::Triangulation<dim> &tria,
                         const Parameters::AllParameters &parameters,
                         std::shared_ptr<Function<dim>> bc,
-                        std::shared_ptr<Function<dim>> pml)
-      : FluidSolver<dim>(tria, parameters, bc), sigma_pml_field(pml)
+                        std::shared_ptr<Function<dim>> pml,
+                        std::shared_ptr<TensorFunction<1, dim>> bf)
+      : FluidSolver<dim>(tria, parameters, bc),
+        sigma_pml_field(pml),
+        body_force(bf)
     {
       AssertThrow(parameters.fluid_velocity_degree ==
                     parameters.fluid_pressure_degree,
@@ -333,6 +336,7 @@ namespace Fluid
       std::vector<Tensor<1, dim>> present_velocity_values(n_q_points);
       std::vector<double> present_pressure_values(n_q_points);
       std::vector<double> sigma_pml(n_q_points);
+      std::vector<Tensor<1, dim>> artificial_bf(n_q_points);
 
       std::vector<double> div_phi_u(dofs_per_cell);
       std::vector<Tensor<1, dim>> phi_u(dofs_per_cell);
@@ -377,6 +381,8 @@ namespace Fluid
 
               sigma_pml_field->value_list(
                 fe_values.get_quadrature_points(), sigma_pml, 0);
+              body_force->value_list(fe_values.get_quadrature_points(),
+                                     artificial_bf);
 
               for (unsigned int q = 0; q < n_q_points; ++q)
                 {
@@ -527,7 +533,7 @@ namespace Fluid
                            (current_velocity_values[q] -
                             present_velocity_values[q]) *
                            phi_u[i] / time.get_delta_t() +
-                         gravity * phi_u[i] * rho) *
+                         (gravity + artificial_bf[q]) * phi_u[i] * rho) *
                         fe_values.JxW(q);
                       local_rhs(i) +=
                         -(rho * sigma_pml[q] * current_velocity_values[q] *
@@ -554,6 +560,7 @@ namespace Fluid
                                     current_velocity_values[q] *
                                       current_velocity_gradients[q]) +
                              current_pressure_gradients[q] +
+                             rho * (gravity + artificial_bf[q]) +
                              rho * sigma_pml[q] * current_velocity_values[q]) +
                           (tau_PSPG * grad_phi_p[i]) *
                             (rho * ((current_velocity_values[q] -
@@ -562,6 +569,7 @@ namespace Fluid
                                     current_velocity_values[q] *
                                       current_velocity_gradients[q]) +
                              current_pressure_gradients[q] +
+                             rho * (gravity + artificial_bf[q]) +
                              rho * sigma_pml[q] * current_velocity_values[q])) *
                         fe_values.JxW(q);
                       if (ind == 1)
