@@ -54,14 +54,7 @@ int main(int argc, char *argv[])
       else if (params.dimension == 3)
         {
           parallel::distributed::Triangulation<3> tria(MPI_COMM_WORLD);
-          dealii::GridGenerator::subdivided_hyper_rectangle(
-            tria,
-            {static_cast<unsigned int>(D / (2 * h)),
-             static_cast<unsigned int>(D / (2 * h)),
-             static_cast<unsigned int>(L / h)},
-            Point<3>(0, 0, 0),
-            Point<3>(D / 2, D / 2, L),
-            true);
+          Utils::GridCreator<3>::cylinder(tria, D / 2, L / 2);
           Fluid::MPI::InsIM<3> flow(tria, params);
           flow.run();
         }

@@ -88,6 +88,10 @@ namespace Utils
                        const Point<dim> &center = Point<dim>(),
                        double radius = 1);
 
+    static void cylinder(Triangulation<dim> &tria,
+                         const double radius,
+                         const double length);
+
   private:
     /// A helper function used by flow_around_cylinder.
     static void flow_around_cylinder_2d(Triangulation<2> &,
