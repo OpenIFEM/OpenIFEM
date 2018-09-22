@@ -130,15 +130,18 @@ namespace Fluid
           }
         if (parameters.use_hard_coded_values == 1)
           {
-            VectorTools::interpolate_boundary_values(dof_handler,
-                                                     id,
-                                                     *boundary_values,
-                                                     nonzero_constraints,
-                                                     ComponentMask(mask));
+            VectorTools::interpolate_boundary_values(
+              MappingQGeneric<dim>(parameters.fluid_velocity_degree),
+              dof_handler,
+              id,
+              *boundary_values,
+              nonzero_constraints,
+              ComponentMask(mask));
           }
         else
           {
             VectorTools::interpolate_boundary_values(
+              MappingQGeneric<dim>(parameters.fluid_velocity_degree),
               dof_handler,
               id,
               Functions::ConstantFunction<dim>(augmented_value),
@@ -146,6 +149,7 @@ namespace Fluid
               ComponentMask(mask));
           }
         VectorTools::interpolate_boundary_values(
+          MappingQGeneric<dim>(parameters.fluid_velocity_degree),
           dof_handler,
           id,
           Functions::ZeroFunction<dim>(dim + 1),
