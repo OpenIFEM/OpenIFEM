@@ -87,6 +87,8 @@ namespace MPI
     Fluid::MPI::FluidSolver<dim> &fluid_solver;
     Solid::MPI::SharedSolidSolver<dim> &solid_solver;
     Parameters::AllParameters parameters;
+    MPI_Comm mpi_communicator;
+    ConditionalOStream pcout;
     Utils::Time time;
   };
 } // namespace MPI

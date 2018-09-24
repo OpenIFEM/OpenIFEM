@@ -10,18 +10,14 @@ namespace MPI
     : fluid_solver(f),
       solid_solver(s),
       parameters(p),
+      mpi_communicator(MPI_COMM_WORLD),
+      pcout(std::cout, Utilities::MPI::this_mpi_process(mpi_communicator) == 0),
       time(parameters.end_time,
            parameters.time_step,
            parameters.output_interval,
            parameters.refinement_interval,
            parameters.save_interval)
   {
-    fluid_solver.pcout << "  Number of fluid active cells: "
-                       << fluid_solver.triangulation.n_global_active_cells()
-                       << std::endl
-                       << "  Number of solid active cells: "
-                       << solid_solver.triangulation.n_active_cells()
-                       << std::endl;
   }
 
   template <int dim>
@@ -375,9 +371,9 @@ namespace MPI
                     for (unsigned int i = 0; i < dim + 1; ++i)
                       {
                         global_value[i] =
-                          Utilities::MPI::sum(value[i], MPI_COMM_WORLD);
-                        Utilities::MPI::sum(
-                          gradient[i], MPI_COMM_WORLD, global_gradient[i]);
+                          Utilities::MPI::sum(value[i], mpi_communicator);
+                        global_gradient[i] =
+                          Utilities::MPI::sum(gradient[i], mpi_communicator);
                       }
                     // Compute stress
                     SymmetricTensor<2, dim> sym_deformation;
@@ -407,6 +403,10 @@ namespace MPI
   template <int dim>
   void FSI<dim>::run()
   {
+    pcout << "Running with PETSc on "
+          << Utilities::MPI::n_mpi_processes(mpi_communicator)
+          << " MPI rank(s)..." << std::endl;
+          
     solid_solver.triangulation.refine_global(parameters.global_refinements[1]);
     solid_solver.setup_dofs();
     solid_solver.initialize_system();
@@ -414,6 +414,12 @@ namespace MPI
     fluid_solver.setup_dofs();
     fluid_solver.make_constraints();
     fluid_solver.initialize_system();
+    pcout << "Number of fluid active cells and dofs: ["
+          << fluid_solver.triangulation.n_active_cells() << ", "
+          << fluid_solver.dof_handler.n_dofs() << "]" << std::endl
+          << "Number of solid active cells and dofs: ["
+          << solid_solver.triangulation.n_active_cells() << ", "
+          << solid_solver.dof_handler.n_dofs() << "]" << std::endl;
     bool first_step = true;
     while (time.end() - time.current() > 1e-12)
       {
