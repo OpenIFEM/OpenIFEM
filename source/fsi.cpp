@@ -249,7 +249,8 @@ void FSI<dim>::find_fluid_bc()
             {
               if (ptr[q]->indicator == 0)
                 ptr[q]->fsi_acceleration[i] =
-                  parameters.gravity[i] - solid_acc[i];
+                  (parameters.solid_rho - parameters.fluid_rho) *
+                  (parameters.gravity[i] - solid_acc[i]);
             }
           // stress: sigma^f - sigma^s
           SymmetricTensor<2, dim> solid_sigma;

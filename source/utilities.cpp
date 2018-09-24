@@ -423,6 +423,50 @@ namespace Utils
     tria.set_manifold(1, inner_manifold);
   }
 
+  template <>
+  void GridCreator<2>::cylinder(Triangulation<2> &tria,
+                                const double radius,
+                                const double length)
+  {
+    (void)tria;
+    (void)radius;
+    (void)length;
+    AssertThrow(false, ExcNotImplemented());
+  }
+
+  template <>
+  void GridCreator<3>::cylinder(Triangulation<3> &tria,
+                                const double radius,
+                                const double length)
+  {
+    Triangulation<2> tria2d;
+    Point<2> center(0, 0);
+    GridCreator<2>::sphere(tria2d, center, radius);
+    GridGenerator::extrude_triangulation(
+      tria2d, static_cast<unsigned int>(length / radius), length, tria);
+    tria.set_all_manifold_ids_on_boundary(0);
+    for (auto cell = tria.begin(); cell != tria.end(); ++cell)
+      {
+        for (unsigned int i = 0; i < GeometryInfo<3>::faces_per_cell; ++i)
+          {
+            if (cell->at_boundary(i))
+              {
+                if (std::abs(cell->face(i)->center()(2)) < 1e-10)
+                  {
+                    cell->face(i)->set_boundary_id(1);
+                    cell->face(i)->set_manifold_id(numbers::flat_manifold_id);
+                  }
+                else if (std::abs(cell->face(i)->center()(2) - length) < 1e-10)
+                  {
+                    cell->face(i)->set_boundary_id(2);
+                    cell->face(i)->set_manifold_id(numbers::flat_manifold_id);
+                  }
+              }
+          }
+      }
+    tria.set_manifold(0, CylindricalManifold<3>(2));
+  }
+
   template class GridCreator<2>;
   template class GridCreator<3>;
   template class GridInterpolator<2, Vector<double>>;
