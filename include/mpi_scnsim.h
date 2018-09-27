@@ -131,6 +131,14 @@ namespace Fluid
       void run_one_step(bool apply_nonzero_constraints,
                         bool assemble_system = true) override;
 
+      /*! \brief Apply the initial condition
+       *
+       * This is a hard-coded function that is only used for VF cases where an
+       * initial condition is applied for fast convergence. For general cases,
+       * do not include it.
+       */
+      void apply_initial_condition();
+
       PETScWrappers::MPI::SparseMatrix Abs_A_matrix;
       PETScWrappers::MPI::SparseMatrix schur_matrix;
       PETScWrappers::MPI::SparseMatrix B2pp_matrix;

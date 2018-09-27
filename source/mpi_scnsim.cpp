@@ -276,6 +276,9 @@ namespace Fluid
           dim,
           PETScWrappers::MPI::Vector(locally_owned_scalar_dofs,
                                      mpi_communicator)));
+
+      // Hard-coded initial condition, only for VF cases!
+      apply_initial_condition();
     }
 
     template <int dim>
@@ -764,6 +767,60 @@ namespace Fluid
         {
           refine_mesh(1, 3);
         }
+    }
+
+    template <int dim>
+    void SCnsIM<dim>::apply_initial_condition()
+    {
+      const double pressure = 1e4;
+      AffineConstraints<double> initial_condition;
+      initial_condition.reinit(locally_relevant_dofs);
+
+      const std::vector<Point<dim>> &unit_points = fe.get_unit_support_points();
+      Quadrature<dim> dummy_q(unit_points.size());
+      MappingQGeneric<dim> mapping(1);
+      FEValues<dim> dummy_fe_values(
+        mapping, fe, dummy_q, update_quadrature_points);
+
+      std::vector<types::global_dof_index> dof_indices(fe.dofs_per_cell);
+      for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+           ++cell)
+        {
+          if (cell->is_artificial())
+            continue;
+          dummy_fe_values.reinit(cell);
+          auto support_points = dummy_fe_values.get_quadrature_points();
+          cell->get_dof_indices(dof_indices);
+          for (unsigned int i = 0; i < unit_points.size(); ++i)
+            {
+              auto base_index = fe.system_to_base_index(i);
+              const unsigned int i_group = base_index.first.first;
+              Assert(
+                i_group < 2,
+                ExcMessage("There should be only 2 groups of finite element!"));
+              if (i_group == 0)
+                continue; // skip the velocity dofs
+              if (support_points[i][0] > 4.0 && support_points[i][0] < 5.0)
+                {
+                  auto line = dof_indices[i];
+                  initial_condition.add_line(line);
+                  initial_condition.set_inhomogeneity(
+                    line, pressure * (support_points[i][0] - 4.0));
+                }
+              else if (support_points[i][0] >= 5.0 &&
+                       support_points[i][0] < 12.0)
+                {
+                  auto line = dof_indices[i];
+                  initial_condition.add_line(line);
+                  initial_condition.set_inhomogeneity(line, pressure);
+                }
+            }
+        }
+      initial_condition.close();
+      PETScWrappers::MPI::BlockVector tmp;
+      tmp.reinit(owned_partitioning, mpi_communicator);
+      initial_condition.distribute(tmp);
+      present_solution = tmp;
     }
 
     template <int dim>
