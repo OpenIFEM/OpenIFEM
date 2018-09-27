@@ -90,6 +90,7 @@ namespace Fluid
       using FluidSolver<dim>::times_and_names;
       using FluidSolver<dim>::time;
       using FluidSolver<dim>::timer;
+      using FluidSolver<dim>::timer2;
       using FluidSolver<dim>::cell_property;
       using FluidSolver<dim>::boundary_values;
 
@@ -179,7 +180,7 @@ namespace Fluid
       public:
         /// Constructor.
         BlockIncompSchurPreconditioner(
-          TimerOutput &timer,
+          TimerOutput &timer2,
           const std::vector<IndexSet> &owned_partitioning,
           const PETScWrappers::MPI::BlockSparseMatrix &system,
           PETScWrappers::MPI::SparseMatrix &absA,
@@ -214,7 +215,7 @@ namespace Fluid
         class SchurComplementTpp;
 
         /// We would like to time the BlockSchuPreconditioner in detail.
-        TimerOutput &timer;
+        TimerOutput &timer2;
 
         /// dealii smart pointer checks if an object is still being referenced
         /// when it is destructed therefore is safer than plain reference.
@@ -234,7 +235,7 @@ namespace Fluid
         {
         public:
           SchurComplementTpp(
-            TimerOutput &timer,
+            TimerOutput &timer2,
             const std::vector<IndexSet> &owned_partitioning,
             const PETScWrappers::MPI::BlockSparseMatrix &system,
             const PETScWrappers::PreconditionerBase &Pvvinv);
@@ -242,7 +243,7 @@ namespace Fluid
                      const PETScWrappers::MPI::Vector &src) const;
 
         private:
-          TimerOutput &timer;
+          TimerOutput &timer2;
           const SmartPointer<const PETScWrappers::MPI::BlockSparseMatrix>
             system_matrix;
           const PETScWrappers::PreconditionerBase *Pvv_inverse;

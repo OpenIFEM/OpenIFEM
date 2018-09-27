@@ -11,7 +11,6 @@ namespace Fluid
      */
     template <int dim>
     InsIM<dim>::BlockSchurPreconditioner::BlockSchurPreconditioner(
-      TimerOutput &timer,
       TimerOutput &timer2,
       double gamma,
       double viscosity,
@@ -21,8 +20,7 @@ namespace Fluid
       const PETScWrappers::MPI::BlockSparseMatrix &system,
       const PETScWrappers::MPI::BlockSparseMatrix &mass,
       PETScWrappers::MPI::BlockSparseMatrix &schur)
-      : timer(timer),
-        timer2(timer2),
+      : timer2(timer2),
         gamma(gamma),
         viscosity(viscosity),
         rho(rho),
@@ -365,8 +363,7 @@ namespace Fluid
     InsIM<dim>::solve(const bool use_nonzero_constraints)
     {
       TimerOutput::Scope timer_section(timer, "Solve linear system");
-      preconditioner.reset(new BlockSchurPreconditioner(timer,
-                                                        timer2,
+      preconditioner.reset(new BlockSchurPreconditioner(timer2,
                                                         parameters.grad_div,
                                                         parameters.viscosity,
                                                         parameters.fluid_rho,

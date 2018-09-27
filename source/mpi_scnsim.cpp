@@ -6,11 +6,11 @@ namespace Fluid
   {
     template <int dim>
     SCnsIM<dim>::BlockIncompSchurPreconditioner::SchurComplementTpp::
-      SchurComplementTpp(TimerOutput &timer,
+      SchurComplementTpp(TimerOutput &timer2,
                          const std::vector<IndexSet> &owned_partitioning,
                          const PETScWrappers::MPI::BlockSparseMatrix &system,
                          const PETScWrappers::PreconditionerBase &Pvvinv)
-      : timer(timer), system_matrix(&system), Pvv_inverse(&Pvvinv)
+      : timer2(timer2), system_matrix(&system), Pvv_inverse(&Pvvinv)
     {
       dumb_vector.reinit(owned_partitioning,
                          system_matrix->get_mpi_communicator());
@@ -21,7 +21,6 @@ namespace Fluid
       PETScWrappers::MPI::Vector &dst,
       const PETScWrappers::MPI::Vector &src) const
     {
-      TimerOutput::Scope timer_section(timer, "Tpp vmult");
       // this is the exact representation of Tpp = App - Apv * Pvv * Avp.
       PETScWrappers::MPI::Vector tmp1(dumb_vector.block(0)),
         tmp2(dumb_vector.block(0)), tmp3(src);
@@ -34,13 +33,13 @@ namespace Fluid
 
     template <int dim>
     SCnsIM<dim>::BlockIncompSchurPreconditioner::BlockIncompSchurPreconditioner(
-      TimerOutput &timer,
+      TimerOutput &timer2,
       const std::vector<IndexSet> &owned_partitioning,
       const PETScWrappers::MPI::BlockSparseMatrix &system,
       PETScWrappers::MPI::SparseMatrix &absA,
       PETScWrappers::MPI::SparseMatrix &schur,
       PETScWrappers::MPI::SparseMatrix &B2pp)
-      : timer(timer),
+      : timer2(timer2),
         system_matrix(&system),
         Abs_A_matrix(&absA),
         schur_matrix(&schur),
@@ -51,7 +50,7 @@ namespace Fluid
       Pvv_inverse.initialize(system_matrix->block(0, 0));
       // Initialize Tpp
       Tpp.reset(new SchurComplementTpp(
-        timer, owned_partitioning, *system_matrix, Pvv_inverse));
+        timer2, owned_partitioning, *system_matrix, Pvv_inverse));
 
       // Compute B2pp matrix App - Apv*rowsum(|Avv|)^(-1)*Avp
       // as the preconditioner to solve Tpp^-1
@@ -166,7 +165,7 @@ namespace Fluid
         dst.block(1) = c;
       }
       // Compute the multiplication
-      timer.enter_subsection("Solving Tpp");
+      timer2.enter_subsection("Solving Tpp");
       SolverControl solver_control(
         ptmp.size(), 1e-3 * ptmp.l2_norm(), true, true);
       GrowingVectorMemory<PETScWrappers::MPI::Vector> vector_memory;
@@ -179,7 +178,7 @@ namespace Fluid
       // Count iterations for this solver solving Tpp inverse
       Tpp_itr += solver_control.last_step();
 
-      timer.leave_subsection("Solving Tpp");
+      timer2.leave_subsection("Solving Tpp");
 
       // Compute Pvv^-1*src(0) - Pvv^-1*Avp*dst(1)
       PETScWrappers::MPI::Vector utmp1(src.block(0)), utmp2(src.block(0));
@@ -644,7 +643,7 @@ namespace Fluid
       // and GMRES solver.
       TimerOutput::Scope timer_section(timer, "Solve linear system");
       preconditioner.reset(
-        new BlockIncompSchurPreconditioner(timer,
+        new BlockIncompSchurPreconditioner(timer2,
                                            owned_partitioning,
                                            system_matrix,
                                            Abs_A_matrix,

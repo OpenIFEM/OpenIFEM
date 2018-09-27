@@ -155,7 +155,6 @@ namespace Fluid
       public:
         /// Constructor.
         BlockSchurPreconditioner(
-          TimerOutput &timer,
           TimerOutput &timer2,
           double gamma,
           double viscosity,
@@ -171,7 +170,6 @@ namespace Fluid
                    const PETScWrappers::MPI::BlockVector &src) const;
 
       private:
-        TimerOutput &timer;
         TimerOutput &timer2;
         const double gamma;
         const double viscosity;
