@@ -167,8 +167,7 @@ namespace Solid
                                   traction = fe_face_values.normal_vector(q);
                                   traction *= value[0];
                                 }
-                              else if (parameters.solid_neumann_bc_type ==
-                                       "FSI")
+                              else if (parameters.simulation_type == "FSI")
                                 {
                                   traction =
                                     p[face * n_f_q_points + q]->fsi_traction;
