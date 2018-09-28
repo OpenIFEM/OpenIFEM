@@ -33,9 +33,15 @@ namespace MPI
         const Parameters::AllParameters &);
     void run();
 
+    //! Destructor
+    ~FSI();
+
   private:
+    /// Define a smallest rectangle (or hex in 3d) that contains the solid.
+    void update_solid_box();
+
     /// Check if a point is inside a mesh.
-    bool point_in_mesh(const DoFHandler<dim> &, const Point<dim> &);
+    bool point_in_solid(const DoFHandler<dim> &, const Point<dim> &);
 
     /*! \brief Update the indicator field of the fluid solver.
      *
@@ -90,6 +96,12 @@ namespace MPI
     MPI_Comm mpi_communicator;
     ConditionalOStream pcout;
     Utils::Time time;
+    mutable TimerOutput timer;
+
+    // This vector represents the smallest box that contains the solid.
+    // The point stored is in the order of:
+    // (x_min, x_max, y_min, y_max, z_min, z_max)
+    Vector<double> solid_box;
   };
 } // namespace MPI
 

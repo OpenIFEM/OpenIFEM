@@ -15,6 +15,7 @@ FSI<dim>::FSI(Fluid::FluidSolver<dim> &f,
          parameters.refinement_interval,
          parameters.save_interval)
 {
+  solid_box.reinit(2 * dim);
 }
 
 template <int dim>
@@ -51,8 +52,42 @@ void FSI<dim>::move_solid_mesh(bool move_forward)
 }
 
 template <int dim>
-bool FSI<dim>::point_in_mesh(const DoFHandler<dim> &df, const Point<dim> &point)
+void FSI<dim>::update_solid_box()
 {
+  move_solid_mesh(true);
+  solid_box = 0;
+  for (unsigned int i = 0; i < dim; ++i)
+    {
+      solid_box(2 * i) =
+        solid_solver.triangulation.get_vertices().begin()->operator()(i);
+      solid_box(2 * i + 1) =
+        solid_solver.triangulation.get_vertices().begin()->operator()(i);
+    }
+  for (auto v = solid_solver.triangulation.get_vertices().begin();
+       v != solid_solver.triangulation.get_vertices().end();
+       ++v)
+    {
+      for (unsigned int i = 0; i < dim; ++i)
+        {
+          if ((*v)(i) < solid_box(2 * i))
+            solid_box(2 * i) = (*v)(i);
+          else if ((*v)(i) > solid_box(2 * i + 1))
+            solid_box(2 * i + 1) = (*v)(i);
+        }
+    }
+  move_solid_mesh(false);
+}
+
+template <int dim>
+bool FSI<dim>::point_in_solid(const DoFHandler<dim> &df,
+                              const Point<dim> &point)
+{
+  // Check whether the point is in the solid box first.
+  for (unsigned int i = 0; i < dim; ++i)
+    {
+      if (point(i) < solid_box(2 * i) || point(i) > solid_box(2 * i + 1))
+        return false;
+    }
   for (auto cell = df.begin_active(); cell != df.end(); ++cell)
     {
       if (cell->point_inside(point))
@@ -119,7 +154,7 @@ void FSI<dim>::update_indicator()
       for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
         {
           Point<dim> point = f_cell->vertex(v);
-          if (!point_in_mesh(solid_solver.dof_handler, point))
+          if (!point_in_solid(solid_solver.dof_handler, point))
             {
               is_solid = false;
               break;
@@ -212,7 +247,7 @@ void FSI<dim>::find_fluid_bc()
             fluid_solver.fe.system_to_component_index(i).first;
           Assert(index < dim,
                  ExcMessage("Vector component should be less than dim!"));
-          if (!point_in_mesh(solid_solver.dof_handler, support_points[i]))
+          if (!point_in_solid(solid_solver.dof_handler, support_points[i]))
             continue;
           Vector<double> fluid_velocity(dim);
           VectorTools::point_value(solid_solver.dof_handler,
@@ -231,7 +266,7 @@ void FSI<dim>::find_fluid_bc()
       for (unsigned int q = 0; q < n_q_points; ++q)
         {
           Point<dim> point = fe_values.quadrature_point(q);
-          ptr[q]->indicator = point_in_mesh(solid_solver.dof_handler, point);
+          ptr[q]->indicator = point_in_solid(solid_solver.dof_handler, point);
           ptr[q]->fsi_acceleration = 0;
           ptr[q]->fsi_stress = 0;
           if (ptr[q]->indicator == 0)
@@ -421,6 +456,7 @@ void FSI<dim>::run()
     {
       find_solid_bc();
       solid_solver.run_one_step(first_step);
+      update_solid_box();
       // update_indicator();
       fluid_solver.make_constraints();
       if (!first_step)

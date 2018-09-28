@@ -4,6 +4,12 @@
 namespace MPI
 {
   template <int dim>
+  FSI<dim>::~FSI()
+  {
+    timer.print_summary();
+  }
+
+  template <int dim>
   FSI<dim>::FSI(Fluid::MPI::FluidSolver<dim> &f,
                 Solid::MPI::SharedSolidSolver<dim> &s,
                 const Parameters::AllParameters &p)
@@ -16,13 +22,17 @@ namespace MPI
            parameters.time_step,
            parameters.output_interval,
            parameters.refinement_interval,
-           parameters.save_interval)
+           parameters.save_interval),
+      timer(
+        mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times)
   {
+    solid_box.reinit(2 * dim);
   }
 
   template <int dim>
   void FSI<dim>::move_solid_mesh(bool move_forward)
   {
+    TimerOutput::Scope timer_section(timer, "Move solid mesh");
     // All gather the information so each process has the entire solution.
     Vector<double> localized_displacement(solid_solver.current_displacement);
     // Exactly the same as the serial version, since we must update the
@@ -58,9 +68,42 @@ namespace MPI
   }
 
   template <int dim>
-  bool FSI<dim>::point_in_mesh(const DoFHandler<dim> &df,
-                               const Point<dim> &point)
+  void FSI<dim>::update_solid_box()
   {
+    move_solid_mesh(true);
+    solid_box = 0;
+    for (unsigned int i = 0; i < dim; ++i)
+      {
+        solid_box(2 * i) =
+          solid_solver.triangulation.get_vertices().begin()->operator()(i);
+        solid_box(2 * i + 1) =
+          solid_solver.triangulation.get_vertices().begin()->operator()(i);
+      }
+    for (auto v = solid_solver.triangulation.get_vertices().begin();
+         v != solid_solver.triangulation.get_vertices().end();
+         ++v)
+      {
+        for (unsigned int i = 0; i < dim; ++i)
+          {
+            if ((*v)(i) < solid_box(2*i))
+              solid_box(2 * i) = (*v)(i);
+            else if ((*v)(i) > solid_box(2*i + 1))
+              solid_box(2 * i + 1) = (*v)(i);
+          }
+      }
+    move_solid_mesh(false);
+  }
+
+  template <int dim>
+  bool FSI<dim>::point_in_solid(const DoFHandler<dim> &df,
+                                const Point<dim> &point)
+  {
+    // Check whether the point is in the solid box first.
+    for (unsigned int i = 0; i < dim; ++i)
+      {
+        if (point(i) < solid_box(2 * i) || point(i) > solid_box(2 * i + 1))
+          return false;
+      }
     for (auto cell = df.begin_active(); cell != df.end(); ++cell)
       {
         if (cell->point_inside(point))
@@ -113,6 +156,7 @@ namespace MPI
   template <int dim>
   void FSI<dim>::update_indicator()
   {
+    TimerOutput::Scope timer_section(timer, "Update indicator");
     move_solid_mesh(true);
     FEValues<dim> fe_values(fluid_solver.fe,
                             fluid_solver.volume_quad_formula,
@@ -133,7 +177,7 @@ namespace MPI
         for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
           {
             Point<dim> point = f_cell->vertex(v);
-            if (!point_in_mesh(solid_solver.dof_handler, point))
+            if (!point_in_solid(solid_solver.dof_handler, point))
               {
                 is_solid = false;
                 break;
@@ -152,6 +196,7 @@ namespace MPI
   template <int dim>
   void FSI<dim>::find_fluid_bc()
   {
+    TimerOutput::Scope timer_section(timer, "Find fluid BC");
     move_solid_mesh(true);
 
     // The nonzero Dirichlet BCs (to set the velocity) and zero Dirichlet
@@ -227,6 +272,9 @@ namespace MPI
         // Loop over the support points to set Dirichlet BCs.
         for (unsigned int i = 0; i < unit_points.size(); ++i)
           {
+            if (support_points[i][0] < 1 - 1e-5 ||
+                support_points[i][0] > 1.2 + 1e-5)
+              continue;
             auto base_index = fluid_solver.fe.system_to_base_index(i);
             const unsigned int i_group = base_index.first.first;
             Assert(
@@ -248,7 +296,7 @@ namespace MPI
               fluid_solver.fe.system_to_component_index(i).first;
             Assert(index < dim,
                    ExcMessage("Vector component should be less than dim!"));
-            if (!point_in_mesh(solid_solver.dof_handler, support_points[i]))
+            if (!point_in_solid(solid_solver.dof_handler, support_points[i]))
               continue;
             Vector<double> fluid_velocity(dim);
             VectorTools::point_value(solid_solver.dof_handler,
@@ -272,7 +320,7 @@ namespace MPI
         for (unsigned int q = 0; q < n_q_points; ++q)
           {
             Point<dim> point = fe_values.quadrature_point(q);
-            ptr[q]->indicator = point_in_mesh(solid_solver.dof_handler, point);
+            ptr[q]->indicator = point_in_solid(solid_solver.dof_handler, point);
             ptr[q]->fsi_acceleration = 0;
             ptr[q]->fsi_stress = 0;
             if (ptr[q]->indicator == 0)
@@ -328,6 +376,7 @@ namespace MPI
   template <int dim>
   void FSI<dim>::find_solid_bc()
   {
+    TimerOutput::Scope timer_section(timer, "Find solid BC");
     // Must use the updated solid coordinates
     move_solid_mesh(true);
     // Fluid FEValues to do interpolation
@@ -407,7 +456,7 @@ namespace MPI
     pcout << "Running with PETSc on "
           << Utilities::MPI::n_mpi_processes(mpi_communicator)
           << " MPI rank(s)..." << std::endl;
-          
+
     solid_solver.triangulation.refine_global(parameters.global_refinements[1]);
     solid_solver.setup_dofs();
     solid_solver.initialize_system();
@@ -426,6 +475,7 @@ namespace MPI
       {
         find_solid_bc();
         solid_solver.run_one_step(first_step);
+        update_solid_box();
         update_indicator();
         fluid_solver.make_constraints();
         if (!first_step)
