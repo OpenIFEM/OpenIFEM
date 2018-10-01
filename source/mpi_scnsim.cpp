@@ -277,7 +277,7 @@ namespace Fluid
                                      mpi_communicator)));
 
       // Hard-coded initial condition, only for VF cases!
-      apply_initial_condition();
+      // apply_initial_condition();
     }
 
     template <int dim>
