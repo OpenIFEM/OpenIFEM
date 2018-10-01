@@ -85,9 +85,9 @@ namespace MPI
       {
         for (unsigned int i = 0; i < dim; ++i)
           {
-            if ((*v)(i) < solid_box(2*i))
+            if ((*v)(i) < solid_box(2 * i))
               solid_box(2 * i) = (*v)(i);
-            else if ((*v)(i) > solid_box(2*i + 1))
+            else if ((*v)(i) > solid_box(2 * i + 1))
               solid_box(2 * i + 1) = (*v)(i);
           }
       }
@@ -272,9 +272,6 @@ namespace MPI
         // Loop over the support points to set Dirichlet BCs.
         for (unsigned int i = 0; i < unit_points.size(); ++i)
           {
-            if (support_points[i][0] < 1 - 1e-5 ||
-                support_points[i][0] > 1.2 + 1e-5)
-              continue;
             auto base_index = fluid_solver.fe.system_to_base_index(i);
             const unsigned int i_group = base_index.first.first;
             Assert(
@@ -476,7 +473,7 @@ namespace MPI
         find_solid_bc();
         solid_solver.run_one_step(first_step);
         update_solid_box();
-        update_indicator();
+        // update_indicator();
         fluid_solver.make_constraints();
         if (!first_step)
           {
