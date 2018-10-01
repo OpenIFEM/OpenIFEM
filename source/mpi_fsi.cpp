@@ -253,6 +253,19 @@ namespace MPI
           {
             continue;
           }
+        // Check if the cell center is in the solid box.
+        bool center_in_box = true;
+        for (unsigned int i = 0; i < dim; ++i)
+          {
+            if ((f_cell->center())(i) < solid_box(2 * i) ||
+                (f_cell->center())(i) > solid_box(2 * i + 1))
+              center_in_box = false;
+          }
+        if (!center_in_box)
+          {
+            continue;
+          }
+        // Start working on the cell
         fe_values.reinit(f_cell);
         dummy_fe_values.reinit(f_cell);
         f_cell->get_dof_indices(dof_indices);
