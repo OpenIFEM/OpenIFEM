@@ -37,6 +37,9 @@ namespace MPI
     ~FSI();
 
   private:
+    /// Collect all the boundary lines in solid triangulation.
+    void collect_solid_boundaries();
+
     /// Define a smallest rectangle (or hex in 3d) that contains the solid.
     void update_solid_box();
 
@@ -102,6 +105,10 @@ namespace MPI
     // The point stored is in the order of:
     // (x_min, x_max, y_min, y_max, z_min, z_max)
     Vector<double> solid_box;
+
+    // Thie vector collects the solid boundaries for computing thw winding
+    // number.
+    std::list<std::pair<Point<dim>, Point<dim>>> solid_boundaries;
   };
 } // namespace MPI
 

@@ -68,6 +68,27 @@ namespace MPI
   }
 
   template <int dim>
+  void FSI<dim>::collect_solid_boundaries()
+  {
+    if (dim == 2)
+      for (auto cell = solid_solver.triangulation.begin_active();
+           cell != solid_solver.triangulation.end();
+           ++cell)
+        {
+          for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+            {
+              if (cell->face(f)->at_boundary())
+                {
+                  Point<dim> p1 = cell->face(f)->vertex(0);
+                  Point<dim> p2 = cell->face(f)->vertex(1);
+                  solid_boundaries.push_back(
+                    std::pair<Point<dim>, Point<dim>>(p1, p2));
+                }
+            }
+        }
+  }
+
+  template <int dim>
   void FSI<dim>::update_solid_box()
   {
     move_solid_mesh(true);
@@ -103,6 +124,49 @@ namespace MPI
       {
         if (point(i) < solid_box(2 * i) || point(i) > solid_box(2 * i + 1))
           return false;
+      }
+
+    // Compute its angle to each boundary face
+    if (dim == 2)
+      {
+        unsigned int cross_number = 0;
+        unsigned int half_cross_number = 0;
+        for (auto f = solid_boundaries.begin(); f != solid_boundaries.end();
+             ++f)
+          {
+            Point<dim> p1 = f->first, p2 = f->second;
+            double y_diff1 = p1(1) - point(1);
+            double y_diff2 = p2(1) - point(1);
+            Tensor<1, dim> r1 = p1 - p2;
+            Tensor<1, dim> r2 = r1 * (point(1) - p2(1)) / (p1(1) - p2(1));
+            if (y_diff1 * y_diff2 < 0)
+              {
+                // Point is on the left of the boundary
+                if (r2[0] + p2(0) > point(0))
+                  {
+                    ++cross_number;
+                  }
+                // Point is on the boundary
+                else if (r2[0] + p2(0) == point(0))
+                  return true;
+              }
+            // Point is on the left of one of the vertices
+            else if (y_diff1 * y_diff2 == 0)
+              {
+                // The boundary is horizontal
+                if (y_diff1 == 0 && y_diff2 == 0)
+                  return true;
+                else if (r2[0] + p2(0) > point(0))
+                  ++half_cross_number;
+                // Point overlaps with the vertex
+                else if (r2[0] + p2(0) == point(0))
+                  return true;
+              }
+          }
+        cross_number += half_cross_number / 2;
+        if (cross_number % 2 == 0)
+          return false;
+        return true;
       }
     for (auto cell = df.begin_active(); cell != df.end(); ++cell)
       {
@@ -470,6 +534,7 @@ namespace MPI
     solid_solver.triangulation.refine_global(parameters.global_refinements[1]);
     solid_solver.setup_dofs();
     solid_solver.initialize_system();
+    collect_solid_boundaries();
     fluid_solver.triangulation.refine_global(parameters.global_refinements[0]);
     fluid_solver.setup_dofs();
     fluid_solver.make_constraints();
