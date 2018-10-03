@@ -425,6 +425,10 @@ namespace Fluid
       update_stress();
 
       // Output
+      if (time.time_to_save())
+        {
+          save_checkpoint(time.get_timestep());
+        }
       if (time.time_to_output())
         {
           output_results(time.get_timestep());
@@ -442,10 +446,15 @@ namespace Fluid
             << Utilities::MPI::n_mpi_processes(mpi_communicator)
             << " MPI rank(s)..." << std::endl;
 
-      triangulation.refine_global(parameters.global_refinements[0]);
-      setup_dofs();
-      make_constraints();
-      initialize_system();
+      // Try load from previous computation
+      bool success_load = load_checkpoint();
+      if (!success_load)
+        {
+          triangulation.refine_global(parameters.global_refinements[0]);
+          setup_dofs();
+          make_constraints();
+          initialize_system();
+        }
 
       // Time loop.
       while (time.end() - time.current() > 1e-12)
@@ -453,7 +462,8 @@ namespace Fluid
           // Only use nonzero constraints at the very first time step
           // We have to assemble the LHS twice: once using nonzero_constraints,
           // once using zero_constraints.
-          run_one_step(time.get_timestep() == 0, time.get_timestep() < 2);
+          run_one_step(time.get_timestep() == 0,
+                       time.get_timestep() < 2 || success_load);
         }
     }
 

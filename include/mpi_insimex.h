@@ -52,6 +52,8 @@ namespace Fluid
       using FluidSolver<dim>::refine_mesh;
       using FluidSolver<dim>::output_results;
       using FluidSolver<dim>::update_stress;
+      using FluidSolver<dim>::save_checkpoint;
+      using FluidSolver<dim>::load_checkpoint;
 
       using FluidSolver<dim>::dofs_per_block;
       using FluidSolver<dim>::triangulation;
