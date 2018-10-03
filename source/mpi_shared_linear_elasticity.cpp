@@ -224,6 +224,9 @@ namespace Solid
           this->output_results(time.get_timestep());
         }
 
+      else if (parameters.simulation_type == "FSI")
+        assemble_system(false);
+
       const double dt = time.get_delta_t();
 
       PETScWrappers::MPI::Vector tmp1(locally_owned_dofs, mpi_communicator);
