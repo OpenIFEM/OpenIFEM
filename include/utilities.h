@@ -28,8 +28,8 @@ namespace Utils
          const double save_interval)
       : timestep(0),
         time_current(0.0),
-        time_end(time_end),
         delta_t(delta_t),
+        time_end(time_end),
         output_interval(output_interval),
         refinement_interval(refinement_interval),
         save_interval(save_interval)
@@ -43,12 +43,13 @@ namespace Utils
     bool time_to_refine() const;
     bool time_to_save() const;
     void increment();
+    void set_delta_t(double delta);
 
   private:
     unsigned int timestep;
     double time_current;
+    double delta_t;
     const double time_end;
-    const double delta_t;
     const double output_interval;
     const double refinement_interval;
     const double save_interval;

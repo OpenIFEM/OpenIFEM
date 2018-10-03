@@ -27,6 +27,11 @@ namespace Utils
     ++timestep;
   }
 
+  void Time::set_delta_t(double delta)
+  {
+    delta_t = delta;
+  }
+
   template <int dim, typename VectorType>
   DiracDeltaInterpolator<dim, VectorType>::DiracDeltaInterpolator(
     const DoFHandler<dim> &dof_handler, const Point<dim> &point, double h)
