@@ -448,7 +448,7 @@ namespace Utils
     Point<2> center(0, 0);
     GridCreator<2>::sphere(tria2d, center, radius);
     GridGenerator::extrude_triangulation(
-      tria2d, static_cast<unsigned int>(length / radius), length, tria);
+      tria2d, static_cast<unsigned int>(length / (4 * radius)), length, tria);
     tria.set_all_manifold_ids_on_boundary(0);
     for (auto cell = tria.begin(); cell != tria.end(); ++cell)
       {

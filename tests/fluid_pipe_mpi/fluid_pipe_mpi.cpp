@@ -6,11 +6,14 @@
  * 2D test takes about 260 on 2 ranks (sad).
  */
 #include "mpi_insim.h"
+#include "mpi_insimex.h"
 #include "parameters.h"
 #include "utilities.h"
 
 extern template class Fluid::MPI::InsIM<2>;
 extern template class Fluid::MPI::InsIM<3>;
+extern template class Fluid::MPI::InsIMEX<2>;
+extern template class Fluid::MPI::InsIMEX<3>;
 
 int main(int argc, char *argv[])
 {
@@ -54,8 +57,8 @@ int main(int argc, char *argv[])
       else if (params.dimension == 3)
         {
           parallel::distributed::Triangulation<3> tria(MPI_COMM_WORLD);
-          Utils::GridCreator<3>::cylinder(tria, D / 2, L / 2);
-          Fluid::MPI::InsIM<3> flow(tria, params);
+          Utils::GridCreator<3>::cylinder(tria, D / 2, L);
+          Fluid::MPI::InsIMEX<3> flow(tria, params);
           flow.run();
         }
       else
