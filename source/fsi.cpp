@@ -196,7 +196,7 @@ void FSI<dim>::find_fluid_bc()
 
   const std::vector<Point<dim>> &unit_points =
     fluid_solver.fe.get_unit_support_points();
-  Quadrature<dim> dummy_q(unit_points.size());
+  Quadrature<dim> dummy_q(unit_points);
   MappingQGeneric<dim> mapping(1);
   FEValues<dim> dummy_fe_values(
     mapping, fluid_solver.fe, dummy_q, update_quadrature_points);
