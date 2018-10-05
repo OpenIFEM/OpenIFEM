@@ -27,10 +27,7 @@ namespace Utils
     ++timestep;
   }
 
-  void Time::set_delta_t(double delta)
-  {
-    delta_t = delta;
-  }
+  void Time::set_delta_t(double delta) { delta_t = delta; }
 
   template <int dim, typename VectorType>
   DiracDeltaInterpolator<dim, VectorType>::DiracDeltaInterpolator(
@@ -101,7 +98,7 @@ namespace Utils
   template <int dim, typename VectorType>
   GridInterpolator<dim, VectorType>::GridInterpolator(
     const DoFHandler<dim> &dof_handler, const Point<dim> &point)
-    : dof_handler(dof_handler), point(point)
+    : dof_handler(dof_handler), point(point), cell_found(true)
   {
     // This function throws an exception of GridTools::ExcPointNotFound if the
     // point
@@ -115,6 +112,7 @@ namespace Utils
       {
         cell_point.first = dof_handler.end();
         cell_point.second = point;
+        cell_found = false;
       }
   }
 

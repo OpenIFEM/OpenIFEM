@@ -108,7 +108,7 @@ namespace MPI
 
     // Thie vector collects the solid boundaries for computing thw winding
     // number.
-    std::list<std::pair<Point<dim>, Point<dim>>> solid_boundaries;
+    std::list<typename Triangulation<dim>::face_iterator> solid_boundaries;
   };
 } // namespace MPI
 

@@ -123,9 +123,12 @@ namespace Utils
       const VectorType &,
       std::vector<Tensor<1, dim, typename VectorType::value_type>> &);
 
+    bool found_cell() const { return cell_found; };
+
   private:
     const DoFHandler<dim> &dof_handler;
     const Point<dim> &point;
+    bool cell_found;
     MappingQ1<dim> mapping;
     std::pair<typename DoFHandler<dim>::active_cell_iterator, Point<dim>>
       cell_point;

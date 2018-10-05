@@ -79,10 +79,7 @@ namespace MPI
             {
               if (cell->face(f)->at_boundary())
                 {
-                  Point<dim> p1 = cell->face(f)->vertex(0);
-                  Point<dim> p2 = cell->face(f)->vertex(1);
-                  solid_boundaries.push_back(
-                    std::pair<Point<dim>, Point<dim>>(p1, p2));
+                  solid_boundaries.push_back(cell->face(f));
                 }
             }
         }
@@ -134,11 +131,16 @@ namespace MPI
         for (auto f = solid_boundaries.begin(); f != solid_boundaries.end();
              ++f)
           {
-            Point<dim> p1 = f->first, p2 = f->second;
+            Point<dim> p1 = (*f)->vertex(0), p2 = (*f)->vertex(1);
             double y_diff1 = p1(1) - point(1);
             double y_diff2 = p2(1) - point(1);
+            double x_diff1 = p1(0) - point(0);
+            double x_diff2 = p2(0) - point(0);
             Tensor<1, dim> r1 = p1 - p2;
-            Tensor<1, dim> r2 = r1 * (point(1) - p2(1)) / (p1(1) - p2(1));
+            Tensor<1, dim> r2;
+            // r1[1] == 0 if the boundary is horizontal
+            if (r1[1] != 0.0)
+              r2 = r1 * (point(1) - p2(1)) / r1[1];
             if (y_diff1 * y_diff2 < 0)
               {
                 // Point is on the left of the boundary
@@ -148,19 +150,35 @@ namespace MPI
                   }
                 // Point is on the boundary
                 else if (r2[0] + p2(0) == point(0))
-                  return true;
+                  {
+                    return true;
+                  }
               }
-            // Point is on the left of one of the vertices
+            // Point is on the same horizontal line with one of the vertices
             else if (y_diff1 * y_diff2 == 0)
               {
                 // The boundary is horizontal
                 if (y_diff1 == 0 && y_diff2 == 0)
-                  return true;
+                  // The point is on it
+                  if (x_diff1 * x_diff2 < 0)
+                    {
+                      return true;
+                    }
+                  // The point is not on it
+                  else
+                    continue;
+                // On the left of the boundary
                 else if (r2[0] + p2(0) > point(0))
-                  ++half_cross_number;
+                  { // The point must not be on the top or bottom of the box
+                    // (because it can be tangential)
+                    if (point(1) != solid_box(2) && point(1) != solid_box(3))
+                      ++half_cross_number;
+                  }
                 // Point overlaps with the vertex
-                else if (r2[0] + p2(0) == point(0))
-                  return true;
+                else if (point == p1 || point == p2)
+                  {
+                    return true;
+                  }
               }
           }
         cross_number += half_cross_number / 2;
@@ -300,7 +318,7 @@ namespace MPI
 
     const std::vector<Point<dim>> &unit_points =
       fluid_solver.fe.get_unit_support_points();
-    Quadrature<dim> dummy_q(unit_points.size());
+    Quadrature<dim> dummy_q(unit_points);
     MappingQGeneric<dim> mapping(1);
     FEValues<dim> dummy_fe_values(
       mapping, fluid_solver.fe, dummy_q, update_quadrature_points);
@@ -346,6 +364,9 @@ namespace MPI
         // Fluid pressure
         fe_values[pressure].get_function_values(fluid_solver.present_solution,
                                                 p);
+        // Declare the fluid velocity for interpolating BC and reference point
+        Vector<double> fluid_velocity(dim);
+        Point<dim> reference_point(-999, -999);
         // Loop over the support points to set Dirichlet BCs.
         for (unsigned int i = 0; i < unit_points.size(); ++i)
           {
@@ -370,13 +391,24 @@ namespace MPI
               fluid_solver.fe.system_to_component_index(i).first;
             Assert(index < dim,
                    ExcMessage("Vector component should be less than dim!"));
-            if (!point_in_solid(solid_solver.dof_handler, support_points[i]))
-              continue;
-            Vector<double> fluid_velocity(dim);
-            VectorTools::point_value(solid_solver.dof_handler,
-                                     localized_solid_velocity,
-                                     support_points[i],
-                                     fluid_velocity);
+            Tensor<1, dim> point_diff = reference_point - support_points[i];
+            if (point_diff.norm() > 1e-10)
+              {
+                reference_point = support_points[i];
+                if (!point_in_solid(solid_solver.dof_handler,
+                                    support_points[i]))
+                  continue;
+                Utils::GridInterpolator<dim, Vector<double>> interpolator(
+                  solid_solver.dof_handler, support_points[i]);
+                if (!interpolator.found_cell())
+                  {
+                    std::cout << "Cannot find point: " << reference_point
+                              << std::endl;
+                    continue;
+                  }
+                interpolator.point_value(localized_solid_velocity,
+                                         fluid_velocity);
+              }
             auto line = dof_indices[i];
             inner_nonzero.add_line(line);
             inner_zero.add_line(line);
