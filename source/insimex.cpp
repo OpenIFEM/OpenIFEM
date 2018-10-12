@@ -77,7 +77,7 @@ namespace Fluid
       TimerOutput::Scope timer_section(timer, "CG for Sm");
       SolverControl sm_control(src.block(1).size(),
                                1e-6 * src.block(1).l2_norm());
-      SparseILU<double> Sm_preconditioner;
+      PreconditionIdentity Sm_preconditioner;
       Sm_preconditioner.initialize(*mass_schur);
       SolverCG<> cg_sm(sm_control);
       cg_sm.solve(*mass_schur, dst.block(1), src.block(1), Sm_preconditioner);

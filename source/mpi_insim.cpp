@@ -76,7 +76,7 @@ namespace Fluid
                                       mass_schur->get_mpi_communicator());
 
         // \f$-(\mu + \gamma\rho)M_p^{-1}v_1\f$
-        PETScWrappers::PreconditionBlockJacobi Mp_preconditioner;
+        PETScWrappers::PreconditionNone Mp_preconditioner;
         Mp_preconditioner.initialize(mass_matrix->block(1, 1));
         cg_mp.solve(
           mass_matrix->block(1, 1), tmp, src.block(1), Mp_preconditioner);
@@ -98,7 +98,7 @@ namespace Fluid
         // zeros?
         //
         // \f$-\frac{1}{dt}S_m^{-1}v_1\f$
-        PETScWrappers::PreconditionBlockJacobi Sm_preconditioner;
+        PETScWrappers::PreconditionNone Sm_preconditioner;
         Sm_preconditioner.initialize(mass_schur->block(1, 1));
         PETScWrappers::SolverCG cg_sm(solver_control,
                                       mass_schur->get_mpi_communicator());

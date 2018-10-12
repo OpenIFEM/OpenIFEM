@@ -70,7 +70,7 @@ namespace Fluid
         PETScWrappers::SolverCG cg_mp(mp_control,
                                       mass_schur->get_mpi_communicator());
         // \f$-(\mu + \gamma\rho)M_p^{-1}v_1\f$
-        PETScWrappers::PreconditionBlockJacobi Mp_preconditioner;
+        PETScWrappers::PreconditionNone Mp_preconditioner;
         Mp_preconditioner.initialize(mass_matrix->block(1, 1));
         cg_mp.solve(
           mass_matrix->block(1, 1), tmp, src.block(1), Mp_preconditioner);
@@ -93,7 +93,7 @@ namespace Fluid
           src.block(1).size(), std::max(1e-10, 1e-3 * src.block(1).l2_norm()));
         PETScWrappers::SolverCG cg_sm(sm_control,
                                       mass_schur->get_mpi_communicator());
-        PETScWrappers::PreconditionBlockJacobi Sm_preconditioner;
+        PETScWrappers::PreconditionNone Sm_preconditioner;
         Sm_preconditioner.initialize(mass_schur->block(1, 1));
         cg_sm.solve(mass_schur->block(1, 1),
                     dst.block(1),
