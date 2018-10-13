@@ -452,6 +452,11 @@ void FSI<dim>::run()
             << solid_solver.dof_handler.n_dofs() << "]" << std::endl;
 
   bool first_step = true;
+  if (parameters.refinement_interval < parameters.end_time)
+    {
+      refine_mesh(parameters.global_refinements[0],
+                  parameters.global_refinements[0] + 3);
+    }
   while (time.end() - time.current() > 1e-12)
     {
       find_solid_bc();
@@ -470,8 +475,10 @@ void FSI<dim>::run()
       first_step = false;
       time.increment();
       if (time.time_to_refine())
-        refine_mesh(parameters.global_refinements[0],
-                    parameters.global_refinements[0] + 2);
+        {
+          refine_mesh(parameters.global_refinements[0],
+                      parameters.global_refinements[0] + 3);
+        }
     }
 }
 

@@ -91,6 +91,9 @@ namespace MPI
      */
     void find_fluid_bc();
 
+    /// Mesh adaption.
+    void refine_mesh(const unsigned int, const unsigned int);
+
     // For MPI FSI, the solid solver uses shared trianulation. i.e.,
     // each process has the entire graph, for the ease of looping.
     Fluid::MPI::FluidSolver<dim> &fluid_solver;
