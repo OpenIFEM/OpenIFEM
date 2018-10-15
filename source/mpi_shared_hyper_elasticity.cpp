@@ -434,9 +434,7 @@ namespace Solid
             {
               unsigned int id = cell->face(face)->boundary_id();
 
-              if (!cell->face(face)->at_boundary() ||
-                  parameters.solid_dirichlet_bcs.find(id) !=
-                    parameters.solid_dirichlet_bcs.end())
+              if (!cell->face(face)->at_boundary())
                 {
                   // Not a Neumann boundary
                   continue;

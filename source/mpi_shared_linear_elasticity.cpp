@@ -135,53 +135,61 @@ namespace Solid
                   if (cell->face(face)->at_boundary())
                     {
                       unsigned int id = cell->face(face)->boundary_id();
-                      if (parameters.solid_neumann_bcs.find(id) !=
-                          parameters.solid_neumann_bcs.end())
+                      if (!cell->face(face)->at_boundary())
                         {
-                          std::vector<double> value;
-                          if (parameters.simulation_type != "FSI")
-                            {
-                              // In stand-alone simulation, the boundary value
-                              // is prescribed by the user.
-                              value = parameters.solid_neumann_bcs[id];
-                            }
-                          Tensor<1, dim> traction;
-                          if (parameters.simulation_type != "FSI" &&
-                              parameters.solid_neumann_bc_type == "Traction")
-                            {
-                              for (unsigned int i = 0; i < dim; ++i)
-                                {
-                                  traction[i] = value[i];
-                                }
-                            }
+                          // Not a Neumann boundary
+                          continue;
+                        }
 
-                          fe_face_values.reinit(cell, face);
-                          for (unsigned int q = 0; q < n_f_q_points; ++q)
+                      if (parameters.simulation_type != "FSI" &&
+                          parameters.solid_neumann_bcs.find(id) ==
+                            parameters.solid_neumann_bcs.end())
+                        {
+                          // Traction-free boundary, do nothing
+                          continue;
+                        }
+
+                      std::vector<double> value;
+                      if (parameters.simulation_type != "FSI")
+                        {
+                          // In stand-alone simulation, the boundary value
+                          // is prescribed by the user.
+                          value = parameters.solid_neumann_bcs[id];
+                        }
+                      Tensor<1, dim> traction;
+                      if (parameters.simulation_type != "FSI" &&
+                          parameters.solid_neumann_bc_type == "Traction")
+                        {
+                          for (unsigned int i = 0; i < dim; ++i)
                             {
-                              if (parameters.simulation_type != "FSI" &&
-                                  parameters.solid_neumann_bc_type ==
-                                    "Pressure")
-                                {
-                                  // The normal is w.r.t. reference
-                                  // configuration!
-                                  traction = fe_face_values.normal_vector(q);
-                                  traction *= value[0];
-                                }
-                              else if (parameters.simulation_type == "FSI")
-                                {
-                                  traction =
-                                    p[face * n_f_q_points + q]->fsi_traction;
-                                }
-                              for (unsigned int j = 0; j < dofs_per_cell; ++j)
-                                {
-                                  const unsigned int component_j =
-                                    fe.system_to_component_index(j).first;
-                                  // +external force
-                                  local_rhs(j) +=
-                                    fe_face_values.shape_value(j, q) *
-                                    traction[component_j] *
-                                    fe_face_values.JxW(q);
-                                }
+                              traction[i] = value[i];
+                            }
+                        }
+
+                      fe_face_values.reinit(cell, face);
+                      for (unsigned int q = 0; q < n_f_q_points; ++q)
+                        {
+                          if (parameters.simulation_type != "FSI" &&
+                              parameters.solid_neumann_bc_type == "Pressure")
+                            {
+                              // The normal is w.r.t. reference
+                              // configuration!
+                              traction = fe_face_values.normal_vector(q);
+                              traction *= value[0];
+                            }
+                          else if (parameters.simulation_type == "FSI")
+                            {
+                              traction =
+                                p[face * n_f_q_points + q]->fsi_traction;
+                            }
+                          for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                            {
+                              const unsigned int component_j =
+                                fe.system_to_component_index(j).first;
+                              // +external force
+                              local_rhs(j) += fe_face_values.shape_value(j, q) *
+                                              traction[component_j] *
+                                              fe_face_values.JxW(q);
                             }
                         }
                     }
