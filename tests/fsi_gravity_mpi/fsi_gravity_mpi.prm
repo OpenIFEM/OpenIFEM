@@ -8,17 +8,17 @@
 # Simulation parameters
 subsection Simulation
   # Type of simulation: FSI/Fluid/Solid
-  set Simulation type =  FSI
+  set Simulation type = FSI
 
   # The dimension of the simulation
-  set Dimension = 2
+  set Dimension = 3
 
   # Level of global refinement before running,
   # which applies to all the solvers
-  set Global refinements = 2, 3
+  set Global refinements = 0, 3
 
   # The end time of the simulation in second
-  set End time = 3e-3
+  set End time = 5e-1
 
   # The time step in second
   set Time step size = 1e-3
@@ -27,13 +27,13 @@ subsection Simulation
   set Output interval = 1e-3
 
   # Mesh refinement interval in second
-  set Refinement interval = 5e3
+  set Refinement interval = 5e-3
 
   # Checkpoint save interval in second
-  set Save interval = 100
+  set Save interval = 1e-1
 
   # Body force which applies to both fluid and solid (acceleration)
-  set Gravity = 0.0, -980.0
+  set Gravity = 0.0, 0.0, -980.0
 end
 
 # --------------------------------------------------------------------------------
@@ -73,20 +73,20 @@ subsection Fluid Dirichlet BCs
   set Use hard-coded boundary values = 0
 
   # Number of boundaries with Dirichlet BCs
-  set Number of Dirichlet BCs = 4
+  set Number of Dirichlet BCs = 6
 
   # List all the boundaries with Dirichlet BCs
-  set Dirichlet boundary id = 0, 1, 2, 3
+  set Dirichlet boundary id = 0, 1, 2, 3, 4, 5
 
   # List the constrained components of these boundaries
   # One decimal number indicates one set of constrained components:
   # 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
   # To make sense of the numbering, convert decimals to binaries (zyx)
-  set Dirichlet boundary components = 3, 3, 3, 1
+  set Dirichlet boundary components = 7, 7, 7, 7, 7, 3
 
   # Specify the values of the Dirichlet BCs, including both homogeneous and
   # inhomogeneous ones.
-  set Dirichlet boundary values = 0, 0, 0, 0, 0, 0, 0
+  set Dirichlet boundary values = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 end
 
 subsection Fluid Neumann BCs
@@ -150,7 +150,7 @@ subsection Solid Dirichlet BCs
   # One decimal number indicates one set of constrained components:
   # 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
   # To make sense of the numbering, convert decimals to binaries (zyx)
-  set Dirichlet boundary components = 1
+  set Dirichlet boundary components = 3
 end
 
 # Two types of Neumann BCs are supported: traction and pressure.
