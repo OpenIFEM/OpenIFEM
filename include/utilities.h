@@ -13,6 +13,9 @@
 #include <deal.II/lac/petsc_block_vector.h>
 #include <deal.II/numerics/vector_tools.h>
 
+#include <queue>
+#include <unordered_set>
+
 namespace Utils
 {
   using namespace dealii;
@@ -116,7 +119,10 @@ namespace Utils
   class GridInterpolator
   {
   public:
-    GridInterpolator(const DoFHandler<dim> &, const Point<dim> &);
+    GridInterpolator(const DoFHandler<dim> &,
+                     const Point<dim> &,
+                     const typename DoFHandler<dim>::active_cell_iterator &
+                       cell = typename DoFHandler<dim>::active_cell_iterator());
     void point_value(const VectorType &,
                      Vector<typename VectorType::value_type> &);
     void point_gradient(
@@ -159,6 +165,25 @@ namespace Utils
                            unsigned int,
                            double>>
       sources;
+  };
+
+  template <int dim, typename MeshType>
+  class CellLocator
+  {
+  public:
+    CellLocator(DoFHandler<dim> &,
+                const Point<dim> &,
+                const typename MeshType::active_cell_iterator &);
+    // Use breadth first search from the hint to find and return the iterator
+    // of the cell where the point is inside.
+    const typename MeshType::active_cell_iterator search();
+    bool found_cell() const { return cell_found; };
+
+  private:
+    DoFHandler<dim> &dof_handler;
+    const Point<dim> &point;
+    const typename MeshType::active_cell_iterator hint;
+    bool cell_found;
   };
 } // namespace Utils
 

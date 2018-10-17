@@ -21,6 +21,8 @@ extern template class Utils::GridInterpolator<3,
                                               PETScWrappers::MPI::BlockVector>;
 extern template class Utils::DiracDeltaInterpolator<2, Vector<double>>;
 extern template class Utils::DiracDeltaInterpolator<3, Vector<double>>;
+extern template class Utils::CellLocator<2, DoFHandler<2, 2>>;
+extern template class Utils::CellLocator<3, DoFHandler<3, 3>>;
 
 namespace MPI
 {
@@ -39,6 +41,9 @@ namespace MPI
   private:
     /// Collect all the boundary lines in solid triangulation.
     void collect_solid_boundaries();
+
+    /// Setup the hints for searching for each fluid cell.
+    void setup_cell_hints();
 
     /// Define a smallest rectangle (or hex in 3d) that contains the solid.
     void update_solid_box();
@@ -112,6 +117,12 @@ namespace MPI
     // Thie vector collects the solid boundaries for computing thw winding
     // number.
     std::list<typename Triangulation<dim>::face_iterator> solid_boundaries;
+
+    // Cell storage that stores hints of cell searching from last time step.
+    CellDataStorage<
+      typename parallel::distributed::Triangulation<dim>::active_cell_iterator,
+      typename DoFHandler<dim>::active_cell_iterator>
+      cell_hints;
   };
 } // namespace MPI
 

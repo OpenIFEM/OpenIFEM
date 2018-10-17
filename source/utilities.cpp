@@ -97,9 +97,18 @@ namespace Utils
 
   template <int dim, typename VectorType>
   GridInterpolator<dim, VectorType>::GridInterpolator(
-    const DoFHandler<dim> &dof_handler, const Point<dim> &point)
+    const DoFHandler<dim> &dof_handler,
+    const Point<dim> &point,
+    const typename DoFHandler<dim>::active_cell_iterator &cell)
     : dof_handler(dof_handler), point(point), cell_found(true)
   {
+    // If the cell is valid we just use the cell
+    if (cell.state() == IteratorState::IteratorStates::valid)
+      {
+        cell_point.first = cell;
+        cell_point.second = mapping.transform_real_to_unit_cell(cell, point);
+        return;
+      }
     // This function throws an exception of GridTools::ExcPointNotFound if the
     // point
     // does not lie in any cell. In this case, we set the cell pointer to null.
@@ -176,6 +185,63 @@ namespace Utils
       1, std::vector<Tensor<1, dim, Number>>(fe.n_components()));
     fe_values.get_function_gradients(fe_function, u_gradient);
     gradient = u_gradient[0];
+  }
+
+  template <int dim, typename MeshType>
+  CellLocator<dim, MeshType>::CellLocator(
+    DoFHandler<dim> &dh,
+    const Point<dim> &p,
+    const typename MeshType::active_cell_iterator &hint)
+    : dof_handler(dh), point(p), hint(hint), cell_found(true)
+  {
+  }
+
+  template <int dim, typename MeshType>
+  const typename MeshType::active_cell_iterator
+  CellLocator<dim, MeshType>::search()
+  {
+    // If the hint is the begin iterator we do not use BFS.
+    if (hint == dof_handler.begin_active())
+      {
+        MappingQ1<dim> mapping;
+        return (GridTools::find_active_cell_around_point(
+                  mapping, dof_handler, point))
+          .first;
+      }
+    // Create an unordered set to store the flagged cells
+    std::unordered_set<std::string> flag_table;
+    std::queue<typename MeshType::active_cell_iterator> cell_queue;
+    // Start with the hint cell
+    cell_queue.push(hint);
+    while (!cell_queue.empty())
+      {
+        auto current_cell = cell_queue.front();
+        flag_table.insert(current_cell->id().to_string());
+        cell_queue.pop();
+        // If the point is inside current cell then we are done.
+        if (current_cell->point_inside(point))
+          {
+            return current_cell;
+          }
+        std::vector<typename MeshType::active_cell_iterator> neightbors;
+        // Get all the active neighbors!
+        GridTools::get_active_neighbors<MeshType>(current_cell, neightbors);
+        for (unsigned int i = 0; i < neightbors.size(); ++i)
+          {
+            // Push all the unflagged cells into the queue
+            if (flag_table.find(neightbors[i]->id().to_string()) ==
+                flag_table.end())
+              {
+                cell_queue.push(neightbors[i]);
+                flag_table.insert(neightbors[i]->id().to_string());
+              }
+          }
+      }
+    // If the queue is already empty, we failed in finding the cell
+    cell_found = false;
+    // Return an invalid iterator
+    typename MeshType::active_cell_iterator invalid_itr;
+    return invalid_itr;
   }
 
   // Written by Davis Wells on dealii mailing list.
@@ -480,4 +546,6 @@ namespace Utils
   template class GridInterpolator<3, PETScWrappers::MPI::BlockVector>;
   template class DiracDeltaInterpolator<2, Vector<double>>;
   template class DiracDeltaInterpolator<3, Vector<double>>;
+  template class Utils::CellLocator<2, DoFHandler<2, 2>>;
+  template class Utils::CellLocator<3, DoFHandler<3, 3>>;
 } // namespace Utils

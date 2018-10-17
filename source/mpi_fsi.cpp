@@ -197,6 +197,32 @@ namespace MPI
   }
 
   template <int dim>
+  void FSI<dim>::setup_cell_hints()
+  {
+    unsigned int n_unit_points =
+      fluid_solver.fe.get_unit_support_points().size();
+    for (auto cell = fluid_solver.triangulation.begin_active();
+         cell != fluid_solver.triangulation.end();
+         ++cell)
+      {
+        if (!cell->is_artificial())
+          {
+            cell_hints.initialize(cell, n_unit_points);
+            const std::vector<
+              std::shared_ptr<typename DoFHandler<dim>::active_cell_iterator>>
+              hints = cell_hints.get_data(cell);
+            Assert(hints.size() == n_unit_points,
+                   ExcMessage("Wrong number of cell hints!"));
+            for (unsigned int v = 0; v < n_unit_points; ++v)
+              {
+                // Initialize the hints with the begin iterators!
+                *(hints[v]) = solid_solver.dof_handler.begin_active();
+              }
+          }
+      }
+  }
+
+  template <int dim>
   void FSI<dim>::update_solid_displacement()
   {
     move_solid_mesh(true);
@@ -325,6 +351,8 @@ namespace MPI
     std::vector<types::global_dof_index> dof_indices(
       fluid_solver.fe.dofs_per_cell);
 
+    std::vector<unsigned int> dof_touched(fluid_solver.dof_handler.n_dofs(), 0);
+
     for (auto f_cell = fluid_solver.dof_handler.begin_active();
          f_cell != fluid_solver.dof_handler.end();
          ++f_cell)
@@ -335,23 +363,12 @@ namespace MPI
           {
             continue;
           }
-        // Check if the cell center is in the solid box.
-        bool center_in_box = true;
-        for (unsigned int i = 0; i < dim; ++i)
-          {
-            if ((f_cell->center())(i) < solid_box(2 * i) ||
-                (f_cell->center())(i) > solid_box(2 * i + 1))
-              center_in_box = false;
-          }
-        if (!center_in_box)
-          {
-            continue;
-          }
         // Start working on the cell
         fe_values.reinit(f_cell);
         dummy_fe_values.reinit(f_cell);
         f_cell->get_dof_indices(dof_indices);
         auto support_points = dummy_fe_values.get_quadrature_points();
+        auto hints = cell_hints.get_data(f_cell);
         // Fluid velocity increment
         fe_values[velocities].get_function_values(
           fluid_solver.solution_increment, dv);
@@ -364,12 +381,14 @@ namespace MPI
         // Fluid pressure
         fe_values[pressure].get_function_values(fluid_solver.present_solution,
                                                 p);
-        // Declare the fluid velocity for interpolating BC and reference point
+        // Declare the fluid velocity for interpolating BC
         Vector<double> fluid_velocity(dim);
-        Point<dim> reference_point(-999, -999);
         // Loop over the support points to set Dirichlet BCs.
         for (unsigned int i = 0; i < unit_points.size(); ++i)
           {
+            // Skip the already-set dofs.
+            if (dof_touched[dof_indices[i]] != 0)
+              continue;
             auto base_index = fluid_solver.fe.system_to_base_index(i);
             const unsigned int i_group = base_index.first.first;
             Assert(
@@ -391,24 +410,23 @@ namespace MPI
               fluid_solver.fe.system_to_component_index(i).first;
             Assert(index < dim,
                    ExcMessage("Vector component should be less than dim!"));
-            Tensor<1, dim> point_diff = reference_point - support_points[i];
-            if (point_diff.norm() > 1e-10)
+            dof_touched[dof_indices[i]] = 1;
+            if (!point_in_solid(solid_solver.dof_handler, support_points[i]))
+              continue;
+            Utils::CellLocator<dim, DoFHandler<dim>> locator(
+              solid_solver.dof_handler, support_points[i], *(hints[i]));
+            *(hints[i]) = locator.search();
+            Utils::GridInterpolator<dim, Vector<double>> interpolator(
+              solid_solver.dof_handler, support_points[i], *(hints[i]));
+            if (!interpolator.found_cell())
               {
-                reference_point = support_points[i];
-                if (!point_in_solid(solid_solver.dof_handler,
-                                    support_points[i]))
-                  continue;
-                Utils::GridInterpolator<dim, Vector<double>> interpolator(
-                  solid_solver.dof_handler, support_points[i]);
-                if (!interpolator.found_cell())
-                  {
-                    std::cout << "Cannot find point: " << reference_point
-                              << std::endl;
-                    continue;
-                  }
-                interpolator.point_value(localized_solid_velocity,
-                                         fluid_velocity);
+                std::stringstream message;
+                message << "Cannot find point in solid: " << support_points[i]
+                        << std::endl;
+                AssertThrow(interpolator.found_cell(),
+                            ExcMessage(message.str()));
               }
+            interpolator.point_value(localized_solid_velocity, fluid_velocity);
             auto line = dof_indices[i];
             inner_nonzero.add_line(line);
             inner_zero.add_line(line);
@@ -419,7 +437,8 @@ namespace MPI
               fluid_velocity[index] - fluid_solver.present_solution(line));
           }
         // Loop over all quadrature points to set FSI forces.
-        // Now skip the ghost elements because it's not store in cell property.
+        // Now skip the ghost elements because it's not store in cell
+        // property.
         if (!f_cell->is_locally_owned())
           continue;
         auto ptr = fluid_solver.cell_property.get_data(f_cell);
@@ -577,26 +596,29 @@ namespace MPI
     move_solid_mesh(false);
     if (fluid_solver.triangulation.n_levels() > max_grid_level)
       {
-        for (auto cell = fluid_solver.triangulation.begin_active(max_grid_level);
-            cell != fluid_solver.triangulation.end();
-            ++cell)
+        for (auto cell =
+               fluid_solver.triangulation.begin_active(max_grid_level);
+             cell != fluid_solver.triangulation.end();
+             ++cell)
           {
             cell->clear_refine_flag();
           }
       }
 
     for (auto cell = fluid_solver.triangulation.begin_active(min_grid_level);
-        cell != fluid_solver.triangulation.end_active(min_grid_level);
-        ++cell)
+         cell != fluid_solver.triangulation.end_active(min_grid_level);
+         ++cell)
       {
         cell->clear_coarsen_flag();
       }
 
-    parallel::distributed::SolutionTransfer<dim, PETScWrappers::MPI::BlockVector>
+    parallel::distributed::SolutionTransfer<dim,
+                                            PETScWrappers::MPI::BlockVector>
       solution_transfer(fluid_solver.dof_handler);
 
     fluid_solver.triangulation.prepare_coarsening_and_refinement();
-    solution_transfer.prepare_for_coarsening_and_refinement(fluid_solver.present_solution);
+    solution_transfer.prepare_for_coarsening_and_refinement(
+      fluid_solver.present_solution);
 
     fluid_solver.triangulation.execute_coarsening_and_refinement();
 
@@ -605,7 +627,8 @@ namespace MPI
     fluid_solver.initialize_system();
 
     PETScWrappers::MPI::BlockVector buffer;
-    buffer.reinit(fluid_solver.owned_partitioning, fluid_solver.mpi_communicator);
+    buffer.reinit(fluid_solver.owned_partitioning,
+                  fluid_solver.mpi_communicator);
     buffer = 0;
     solution_transfer.interpolate(buffer);
     fluid_solver.nonzero_constraints.distribute(buffer);
@@ -627,6 +650,7 @@ namespace MPI
     fluid_solver.setup_dofs();
     fluid_solver.make_constraints();
     fluid_solver.initialize_system();
+    setup_cell_hints();
     pcout << "Number of fluid active cells and dofs: ["
           << fluid_solver.triangulation.n_active_cells() << ", "
           << fluid_solver.dof_handler.n_dofs() << "]" << std::endl
