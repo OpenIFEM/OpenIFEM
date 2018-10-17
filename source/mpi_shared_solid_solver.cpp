@@ -195,7 +195,8 @@ namespace Solid
       // Since only process 0 writes the output, we want all the others
       // to sned their data to process 0, which is automatically done
       // in this copy constructor.
-      Vector<double> solution(current_displacement);
+      Vector<double> displacement(current_displacement);
+      Vector<double> velocity(current_velocity);
 
       std::vector<std::vector<Vector<double>>> localized_strain(
         dim, std::vector<Vector<double>>(dim));
@@ -218,7 +219,15 @@ namespace Solid
           DataOut<dim> data_out;
           data_out.attach_dof_handler(dof_handler);
 
-          data_out.add_data_vector(solution,
+          // displacements
+          data_out.add_data_vector(displacement,
+                                   solution_names,
+                                   DataOut<dim>::type_dof_data,
+                                   data_component_interpretation);
+
+          // velocity
+          solution_names = std::vector<std::string>(dim, "velocities");
+          data_out.add_data_vector(velocity,
                                    solution_names,
                                    DataOut<dim>::type_dof_data,
                                    data_component_interpretation);
