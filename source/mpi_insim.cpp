@@ -471,6 +471,10 @@ namespace Fluid
       // Update stress for output
       update_stress();
       // Output
+      if (time.time_to_save())
+        {
+          save_checkpoint(time.get_timestep());
+        }
       if (time.time_to_output())
         {
           output_results(time.get_timestep());
@@ -488,10 +492,15 @@ namespace Fluid
             << Utilities::MPI::n_mpi_processes(mpi_communicator)
             << " MPI rank(s)..." << std::endl;
 
-      triangulation.refine_global(parameters.global_refinements[0]);
-      setup_dofs();
-      make_constraints();
-      initialize_system();
+      // Try load from previous computation
+      bool success_load = load_checkpoint();
+      if (!success_load)
+        {
+          triangulation.refine_global(parameters.global_refinements[0]);
+          setup_dofs();
+          make_constraints();
+          initialize_system();
+        }
 
       // Time loop.
       // use_nonzero_constraints is set to true only at the first time step,
