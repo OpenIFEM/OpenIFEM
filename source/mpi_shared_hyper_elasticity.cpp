@@ -186,7 +186,7 @@ namespace Solid
         {
           this->output_results(time.get_timestep());
         }
-      if (time.time_to_save())
+      if (parameters.simulation_type == "Solid" && time.time_to_save())
         {
           this->save_checkpoint(time.get_timestep());
         }

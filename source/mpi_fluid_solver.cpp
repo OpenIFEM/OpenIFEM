@@ -505,8 +505,9 @@ namespace Fluid
       // if no restart file is found, return false
       if (checkpoint_file == local_path)
         {
-          pcout << "Did not find checkpoint files. Start from the beginning !"
-                << std::endl;
+          pcout
+            << "Did not find fluid checkpoint files. Start from the beginning !"
+            << std::endl;
           return false;
         }
       // set time step load the checkpoint file

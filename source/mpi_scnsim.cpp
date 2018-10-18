@@ -758,7 +758,7 @@ namespace Fluid
           output_results(time.get_timestep());
         }
       // Save checkpoint
-      if (time.time_to_save())
+      if (parameters.simulation_type == "Fluid" && time.time_to_save())
         {
           save_checkpoint(time.get_timestep());
         }

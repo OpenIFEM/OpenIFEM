@@ -471,7 +471,7 @@ namespace Fluid
       // Update stress for output
       update_stress();
       // Output
-      if (time.time_to_save())
+      if (parameters.simulation_type == "Fluid" && time.time_to_save())
         {
           save_checkpoint(time.get_timestep());
         }

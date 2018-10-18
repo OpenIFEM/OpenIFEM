@@ -643,21 +643,41 @@ namespace MPI
           << " MPI rank(s)..." << std::endl;
 
     solid_solver.triangulation.refine_global(parameters.global_refinements[1]);
-    solid_solver.setup_dofs();
-    solid_solver.initialize_system();
+    // Try load from previous computation.
+    bool success_load =
+      solid_solver.load_checkpoint() && fluid_solver.load_checkpoint();
+    AssertThrow(
+      solid_solver.time.current() == fluid_solver.time.current(),
+      ExcMessage("Solid and fluid restart files have different time steps. "
+                 "Check and remove inconsistent restart files!"));
+    if (!success_load)
+      {
+        solid_solver.setup_dofs();
+        solid_solver.initialize_system();
+        fluid_solver.triangulation.refine_global(
+          parameters.global_refinements[0]);
+        fluid_solver.setup_dofs();
+        fluid_solver.make_constraints();
+        fluid_solver.initialize_system();
+      }
+    else
+      {
+        while (time.get_timestep() < solid_solver.time.get_timestep())
+          {
+            time.increment();
+          }
+      }
+
     collect_solid_boundaries();
-    fluid_solver.triangulation.refine_global(parameters.global_refinements[0]);
-    fluid_solver.setup_dofs();
-    fluid_solver.make_constraints();
-    fluid_solver.initialize_system();
     setup_cell_hints();
+
     pcout << "Number of fluid active cells and dofs: ["
           << fluid_solver.triangulation.n_active_cells() << ", "
           << fluid_solver.dof_handler.n_dofs() << "]" << std::endl
           << "Number of solid active cells and dofs: ["
           << solid_solver.triangulation.n_active_cells() << ", "
           << solid_solver.dof_handler.n_dofs() << "]" << std::endl;
-    bool first_step = true;
+    bool first_step = !success_load;
     if (parameters.refinement_interval < parameters.end_time)
       {
         refine_mesh(parameters.global_refinements[0],
@@ -666,6 +686,8 @@ namespace MPI
     while (time.end() - time.current() > 1e-12)
       {
         find_solid_bc();
+        if (success_load)
+          solid_solver.assemble_system(true);
         solid_solver.run_one_step(first_step);
         update_solid_box();
         // update_indicator();
@@ -684,6 +706,11 @@ namespace MPI
           {
             refine_mesh(parameters.global_refinements[0],
                         parameters.global_refinements[0] + 3);
+          }
+        if (time.time_to_save())
+          {
+            solid_solver.save_checkpoint(time.get_timestep());
+            fluid_solver.save_checkpoint(time.get_timestep());
           }
       }
   }
