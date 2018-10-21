@@ -3,6 +3,12 @@
 #include <iostream>
 
 template <int dim>
+FSI<dim>::~FSI()
+{
+  timer.print_summary();
+}
+
+template <int dim>
 FSI<dim>::FSI(Fluid::FluidSolver<dim> &f,
               Solid::SolidSolver<dim> &s,
               const Parameters::AllParameters &p)
@@ -13,7 +19,8 @@ FSI<dim>::FSI(Fluid::FluidSolver<dim> &f,
          parameters.time_step,
          parameters.output_interval,
          parameters.refinement_interval,
-         parameters.save_interval)
+         parameters.save_interval),
+    timer(std::cout, TimerOutput::never, TimerOutput::wall_times)
 {
   solid_box.reinit(2 * dim);
 }
@@ -21,6 +28,7 @@ FSI<dim>::FSI(Fluid::FluidSolver<dim> &f,
 template <int dim>
 void FSI<dim>::move_solid_mesh(bool move_forward)
 {
+  TimerOutput::Scope timer_section(timer, "Move solid mesh");
   std::vector<bool> vertex_touched(solid_solver.triangulation.n_vertices(),
                                    false);
   for (auto cell = solid_solver.dof_handler.begin_active();
@@ -139,6 +147,7 @@ void FSI<dim>::update_solid_displacement()
 template <int dim>
 void FSI<dim>::update_indicator()
 {
+  TimerOutput::Scope timer_section(timer, "Update indicator");
   move_solid_mesh(true);
   FEValues<dim> fe_values(fluid_solver.fe,
                           fluid_solver.volume_quad_formula,
@@ -173,6 +182,7 @@ void FSI<dim>::update_indicator()
 template <int dim>
 void FSI<dim>::find_fluid_bc()
 {
+  TimerOutput::Scope timer_section(timer, "Find fluid BC");
   move_solid_mesh(true);
 
   // The nonzero Dirichlet BCs (to set the velocity) and zero Dirichlet
@@ -322,6 +332,7 @@ void FSI<dim>::find_fluid_bc()
 template <int dim>
 void FSI<dim>::find_solid_bc()
 {
+  TimerOutput::Scope timer_section(timer, "Find solid BC");
   // Must use the updated solid coordinates
   move_solid_mesh(true);
   // Fluid FEValues to do interpolation
@@ -384,6 +395,7 @@ template <int dim>
 void FSI<dim>::refine_mesh(const unsigned int min_grid_level,
                            const unsigned int max_grid_level)
 {
+  TimerOutput::Scope timer_section(timer, "Refine mesh");
   move_solid_mesh(true);
   for (auto f_cell : fluid_solver.dof_handler.active_cell_iterators())
     {
@@ -460,7 +472,10 @@ void FSI<dim>::run()
   while (time.end() - time.current() > 1e-12)
     {
       find_solid_bc();
-      solid_solver.run_one_step(first_step);
+      {
+        TimerOutput::Scope timer_section(timer, "Run solid solver");
+        solid_solver.run_one_step(first_step);
+      }
       update_solid_box();
       // update_indicator();
       fluid_solver.make_constraints();
@@ -471,7 +486,10 @@ void FSI<dim>::run()
             fluid_solver.zero_constraints);
         }
       find_fluid_bc();
-      fluid_solver.run_one_step(true);
+      {
+        TimerOutput::Scope timer_section(timer, "Run fluid solver");
+        fluid_solver.run_one_step(true);
+      }
       first_step = false;
       time.increment();
       if (time.time_to_refine())

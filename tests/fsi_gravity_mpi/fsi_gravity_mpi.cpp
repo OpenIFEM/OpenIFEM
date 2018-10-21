@@ -1,6 +1,6 @@
 #include "mpi_fsi.h"
-#include "mpi_shared_hyper_elasticity.h"
 #include "mpi_insim.h"
+#include "mpi_shared_hyper_elasticity.h"
 
 extern template class Fluid::MPI::InsIM<2>;
 extern template class Fluid::MPI::InsIM<3>;

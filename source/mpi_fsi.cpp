@@ -579,6 +579,7 @@ namespace MPI
   void FSI<dim>::refine_mesh(const unsigned int min_grid_level,
                              const unsigned int max_grid_level)
   {
+    TimerOutput::Scope timer_section(timer, "Refine mesh");
     move_solid_mesh(true);
     for (auto f_cell : fluid_solver.dof_handler.active_cell_iterators())
       {
@@ -687,8 +688,13 @@ namespace MPI
       {
         find_solid_bc();
         if (success_load)
-          solid_solver.assemble_system(true);
-        solid_solver.run_one_step(first_step);
+          {
+            solid_solver.assemble_system(true);
+          }
+        {
+          TimerOutput::Scope timer_section(timer, "Run solid solver");
+          solid_solver.run_one_step(first_step);
+        }
         update_solid_box();
         // update_indicator();
         fluid_solver.make_constraints();
@@ -699,7 +705,10 @@ namespace MPI
               fluid_solver.zero_constraints);
           }
         find_fluid_bc();
-        fluid_solver.run_one_step(true);
+        {
+          TimerOutput::Scope timer_section(timer, "Run fluid solver");
+          fluid_solver.run_one_step(true);
+        }
         first_step = false;
         time.increment();
         if (time.time_to_refine())

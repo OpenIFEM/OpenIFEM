@@ -29,6 +29,7 @@ public:
       Solid::SolidSolver<dim> &,
       const Parameters::AllParameters &);
   void run();
+  ~FSI();
 
 private:
   /// Define a smallest rectangle (or hex in 3d) that contains the solid.
@@ -89,6 +90,7 @@ private:
   Solid::SolidSolver<dim> &solid_solver;
   Parameters::AllParameters parameters;
   Utils::Time time;
+  mutable TimerOutput timer;
 
   // This vector represents the smallest box that contains the solid.
   // The point stored is in the order of:
