@@ -408,7 +408,8 @@ namespace Fluid
 
       // Resetting
       solution_increment = 0;
-      assemble(apply_nonzero_constraints, assemble_system);
+      assemble(apply_nonzero_constraints, assemble_system ||
+        (parameters.simulation_type == "Fluid" && time.time_to_refine()));
       auto state = solve(apply_nonzero_constraints, assemble_system);
 
       // Note we have to use a non-ghosted vector in order to do addition.
