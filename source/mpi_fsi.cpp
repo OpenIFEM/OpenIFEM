@@ -683,6 +683,7 @@ namespace MPI
       {
         refine_mesh(parameters.global_refinements[0],
                     parameters.global_refinements[0] + 3);
+        setup_cell_hints();
       }
     while (time.end() - time.current() > 1e-12)
       {
@@ -715,6 +716,7 @@ namespace MPI
           {
             refine_mesh(parameters.global_refinements[0],
                         parameters.global_refinements[0] + 3);
+            setup_cell_hints();
           }
         if (time.time_to_save())
           {
