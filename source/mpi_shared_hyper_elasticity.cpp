@@ -101,8 +101,9 @@ namespace Solid
 
       pcout << std::string(100, '_') << std::endl;
 
-      while (normalized_error_update > parameters.tol_d ||
-             normalized_error_residual > parameters.tol_f)
+      while ((normalized_error_update > parameters.tol_d ||
+              normalized_error_residual > parameters.tol_f) &&
+             error_update > 1e-12 && error_update > 1e-12)
         {
           AssertThrow(newton_iteration < parameters.solid_max_iterations,
                       ExcMessage("Too many Newton iterations!"));

@@ -3,11 +3,12 @@
  * solver.
  */
 #include "mpi_fsi.h"
+#include "mpi_insimex.h"
 #include "mpi_scnsim.h"
 #include "mpi_shared_hyper_elasticity.h"
 
 extern template class Fluid::MPI::SCnsIM<2>;
-extern template class Fluid::MPI::SCnsIM<3>;
+extern template class Fluid::MPI::InsIMEX<3>;
 extern template class Solid::MPI::SharedHyperElasticity<2>;
 extern template class Solid::MPI::SharedHyperElasticity<3>;
 extern template class MPI::FSI<2>;
@@ -25,11 +26,23 @@ public:
   virtual void vector_value(const Point<dim> &p, Vector<double> &values) const;
 };
 
-template <int dim>
-double BoundaryValues<dim>::value(const Point<dim> &p,
-                                  const unsigned int component) const
+template <>
+double BoundaryValues<2>::value(const Point<2> &p,
+                                const unsigned int component) const
 {
   if (component == 0 && std::abs(p[0]) < 1e-10 && std::abs(p[1]) > 1e-10)
+    {
+      return U;
+    }
+  return 0;
+}
+
+template <>
+double BoundaryValues<3>::value(const Point<3> &p,
+                                const unsigned int component) const
+{
+  if (component == 2 && std::abs(p[2]) < 1e-10 && std::abs(p[0]) > 1e-10 &&
+      std::abs(p[1]) > 1e-10)
     {
       return U;
     }
@@ -98,7 +111,31 @@ int main(int argc, char *argv[])
         }
       else
         {
-          AssertThrow(false, ExcNotImplemented());
+          parallel::distributed::Triangulation<3> fluid_tria(MPI_COMM_WORLD);
+          dealii::GridGenerator::subdivided_hyper_rectangle(
+            fluid_tria,
+            {static_cast<unsigned int>(H / (2 * h)),
+             static_cast<unsigned int>(H / (2 * h)),
+             static_cast<unsigned int>(L / (2 * h))},
+            Point<3>(0, 0, 0),
+            Point<3>(H, H, L),
+            true);
+          auto ptr = std::make_shared<BoundaryValues<3>>(BoundaryValues<3>());
+          Fluid::MPI::InsIMEX<3> fluid(fluid_tria, params, ptr);
+
+          Triangulation<3> solid_tria;
+          dealii::GridGenerator::subdivided_hyper_rectangle(
+            solid_tria,
+            {static_cast<unsigned int>(b / (1 * h)),
+             static_cast<unsigned int>(a / (1 * h)),
+             static_cast<unsigned int>(a / (1 * h))},
+            Point<3>(0, (H - a) / 2, L / 4),
+            Point<3>(b, (H + a) / 2, a + L / 4),
+            true);
+          Solid::MPI::SharedHyperElasticity<3> solid(solid_tria, params);
+
+          MPI::FSI<3> fsi(fluid, solid, params);
+          fsi.run();
         }
     }
   catch (std::exception &exc)
