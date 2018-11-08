@@ -231,8 +231,7 @@ namespace Fluid
               for (unsigned int q = 0; q < n_q_points; ++q)
                 {
                   p[q]->indicator = 0;
-                  p[q]->fsi_acceleration = 0;
-                  p[q]->fsi_stress = 0;
+                  p[q]->fsi = 0;
                 }
             }
         }

@@ -446,8 +446,7 @@ namespace MPI
           {
             Point<dim> point = fe_values.quadrature_point(q);
             ptr[q]->indicator = point_in_solid(solid_solver.dof_handler, point);
-            ptr[q]->fsi_acceleration = 0;
-            ptr[q]->fsi_stress = 0;
+            ptr[q]->fsi = 0;
             if (ptr[q]->indicator == 0)
               continue;
             // acceleration: Dv^f/Dt - Dv^s/Dt
@@ -462,28 +461,31 @@ namespace MPI
             for (unsigned int i = 0; i < dim; ++i)
               {
                 if (ptr[q]->indicator == 0)
-                  ptr[q]->fsi_acceleration[i] =
+                  ptr[q]->fsi[i] =
                     (parameters.solid_rho - parameters.fluid_rho) *
                     (parameters.gravity[i] - solid_acc[i]);
               }
-            // stress: sigma^f - sigma^s
-            SymmetricTensor<2, dim> solid_sigma;
+            // stress: div(sigma^s - sigma^f)
+            Tensor<1, dim> sigma_div;
             for (unsigned int i = 0; i < dim; ++i)
               {
                 for (unsigned int j = 0; j < dim; ++j)
                   {
-                    Vector<double> sigma_ij(1);
-                    VectorTools::point_value(solid_solver.scalar_dof_handler,
-                                             localized_stress[i][j],
-                                             point,
-                                             sigma_ij);
-                    solid_sigma[i][j] = sigma_ij[0];
+                    std::vector<Tensor<1, dim>> tmp(1);
+                    VectorTools::point_gradient(fluid_solver.scalar_dof_handler,
+                                                fluid_solver.stress[i][j],
+                                                point,
+                                                tmp);
+                    sigma_div[i] -= tmp[0][j];
+                    VectorTools::point_gradient(solid_solver.scalar_dof_handler,
+                                                solid_solver.stress[i][j],
+                                                point,
+                                                tmp);
+                    sigma_div[i] += tmp[0][j];
                   }
               }
             if (ptr[q]->indicator == 0)
-              ptr[q]->fsi_stress =
-                -p[q] * Physics::Elasticity::StandardTensors<dim>::I +
-                2 * parameters.viscosity * sym_grad_v[q] - solid_sigma;
+              ptr[q]->fsi += sigma_div;
           }
       }
 
