@@ -277,7 +277,9 @@ namespace Fluid
                       if (ind == 1)
                         {
                           local_rhs(i) +=
-                            p[q]->fsi * phi_u[i] * fe_values.JxW(q);
+                            (scalar_product(grad_phi_u[i], p[q]->fsi_stress) +
+                             (p[q]->fsi_acceleration * rho * phi_u[i])) *
+                            fe_values.JxW(q);
                         }
                     }
                 }
