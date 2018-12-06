@@ -163,22 +163,16 @@ namespace Fluid
   template <int dim>
   void FluidSolver<dim>::setup_cell_property()
   {
-    const unsigned int n_q_points = volume_quad_formula.size();
     cell_property.initialize(
-      triangulation.begin_active(), triangulation.end(), n_q_points);
+      triangulation.begin_active(), triangulation.end(), 1);
     for (auto cell = triangulation.begin_active(); cell != triangulation.end();
          ++cell)
       {
         const std::vector<std::shared_ptr<CellProperty>> p =
           cell_property.get_data(cell);
-        Assert(p.size() == n_q_points,
-               ExcMessage("Wrong number of cell property!"));
-        for (unsigned int q = 0; q < n_q_points; ++q)
-          {
-            p[q]->indicator = 0;
-            p[q]->fsi_acceleration = 0;
-            p[q]->fsi_stress = 0;
-          }
+        p[0]->indicator = 0;
+        p[0]->fsi_acceleration = 0;
+        p[0]->fsi_stress = 0;
       }
   }
 
@@ -296,16 +290,7 @@ namespace Fluid
          ++cell)
       {
         auto p = cell_property.get_data(cell);
-        bool artificial = false;
-        for (auto ptr : p)
-          {
-            if (ptr->indicator == 1)
-              {
-                artificial = true;
-                break;
-              }
-          }
-        ind[i++] = artificial;
+        ind[i++] = p[0]->indicator;
       }
     data_out.add_data_vector(ind, "Indicator");
 

@@ -156,7 +156,6 @@ namespace Fluid
       TimerOutput::Scope timer_section(timer, "Assemble system");
 
       const double viscosity = parameters.viscosity;
-      const double rho = parameters.fluid_rho;
       const double gamma = parameters.grad_div;
       Tensor<1, dim> gravity;
       for (unsigned int i = 0; i < dim; ++i)
@@ -210,6 +209,9 @@ namespace Fluid
           if (cell->is_locally_owned())
             {
               auto p = cell_property.get_data(cell);
+              const int ind = p[0]->indicator;
+              const double rho =
+                (ind == 1 ? parameters.solid_rho : parameters.fluid_rho);
 
               fe_values.reinit(cell);
 
@@ -295,8 +297,8 @@ namespace Fluid
                       if (ind == 1)
                         {
                           local_rhs(i) +=
-                            (scalar_product(grad_phi_u[i], p[q]->fsi_stress) +
-                             (p[q]->fsi_acceleration * rho * phi_u[i])) *
+                            (scalar_product(grad_phi_u[i], p[0]->fsi_stress) +
+                             (p[0]->fsi_acceleration * rho * phi_u[i])) *
                             fe_values.JxW(q);
                         }
                     }

@@ -195,7 +195,6 @@ namespace Fluid
     TimerOutput::Scope timer_section(timer, "Assemble system");
 
     const double viscosity = parameters.viscosity;
-    const double rho = parameters.fluid_rho;
     Tensor<1, dim> gravity;
     for (unsigned int i = 0; i < dim; ++i)
       gravity[i] = parameters.gravity[i];
@@ -254,6 +253,9 @@ namespace Fluid
          ++cell)
       {
         auto p = cell_property.get_data(cell);
+        const int ind = p[0]->indicator;
+        const double rho =
+          (ind == 1 ? parameters.solid_rho : parameters.fluid_rho);
 
         fe_values.reinit(cell);
 
@@ -284,7 +286,6 @@ namespace Fluid
         // Assemble the system matrix
         for (unsigned int q = 0; q < n_q_points; ++q)
           {
-            const int ind = p[q]->indicator;
             for (unsigned int k = 0; k < dofs_per_cell; ++k)
               {
                 div_phi_u[k] = fe_values[velocities].divergence(k, q);
@@ -452,8 +453,8 @@ namespace Fluid
                 if (ind == 1)
                   {
                     local_rhs(i) +=
-                      (scalar_product(grad_phi_u[i], p[q]->fsi_stress) +
-                       (p[q]->fsi_acceleration * rho * phi_u[i])) *
+                      (scalar_product(grad_phi_u[i], p[0]->fsi_stress) +
+                       (p[0]->fsi_acceleration * rho * phi_u[i])) *
                       fe_values.JxW(q);
                   }
               }

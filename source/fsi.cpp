@@ -149,30 +149,14 @@ void FSI<dim>::update_indicator()
 {
   TimerOutput::Scope timer_section(timer, "Update indicator");
   move_solid_mesh(true);
-  FEValues<dim> fe_values(fluid_solver.fe,
-                          fluid_solver.volume_quad_formula,
-                          update_quadrature_points);
-  const unsigned int n_q_points = fluid_solver.volume_quad_formula.size();
   for (auto f_cell = fluid_solver.dof_handler.begin_active();
        f_cell != fluid_solver.dof_handler.end();
        ++f_cell)
     {
-      fe_values.reinit(f_cell);
       auto p = fluid_solver.cell_property.get_data(f_cell);
-      bool is_solid = true;
-      for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
-        {
-          Point<dim> point = f_cell->vertex(v);
-          if (!point_in_solid(solid_solver.dof_handler, point))
-            {
-              is_solid = false;
-              break;
-            }
-        }
-      for (unsigned int q = 0; q < n_q_points; ++q)
-        {
-          p[q]->indicator = is_solid;
-        }
+      auto center = f_cell->center();
+      p[0]->indicator = point_in_solid(solid_solver.dof_handler, center);
+      ;
     }
   move_solid_mesh(false);
 }
@@ -185,60 +169,67 @@ void FSI<dim>::find_fluid_bc()
   TimerOutput::Scope timer_section(timer, "Find fluid BC");
   move_solid_mesh(true);
 
-  const unsigned int n_q_points = fluid_solver.volume_quad_formula.size();
-  FEValues<dim> fe_values(fluid_solver.fe,
-                          fluid_solver.volume_quad_formula,
-                          update_values | update_quadrature_points |
-                            update_JxW_values | update_gradients);
   const FEValuesExtractors::Vector velocities(0);
   const FEValuesExtractors::Scalar pressure(dim);
-  std::vector<SymmetricTensor<2, dim>> sym_grad_v(n_q_points);
-  std::vector<double> p(n_q_points);
-  std::vector<Tensor<2, dim>> grad_v(n_q_points);
-  std::vector<Tensor<1, dim>> v(n_q_points);
-  std::vector<Tensor<1, dim>> dv(n_q_points);
+  std::vector<SymmetricTensor<2, dim>> sym_grad_v(1);
+  std::vector<double> p(1);
+  std::vector<Tensor<2, dim>> grad_v(1);
+  std::vector<Tensor<1, dim>> v(1);
+  std::vector<Tensor<1, dim>> dv(1);
 
+  // Cell center in unit coordinate system
+  Point<dim> unit_center;
+  for (unsigned int i = 0; i < dim; ++i)
+    {
+      unit_center[i] = 0.5;
+    }
+  Quadrature<dim> quad(unit_center);
+  MappingQGeneric<dim> mapping(parameters.fluid_velocity_degree);
+  FEValues<dim> fe_values(mapping,
+                          fluid_solver.fe,
+                          quad,
+                          update_quadrature_points | update_values |
+                            update_gradients);
   for (auto f_cell = fluid_solver.dof_handler.begin_active();
        f_cell != fluid_solver.dof_handler.end();
        ++f_cell)
     {
       auto ptr = fluid_solver.cell_property.get_data(f_cell);
-      fe_values.reinit(f_cell);
-      // Fluid velocity increment
-      fe_values[velocities].get_function_values(fluid_solver.solution_increment,
-                                                dv);
-      // Fluid velocity gradient
-      fe_values[velocities].get_function_gradients(
-        fluid_solver.present_solution, grad_v);
-      // Fluid symmetric velocity gradient
-      fe_values[velocities].get_function_symmetric_gradients(
-        fluid_solver.present_solution, sym_grad_v);
-      // Fluid pressure
-      fe_values[pressure].get_function_values(fluid_solver.present_solution, p);
-      // Loop over all quadrature points to set FSI forces.
-      for (unsigned int q = 0; q < n_q_points; ++q)
+      ptr[0]->fsi_acceleration = 0;
+      ptr[0]->fsi_stress = 0;
+      if (ptr[0]->indicator == 1)
         {
-          Point<dim> point = fe_values.quadrature_point(q);
-          ptr[q]->fsi_acceleration = 0;
-          ptr[q]->fsi_stress = 0;
-          if (ptr[q]->indicator == 0)
-            continue;
-          // acceleration: Dv^f/Dt - Dv^s/Dt
-          Tensor<1, dim> fluid_acc =
-            dv[q] / time.get_delta_t() + grad_v[q] * v[q];
-          (void)fluid_acc;
+          fe_values.reinit(f_cell);
+          // Fluid velocity increment at cell center
+          fe_values[velocities].get_function_values(
+            fluid_solver.solution_increment, dv);
+          // Fluid velocity gradient at cell center
+          fe_values[velocities].get_function_gradients(
+            fluid_solver.present_solution, grad_v);
+          // Fluid symmetric velocity gradient at cell center
+          fe_values[velocities].get_function_symmetric_gradients(
+            fluid_solver.present_solution, sym_grad_v);
+          // Fluid pressure at cell center
+          fe_values[pressure].get_function_values(fluid_solver.present_solution,
+                                                  p);
+          // Real coordinates of fluid cell center
+          auto point = fe_values.get_quadrature_points()[0];
+          // Solid acceleration at fluid cell center
           Vector<double> solid_acc(dim);
           VectorTools::point_value(solid_solver.dof_handler,
                                    solid_solver.current_acceleration,
                                    point,
                                    solid_acc);
+          // Fluid total acceleration at cell center
+          Tensor<1, dim> fluid_acc =
+            dv[0] / time.get_delta_t() + grad_v[0] * v[0];
+          // FSI acceleration term:
           for (unsigned int i = 0; i < dim; ++i)
             {
-              ptr[q]->fsi_acceleration[i] =
-                (parameters.solid_rho - parameters.fluid_rho) *
-                (parameters.gravity[i] - solid_acc[i]);
+              ptr[0]->fsi_acceleration[i] =
+                parameters.solid_rho * (fluid_acc[i] - solid_acc[i]);
             }
-          // stress: sigma^f - sigma^s
+          // Solid stress at fluid cell center
           SymmetricTensor<2, dim> solid_sigma;
           for (unsigned int i = 0; i < dim; ++i)
             {
@@ -252,9 +243,10 @@ void FSI<dim>::find_fluid_bc()
                   solid_sigma[i][j] = sigma_ij[0];
                 }
             }
-          ptr[q]->fsi_stress =
-            -p[q] * Physics::Elasticity::StandardTensors<dim>::I +
-            2 * parameters.viscosity * sym_grad_v[q] - solid_sigma;
+          // FSI stress term:
+          ptr[0]->fsi_stress =
+            -p[0] * Physics::Elasticity::StandardTensors<dim>::I +
+            2 * parameters.viscosity * sym_grad_v[0] - solid_sigma;
         }
     }
   move_solid_mesh(false);
