@@ -372,7 +372,7 @@ namespace Fluid
         }
 
       SolverControl solver_control(
-        system_matrix.m(), 1e-8 * system_rhs.l2_norm(), true);
+        system_matrix.m(), std::min(1e-9, 1e-8 * system_rhs.l2_norm()), true);
       // Because PETScWrappers::SolverGMRES requires preconditioner derived
       // from PETScWrappers::PreconditionBase, we use dealii SolverFGMRES.
       GrowingVectorMemory<PETScWrappers::MPI::BlockVector> vector_memory;
