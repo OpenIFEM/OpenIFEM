@@ -336,7 +336,7 @@ namespace Fluid
       }
 
     SolverControl solver_control(
-      system_matrix.m(), 1e-8 * system_rhs.l2_norm(), true);
+      system_matrix.m(), std::min(1e-9, 1e-8 * system_rhs.l2_norm()), true);
     GrowingVectorMemory<BlockVector<double>> vector_memory;
     SolverFGMRES<BlockVector<double>> gmres(solver_control, vector_memory);
 

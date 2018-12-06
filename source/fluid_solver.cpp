@@ -305,7 +305,7 @@ namespace Fluid
         data_out.add_data_vector(scalar_dof_handler, stress[2][2], "Szz");
       }
 
-    data_out.build_patches(parameters.fluid_velocity_degree);
+    data_out.build_patches(parameters.fluid_pressure_degree);
 
     std::string basename = "fluid";
     std::string filename =
