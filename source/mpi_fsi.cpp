@@ -266,10 +266,6 @@ namespace MPI
   {
     TimerOutput::Scope timer_section(timer, "Update indicator");
     move_solid_mesh(true);
-    FEValues<dim> fe_values(fluid_solver.fe,
-                            fluid_solver.volume_quad_formula,
-                            update_quadrature_points);
-    const unsigned int n_q_points = fluid_solver.volume_quad_formula.size();
     for (auto f_cell = fluid_solver.dof_handler.begin_active();
          f_cell != fluid_solver.dof_handler.end();
          ++f_cell)
@@ -278,23 +274,9 @@ namespace MPI
           {
             continue;
           }
-        // Only loop over local fluid cells.
-        fe_values.reinit(f_cell);
         auto p = fluid_solver.cell_property.get_data(f_cell);
-        bool is_solid = true;
-        for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
-          {
-            Point<dim> point = f_cell->vertex(v);
-            if (!point_in_solid(solid_solver.dof_handler, point))
-              {
-                is_solid = false;
-                break;
-              }
-          }
-        for (unsigned int q = 0; q < n_q_points; ++q)
-          {
-            p[q]->indicator = is_solid;
-          }
+        auto center = f_cell->center();
+        p[0]->indicator = point_in_solid(solid_solver.dof_handler, center);
       }
     move_solid_mesh(false);
   }
@@ -307,28 +289,27 @@ namespace MPI
     TimerOutput::Scope timer_section(timer, "Find fluid BC");
     move_solid_mesh(true);
 
-    // The nonzero Dirichlet BCs (to set the velocity) and zero Dirichlet
-    // BCs (to set the velocity increment) for the artificial fluid domain.
-    AffineConstraints<double> inner_nonzero, inner_zero;
-    inner_nonzero.clear();
-    inner_zero.clear();
-
-    inner_nonzero.reinit(fluid_solver.locally_relevant_dofs);
-    inner_zero.reinit(fluid_solver.locally_relevant_dofs);
-
-    const unsigned int n_q_points = fluid_solver.volume_quad_formula.size();
-    FEValues<dim> fe_values(fluid_solver.fe,
-                            fluid_solver.volume_quad_formula,
-                            update_values | update_quadrature_points |
-                              update_JxW_values | update_gradients);
     const FEValuesExtractors::Vector velocities(0);
     const FEValuesExtractors::Scalar pressure(dim);
-    std::vector<SymmetricTensor<2, dim>> sym_grad_v(n_q_points);
-    std::vector<double> p(n_q_points);
-    std::vector<Tensor<2, dim>> grad_v(n_q_points);
-    std::vector<Tensor<1, dim>> v(n_q_points);
-    std::vector<Tensor<1, dim>> dv(n_q_points);
+    std::vector<SymmetricTensor<2, dim>> sym_grad_v(1);
+    std::vector<double> p(1);
+    std::vector<Tensor<2, dim>> grad_v(1);
+    std::vector<Tensor<1, dim>> v(1);
+    std::vector<Tensor<1, dim>> dv(1);
 
+    // Cell center in unit coordinate system
+    Point<dim> unit_center;
+    for (unsigned int i = 0; i < dim; ++i)
+      {
+        unit_center[i] = 0.5;
+      }
+    Quadrature<dim> quad(unit_center);
+    MappingQGeneric<dim> mapping(parameters.fluid_velocity_degree);
+    FEValues<dim> fe_values(mapping,
+                            fluid_solver.fe,
+                            quad,
+                            update_quadrature_points | update_values |
+                              update_gradients);
     Vector<double> localized_solid_velocity(solid_solver.current_velocity);
     Vector<double> localized_solid_acceleration(
       solid_solver.current_acceleration);
@@ -342,17 +323,6 @@ namespace MPI
           }
       }
 
-    const std::vector<Point<dim>> &unit_points =
-      fluid_solver.fe.get_unit_support_points();
-    Quadrature<dim> dummy_q(unit_points);
-    MappingQGeneric<dim> mapping(1);
-    FEValues<dim> dummy_fe_values(
-      mapping, fluid_solver.fe, dummy_q, update_quadrature_points);
-    std::vector<types::global_dof_index> dof_indices(
-      fluid_solver.fe.dofs_per_cell);
-
-    std::vector<unsigned int> dof_touched(fluid_solver.dof_handler.n_dofs(), 0);
-
     for (auto f_cell = fluid_solver.dof_handler.begin_active();
          f_cell != fluid_solver.dof_handler.end();
          ++f_cell)
@@ -364,109 +334,42 @@ namespace MPI
             continue;
           }
         // Start working on the cell
-        fe_values.reinit(f_cell);
-        dummy_fe_values.reinit(f_cell);
-        f_cell->get_dof_indices(dof_indices);
-        auto support_points = dummy_fe_values.get_quadrature_points();
-        auto hints = cell_hints.get_data(f_cell);
-        // Fluid velocity increment
-        fe_values[velocities].get_function_values(
-          fluid_solver.solution_increment, dv);
-        // Fluid velocity gradient
-        fe_values[velocities].get_function_gradients(
-          fluid_solver.present_solution, grad_v);
-        // Fluid symmetric velocity gradient
-        fe_values[velocities].get_function_symmetric_gradients(
-          fluid_solver.present_solution, sym_grad_v);
-        // Fluid pressure
-        fe_values[pressure].get_function_values(fluid_solver.present_solution,
-                                                p);
-        // Declare the fluid velocity for interpolating BC
-        Vector<double> fluid_velocity(dim);
-        // Loop over the support points to set Dirichlet BCs.
-        for (unsigned int i = 0; i < unit_points.size(); ++i)
-          {
-            // Skip the already-set dofs.
-            if (dof_touched[dof_indices[i]] != 0)
-              continue;
-            auto base_index = fluid_solver.fe.system_to_base_index(i);
-            const unsigned int i_group = base_index.first.first;
-            Assert(
-              i_group < 2,
-              ExcMessage("There should be only 2 groups of finite element!"));
-            if (i_group == 1)
-              continue; // skip the pressure dofs
-            bool inside = true;
-            for (unsigned int d = 0; d < dim; ++d)
-              if (std::abs(unit_points[i][d]) < 1e-5)
-                {
-                  inside = false;
-                  break;
-                }
-            if (inside)
-              continue; // skip the in-cell support point
-            // Same as fluid_solver.fe.system_to_base_index(i).first.second;
-            const unsigned int index =
-              fluid_solver.fe.system_to_component_index(i).first;
-            Assert(index < dim,
-                   ExcMessage("Vector component should be less than dim!"));
-            dof_touched[dof_indices[i]] = 1;
-            if (!point_in_solid(solid_solver.dof_handler, support_points[i]))
-              continue;
-            Utils::CellLocator<dim, DoFHandler<dim>> locator(
-              solid_solver.dof_handler, support_points[i], *(hints[i]));
-            *(hints[i]) = locator.search();
-            Utils::GridInterpolator<dim, Vector<double>> interpolator(
-              solid_solver.dof_handler, support_points[i], *(hints[i]));
-            if (!interpolator.found_cell())
-              {
-                std::stringstream message;
-                message << "Cannot find point in solid: " << support_points[i]
-                        << std::endl;
-                AssertThrow(interpolator.found_cell(),
-                            ExcMessage(message.str()));
-              }
-            interpolator.point_value(localized_solid_velocity, fluid_velocity);
-            auto line = dof_indices[i];
-            inner_nonzero.add_line(line);
-            inner_zero.add_line(line);
-            // Note that we are setting the value of the constraint to the
-            // velocity delta!
-            inner_nonzero.set_inhomogeneity(
-              line,
-              fluid_velocity[index] - fluid_solver.present_solution(line));
-          }
-        // Loop over all quadrature points to set FSI forces.
-        // Now skip the ghost elements because it's not store in cell
-        // property.
-        if (!f_cell->is_locally_owned())
-          continue;
         auto ptr = fluid_solver.cell_property.get_data(f_cell);
-        for (unsigned int q = 0; q < n_q_points; ++q)
+        ptr[0]->fsi_acceleration = 0;
+        ptr[0]->fsi_stress = 0;
+        if (ptr[0]->indicator == 1)
           {
-            Point<dim> point = fe_values.quadrature_point(q);
-            ptr[q]->indicator = point_in_solid(solid_solver.dof_handler, point);
-            ptr[q]->fsi_acceleration = 0;
-            ptr[q]->fsi_stress = 0;
-            if (ptr[q]->indicator == 0)
-              continue;
-            // acceleration: Dv^f/Dt - Dv^s/Dt
-            Tensor<1, dim> fluid_acc =
-              dv[q] / time.get_delta_t() + grad_v[q] * v[q];
-            (void)fluid_acc;
+            fe_values.reinit(f_cell);
+            // Fluid velocity increment at cell center
+            fe_values[velocities].get_function_values(
+              fluid_solver.solution_increment, dv);
+            // Fluid velocity gradient at cell center
+            fe_values[velocities].get_function_gradients(
+              fluid_solver.present_solution, grad_v);
+            // Fluid symmetric velocity gradient at cell center
+            fe_values[velocities].get_function_symmetric_gradients(
+              fluid_solver.present_solution, sym_grad_v);
+            // Fluid pressure at cell center
+            fe_values[pressure].get_function_values(
+              fluid_solver.present_solution, p);
+            // Real coordinates of fluid cell center
+            auto point = fe_values.get_quadrature_points()[0];
+            // Solid acceleration at fluid cell center
             Vector<double> solid_acc(dim);
             VectorTools::point_value(solid_solver.dof_handler,
-                                     localized_solid_acceleration,
+                                     solid_solver.current_acceleration,
                                      point,
                                      solid_acc);
+            // Fluid total acceleration at cell center
+            Tensor<1, dim> fluid_acc =
+              dv[0] / time.get_delta_t() + grad_v[0] * v[0];
+            // FSI acceleration term:
             for (unsigned int i = 0; i < dim; ++i)
               {
-                if (ptr[q]->indicator == 0)
-                  ptr[q]->fsi_acceleration[i] =
-                    (parameters.solid_rho - parameters.fluid_rho) *
-                    (parameters.gravity[i] - solid_acc[i]);
+                ptr[0]->fsi_acceleration[i] =
+                  parameters.solid_rho * (fluid_acc[i] - solid_acc[i]);
               }
-            // stress: sigma^f - sigma^s
+            // Solid stress at fluid cell center
             SymmetricTensor<2, dim> solid_sigma;
             for (unsigned int i = 0; i < dim; ++i)
               {
@@ -480,21 +383,12 @@ namespace MPI
                     solid_sigma[i][j] = sigma_ij[0];
                   }
               }
-            if (ptr[q]->indicator == 0)
-              ptr[q]->fsi_stress =
-                -p[q] * Physics::Elasticity::StandardTensors<dim>::I +
-                2 * parameters.viscosity * sym_grad_v[q] - solid_sigma;
+            // FSI stress term:
+            ptr[0]->fsi_stress =
+              -p[0] * Physics::Elasticity::StandardTensors<dim>::I +
+              2 * parameters.viscosity * sym_grad_v[0] - solid_sigma;
           }
       }
-
-    inner_nonzero.close();
-    inner_zero.close();
-    fluid_solver.nonzero_constraints.merge(
-      inner_nonzero,
-      AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
-    fluid_solver.zero_constraints.merge(
-      inner_zero,
-      AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
     move_solid_mesh(false);
   }
 
@@ -587,7 +481,7 @@ namespace MPI
         bool is_boundary = false;
         Point<dim> point;
         for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
-            ++face)
+             ++face)
           {
             if (s_cell->face(face)->at_boundary())
               {
@@ -703,6 +597,8 @@ namespace MPI
       {
         refine_mesh(parameters.global_refinements[0],
                     parameters.global_refinements[0] + 3);
+        refine_mesh(parameters.global_refinements[0],
+                    parameters.global_refinements[0] + 3);
         setup_cell_hints();
       }
     while (time.end() - time.current() > 1e-12)
@@ -717,18 +613,11 @@ namespace MPI
           solid_solver.run_one_step(first_step);
         }
         update_solid_box();
-        // update_indicator();
-        fluid_solver.make_constraints();
-        if (!first_step)
-          {
-            fluid_solver.nonzero_constraints.clear();
-            fluid_solver.nonzero_constraints.copy_from(
-              fluid_solver.zero_constraints);
-          }
+        update_indicator();
         find_fluid_bc();
         {
           TimerOutput::Scope timer_section(timer, "Run fluid solver");
-          fluid_solver.run_one_step(true);
+          fluid_solver.run_one_step(first_step);
         }
         first_step = false;
         time.increment();
