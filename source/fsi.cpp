@@ -320,15 +320,35 @@ void FSI<dim>::refine_mesh(const unsigned int min_grid_level,
 {
   TimerOutput::Scope timer_section(timer, "Refine mesh");
   move_solid_mesh(true);
+  std::vector<Point<dim>> solid_boundary_points;
+  for (auto s_cell : solid_solver.dof_handler.active_cell_iterators())
+    {
+      bool is_boundary = false;
+      Point<dim> point;
+      for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
+           ++face)
+        {
+          if (s_cell->face(face)->at_boundary())
+            {
+              point = s_cell->face(face)->center();
+              is_boundary = true;
+              break;
+            }
+        }
+      if (is_boundary)
+        {
+          solid_boundary_points.push_back(point);
+        }
+    }
   for (auto f_cell : fluid_solver.dof_handler.active_cell_iterators())
     {
       auto center = f_cell->center();
       double dist = 1000;
-      for (auto s_cell : solid_solver.dof_handler.active_cell_iterators())
+      for (auto point : solid_boundary_points)
         {
-          dist = std::min(center.distance(s_cell->center()), dist);
+          dist = std::min(center.distance(point), dist);
         }
-      if (dist < 0.1)
+      if (dist < f_cell->diameter())
         f_cell->set_refine_flag();
       else
         f_cell->set_coarsen_flag();
@@ -389,6 +409,8 @@ void FSI<dim>::run()
   bool first_step = true;
   if (parameters.refinement_interval < parameters.end_time)
     {
+      refine_mesh(parameters.global_refinements[0],
+                  parameters.global_refinements[0] + 3);
       refine_mesh(parameters.global_refinements[0],
                   parameters.global_refinements[0] + 3);
     }
