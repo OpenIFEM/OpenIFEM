@@ -1,22 +1,19 @@
 /**
- * 2D leaflet case with serial incompressible fluid solver and hyperelastic
- * solver.
+ * This program tests serial NavierStokes solver with a 2D flow around cylinder
+ * case.
+ * Hard-coded parabolic velocity input is used, and Re = 20.
+ * To save time, the global mesh refinement level is set to 1.
+ * For real application, 2 should be used.
+ * This test takes about 240s.
  */
-#include "fsi.h"
-#include "hyper_elasticity.h"
 #include "insim.h"
-#include "insimex.h"
+#include "parameters.h"
+#include "utilities.h"
 
 extern template class Fluid::InsIM<2>;
 extern template class Fluid::InsIM<3>;
-extern template class Fluid::InsIMEX<2>;
-extern template class Fluid::InsIMEX<3>;
-extern template class Solid::HyperElasticity<2>;
-extern template class Solid::HyperElasticity<3>;
-extern template class FSI<2>;
-extern template class FSI<3>;
 
-const double L = 8, H = 2, a = 0.5, b = 1, h = 0.2, U = 20;
+using namespace dealii;
 
 template <int dim>
 class BoundaryValues : public Function<dim>
@@ -32,9 +29,20 @@ template <int dim>
 double BoundaryValues<dim>::value(const Point<dim> &p,
                                   const unsigned int component) const
 {
-  if (component == 0 && std::abs(p[0]) < 1e-10 && std::abs(p[1]) > 1e-10)
+  double left_boundary = (dim == 2 ? 0.0 : -0.3);
+  if (component == 0 && std::abs(p[0] - left_boundary) < 1e-10)
     {
-      return U;
+      // For a parabolic velocity profile, Uavg = 2/3 * Umax in 2D,
+      // and 4/9 * Umax in 3D. If nu = 0.001, D = 0.1,
+      // then Re = 100 * Uavg
+      double Uavg = 0.2;
+      double Umax = (dim == 2 ? 3 * Uavg / 2 : 9 * Uavg / 4);
+      double value = 4 * Umax * p[1] * (0.41 - p[1]) / (0.41 * 0.41);
+      if (dim == 3)
+        {
+          value *= 4 * p[2] * (0.41 - p[2]) / (0.41 * 0.41);
+        }
+      return value;
     }
   return 0;
 }
@@ -47,10 +55,10 @@ void BoundaryValues<dim>::vector_value(const Point<dim> &p,
     values(c) = BoundaryValues::value(p, c);
 }
 
+double L = 2.2, H = 0.41, h = 0.02;
+
 int main(int argc, char *argv[])
 {
-  using namespace dealii;
-
   try
     {
       std::string infile("parameters.prm");
@@ -62,33 +70,20 @@ int main(int argc, char *argv[])
 
       if (params.dimension == 2)
         {
-          Triangulation<2> fluid_tria;
+          Triangulation<2> tria;
           dealii::GridGenerator::subdivided_hyper_rectangle(
-            fluid_tria,
-            {static_cast<unsigned int>(L / h),
-             static_cast<unsigned int>(H / h)},
+            tria,
+            {static_cast<unsigned>(L / h), static_cast<unsigned>(H / h)},
             Point<2>(0, 0),
-            Point<2>(L, H),
+            Point<2>(2.2, 0.41),
             true);
           auto ptr = std::make_shared<BoundaryValues<2>>(BoundaryValues<2>());
-          Fluid::InsIMEX<2> fluid(fluid_tria, params, ptr);
-
-          Triangulation<2> solid_tria;
-          dealii::GridGenerator::subdivided_hyper_rectangle(
-            solid_tria,
-            {static_cast<unsigned int>(a / h),
-             static_cast<unsigned int>(b / h)},
-            Point<2>(L / 4, 0),
-            Point<2>(a + L / 4, b),
-            true);
-          Solid::HyperElasticity<2> solid(solid_tria, params);
-
-          FSI<2> fsi(fluid, solid, params);
-          fsi.run();
+          Fluid::InsIM<2> flow(tria, params, ptr);
+          flow.run();
         }
       else
         {
-          AssertThrow(false, ExcNotImplemented());
+          AssertThrow(false, ExcMessage("This test should be run in 2D!"));
         }
     }
   catch (std::exception &exc)
