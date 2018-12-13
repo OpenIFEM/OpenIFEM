@@ -156,7 +156,6 @@ void FSI<dim>::update_indicator()
       auto p = fluid_solver.cell_property.get_data(f_cell);
       auto center = f_cell->center();
       p[0]->indicator = point_in_solid(solid_solver.dof_handler, center);
-      ;
     }
   move_solid_mesh(false);
 }
@@ -168,6 +167,12 @@ void FSI<dim>::find_fluid_bc()
 {
   TimerOutput::Scope timer_section(timer, "Find fluid BC");
   move_solid_mesh(true);
+
+  // The nonzero Dirichlet BCs (to set the velocity) and zero Dirichlet
+  // BCs (to set the velocity increment) for the artificial fluid domain.
+  AffineConstraints<double> inner_nonzero, inner_zero;
+  inner_nonzero.clear();
+  inner_zero.clear();
 
   const FEValuesExtractors::Vector velocities(0);
   const FEValuesExtractors::Scalar pressure(dim);
@@ -190,6 +195,15 @@ void FSI<dim>::find_fluid_bc()
                           quad,
                           update_quadrature_points | update_values |
                             update_gradients);
+
+  const std::vector<Point<dim>> &unit_points =
+    fluid_solver.fe.get_unit_support_points();
+  Quadrature<dim> dummy_q(unit_points);
+  FEValues<dim> dummy_fe_values(
+    mapping, fluid_solver.fe, dummy_q, update_quadrature_points);
+  std::vector<types::global_dof_index> dof_indices(
+    fluid_solver.fe.dofs_per_cell);
+
   for (auto f_cell = fluid_solver.dof_handler.begin_active();
        f_cell != fluid_solver.dof_handler.end();
        ++f_cell)
@@ -229,6 +243,7 @@ void FSI<dim>::find_fluid_bc()
               ptr[0]->fsi_acceleration[i] =
                 parameters.solid_rho * (fluid_acc[i] - solid_acc[i]);
             }
+          /*
           // Solid stress at fluid cell center
           SymmetricTensor<2, dim> solid_sigma;
           for (unsigned int i = 0; i < dim; ++i)
@@ -247,8 +262,62 @@ void FSI<dim>::find_fluid_bc()
           ptr[0]->fsi_stress =
             -p[0] * Physics::Elasticity::StandardTensors<dim>::I +
             2 * parameters.viscosity * sym_grad_v[0] - solid_sigma;
+          */
+
+          // Dirichlet BCs
+          dummy_fe_values.reinit(f_cell);
+          f_cell->get_dof_indices(dof_indices);
+          auto support_points = dummy_fe_values.get_quadrature_points();
+          // Loop over the support points to set Dirichlet BCs.
+          for (unsigned int i = 0; i < unit_points.size(); ++i)
+            {
+              auto base_index = fluid_solver.fe.system_to_base_index(i);
+              const unsigned int i_group = base_index.first.first;
+              Assert(
+                i_group < 2,
+                ExcMessage("There should be only 2 groups of finite element!"));
+              if (i_group == 1)
+                continue; // skip the pressure dofs
+              bool inside = true;
+              for (unsigned int d = 0; d < dim; ++d)
+                if (std::abs(unit_points[i][d]) < 1e-5)
+                  {
+                    inside = false;
+                    break;
+                  }
+              if (inside)
+                continue; // skip the in-cell support point
+              // Same as fluid_solver.fe.system_to_base_index(i).first.second;
+              const unsigned int index =
+                fluid_solver.fe.system_to_component_index(i).first;
+              Assert(index < dim,
+                     ExcMessage("Vector component should be less than dim!"));
+              if (!point_in_solid(solid_solver.dof_handler, support_points[i]))
+                continue;
+              Vector<double> fluid_velocity(dim);
+              VectorTools::point_value(solid_solver.dof_handler,
+                                       solid_solver.current_velocity,
+                                       support_points[i],
+                                       fluid_velocity);
+              auto line = dof_indices[i];
+              inner_nonzero.add_line(line);
+              inner_zero.add_line(line);
+              // Note that we are setting the value of the constraint to the
+              // velocity delta!
+              inner_nonzero.set_inhomogeneity(
+                line,
+                fluid_velocity[index] - fluid_solver.present_solution(line));
+            }
         }
     }
+  inner_nonzero.close();
+  inner_zero.close();
+  fluid_solver.nonzero_constraints.merge(
+    inner_nonzero,
+    AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
+  fluid_solver.zero_constraints.merge(
+    inner_zero,
+    AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
   move_solid_mesh(false);
 }
 
@@ -410,9 +479,9 @@ void FSI<dim>::run()
   if (parameters.refinement_interval < parameters.end_time)
     {
       refine_mesh(parameters.global_refinements[0],
-                  parameters.global_refinements[0] + 3);
+                  parameters.global_refinements[0] + 1);
       refine_mesh(parameters.global_refinements[0],
-                  parameters.global_refinements[0] + 3);
+                  parameters.global_refinements[0] + 1);
     }
   while (time.end() - time.current() > 1e-12)
     {
@@ -423,17 +492,24 @@ void FSI<dim>::run()
       }
       update_solid_box();
       update_indicator();
+      fluid_solver.make_constraints();
+      if (!first_step)
+        {
+          fluid_solver.nonzero_constraints.clear();
+          fluid_solver.nonzero_constraints.copy_from(
+            fluid_solver.zero_constraints);
+        }
       find_fluid_bc();
       {
         TimerOutput::Scope timer_section(timer, "Run fluid solver");
-        fluid_solver.run_one_step(first_step);
+        fluid_solver.run_one_step(true);
       }
       first_step = false;
       time.increment();
       if (time.time_to_refine())
         {
           refine_mesh(parameters.global_refinements[0],
-                      parameters.global_refinements[0] + 3);
+                      parameters.global_refinements[0] + 1);
         }
     }
 }
