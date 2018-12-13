@@ -71,7 +71,7 @@ int main(int argc, char *argv[])
             Point<2>(L, H),
             true);
           auto ptr = std::make_shared<BoundaryValues<2>>(BoundaryValues<2>());
-          Fluid::InsIMEX<2> fluid(fluid_tria, params, ptr);
+          Fluid::InsIM<2> fluid(fluid_tria, params, ptr);
 
           Triangulation<2> solid_tria;
           dealii::GridGenerator::subdivided_hyper_rectangle(

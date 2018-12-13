@@ -255,7 +255,7 @@ namespace Fluid
         auto p = cell_property.get_data(cell);
         const int ind = p[0]->indicator;
         const double rho =
-          (ind == 1 ? parameters.solid_rho : parameters.fluid_rho);
+          ind * parameters.solid_rho + (1 - ind) * parameters.fluid_rho;
 
         fe_values.reinit(cell);
 
