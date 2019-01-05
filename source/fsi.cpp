@@ -237,77 +237,57 @@ void FSI<dim>::find_fluid_bc()
           // Fluid total acceleration at cell center
           Tensor<1, dim> fluid_acc =
             dv[0] / time.get_delta_t() + grad_v[0] * v[0];
+          (void)fluid_acc;
           // FSI acceleration term:
           for (unsigned int i = 0; i < dim; ++i)
             {
               ptr[0]->fsi_acceleration[i] =
-                parameters.solid_rho * (fluid_acc[i] - solid_acc[i]);
+                (parameters.solid_rho - parameters.fluid_rho) *
+                (parameters.gravity[i] - solid_acc[i]);
             }
-          /*
-          // Solid stress at fluid cell center
-          SymmetricTensor<2, dim> solid_sigma;
-          for (unsigned int i = 0; i < dim; ++i)
-            {
-              for (unsigned int j = 0; j < dim; ++j)
-                {
-                  Vector<double> sigma_ij(1);
-                  VectorTools::point_value(solid_solver.scalar_dof_handler,
-                                           solid_solver.stress[i][j],
-                                           point,
-                                           sigma_ij);
-                  solid_sigma[i][j] = sigma_ij[0];
-                }
-            }
-          // FSI stress term:
-          ptr[0]->fsi_stress =
-            -p[0] * Physics::Elasticity::StandardTensors<dim>::I +
-            2 * parameters.viscosity * sym_grad_v[0] - solid_sigma;
-          */
-
-          // Dirichlet BCs
-          dummy_fe_values.reinit(f_cell);
-          f_cell->get_dof_indices(dof_indices);
-          auto support_points = dummy_fe_values.get_quadrature_points();
-          // Loop over the support points to set Dirichlet BCs.
-          for (unsigned int i = 0; i < unit_points.size(); ++i)
-            {
-              auto base_index = fluid_solver.fe.system_to_base_index(i);
-              const unsigned int i_group = base_index.first.first;
-              Assert(
-                i_group < 2,
-                ExcMessage("There should be only 2 groups of finite element!"));
-              if (i_group == 1)
-                continue; // skip the pressure dofs
-              bool inside = true;
-              for (unsigned int d = 0; d < dim; ++d)
-                if (std::abs(unit_points[i][d]) < 1e-5)
-                  {
-                    inside = false;
-                    break;
-                  }
-              if (inside)
-                continue; // skip the in-cell support point
-              // Same as fluid_solver.fe.system_to_base_index(i).first.second;
-              const unsigned int index =
-                fluid_solver.fe.system_to_component_index(i).first;
-              Assert(index < dim,
-                     ExcMessage("Vector component should be less than dim!"));
-              if (!point_in_solid(solid_solver.dof_handler, support_points[i]))
-                continue;
-              Vector<double> fluid_velocity(dim);
-              VectorTools::point_value(solid_solver.dof_handler,
-                                       solid_solver.current_velocity,
-                                       support_points[i],
-                                       fluid_velocity);
-              auto line = dof_indices[i];
-              inner_nonzero.add_line(line);
-              inner_zero.add_line(line);
-              // Note that we are setting the value of the constraint to the
-              // velocity delta!
-              inner_nonzero.set_inhomogeneity(
-                line,
-                fluid_velocity[index] - fluid_solver.present_solution(line));
-            }
+        }
+      // Dirichlet BCs
+      dummy_fe_values.reinit(f_cell);
+      f_cell->get_dof_indices(dof_indices);
+      auto support_points = dummy_fe_values.get_quadrature_points();
+      // Loop over the support points to set Dirichlet BCs.
+      for (unsigned int i = 0; i < unit_points.size(); ++i)
+        {
+          auto base_index = fluid_solver.fe.system_to_base_index(i);
+          const unsigned int i_group = base_index.first.first;
+          Assert(
+            i_group < 2,
+            ExcMessage("There should be only 2 groups of finite element!"));
+          if (i_group == 1)
+            continue; // skip the pressure dofs
+          bool inside = true;
+          for (unsigned int d = 0; d < dim; ++d)
+            if (std::abs(unit_points[i][d]) < 1e-5)
+              {
+                inside = false;
+                break;
+              }
+          if (inside)
+            continue; // skip the in-cell support point
+          // Same as fluid_solver.fe.system_to_base_index(i).first.second;
+          const unsigned int index =
+            fluid_solver.fe.system_to_component_index(i).first;
+          Assert(index < dim,
+                 ExcMessage("Vector component should be less than dim!"));
+          if (!point_in_solid(solid_solver.dof_handler, support_points[i]))
+            continue;
+          Vector<double> fluid_velocity(dim);
+          VectorTools::point_value(solid_solver.dof_handler,
+                                   solid_solver.current_velocity,
+                                   support_points[i],
+                                   fluid_velocity);
+          auto line = dof_indices[i];
+          inner_nonzero.add_line(line);
+          inner_zero.add_line(line);
+          // Note that we are setting the value of the constraint to the
+          // velocity delta!
+          inner_nonzero.set_inhomogeneity(
+            line, fluid_velocity[index] - fluid_solver.present_solution(line));
         }
     }
   inner_nonzero.close();
