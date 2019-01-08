@@ -350,13 +350,15 @@ namespace MPI
           {
             continue;
           }
-        // Start working on the cell
-        auto ptr = fluid_solver.cell_property.get_data(f_cell);
-        ptr[0]->fsi_acceleration = 0;
-        ptr[0]->fsi_stress = 0;
         // Now skip the ghost elements because it's not store in cell property.
-        if (f_cell->is_locally_owned() && ptr[0]->indicator == 1)
+        if (f_cell->is_locally_owned())
           {
+            // Start working on the cell
+            auto ptr = fluid_solver.cell_property.get_data(f_cell);
+            ptr[0]->fsi_acceleration = 0;
+            ptr[0]->fsi_stress = 0;
+            if (ptr[0]->indicator == 0)
+              continue;
             fe_values.reinit(f_cell);
             // Fluid velocity increment at cell center
             fe_values[velocities].get_function_values(
@@ -375,7 +377,7 @@ namespace MPI
             // Solid acceleration at fluid cell center
             Vector<double> solid_acc(dim);
             VectorTools::point_value(solid_solver.dof_handler,
-                                     solid_solver.current_acceleration,
+                                     localized_solid_acceleration,
                                      point,
                                      solid_acc);
             // Fluid total acceleration at cell center
