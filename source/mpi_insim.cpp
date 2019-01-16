@@ -209,9 +209,6 @@ namespace Fluid
           if (cell->is_locally_owned())
             {
               auto p = cell_property.get_data(cell);
-              const int ind = p[0]->indicator;
-              const double rho =
-                (ind == 1 ? parameters.solid_rho : parameters.fluid_rho);
 
               fe_values.reinit(cell);
 
@@ -237,6 +234,7 @@ namespace Fluid
               for (unsigned int q = 0; q < n_q_points; ++q)
                 {
                   const int ind = p[q]->indicator;
+                  const double rho = parameters.fluid_rho;
                   for (unsigned int k = 0; k < dofs_per_cell; ++k)
                     {
                       div_phi_u[k] = fe_values[velocities].divergence(k, q);

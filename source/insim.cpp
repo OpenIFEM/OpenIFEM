@@ -196,8 +196,7 @@ namespace Fluid
       {
         auto p = cell_property.get_data(cell);
         const int ind = p[0]->indicator;
-        const double rho =
-          (ind == 1 ? parameters.solid_rho : parameters.fluid_rho);
+        const double rho = parameters.fluid_rho;
 
         fe_values.reinit(cell);
 
@@ -352,7 +351,7 @@ namespace Fluid
     // as opposed to SolverGMRES which allows both left and right
     // preconditoners.
     SolverControl solver_control(
-      system_matrix.m(), std::max(1e-4 * system_rhs.l2_norm(), 1e-12), true);
+      system_matrix.m(), std::max(1e-6 * system_rhs.l2_norm(), 1e-10), true);
     GrowingVectorMemory<BlockVector<double>> vector_memory;
     SolverFGMRES<BlockVector<double>> gmres(solver_control, vector_memory);
 
