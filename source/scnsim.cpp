@@ -187,6 +187,11 @@ namespace Fluid
 
     // Cell property
     setup_cell_property();
+
+    stress = std::vector<std::vector<Vector<double>>>(
+      dim,
+      std::vector<Vector<double>>(dim,
+                                  Vector<double>(scalar_dof_handler.n_dofs())));
   }
 
   template <int dim>
