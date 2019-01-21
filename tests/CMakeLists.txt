@@ -47,3 +47,19 @@ foreach(test ${tests})
     add_test(NAME ${test} COMMAND ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${test} ${input} WORKING_DIRECTORY ${output})
   endif()
 endforeach()
+
+# mfree_iwf tests
+set(mfree_iwf_tests mfree_iwf_dummy)
+if (OPENIFEM_WITH_MFREE_IWF)
+  foreach(mfree_iwf_test ${mfree_iwf_tests})
+    set(output ${CMAKE_CURRENT_BINARY_DIR}/${mfree_iwf_test})
+    file(MAKE_DIRECTORY ${output})
+    add_executable(${mfree_iwf_test} ${CMAKE_CURRENT_SOURCE_DIR}/${mfree_iwf_test}/${mfree_iwf_test}.cpp)
+    target_include_directories(${mfree_iwf_test} PUBLIC ${MFREE_IWF_INCLUDE_DIR}
+                                                        ${CMAKE_SOURCE_DIR}/include)
+    target_link_libraries(${mfree_iwf_test} ${MFREE_IWF_LIBRARY}
+                                            openifem
+                                            stdc++fs)
+    add_test(NAME ${mfree_iwf_test} COMMAND ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${mfree_iwf_test} WORKING_DIRECTORY ${output})
+  endforeach()
+endif()

@@ -62,6 +62,18 @@ project(OpenIFEM)
 option(BUILD_SHARED_LIBS "Build using shared libraries" ON)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/modules")
+
+option(OPENIFEM_WITH_MFREE_IWF "Build with mfree_iwf" OFF)
+if(OPENIFEM_WITH_MFREE_IWF)
+  set(MFREE_IWF_DIR "" CACHE PATH "Path to mfree_iwf build directory")
+  find_package(MFREE_IWF REQUIRED)
+endif()
+
+if(OPENIFEM_WITH_MFREE_IWF AND NOT MFREE_IWF_FOUND)
+  message(FATAL_ERROR "Error! Cannot find mfree_iwf!")
+endif()
+
 enable_testing()
 add_subdirectory(source)
 add_subdirectory(tests)
