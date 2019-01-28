@@ -52,12 +52,16 @@ set(headers fluid_solver.h
             solid_solver.h
             utilities.h)
 
-# Prefix the header files with the path to include directory
-foreach(header ${headers})
-  list(APPEND TARGET_INC ${CMAKE_SOURCE_DIR}/include/${header})
-endforeach()
+if(OPENIFEM_WITH_MFREE_IWF)
+  list(APPEND TARGET_SRC "hypo_elasticity.cpp")
+  list(APPEND headers "hypo_elasticity.h")
+endif()
 
 # Build the library
 add_library(openifem ${TARGET_SRC})
 target_include_directories(openifem PUBLIC "${CMAKE_SOURCE_DIR}/include")
+if(OPENIFEM_WITH_MFREE_IWF)
+  target_include_directories(openifem PRIVATE ${MFREE_IWF_INCLUDE_DIR})
+  target_link_libraries(openifem ${MFREE_IWF_LIBRARY})
+endif()
 deal_ii_setup_target(openifem)

@@ -8,23 +8,23 @@
 # Simulation parameters
 subsection Simulation
   # Type of simulation: FSI/Fluid/Solid
-  set Simulation type =  FSI
+  set Simulation type =  Solid
 
   # The dimension of the simulation
   set Dimension = 2
 
   # Level of global refinement before running,
   # which applies to all the solvers
-  set Global refinements = 0, 2
+  set Global refinements = 0, 0
 
   # The end time of the simulation in second
-  set End time = 1e0
+  set End time = 1e1
 
   # The time step in second
-  set Time step size = 5e-3
+  set Time step size = 1e-2
 
   # The output interval in second
-  set Output interval = 5e-3
+  set Output interval = 1e0
 
   # Mesh refinement interval in second
   set Refinement interval = 5e2
@@ -113,12 +113,12 @@ subsection Solid material properties
   set Solid type = NeoHookean
 
   # Solid density, used by all solid solvers
-  set Solid density = 6
+  set Solid density = 1
 
   # E and nu are only used by linearElasticMaterial
-  set Young's modulus = 2.78e4
+  set Young's modulus = 100
 
-  set Poisson's ratio = 0.48
+  set Poisson's ratio = 0.3
 
   # A list of parameters used by hyperelasticMaterial
   set Hyperelastic parameters = 1.69e3, 8.33e5 # E = 1e4, nu = 0.48
@@ -126,7 +126,7 @@ end
 
 subsection Solid solver control
   # Artifitial damping.
-  set Damping = 0.1
+  set Damping = 0.01
 
   # Number of Newton-Raphson iterations allowed, used by hyperelastic solver only
   set Max Newton iterations = 10
@@ -144,7 +144,7 @@ subsection Solid Dirichlet BCs
   set Number of Dirichlet BCs = 1
 
   # List all the constrained boundaries here
-  set Dirichlet boundary id = 2
+  set Dirichlet boundary id = 0
 
   # List the constrained components of these boundaries
   # One decimal number indicates one set of constrained components:
@@ -158,15 +158,15 @@ end
 # (Original normal vectors are used to compute the traction.)
 subsection Solid Neumann BCs
   # Indicates how many sets of Neumann boundary conditions to expect.
-  set Number of Neumann BCs = 0
+  set Number of Neumann BCs = 1
 
   # The id, type, and values must appear n_neumann_bcs times.
-  set Neumann boundary id = 0
+  set Neumann boundary id = 3
 
   # Traction/Pressure, currently they cannot coexist.
-  set Neumann boundary type = Pressure
+  set Neumann boundary type = Traction
 
   # If traction, dim*n_solid_neumann_bcs components are expected;
   # if pressure, n_solid_neumann_bcs components are expected.
-  set Neumann boundary values = -0.5
+  set Neumann boundary values = 0, -0.01
 end

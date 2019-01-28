@@ -1,4 +1,4 @@
-# List all the serial tests
+# serial tests
 set(serial_tests acoustic_duct_wave
                  acoustic_pml
                  fluid_cavity
@@ -15,7 +15,7 @@ set(serial_tests acoustic_duct_wave
                  solid_gravity_hyperelastic
                  solid_gravity_linearelastic)
 
-# List all the mpi tests
+# mpi tests
 set(mpi_tests acoustic_duct_wave_mpi
               acoustic_pml_mpi
               fluid_cylinder_mpi
@@ -28,7 +28,14 @@ set(mpi_tests acoustic_duct_wave_mpi
               solid_beam_bending_mpi_shared_linearelastic
               solid_beam_bending_mpi_shared_NeoHookean)
 
+# mfree_iwf tests
+set(mfree_iwf_tests mfree_iwf_bending)
+
+# All tests
 set(tests ${serial_tests} ${mpi_tests})
+if (OPENIFEM_WITH_MFREE_IWF)
+  set(tests ${tests} ${mfree_iwf_tests})
+endif()
 
 # Create a subdirectory and add an executible for each test
 foreach(test ${tests})
@@ -39,6 +46,11 @@ foreach(test ${tests})
   target_include_directories(${test} PUBLIC "${CMAKE_SOURCE_DIR}/include")
   deal_ii_setup_target(${test})
   target_link_libraries(${test} openifem stdc++fs)
+  list(FIND mfree_iwf_tests ${test} index)
+  if(${index} GREATER -1)
+    target_include_directories(${test} PUBLIC ${MFREE_IWF_INCLUDE_DIR})
+    target_link_libraries(${test} ${MFREE_IWF_LIBRARY})
+  endif()
   list(FIND mpi_tests ${test} index)
   if(${index} GREATER -1)
     # FIXME: it is not good practice to specify the number of processors in this way
@@ -47,19 +59,3 @@ foreach(test ${tests})
     add_test(NAME ${test} COMMAND ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${test} ${input} WORKING_DIRECTORY ${output})
   endif()
 endforeach()
-
-# mfree_iwf tests
-set(mfree_iwf_tests mfree_iwf_dummy)
-if (OPENIFEM_WITH_MFREE_IWF)
-  foreach(mfree_iwf_test ${mfree_iwf_tests})
-    set(output ${CMAKE_CURRENT_BINARY_DIR}/${mfree_iwf_test})
-    file(MAKE_DIRECTORY ${output})
-    add_executable(${mfree_iwf_test} ${CMAKE_CURRENT_SOURCE_DIR}/${mfree_iwf_test}/${mfree_iwf_test}.cpp)
-    target_include_directories(${mfree_iwf_test} PUBLIC ${MFREE_IWF_INCLUDE_DIR}
-                                                        ${CMAKE_SOURCE_DIR}/include)
-    target_link_libraries(${mfree_iwf_test} ${MFREE_IWF_LIBRARY}
-                                            openifem
-                                            stdc++fs)
-    add_test(NAME ${mfree_iwf_test} COMMAND ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${mfree_iwf_test} WORKING_DIRECTORY ${output})
-  endforeach()
-endif()

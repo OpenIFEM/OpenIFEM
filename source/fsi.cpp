@@ -213,6 +213,7 @@ void FSI<dim>::find_fluid_bc()
       ptr[0]->fsi_stress = 0;
       if (ptr[0]->indicator == 1)
         {
+          /*
           fe_values.reinit(f_cell);
           // Fluid velocity increment at cell center
           fe_values[velocities].get_function_values(
@@ -245,6 +246,7 @@ void FSI<dim>::find_fluid_bc()
                 (parameters.solid_rho - parameters.fluid_rho) *
                 (parameters.gravity[i] - solid_acc[i]);
             }
+            */
         }
       // Dirichlet BCs
       dummy_fe_values.reinit(f_cell);

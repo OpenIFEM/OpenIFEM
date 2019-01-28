@@ -81,7 +81,7 @@ namespace Fluid
     {
       TimerOutput::Scope timer_section(timer, "CG for Sm");
       SolverControl solver_control(
-        src.block(1).size(), std::max(1e-3 * src.block(1).l2_norm(), 1e-10));
+        src.block(1).size(), std::max(1e-6 * src.block(1).l2_norm(), 1e-10));
       // FIXME: There is a mysterious bug here. After refine_mesh is called,
       // the initialization of Sm_preconditioner will complain about zero
       // entries on the diagonal which causes division by 0. Same thing happens
@@ -351,7 +351,7 @@ namespace Fluid
     // as opposed to SolverGMRES which allows both left and right
     // preconditoners.
     SolverControl solver_control(
-      system_matrix.m(), std::max(1e-6 * system_rhs.l2_norm(), 1e-10), true);
+      system_matrix.m(), std::max(1e-8 * system_rhs.l2_norm(), 1e-10), true);
     GrowingVectorMemory<BlockVector<double>> vector_memory;
     SolverFGMRES<BlockVector<double>> gmres(solver_control, vector_memory);
 
