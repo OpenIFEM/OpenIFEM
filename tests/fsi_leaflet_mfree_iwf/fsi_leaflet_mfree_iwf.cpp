@@ -3,18 +3,12 @@
  * solver.
  */
 #include "fsi.h"
-#include "hyper_elasticity.h"
+#include "hypo_elasticity.h"
 #include "insim.h"
-#include "insimex.h"
 
 extern template class Fluid::InsIM<2>;
-extern template class Fluid::InsIM<3>;
-extern template class Fluid::InsIMEX<2>;
-extern template class Fluid::InsIMEX<3>;
-extern template class Solid::HyperElasticity<2>;
-extern template class Solid::HyperElasticity<3>;
+extern template class Solid::HypoElasticity<2>;
 extern template class FSI<2>;
-extern template class FSI<3>;
 
 const double L = 4, H = 1, a = 0.1, b = 0.4, h = 0.05, U = 1.5;
 
@@ -91,7 +85,7 @@ int main(int argc, char *argv[])
             Point<2>(L / 4, 0),
             Point<2>(a + L / 4, b),
             true);
-          Solid::HyperElasticity<2> solid(solid_tria, params);
+          Solid::HypoElasticity<2> solid(solid_tria, params, 0.0125, 1.3);
 
           FSI<2> fsi(fluid, solid, params);
           fsi.run();

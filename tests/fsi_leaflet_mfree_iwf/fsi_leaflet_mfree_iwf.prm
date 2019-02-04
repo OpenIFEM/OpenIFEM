@@ -110,13 +110,13 @@ end
 
 subsection Solid material properties
   # Material type, currently LinearElastic and NeoHookean are available
-  set Solid type = NeoHookean
+  set Solid type = HypoElastic
 
   # Solid density, used by all solid solvers
   set Solid density = 6
 
   # E and nu are only used by linearElasticMaterial
-  set Young's modulus = 2.78e4
+  set Young's modulus = 1e4
 
   set Poisson's ratio = 0.48
 

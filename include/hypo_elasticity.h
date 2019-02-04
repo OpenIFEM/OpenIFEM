@@ -35,7 +35,10 @@ namespace Solid
   public:
     friend FSI<dim>;
 
-    HypoElasticity(Triangulation<dim> &, const Parameters::AllParameters &);
+    HypoElasticity(Triangulation<dim> &,
+                   const Parameters::AllParameters &,
+                   double dx,
+                   double hdx);
     ~HypoElasticity() {}
 
     void test();
@@ -89,6 +92,10 @@ namespace Solid
     void construct_particles();
 
     void synchronize();
+
+    double dx;
+
+    double hdx;
   };
 } // namespace Solid
 

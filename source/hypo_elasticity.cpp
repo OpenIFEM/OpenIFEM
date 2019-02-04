@@ -3,8 +3,6 @@
 
 namespace
 {
-  double hdx = 1.3;
-  double dx = 0.125;
   std::vector<unsigned int> dirichlet_boundary_x, dirichlet_boundary_y;
   std::vector<unsigned int> neumann_boundary_x, neumann_boundary_y;
   template <typename U>
@@ -44,8 +42,10 @@ namespace Solid
 
   template <int dim>
   HypoElasticity<dim>::HypoElasticity(Triangulation<dim> &tria,
-                                      const Parameters::AllParameters &params)
-    : SolidSolver<dim>(tria, params)
+                                      const Parameters::AllParameters &params,
+                                      double dx,
+                                      double hdx)
+    : SolidSolver<dim>(tria, params), dx(dx), hdx(hdx)
   {
   }
 
@@ -126,9 +126,9 @@ namespace Solid
                 for (unsigned int q = 0; q < n_face_q_points; ++q)
                   {
                     auto traction = ptr[f * n_face_q_points + q]->fsi_traction;
-                    m_body.get_cur_face_quad_points()[face_quad_point_id]->tx =
+                    m_body.get_face_quad_points()[face_quad_point_id]->tx =
                       traction[0];
-                    m_body.get_cur_face_quad_points()[face_quad_point_id]->ty =
+                    m_body.get_face_quad_points()[face_quad_point_id]->ty =
                       traction[1];
                     face_quad_point_id++;
                   }
@@ -312,7 +312,7 @@ namespace Solid
                                     0,
                                     face_quad_points,
                                     n_face_quad,
-                                    0.01);
+                                    parameters.damping);
     m_body.add_action(&derive_quad_coordinates);
     m_body.add_action(&derive_displacement_weak);
     m_body.add_action(&derive_face_quad_coordinates);
