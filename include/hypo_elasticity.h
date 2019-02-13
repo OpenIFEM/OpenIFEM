@@ -41,8 +41,6 @@ namespace Solid
                    double hdx);
     ~HypoElasticity() {}
 
-    void test();
-
   private:
     /**
      * Members in its template-base class.
