@@ -347,8 +347,9 @@ namespace Fluid
 
       // The parameters that is used in isentropic continuity equation:
       // heat capacity ratio and atmospheric pressure.
-      double cp_to_cv = 1.4;
-      double atm = 1013250;
+      const double cp_to_cv = 1.4;
+      const double atm = 1013250;
+      const double kappa_s = 1e4;
 
       for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
            ++cell)
@@ -357,7 +358,9 @@ namespace Fluid
             {
               auto p = cell_property.get_data(cell);
               const int ind = p[0]->indicator;
-              const double rho = parameters.fluid_rho;
+              const double rho =
+                parameters.fluid_rho * (1 - ind) +
+                (parameters.solid_rho - parameters.fluid_rho) * ind;
 
               fe_values.reinit(cell);
 
@@ -457,8 +460,7 @@ namespace Fluid
                           // PML attenuation
                           local_matrix(i, j) +=
                             (rho * sigma_pml[q] * phi_u[j] * phi_u[i] +
-                             sigma_pml[q] * phi_p[j] * phi_p[i] /
-                               (cp_to_cv * atm)) *
+                             sigma_pml[q] * phi_p[j] * phi_p[i] / atm) *
                             fe_values.JxW(q);
                           // Add SUPG and PSPG stabilization
                           local_matrix(i, j) +=
@@ -519,7 +521,9 @@ namespace Fluid
                              phi_u[j] * current_pressure_gradients[q] *
                                phi_p[i] +
                              phi_p[i] * phi_p[j] / time.get_delta_t()) /
-                            (cp_to_cv * atm) * fe_values.JxW(q);
+                              atm * fe_values.JxW(q) +
+                            1 / kappa_s * phi_p[i] * phi_p[j] /
+                              time.get_delta_t() * ind * fe_values.JxW(q);
                         }
 
                       // RHS is \f$-(A_{current} + C_{current}) -
@@ -541,7 +545,7 @@ namespace Fluid
                         -(rho * sigma_pml[q] * current_velocity_values[q] *
                             phi_u[i] +
                           sigma_pml[q] * current_pressure_values[q] * phi_p[i] /
-                            (cp_to_cv * atm)) *
+                            atm) *
                         fe_values.JxW(q);
                       local_rhs(i) +=
                         -(cp_to_cv * (atm + current_pressure_values[q]) *
@@ -551,7 +555,12 @@ namespace Fluid
                           (current_pressure_values[q] -
                            present_pressure_values[q]) *
                             phi_p[i] / time.get_delta_t()) /
-                        (cp_to_cv * atm) * fe_values.JxW(q);
+                          atm * fe_values.JxW(q) -
+                        1 / kappa_s *
+                          (current_pressure_values[q] -
+                           present_pressure_values[q]) *
+                          phi_p[i] / time.get_delta_t() * ind *
+                          fe_values.JxW(q);
                       // Add SUPG and PSPS rhs terms.
                       local_rhs(i) +=
                         -((tau_SUPG * current_velocity_values[q] *
