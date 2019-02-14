@@ -29,7 +29,7 @@ set(mpi_tests acoustic_duct_wave_mpi
               solid_beam_bending_mpi_shared_NeoHookean)
 
 set(mfree_iwf_serial_tests mfree_iwf_bending
-                           fsi_leaflet_mfree_iwf)
+                           fsi_mfree_iwf)
 
 set(mfree_iwf_mpi_tests mfree_iwf_bending_mpi)
 
