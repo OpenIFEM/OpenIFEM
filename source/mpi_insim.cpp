@@ -233,7 +233,7 @@ namespace Fluid
               //
               for (unsigned int q = 0; q < n_q_points; ++q)
                 {
-                  const int ind = p[q]->indicator;
+                  const int ind = p[0]->indicator;
                   const double rho = parameters.fluid_rho;
                   for (unsigned int k = 0; k < dofs_per_cell; ++k)
                     {
