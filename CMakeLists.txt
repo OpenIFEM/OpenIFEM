@@ -68,6 +68,9 @@ option(OPENIFEM_WITH_MFREE_IWF "Build with mfree_iwf" OFF)
 if(OPENIFEM_WITH_MFREE_IWF)
   set(MFREE_IWF_DIR "" CACHE PATH "Path to mfree_iwf build directory")
   find_package(MFREE_IWF REQUIRED)
+  # We should not need find glm because it is exported by mfree_iwf,
+  # but for some reason DRP cannot find glm include directory without it.
+  find_package(glm REQUIRED)
 endif()
 
 if(OPENIFEM_WITH_MFREE_IWF AND NOT MFREE_IWF_FOUND)

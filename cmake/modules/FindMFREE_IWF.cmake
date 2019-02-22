@@ -24,7 +24,7 @@ find_library(MFREE_IWF_LIBRARY
   PATH_SUFFIXES lib
   PATHS ${MFREE_IWF_SEARCH_PATHS})
 
-find_path(MFREE_IWF_INCLUDE_DIR body.h
+find_path(MFREE_IWF_INCLUDE_DIR mfree_iwf/body.h
   HINTS ${MFREE_IWF_DIR}
   PATH_SUFFIXES inc)
 
