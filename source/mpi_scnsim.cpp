@@ -277,7 +277,7 @@ namespace Fluid
                                      mpi_communicator)));
 
       // Hard-coded initial condition, only for VF cases!
-      // apply_initial_condition();
+      apply_initial_condition();
     }
 
     template <int dim>
@@ -285,7 +285,6 @@ namespace Fluid
     {
       TimerOutput::Scope timer_section(timer, "Assemble system");
 
-      const double viscosity = parameters.viscosity;
       Tensor<1, dim> gravity;
       for (unsigned int i = 0; i < dim; ++i)
         gravity[i] = parameters.gravity[i];
@@ -361,6 +360,7 @@ namespace Fluid
               const double rho =
                 parameters.fluid_rho * (1 - ind) +
                 (parameters.solid_rho - parameters.fluid_rho) * ind;
+              const double viscosity = (ind == 1 ? 1 : parameters.viscosity);
 
               fe_values.reinit(cell);
 
@@ -808,19 +808,12 @@ namespace Fluid
                 ExcMessage("There should be only 2 groups of finite element!"));
               if (i_group == 0)
                 continue; // skip the velocity dofs
-              if (support_points[i][0] > 4.0 && support_points[i][0] < 5.0)
+              if (support_points[i][0] > 1.0 && support_points[i][0] < 2.0)
                 {
                   auto line = dof_indices[i];
                   initial_condition.add_line(line);
                   initial_condition.set_inhomogeneity(
-                    line, pressure * (support_points[i][0] - 4.0));
-                }
-              else if (support_points[i][0] >= 5.0 &&
-                       support_points[i][0] < 12.0)
-                {
-                  auto line = dof_indices[i];
-                  initial_condition.add_line(line);
-                  initial_condition.set_inhomogeneity(line, pressure);
+                    line, pressure * (support_points[i][0] - 1.0));
                 }
             }
         }

@@ -1,76 +1,98 @@
-/**
- * This program tests serial Slightly Compressible solver with an
- * acoustic wave in 2D duct case.
- * A Gaussian pulse is used as the time dependent BC with max velocity
- * equal to 6cm/s.
- * This test takes about 770s.
- */
+#include "mpi_fsi.h"
 #include "mpi_scnsim.h"
+#include "mpi_shared_linear_elasticity.h"
 #include "parameters.h"
 #include "utilities.h"
-#include "mpi_shared_hypo_elasticity.h"
-#include "mpi_fsi.h"
+#include <deal.II/grid/grid_in.h>
+#include <deal.II/grid/grid_out.h>
 
 extern template class Fluid::MPI::SCnsIM<2>;
-extern template class Solid::MPI::SharedHypoElasticity<2>;
+extern template class Fluid::MPI::SCnsIM<3>;
+extern template class Solid::MPI::SharedLinearElasticity<2>;
+extern template class Solid::MPI::SharedLinearElasticity<3>;
 extern template class MPI::FSI<2>;
+extern template class MPI::FSI<3>;
 
 using namespace dealii;
 
 template <int dim>
-class TimeDependentBoundaryValues : public Function<dim>
+class SigmaPMLField : public Function<dim>
 {
 public:
-  TimeDependentBoundaryValues() : Function<dim>(dim + 1) {}
-  TimeDependentBoundaryValues(double t, double dt)
-    : Function<dim>(dim + 1, t), dt(dt)
+  SigmaPMLField(double sig, double l)
+    : Function<dim>(), SigmaPMLMax(sig), PMLLength(l)
   {
   }
-  virtual double value(const Point<dim> &p, const unsigned int component) const;
-
-  virtual void vector_value(const Point<dim> &p, Vector<double> &values) const;
+  virtual double value(const Point<dim> &p,
+                       const unsigned int component = 0) const;
+  virtual void value_list(const std::vector<Point<dim>> &points,
+                          std::vector<double> &values,
+                          const unsigned int component = 0) const;
 
 private:
-  double time_value(const Point<dim> &p,
-                    const unsigned int component,
-                    const double t) const;
-  double dt;
+  double SigmaPMLMax;
+  double PMLLength;
 };
 
 template <int dim>
-double
-TimeDependentBoundaryValues<dim>::value(const Point<dim> &p,
-                                        const unsigned int component) const
+class ArtificialBF : public TensorFunction<1, dim>
 {
-  return time_value(p, component, this->get_time()) -
-         time_value(p, component, this->get_time() - dt);
+public:
+  ArtificialBF() : TensorFunction<1, dim>() {}
+  virtual Tensor<1, dim> value(const Point<dim> &p) const;
+  virtual void value_list(const std::vector<Point<dim>> &points,
+                          std::vector<Tensor<1, dim>> &values) const;
+};
+
+template <int dim>
+double SigmaPMLField<dim>::value(const Point<dim> &p,
+                                 const unsigned int component) const
+{
+  (void)component;
+  (void)p;
+  double SigmaPML = 0.0;
+  double boundary = 0.0;
+  // For tube acoustics
+  if (p[0] < PMLLength + boundary)
+    // A quadratic increasing function from boundary-PMLlength to the boundary
+    SigmaPML = SigmaPMLMax * pow((PMLLength + boundary - p[0]) / PMLLength, 4);
+  return SigmaPML;
 }
 
 template <int dim>
-void TimeDependentBoundaryValues<dim>::vector_value(
-  const Point<dim> &p, Vector<double> &values) const
+void SigmaPMLField<dim>::value_list(const std::vector<Point<dim>> &points,
+                                    std::vector<double> &values,
+                                    const unsigned int component) const
 {
-  for (unsigned int c = 0; c < this->n_components; ++c)
-    values(c) = TimeDependentBoundaryValues::value(p, c);
+  (void)component;
+  for (unsigned int i = 0; i < points.size(); ++i)
+    values[i] = this->value(points[i]);
 }
 
 template <int dim>
-double TimeDependentBoundaryValues<dim>::time_value(
-  const Point<dim> &p, const unsigned int component, const double t) const
+Tensor<1, dim> ArtificialBF<dim>::value(const Point<dim> &p) const
 {
-  Assert(component < this->n_components,
-         ExcIndexRange(component, 0, this->n_components));
-  if (component == 0 && std::abs(p[0]) < 1e-10)
-    {
-      // Gaussian wave
-      return 60 * exp(-0.5 * pow((t - 0.5e-4) / 0.15e-4, 2));
-    }
-  return 0;
+  Tensor<1, dim> value;
+  double rho = 1.3e-3;
+  double bf = 1.0e4 / rho;
+  if (p[0] > 1.0 - 5e-4 && p[0] < 2.0 + 5e-4)
+    value[0] = bf;
+  return value;
+}
+
+template <int dim>
+void ArtificialBF<dim>::value_list(const std::vector<Point<dim>> &points,
+                                   std::vector<Tensor<1, dim>> &values) const
+{
+  for (unsigned int i = 0; i < points.size(); ++i)
+    values[i] = this->value(points[i]);
 }
 
 int main(int argc, char *argv[])
 {
   using namespace dealii;
+
+  double PMLlength = 1.0, SigmaMax = 340000;
 
   try
     {
@@ -83,31 +105,42 @@ int main(int argc, char *argv[])
         }
       Parameters::AllParameters params(infile);
 
-      double L = 4, H = 1, l = 0.125, h = l / 8, hdx = 1.3;
-
       if (params.dimension == 2)
         {
-          parallel::distributed::Triangulation<2> tria(MPI_COMM_WORLD);
+          // Read solid mesh
+          Triangulation<2> tria_solid;
           dealii::GridGenerator::subdivided_hyper_rectangle(
-            tria, {8, 2}, Point<2>(0, 0), Point<2>(L + 1, H), true);
-          // initialize the shared pointer the time dependent BC
-          std::shared_ptr<TimeDependentBoundaryValues<2>> ptr =
-            std::make_shared<TimeDependentBoundaryValues<2>>(
-              TimeDependentBoundaryValues<2>(params.time_step,
-                                             params.time_step));
-          Fluid::MPI::SCnsIM<2> fluid(tria, params, ptr);
-
-          Triangulation<2> solid_tria;
-          dealii::GridGenerator::subdivided_hyper_rectangle(
-            solid_tria,
-            {static_cast<unsigned int>(l / h),
-             static_cast<unsigned int>(H / h)},
-            Point<2>(L - l, 0),
-            Point<2>(L, H),
+            tria_solid,
+            {static_cast<unsigned int>(5), static_cast<unsigned int>(10)},
+            Point<2>(0, 0),
+            Point<2>(0.5, 2),
             true);
-          Solid::MPI::SharedHypoElasticity<2> solid(solid_tria, params,
-                                                    h, hdx);
 
+          // Read fluid mesh
+          parallel::distributed::Triangulation<2> tria_fluid(MPI_COMM_WORLD);
+          dealii::GridGenerator::subdivided_hyper_rectangle(
+            tria_fluid,
+            {static_cast<unsigned int>(114), static_cast<unsigned int>(29)},
+            Point<2>(0, 0),
+            Point<2>(8, 2),
+            true);
+
+          // Translate solid mesh
+          Tensor<1, 2> offset({3, 0});
+          GridTools::shift(offset, tria_solid);
+
+          // placeholder for hard code BC
+          std::shared_ptr<Functions::ZeroFunction<2>> ptr =
+            std::make_shared<Functions::ZeroFunction<2>>(
+              Functions::ZeroFunction<2>(3));
+          // initialize the pml field
+          auto pml = std::make_shared<SigmaPMLField<2>>(
+            SigmaPMLField<2>(SigmaMax, PMLlength));
+          // artificial body force
+          auto bf_ptr = std::make_shared<ArtificialBF<2>>(ArtificialBF<2>());
+
+          Fluid::MPI::SCnsIM<2> fluid(tria_fluid, params, ptr, pml, bf_ptr);
+          Solid::MPI::SharedLinearElasticity<2> solid(tria_solid, params);
           MPI::FSI<2> fsi(fluid, solid, params);
           fsi.run();
         }

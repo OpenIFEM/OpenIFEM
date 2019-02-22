@@ -387,9 +387,7 @@ namespace MPI
             // FSI acceleration term:
             for (unsigned int i = 0; i < dim; ++i)
               {
-                ptr[0]->fsi_acceleration[i] =
-                  (parameters.solid_rho - parameters.fluid_rho) *
-                  (parameters.gravity[i] - solid_acc[i]);
+                ptr[0]->fsi_acceleration[i] = fluid_acc[i] - solid_acc[i];
               }
           }
         // Dirichlet BCs
