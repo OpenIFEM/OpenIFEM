@@ -133,12 +133,12 @@ namespace Solid
                 {
                   vertex_touched[cell->vertex_index(v)] = true;
                   int id = vertex_mapping[cell->vertex_index(v)];
-                  double ux = m_body.get_cur_particles()[id]->x -
-                              m_body.get_cur_particles()[id]->X;
-                  double uy = m_body.get_cur_particles()[id]->y -
-                              m_body.get_cur_particles()[id]->Y;
-                  double vx = m_body.get_cur_particles()[id]->vx;
-                  double vy = m_body.get_cur_particles()[id]->vy;
+                  double ux = m_body.get_particles()[id]->x -
+                              m_body.get_particles()[id]->X;
+                  double uy = m_body.get_particles()[id]->y -
+                              m_body.get_particles()[id]->Y;
+                  double vx = m_body.get_particles()[id]->vx;
+                  double vy = m_body.get_particles()[id]->vy;
                   serialized_displacement(cell->vertex_dof_index(v, 0)) = ux;
                   serialized_displacement(cell->vertex_dof_index(v, 1)) = uy;
                   serialized_velocity(cell->vertex_dof_index(v, 0)) = vx;
@@ -358,6 +358,139 @@ namespace Solid
       m_body.add_action(&derive_traction_weak_tl);
       m_body.add_action(&contmech_momentum_tl_weak);
       m_body.add_action(&contmech_advection);
+    }
+
+    template <int dim>
+    bool SharedHypoElasticity<dim>::load_checkpoint()
+    {
+      if (!SharedSolidSolver<dim>::load_checkpoint())
+        {
+          return false;
+        }
+      construct_particles();
+      std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
+      Vector<double> localized_displacement(current_displacement);
+      Vector<double> localized_velocity(current_velocity);
+      Vector<double> localized_acceleration(current_acceleration);
+      for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+           ++cell)
+        {
+          for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
+               ++v)
+            {
+              if (!vertex_touched[cell->vertex_index(v)])
+                {
+                  vertex_touched[cell->vertex_index(v)] = true;
+                  int id = vertex_mapping[cell->vertex_index(v)];
+                  m_body.get_cur_particles()[id]->x +=
+                    localized_displacement(cell->vertex_dof_index(v, 0));
+                  m_body.get_cur_particles()[id]->y +=
+                    localized_displacement(cell->vertex_dof_index(v, 1));
+                  m_body.get_cur_particles()[id]->vx =
+                    localized_velocity(cell->vertex_dof_index(v, 0));
+                  m_body.get_cur_particles()[id]->vy =
+                    localized_velocity(cell->vertex_dof_index(v, 1));
+                  m_body.get_cur_particles()[id]->ax =
+                    localized_acceleration(cell->vertex_dof_index(v, 0));
+                  m_body.get_cur_particles()[id]->ay =
+                    localized_acceleration(cell->vertex_dof_index(v, 1));
+                  m_body.get_particles()[id]->x =
+                    m_body.get_cur_particles()[id]->x;
+                  m_body.get_particles()[id]->y =
+                    m_body.get_cur_particles()[id]->y;
+                  m_body.get_particles()[id]->vx =
+                    m_body.get_cur_particles()[id]->vx;
+                  m_body.get_particles()[id]->vy =
+                    m_body.get_cur_particles()[id]->vy;
+                  m_body.get_particles()[id]->ax =
+                    m_body.get_cur_particles()[id]->ax;
+                  m_body.get_particles()[id]->ay =
+                    m_body.get_cur_particles()[id]->ay;
+                }
+            }
+        }
+      fs::path local_path = fs::current_path();
+      fs::path checkpoint_file(local_path);
+      for (const auto &p : fs::directory_iterator(local_path))
+        {
+          if (p.path().extension() == ".solid_checkpoint_Sxx" &&
+              (std::string(p.path().stem()) >
+                 std::string(checkpoint_file.stem()) ||
+               checkpoint_file == local_path))
+            {
+              checkpoint_file = p.path();
+            }
+        }
+      AssertThrow(checkpoint_file != local_path,
+                  ExcMessage("Could not find restart files for stress!"));
+      // set time step load the checkpoint file
+      Vector<double> Sxx(m_body.get_num_quad_points());
+      Vector<double> Sxy(m_body.get_num_quad_points());
+      Vector<double> Syy(m_body.get_num_quad_points());
+      std::ifstream fs_Sxx(checkpoint_file);
+      checkpoint_file.replace_extension(".solid_checkpoint_Sxy");
+      std::ifstream fs_Sxy(checkpoint_file);
+      checkpoint_file.replace_extension(".solid_checkpoint_Syy");
+      std::ifstream fs_Syy(checkpoint_file);
+      Sxx.block_read(fs_Sxx);
+      Sxy.block_read(fs_Sxy);
+      Syy.block_read(fs_Syy);
+      for (unsigned int i = 0; i < m_body.get_num_quad_points(); ++i)
+        {
+          m_body.get_quad_points()[i]->Sxx = Sxx[i];
+          m_body.get_quad_points()[i]->Sxy = Sxy[i];
+          m_body.get_quad_points()[i]->Syy = Syy[i];
+        }
+      return true;
+    }
+
+    template <int dim>
+    void SharedHypoElasticity<dim>::save_checkpoint(const int output_index)
+    {
+      SharedSolidSolver<dim>::save_checkpoint(output_index);
+      // Stress at quad points
+      if (this_mpi_process == 0)
+        {
+          Vector<double> Sxx(m_body.get_num_quad_points());
+          Vector<double> Sxy(m_body.get_num_quad_points());
+          Vector<double> Syy(m_body.get_num_quad_points());
+          for (unsigned int i = 0; i < m_body.get_num_quad_points(); ++i)
+            {
+              Sxx[i] = m_body.get_quad_points()[i]->Sxx;
+              Sxy[i] = m_body.get_quad_points()[i]->Sxy;
+              Syy[i] = m_body.get_quad_points()[i]->Syy;
+            }
+          fs::path local_path = fs::current_path();
+          std::set<fs::path> checkpoints;
+          for (const auto &p : fs::directory_iterator(local_path))
+            {
+              if (p.path().extension() == ".solid_checkpoint_Sxx")
+                {
+                  checkpoints.insert(p.path());
+                }
+            }
+          while (checkpoints.size() > 1)
+            {
+              fs::path to_be_removed(*checkpoints.begin());
+              fs::remove(to_be_removed);
+              to_be_removed.replace_extension(".solid_checkpoint_Sxy");
+              fs::remove(to_be_removed);
+              to_be_removed.replace_extension(".solid_checkpoint_Syy");
+              fs::remove(to_be_removed);
+              checkpoints.erase(checkpoints.begin());
+            }
+          fs::path checkpoint_file(local_path);
+          checkpoint_file.append(Utilities::int_to_string(output_index, 6));
+          checkpoint_file.replace_extension(".solid_checkpoint_Sxx");
+          std::ofstream fs_Sxx(checkpoint_file);
+          checkpoint_file.replace_extension(".solid_checkpoint_Sxy");
+          std::ofstream fs_Sxy(checkpoint_file);
+          checkpoint_file.replace_extension(".solid_checkpoint_Syy");
+          std::ofstream fs_Syy(checkpoint_file);
+          Sxx.block_write(fs_Sxx);
+          Sxy.block_write(fs_Sxy);
+          Syy.block_write(fs_Syy);
+        }
     }
 
     template class SharedHypoElasticity<2>;

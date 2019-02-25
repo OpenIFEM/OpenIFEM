@@ -141,12 +141,13 @@ namespace Solid
       /**
        * Save the checkpoint for restart (only global refinement supported)
        */
-      void save_checkpoint(const int);
+      virtual void save_checkpoint(const int);
 
       /**
        * Load from checkpoint to restart
+       * Made virtual for RKPM solver
        */
-      bool load_checkpoint();
+      virtual bool load_checkpoint();
 
       Triangulation<dim> &triangulation;
       Parameters::AllParameters parameters;

@@ -106,12 +106,12 @@ namespace Solid
               {
                 vertex_touched[cell->vertex_index(v)] = true;
                 int id = vertex_mapping[cell->vertex_index(v)];
-                double ux = m_body.get_cur_particles()[id]->x -
-                            m_body.get_cur_particles()[id]->X;
-                double uy = m_body.get_cur_particles()[id]->y -
-                            m_body.get_cur_particles()[id]->Y;
-                double vx = m_body.get_cur_particles()[id]->vx;
-                double vy = m_body.get_cur_particles()[id]->vy;
+                double ux =
+                  m_body.get_particles()[id]->x - m_body.get_particles()[id]->X;
+                double uy =
+                  m_body.get_particles()[id]->y - m_body.get_particles()[id]->Y;
+                double vx = m_body.get_particles()[id]->vx;
+                double vy = m_body.get_particles()[id]->vy;
                 current_displacement(cell->vertex_dof_index(v, 0)) = ux;
                 current_displacement(cell->vertex_dof_index(v, 1)) = uy;
                 current_velocity(cell->vertex_dof_index(v, 0)) = vx;

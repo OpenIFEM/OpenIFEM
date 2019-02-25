@@ -391,6 +391,7 @@ namespace MPI
               }
           }
         // Dirichlet BCs
+        /*
         dummy_fe_values.reinit(f_cell);
         f_cell->get_dof_indices(dof_indices);
         auto support_points = dummy_fe_values.get_quadrature_points();
@@ -450,7 +451,9 @@ namespace MPI
               line,
               fluid_velocity[index] - fluid_solver.present_solution(line));
           }
+          */
       }
+    /*
     inner_nonzero.close();
     inner_zero.close();
     fluid_solver.nonzero_constraints.merge(
@@ -459,6 +462,7 @@ namespace MPI
     fluid_solver.zero_constraints.merge(
       inner_zero,
       AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
+    */
     move_solid_mesh(false);
   }
 

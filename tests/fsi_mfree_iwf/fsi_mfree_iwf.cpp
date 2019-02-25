@@ -1,17 +1,14 @@
 #include "mpi_fsi.h"
 #include "mpi_scnsim.h"
-#include "mpi_shared_linear_elasticity.h"
+#include "mpi_shared_hypo_elasticity.h"
 #include "parameters.h"
 #include "utilities.h"
 #include <deal.II/grid/grid_in.h>
 #include <deal.II/grid/grid_out.h>
 
 extern template class Fluid::MPI::SCnsIM<2>;
-extern template class Fluid::MPI::SCnsIM<3>;
-extern template class Solid::MPI::SharedLinearElasticity<2>;
-extern template class Solid::MPI::SharedLinearElasticity<3>;
+extern template class Solid::MPI::SharedHypoElasticity<2>;
 extern template class MPI::FSI<2>;
-extern template class MPI::FSI<3>;
 
 using namespace dealii;
 
@@ -111,9 +108,9 @@ int main(int argc, char *argv[])
           Triangulation<2> tria_solid;
           dealii::GridGenerator::subdivided_hyper_rectangle(
             tria_solid,
-            {static_cast<unsigned int>(5), static_cast<unsigned int>(10)},
+            {static_cast<unsigned int>(5), static_cast<unsigned int>(40)},
             Point<2>(0, 0),
-            Point<2>(0.5, 2),
+            Point<2>(0.25, 2),
             true);
 
           // Read fluid mesh
@@ -122,7 +119,7 @@ int main(int argc, char *argv[])
             tria_fluid,
             {static_cast<unsigned int>(114), static_cast<unsigned int>(29)},
             Point<2>(0, 0),
-            Point<2>(8, 2),
+            Point<2>(5, 2),
             true);
 
           // Translate solid mesh
@@ -140,7 +137,8 @@ int main(int argc, char *argv[])
           auto bf_ptr = std::make_shared<ArtificialBF<2>>(ArtificialBF<2>());
 
           Fluid::MPI::SCnsIM<2> fluid(tria_fluid, params, ptr, pml, bf_ptr);
-          Solid::MPI::SharedLinearElasticity<2> solid(tria_solid, params);
+          Solid::MPI::SharedHypoElasticity<2> solid(
+            tria_solid, params, 0.1, 1.3);
           MPI::FSI<2> fsi(fluid, solid, params);
           fsi.run();
         }

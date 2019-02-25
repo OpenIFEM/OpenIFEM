@@ -18,19 +18,19 @@ subsection Simulation
   set Global refinements = 1, 0
 
   # The end time of the simulation in second
-  set End time = 1e-2
+  set End time = 6e-2
 
   # The time step in second
   set Time step size = 1e-6
 
   # The output interval in second
-  set Output interval = 1e-5
+  set Output interval = 1e-4
 
   # Mesh refinement interval in second
   set Refinement interval = 1e1
 
   # Checkpoint save interval in second
-  set Save interval = 1e-4
+  set Save interval = 1e-2
 
   # Body force which applies to both fluid and solid (acceleration)
   set Gravity = 0.0, 0.0
@@ -116,9 +116,9 @@ subsection Solid material properties
   set Solid density = 1
 
   # E and nu are only used by linearElasticMaterial
-  set Young's modulus = 1.0e6
+  set Young's modulus = 1.0e4
 
-  set Poisson's ratio = 0.3
+  set Poisson's ratio = 0.45
 
   # A list of parameters used by hyperelasticMaterial
   set Hyperelastic parameters = 1.69e3, 8.33e4 # E = 1e4, nu = 0.48
@@ -126,7 +126,7 @@ end
 
 subsection Solid solver control
   # Artifitial damping.
-  set Damping = 0.1
+  set Damping = 0.0
 
   # Number of Newton-Raphson iterations allowed, used by hyperelastic solver only
   set Max Newton iterations = 10

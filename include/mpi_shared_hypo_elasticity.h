@@ -81,6 +81,10 @@ namespace Solid
       /// Run one time step.
       void run_one_step(bool);
 
+      virtual void save_checkpoint(const int) override;
+
+      virtual bool load_checkpoint() override;
+
       body<particle_tl_weak> m_body;
 
       std::vector<int> vertex_mapping;
