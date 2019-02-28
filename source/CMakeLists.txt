@@ -15,7 +15,6 @@ set(TARGET_SRC fluid_solver.cpp
                mpi_insim.cpp
                mpi_scnsim.cpp
                mpi_shared_hyper_elasticity.cpp
-               mpi_shared_hypo_elasticity.cpp
                mpi_shared_linear_elasticity.cpp
                mpi_shared_solid_solver.cpp
                mpi_solid_solver.cpp
@@ -43,7 +42,6 @@ set(headers fluid_solver.h
             mpi_insim.h
             mpi_scnsim.h
             mpi_shared_hyper_elasticity.h
-            mpi_shared_hypo_elasticity.h
             mpi_shared_linear_elasticity.h
             mpi_shared_solid_solver.h
             mpi_solid_solver.h
@@ -57,6 +55,8 @@ set(headers fluid_solver.h
 if(OPENIFEM_WITH_MFREE_IWF)
   list(APPEND TARGET_SRC "hypo_elasticity.cpp")
   list(APPEND headers "hypo_elasticity.h")
+  list(APPEND TARGET_SRC "mpi_shared_hypo_elasticity.cpp")
+  list(APPEND headers "mpi_shared_hypo_elasticity.h")
 endif()
 
 # Build the library
