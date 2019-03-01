@@ -404,33 +404,6 @@ namespace Solid
     template <int dim>
     void SharedSolidSolver<dim>::save_checkpoint(const int output_index)
     {
-      // Specify the current working path
-      fs::path local_path = fs::current_path();
-      // A set to store all the filenames for checkpoints
-      std::set<fs::path> checkpoints;
-      // Find the checkpoints and remove excess ones
-      // Only keep the latest one
-      for (const auto &p : fs::directory_iterator(local_path))
-        {
-          if (p.path().extension() == ".solid_checkpoint_displacement")
-            {
-              checkpoints.insert(p.path());
-            }
-        }
-      while (checkpoints.size() > 1)
-        {
-          pcout << "Removing " << *checkpoints.begin() << std::endl;
-          fs::path to_be_removed(*checkpoints.begin());
-          fs::remove(to_be_removed);
-          to_be_removed.replace_extension(".solid_checkpoint_velocity");
-          fs::remove(to_be_removed);
-          to_be_removed.replace_extension(".solid_checkpoint_acceleration");
-          fs::remove(to_be_removed);
-          checkpoints.erase(checkpoints.begin());
-        }
-      // Name the checkpoint file
-      fs::path checkpoint_file(local_path);
-      checkpoint_file.append(Utilities::int_to_string(output_index, 6));
       // Save the solution
       Vector<double> localized_disp(current_displacement);
       Vector<double> localized_vel(current_velocity);
@@ -438,6 +411,33 @@ namespace Solid
 
       if (this_mpi_process == 0)
         {
+          // Specify the current working path
+          fs::path local_path = fs::current_path();
+          // A set to store all the filenames for checkpoints
+          std::set<fs::path> checkpoints;
+          // Find the checkpoints and remove excess ones
+          // Only keep the latest one
+          for (const auto &p : fs::directory_iterator(local_path))
+            {
+              if (p.path().extension() == ".solid_checkpoint_displacement")
+                {
+                  checkpoints.insert(p.path());
+                }
+            }
+          while (checkpoints.size() > 1)
+            {
+              pcout << "Removing " << *checkpoints.begin() << std::endl;
+              fs::path to_be_removed(*checkpoints.begin());
+              fs::remove(to_be_removed);
+              to_be_removed.replace_extension(".solid_checkpoint_velocity");
+              fs::remove(to_be_removed);
+              to_be_removed.replace_extension(".solid_checkpoint_acceleration");
+              fs::remove(to_be_removed);
+              checkpoints.erase(checkpoints.begin());
+            }
+          // Name the checkpoint file
+          fs::path checkpoint_file(local_path);
+          checkpoint_file.append(Utilities::int_to_string(output_index, 6));
           checkpoint_file.replace_extension(".solid_checkpoint_displacement");
           pcout << "Prepare to save to " << checkpoint_file << std::endl;
           std::ofstream disp(checkpoint_file);

@@ -435,27 +435,30 @@ namespace Fluid
     template <int dim>
     void FluidSolver<dim>::save_checkpoint(const int output_index)
     {
-      // Specify the current working path
-      fs::path local_path = fs::current_path();
-      // A set to store all the filenames for checkpoints
-      std::set<fs::path> checkpoints;
-      // Find the checkpoints and remove excess ones
-      // Only keep the latest one
-      for (const auto &p : fs::directory_iterator(local_path))
+      if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
         {
-          if (p.path().extension() == ".fluid_checkpoint")
+          // Specify the current working path
+          fs::path local_path = fs::current_path();
+          // A set to store all the filenames for checkpoints
+          std::set<fs::path> checkpoints;
+          // Find the checkpoints and remove excess ones
+          // Only keep the latest one
+          for (const auto &p : fs::directory_iterator(local_path))
             {
-              checkpoints.insert(p.path());
+              if (p.path().extension() == ".fluid_checkpoint")
+                {
+                  checkpoints.insert(p.path());
+                }
             }
-        }
-      while (checkpoints.size() > 1)
-        {
-          pcout << "Removing " << *checkpoints.begin() << std::endl;
-          fs::path to_be_removed(*checkpoints.begin());
-          fs::remove(to_be_removed);
-          to_be_removed.replace_extension(".fluid_checkpoint.info");
-          fs::remove(to_be_removed);
-          checkpoints.erase(checkpoints.begin());
+          while (checkpoints.size() > 1)
+            {
+              pcout << "Removing " << *checkpoints.begin() << std::endl;
+              fs::path to_be_removed(*checkpoints.begin());
+              fs::remove(to_be_removed);
+              to_be_removed.replace_extension(".fluid_checkpoint.info");
+              fs::remove(to_be_removed);
+              checkpoints.erase(checkpoints.begin());
+            }
         }
       // Name the checkpoint file
       std::string checkpoint_file = Utilities::int_to_string(output_index, 6);
