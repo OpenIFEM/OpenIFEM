@@ -388,6 +388,13 @@ namespace Fluid
 
               for (unsigned int q = 0; q < n_q_points; ++q)
                 {
+                  const double rho = parameters.fluid_rho *
+                                       (1 + present_pressure_values[q] / atm) *
+                                       (1 - ind) +
+                                     ind * parameters.solid_rho;
+                  const double viscosity =
+                    (ind == 1 ? 1 : parameters.viscosity);
+
                   for (unsigned int k = 0; k < dofs_per_cell; ++k)
                     {
                       div_phi_u[k] = fe_values[velocities].divergence(k, q);
