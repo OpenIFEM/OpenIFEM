@@ -638,7 +638,10 @@ namespace Fluid
                         {
                           local_rhs(i) +=
                             (scalar_product(grad_phi_u[i], p[0]->fsi_stress) +
-                             (p[0]->fsi_acceleration * rho * phi_u[i])) *
+                             (p[0]->fsi_acceleration * rho) *
+                               (phi_u[i] + tau_PSPG * grad_phi_p[i] +
+                                tau_SUPG * current_velocity_values[q] *
+                                  grad_phi_u[i])) *
                             fe_values.JxW(q);
                         }
                     }
