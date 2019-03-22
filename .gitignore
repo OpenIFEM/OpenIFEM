@@ -36,3 +36,7 @@
 
 # Vim temporary files
 *.swp
+
+# VScode configuration files
+*.ipch
+*.bin

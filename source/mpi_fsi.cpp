@@ -113,6 +113,26 @@ namespace MPI
   }
 
   template <int dim>
+  void FSI<dim>::update_vertices_mask()
+  {
+    // Initilize vertices mask
+    vertices_mask.resize(fluid_solver.triangulation.n_vertices(), false);
+    for (auto cell = fluid_solver.triangulation.begin_active();
+         cell != fluid_solver.triangulation.end();
+         ++cell)
+      {
+        if (!cell->is_locally_owned())
+          {
+            continue;
+          }
+        for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
+          {
+            vertices_mask[cell->vertex_index(v)] = true;
+          }
+      }
+  }
+
+  template <int dim>
   bool FSI<dim>::point_in_solid(const DoFHandler<dim> &df,
                                 const Point<dim> &point)
   {
@@ -501,7 +521,8 @@ namespace MPI
                     Vector<double> value(dim + 1);
                     Utils::GridInterpolator<dim,
                                             PETScWrappers::MPI::BlockVector>
-                      interpolator(fluid_solver.dof_handler, q_point);
+                      interpolator(
+                        fluid_solver.dof_handler, q_point, vertices_mask);
                     interpolator.point_value(fluid_solver.present_solution,
                                              value);
                     std::vector<Tensor<1, dim>> gradient(dim + 1,
@@ -622,6 +643,7 @@ namespace MPI
     solution_transfer.interpolate(buffer);
     fluid_solver.nonzero_constraints.distribute(buffer);
     fluid_solver.present_solution = buffer;
+    update_vertices_mask();
   }
 
   template <int dim>
@@ -659,6 +681,7 @@ namespace MPI
 
     collect_solid_boundaries();
     setup_cell_hints();
+    update_vertices_mask();
 
     pcout << "Number of fluid active cells and dofs: ["
           << fluid_solver.triangulation.n_active_cells() << ", "

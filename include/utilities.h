@@ -121,6 +121,7 @@ namespace Utils
   public:
     GridInterpolator(const DoFHandler<dim> &,
                      const Point<dim> &,
+                     const std::vector<bool> &mask = {},
                      const typename DoFHandler<dim>::active_cell_iterator &
                        cell = typename DoFHandler<dim>::active_cell_iterator());
     void point_value(const VectorType &,

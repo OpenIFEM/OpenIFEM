@@ -48,6 +48,9 @@ namespace MPI
     /// Define a smallest rectangle (or hex in 3d) that contains the solid.
     void update_solid_box();
 
+    /// Find the vertices that are onwed by the local process.
+    void update_vertices_mask();
+
     /// Check if a point is inside a mesh.
     bool point_in_solid(const DoFHandler<dim> &, const Point<dim> &);
 
@@ -114,9 +117,13 @@ namespace MPI
     // (x_min, x_max, y_min, y_max, z_min, z_max)
     Vector<double> solid_box;
 
-    // Thie vector collects the solid boundaries for computing thw winding
+    // This vector collects the solid boundaries for computing thw winding
     // number.
     std::list<typename Triangulation<dim>::face_iterator> solid_boundaries;
+
+    // A mask that marks local fluid vertices for solid bc interpolation
+    // searching.
+    std::vector<bool> vertices_mask;
 
     // Cell storage that stores hints of cell searching from last time step.
     CellDataStorage<

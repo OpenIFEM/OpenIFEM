@@ -99,6 +99,7 @@ namespace Utils
   GridInterpolator<dim, VectorType>::GridInterpolator(
     const DoFHandler<dim> &dof_handler,
     const Point<dim> &point,
+    const std::vector<bool> &mask,
     const typename DoFHandler<dim>::active_cell_iterator &cell)
     : dof_handler(dof_handler), point(point), cell_found(true)
   {
@@ -114,8 +115,8 @@ namespace Utils
     // does not lie in any cell. In this case, we set the cell pointer to null.
     try
       {
-        cell_point =
-          GridTools::find_active_cell_around_point(mapping, dof_handler, point);
+        cell_point = GridTools::find_active_cell_around_point(
+          mapping, dof_handler, point, mask);
       }
     catch (GridTools::ExcPointNotFound<dim> &e)
       {

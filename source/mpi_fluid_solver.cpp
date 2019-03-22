@@ -536,6 +536,11 @@ namespace Fluid
           if (i == Utilities::string_to_int(checkpoint_file.stem()))
             break;
           time.increment();
+          // Update the time for hard coded boundary conditions
+          if (parameters.use_hard_coded_values)
+            {
+              boundary_values->advance_time(time.get_delta_t());
+            }
         }
 
       pcout << "Checkpoint file successfully loaded from time step "
