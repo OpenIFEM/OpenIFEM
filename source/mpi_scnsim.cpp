@@ -602,7 +602,7 @@ namespace Fluid
                                       time.get_delta_t() +
                                     current_velocity_values[q] *
                                       current_velocity_gradients[q]) +
-                             current_pressure_gradients[q] +
+                             current_pressure_gradients[q] -
                              rho * (gravity + artificial_bf[q]) +
                              rho * sigma_pml[q] * current_velocity_values[q]) +
                           (tau_PSPG * grad_phi_p[i]) *
@@ -611,7 +611,7 @@ namespace Fluid
                                       time.get_delta_t() +
                                     current_velocity_values[q] *
                                       current_velocity_gradients[q]) +
-                             current_pressure_gradients[q] +
+                             current_pressure_gradients[q] -
                              rho * (gravity + artificial_bf[q]) +
                              rho * sigma_pml[q] * current_velocity_values[q])) *
                         fe_values.JxW(q);

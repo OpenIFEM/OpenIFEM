@@ -216,6 +216,7 @@ namespace Fluid
         Tensor<1, dim>
           fsi_acceleration; //!< The acceleration term in FSI force.
         SymmetricTensor<2, dim> fsi_stress; //!< The stress term in FSI force.
+        int material_id; //!< The material id of the surrounding solid cell.
       };
     };
   } // namespace MPI

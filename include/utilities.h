@@ -131,6 +131,7 @@ namespace Utils
       std::vector<Tensor<1, dim, typename VectorType::value_type>> &);
 
     bool found_cell() const { return cell_found; };
+    const typename DoFHandler<dim>::active_cell_iterator get_cell() const;
 
   private:
     const DoFHandler<dim> &dof_handler;

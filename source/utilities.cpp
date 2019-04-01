@@ -188,6 +188,13 @@ namespace Utils
     gradient = u_gradient[0];
   }
 
+  template <int dim, typename VectorType>
+  const typename DoFHandler<dim>::active_cell_iterator
+  GridInterpolator<dim, VectorType>::get_cell() const
+  {
+    return cell_point.first;
+  };
+
   template <int dim, typename MeshType>
   CellLocator<dim, MeshType>::CellLocator(
     DoFHandler<dim> &dh,

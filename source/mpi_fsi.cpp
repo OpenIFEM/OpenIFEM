@@ -396,10 +396,11 @@ namespace MPI
             auto point = fe_values.get_quadrature_points()[0];
             // Solid acceleration at fluid cell center
             Vector<double> solid_acc(dim);
-            VectorTools::point_value(solid_solver.dof_handler,
-                                     localized_solid_acceleration,
-                                     point,
-                                     solid_acc);
+            Utils::GridInterpolator<dim, Vector<double>> interpolator(
+              solid_solver.dof_handler, point);
+            interpolator.point_value(localized_solid_acceleration, solid_acc);
+            // Get solid cell material id
+            ptr[0]->material_id = interpolator.get_cell()->material_id();
             // Fluid total acceleration at cell center
             Tensor<1, dim> fluid_acc =
               dv[0] / time.get_delta_t() + grad_v[0] * v[0];
@@ -452,7 +453,7 @@ namespace MPI
               solid_solver.dof_handler, support_points[i], *(hints[i]));
             *(hints[i]) = locator.search();
             Utils::GridInterpolator<dim, Vector<double>> interpolator(
-              solid_solver.dof_handler, support_points[i], *(hints[i]));
+              solid_solver.dof_handler, support_points[i], {}, *(hints[i]));
             if (!interpolator.found_cell())
               {
                 std::stringstream message;

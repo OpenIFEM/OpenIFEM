@@ -228,6 +228,7 @@ namespace Fluid
               p[0]->indicator = 0;
               p[0]->fsi_acceleration = 0;
               p[0]->fsi_stress = 0;
+              p[0]->material_id = 1;
             }
         }
     }
