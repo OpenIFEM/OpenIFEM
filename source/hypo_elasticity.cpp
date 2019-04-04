@@ -3,34 +3,30 @@
 
 namespace
 {
-  std::vector<unsigned int> dirichlet_boundary_x, dirichlet_boundary_y;
-  std::vector<unsigned int> neumann_boundary_x, neumann_boundary_y;
-  template <typename U>
-  static void dirichlet_boundary_function_x(U *p)
+  std::vector<std::vector<unsigned int>> dirichlet_boundaries;
+  std::vector<std::vector<unsigned int>> neumann_boundaries;
+
+  template <int dim>
+  std::function<void(particle<dim> *)>
+  dirichlet_boundary_function(unsigned int n)
   {
-    p->x = p->X;
-    p->vx = 0.;
-    p->previous_vx = 0.;
-    p->ax = 0.;
-    p->vx_t = 0.;
+    std::function<void(particle<dim> *)> f = [=](particle<dim> *p) {
+      p->x[n] = p->X[n];
+      p->v[n] = 0.;
+      p->previous_v[n] = 0.;
+      p->a[n] = 0.;
+      p->v_t[n] = 0.;
+    };
+    return f;
   }
 
-  template <typename U>
-  static void dirichlet_boundary_function_y(U *p)
+  template <int dim>
+  std::function<void(particle<dim> *)>
+  neumann_boundary_function(std::vector<double> v)
   {
-    p->y = p->Y;
-    p->vy = 0.;
-    p->previous_vy = 0.;
-    p->ay = 0.;
-    p->vy_t = 0.;
-  }
-
-  template <typename U>
-  std::function<void(U *)> neumann_boundary_function(double tx, double ty)
-  {
-    std::function<void(U *)> f = [=](U *p) {
-      p->tx = tx;
-      p->ty = ty;
+    std::function<void(particle<dim> *)> f = [=](particle<dim> *p) {
+      for (unsigned int n = 0; n < dim; ++n)
+        p->t[n] = v[n];
     };
     return f;
   }
@@ -56,19 +52,20 @@ namespace Solid
       {
         construct_particles();
         this->output_results(time.get_timestep());
-        vtk_writer_write(m_body, time.get_timestep());
+        utilities<dim>::vtk_write_particle(
+          m_body->get_particles(), m_body->get_num_part(), time.get_timestep());
       }
     time.increment();
     std::cout << std::endl
               << "Timestep " << time.get_timestep() << " @ " << time.current()
               << "s" << std::endl;
-    m_body.step();
-    m_body.update_boundary();
+    m_body->step();
     synchronize();
     if (time.time_to_output())
       {
         this->output_results(time.get_timestep());
-        vtk_writer_write(m_body, time.get_timestep());
+        utilities<dim>::vtk_write_particle(
+          m_body->get_particles(), m_body->get_num_part(), time.get_timestep());
       }
   }
 
@@ -106,16 +103,17 @@ namespace Solid
               {
                 vertex_touched[cell->vertex_index(v)] = true;
                 int id = vertex_mapping[cell->vertex_index(v)];
-                double ux =
-                  m_body.get_particles()[id]->x - m_body.get_particles()[id]->X;
-                double uy =
-                  m_body.get_particles()[id]->y - m_body.get_particles()[id]->Y;
-                double vx = m_body.get_particles()[id]->vx;
-                double vy = m_body.get_particles()[id]->vy;
-                current_displacement(cell->vertex_dof_index(v, 0)) = ux;
-                current_displacement(cell->vertex_dof_index(v, 1)) = uy;
-                current_velocity(cell->vertex_dof_index(v, 0)) = vx;
-                current_velocity(cell->vertex_dof_index(v, 1)) = vy;
+                auto disp = m_body->get_particles()[id]->x -
+                            m_body->get_particles()[id]->X;
+                auto vel = m_body->get_particles()[id]->v;
+                auto acc = m_body->get_particles()[id]->a;
+                for (unsigned int n = 0; n < dim; ++n)
+                  {
+                    current_displacement(cell->vertex_dof_index(v, n)) =
+                      disp[n];
+                    current_velocity(cell->vertex_dof_index(v, n)) = vel[n];
+                    current_acceleration(cell->vertex_dof_index(v, n)) = acc[n];
+                  }
               }
           }
         auto ptr = cell_property.get_data(cell);
@@ -126,10 +124,11 @@ namespace Solid
                 for (unsigned int q = 0; q < n_face_q_points; ++q)
                   {
                     auto traction = ptr[f * n_face_q_points + q]->fsi_traction;
-                    m_body.get_face_quad_points()[face_quad_point_id]->tx =
-                      traction[0];
-                    m_body.get_face_quad_points()[face_quad_point_id]->ty =
-                      traction[1];
+                    for (unsigned int n = 0; n < dim; ++n)
+                      {
+                        m_body->get_face_quad_points()[face_quad_point_id]
+                          ->t[n] = traction[n];
+                      }
                     face_quad_point_id++;
                   }
               }
@@ -145,18 +144,19 @@ namespace Solid
     unsigned int n_q_points = volume_quad_formula.size();
     // Particles
     unsigned int n_particles = triangulation.n_vertices();
-    particle_tl_weak **particles = new particle_tl_weak *[n_particles];
+    particle<dim> **particles = new particle<dim> *[n_particles];
     unsigned int particle_id = 0;
     vertex_mapping = std::vector<int>(triangulation.n_vertices(), -1);
     // Volume quadrature points, assuming 2nd order integration
-    unsigned int n_vol_quad = 4 * triangulation.n_active_cells();
-    particle_tl_weak **vol_quad_points = new particle_tl_weak *[n_vol_quad];
+    unsigned int n_vol_quad =
+      volume_quad_formula.size() * triangulation.n_active_cells();
+    particle<dim> **vol_quad_points = new particle<dim> *[n_vol_quad];
     unsigned int vol_quad_point_id = 0;
     // Face quadrature points, assuming 2nd order integration
     unsigned int n_face_q_points = face_quad_formula.size();
     unsigned int n_face_quad = 0;
     // Boundary conditions
-    boundary_conditions<particle_tl_weak> bc;
+    boundary_conditions<dim> bc;
     for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
          ++cell)
       {
@@ -165,11 +165,12 @@ namespace Solid
           {
             if (vertex_mapping[cell->vertex_index(v)] == -1)
               {
-                particles[particle_id] = new particle_tl_weak(particle_id);
-                particles[particle_id]->X = cell->vertex(v)[0];
-                particles[particle_id]->Y = cell->vertex(v)[1];
-                particles[particle_id]->x = cell->vertex(v)[0];
-                particles[particle_id]->y = cell->vertex(v)[1];
+                particles[particle_id] = new particle<dim>(particle_id);
+                for (unsigned int n = 0; n < dim; ++n)
+                  {
+                    particles[particle_id]->X[n] = cell->vertex(v)[n];
+                    particles[particle_id]->x[n] = cell->vertex(v)[n];
+                  }
                 particles[particle_id]->rho = parameters.solid_rho;
                 particles[particle_id]->h = hdx * dx;
                 particles[particle_id]->m =
@@ -185,11 +186,12 @@ namespace Solid
           {
             Point<dim> q_point = fe_values.quadrature_point(q);
             vol_quad_points[vol_quad_point_id] =
-              new particle_tl_weak(vol_quad_point_id);
-            vol_quad_points[vol_quad_point_id]->X = q_point[0];
-            vol_quad_points[vol_quad_point_id]->Y = q_point[1];
-            vol_quad_points[vol_quad_point_id]->x = q_point[0];
-            vol_quad_points[vol_quad_point_id]->y = q_point[1];
+              new particle<dim>(vol_quad_point_id);
+            for (unsigned int n = 0; n < dim; ++n)
+              {
+                vol_quad_points[vol_quad_point_id]->X[n] = q_point[n];
+                vol_quad_points[vol_quad_point_id]->x[n] = q_point[n];
+              }
             vol_quad_points[vol_quad_point_id]->quad_weight = fe_values.JxW(q);
             vol_quad_points[vol_quad_point_id]->h = hdx * dx;
             vol_quad_points[vol_quad_point_id]->rho = parameters.solid_rho;
@@ -208,7 +210,7 @@ namespace Solid
                 ExcMessage("Vertices do not match!"));
     AssertThrow(n_vol_quad == vol_quad_point_id,
                 ExcMessage("Volume quadrature points do not match!"));
-    particle_tl_weak **face_quad_points = new particle_tl_weak *[n_face_quad];
+    particle<dim> **face_quad_points = new particle<dim> *[n_face_quad];
     FEFaceValues<dim> fe_face_values(
       fe, face_quad_formula, update_quadrature_points | update_JxW_values);
     unsigned int face_quad_point_id = 0;
@@ -234,11 +236,12 @@ namespace Solid
                   {
                     Point<dim> q_point = fe_face_values.quadrature_point(q);
                     face_quad_points[face_quad_point_id] =
-                      new particle_tl_weak(face_quad_point_id);
-                    face_quad_points[face_quad_point_id]->X = q_point[0];
-                    face_quad_points[face_quad_point_id]->Y = q_point[1];
-                    face_quad_points[face_quad_point_id]->x = q_point[0];
-                    face_quad_points[face_quad_point_id]->y = q_point[1];
+                      new particle<dim>(face_quad_point_id);
+                    for (unsigned int n = 0; n < dim; ++n)
+                      {
+                        face_quad_points[face_quad_point_id]->X[n] = q_point[n];
+                        face_quad_points[face_quad_point_id]->x[n] = q_point[n];
+                      }
                     face_quad_points[face_quad_point_id]->quad_weight =
                       fe_face_values.JxW(q);
                     face_quad_points[face_quad_point_id]->h = hdx * dx;
@@ -255,13 +258,18 @@ namespace Solid
                     auto flag = ptr1->second;
                     if (flag == 1 || flag == 3 || flag == 5 || flag == 7)
                       {
-                        bc.add_boundary_condition(
-                          dirichlet_ids, &dirichlet_boundary_function_x);
+                        auto f = dirichlet_boundary_function<dim>(0);
+                        bc.add_boundary_condition(dirichlet_ids, f);
                       }
                     if (flag == 2 || flag == 3 || flag == 6 || flag == 7)
                       {
-                        bc.add_boundary_condition(
-                          dirichlet_ids, &dirichlet_boundary_function_y);
+                        auto f = dirichlet_boundary_function<dim>(1);
+                        bc.add_boundary_condition(dirichlet_ids, f);
+                      }
+                    if (flag == 4 || flag == 5 || flag == 6 || flag == 7)
+                      {
+                        auto f = dirichlet_boundary_function<dim>(2);
+                        bc.add_boundary_condition(dirichlet_ids, f);
                       }
                   }
                 auto ptr2 = parameters.solid_neumann_bcs.find(
@@ -269,9 +277,7 @@ namespace Solid
                 if (ptr2 != parameters.solid_neumann_bcs.end() &&
                     parameters.simulation_type != "FSI")
                   {
-                    auto traction = ptr2->second;
-                    auto f = neumann_boundary_function<particle_tl_weak>(
-                      traction[0], traction[1]);
+                    auto f = neumann_boundary_function<dim>(ptr2->second);
                     bc.add_neumann_boundary_condition(neumann_ids, f);
                   }
               }
@@ -280,55 +286,32 @@ namespace Solid
     AssertThrow(n_face_quad == face_quad_point_id,
                 ExcMessage("Face quadrature points do not match!"));
 
-    find_neighbors(particles, n_particles, hdx * dx, distance_euclidian);
-    find_neighbors(particles,
-                   n_particles,
-                   vol_quad_points,
-                   n_vol_quad,
-                   hdx * dx,
-                   distance_euclidian);
-    find_neighbors(particles,
-                   n_particles,
-                   face_quad_points,
-                   n_face_quad,
-                   hdx * dx,
-                   distance_euclidian);
-    precomp_rkpm<particle_tl_weak>(particles, vol_quad_points, n_vol_quad);
-    precomp_rkpm<particle_tl_weak>(particles, face_quad_points, n_face_quad);
-    precomp_rkpm<particle_tl_weak>(particles, n_particles);
+    utilities<dim>::find_neighbors(particles, n_particles, hdx * dx);
+    utilities<dim>::find_neighbors(
+      particles, n_particles, vol_quad_points, n_vol_quad, hdx * dx);
+    utilities<dim>::find_neighbors(
+      particles, n_particles, face_quad_points, n_face_quad, hdx * dx);
+    utilities<dim>::precomp_rkpm(particles, vol_quad_points, n_vol_quad);
+    utilities<dim>::precomp_rkpm(particles, face_quad_points, n_face_quad);
+    utilities<dim>::precomp_rkpm(particles, n_particles);
     physical_constants physical_constants(
       parameters.nu[0], parameters.E[0], parameters.solid_rho);
     simulation_data sim_data(
       physical_constants,
       correction_constants(
         constants_monaghan(), constants_artificial_viscosity(), 0, true));
-    m_body = body<particle_tl_weak>(particles,
-                                    n_particles,
-                                    sim_data,
-                                    parameters.time_step,
-                                    bc,
-                                    vol_quad_points,
-                                    n_vol_quad,
-                                    0,
-                                    face_quad_points,
-                                    n_face_quad,
-                                    parameters.damping);
-    m_body.add_action(&derive_quad_coordinates);
-    m_body.add_action(&derive_displacement_weak);
-    m_body.add_action(&derive_face_quad_coordinates);
-    m_body.add_action(&derive_face_displacement);
-    m_body.add_action(&derive_velocity_tl_weak);
-    m_body.add_action(&contmech_velocity_gradient_tl_gp);
-    m_body.add_action(&contmech_continuity_gp);
-    m_body.add_action(&material_eos_gp);
-    m_body.add_action(&material_stress_rate_jaumann_gp);
-    m_body.add_action(&contmech_cauchy_to_nominal_gp);
-    m_body.add_action(&derive_stress_weak_tl);
-    m_body.add_action(&derive_particle_stress);
-    m_body.add_action(&derive_traction_weak_tl);
-    m_body.add_action(&contmech_momentum_tl_weak);
-    m_body.add_action(&contmech_advection);
+    m_body = std::make_unique<body<dim>>(particles,
+                                         n_particles,
+                                         sim_data,
+                                         parameters.time_step,
+                                         bc,
+                                         vol_quad_points,
+                                         n_vol_quad,
+                                         face_quad_points,
+                                         n_face_quad,
+                                         parameters.damping);
   }
 
   template class HypoElasticity<2>;
+  template class HypoElasticity<3>;
 } // namespace Solid

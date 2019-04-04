@@ -181,8 +181,8 @@ namespace Fluid
       const unsigned int n_q_points = volume_quad_formula.size();
       const unsigned int n_face_q_points = face_quad_formula.size();
 
-      Assert(u_dofs * dim + p_dofs == dofs_per_cell,
-             ExcMessage("Wrong partitioning of dofs!"));
+      AssertThrow(u_dofs * dim + p_dofs == dofs_per_cell,
+                  ExcMessage("Wrong partitioning of dofs!"));
 
       const FEValuesExtractors::Vector velocities(0);
       const FEValuesExtractors::Scalar pressure(dim);

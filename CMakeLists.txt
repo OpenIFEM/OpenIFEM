@@ -64,17 +64,21 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/modules")
 
-option(OPENIFEM_WITH_MFREE_IWF "Build with mfree_iwf" OFF)
-if(OPENIFEM_WITH_MFREE_IWF)
-  set(MFREE_IWF_DIR "" CACHE PATH "Path to mfree_iwf build directory")
-  find_package(MFREE_IWF REQUIRED)
-  # We should not need find glm because it is exported by mfree_iwf,
-  # but for some reason DRP cannot find glm include directory without it.
-  find_package(glm REQUIRED)
+option(OPENIFEM_WITH_rkpm-rk4 "Build with rkpm-rk4" OFF)
+set(EIGEN3_INCLUDE_DIR "" CACHE PATH "Path to Eigen3 include directory")
+if(OPENIFEM_WITH_rkpm-rk4)
+  set(rkpm-rk4_DIR "" CACHE PATH "Path to rkpm-rk4 build directory")
+  find_package(rkpm-rk4 REQUIRED)
 endif()
 
-if(OPENIFEM_WITH_MFREE_IWF AND NOT MFREE_IWF_FOUND)
-  message(FATAL_ERROR "Error! Cannot find mfree_iwf!")
+if(OPENIFEM_WITH_rkpm-rk4)
+  if (NOT rkpm-rk4_FOUND)
+    message(FATAL_ERROR "Error! Cannot find rkpm-rk4!")
+  endif()
+  if (NOT EIGEN3_INCLUDE_DIR)
+    message(FATAL_ERROR "Error! EIGEN3_INCLUDE_DIR not set! "
+      "Ideally rkpm-rk4 should export Eigen3 but I don't know how to do that!")
+  endif()
 endif()
 
 enable_testing()

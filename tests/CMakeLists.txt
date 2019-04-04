@@ -28,10 +28,10 @@ set(mpi_tests acoustic_duct_wave_mpi
               solid_beam_bending_mpi_shared_linearelastic
               solid_beam_bending_mpi_shared_NeoHookean)
 
-set(mfree_iwf_serial_tests mfree_iwf_bending)
+set(rkpm-rk4_serial_tests rkpm-rk4-bending)
 
-set(mfree_iwf_mpi_tests mfree_iwf_bending_mpi
-                        fsi_mfree_iwf)
+set(rkpm-rk4_mpi_tests rkpm-rk4-bending-mpi
+                       fsi-rkpm-rk4)
 
 # All tests
 set(tests ${serial_tests} ${mpi_tests})
@@ -54,17 +54,17 @@ foreach(test ${tests})
   endif()
 endforeach()
 
-if (OPENIFEM_WITH_MFREE_IWF)
-  set(mfree_iwf_tests ${mfree_iwf_serial_tests} ${mfree_iwf_mpi_tests})
-  foreach(test ${mfree_iwf_tests})
+if (OPENIFEM_WITH_rkpm-rk4)
+  set(rkpm-rk4_tests ${rkpm-rk4_serial_tests} ${rkpm-rk4_mpi_tests})
+  foreach(test ${rkpm-rk4_tests})
     set(input ${CMAKE_CURRENT_SOURCE_DIR}/${test}/${test}.prm)
     set(output ${CMAKE_CURRENT_BINARY_DIR}/${test})
     file(MAKE_DIRECTORY ${output})
     add_executable(${test} ${CMAKE_CURRENT_SOURCE_DIR}/${test}/${test}.cpp)
-    target_include_directories(${test} PUBLIC "${CMAKE_SOURCE_DIR}/include" ${MFREE_IWF_INCLUDE_DIR} ${GLM_INCLUDE_DIRS})
+    target_include_directories(${test} PUBLIC "${CMAKE_SOURCE_DIR}/include" ${rkpm-rk4_INCLUDE_DIR} ${EIGEN3_INCLUDE_DIR})
     deal_ii_setup_target(${test})
-    target_link_libraries(${test} openifem stdc++fs ${MFREE_IWF_LIBRARY})
-    list(FIND mfree_iwf_mpi_tests ${test} index)
+    target_link_libraries(${test} openifem stdc++fs ${rkpm-rk4_LIBRARY})
+    list(FIND rkpm-rk4_mpi_tests ${test} index)
     if(${index} GREATER -1)
       # FIXME: it is not good practice to specify the number of processors in this way
       add_test(NAME ${test} COMMAND mpirun -n 2 ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${test} ${input} WORKING_DIRECTORY ${output})

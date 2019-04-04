@@ -1,5 +1,7 @@
-#ifndef SHARED_HYPERELASTIC_SOLVER
-#define SHARED_HYPERELASTIC_SOLVER
+#ifndef SHARED_HYPOELASTIC_SOLVER
+#define SHARED_HYPOELASTIC_SOLVER
+
+#include <memory>
 
 #include <deal.II/base/symmetric_tensor.h>
 #include <deal.II/base/tensor.h>
@@ -9,13 +11,8 @@
 #include <deal.II/physics/elasticity/kinematics.h>
 #include <deal.II/physics/elasticity/standard_tensors.h>
 
-#include <mfree_iwf/body.h>
-#include <mfree_iwf/cont_mech.h>
-#include <mfree_iwf/derivatives.h>
-#include <mfree_iwf/material.h>
-#include <mfree_iwf/neighbor_search.h>
-#include <mfree_iwf/particle.h>
-#include <mfree_iwf/vtk_writer.h>
+#include <rkpm-rk4/body.h>
+#include <rkpm-rk4/utilities.h>
 
 #include "mpi_shared_solid_solver.h"
 
@@ -85,7 +82,7 @@ namespace Solid
 
       virtual bool load_checkpoint() override;
 
-      body<particle_tl_weak> m_body;
+      std::unique_ptr<body<dim>> m_body;
 
       std::vector<int> vertex_mapping;
 
@@ -100,6 +97,8 @@ namespace Solid
       Vector<double> serialized_displacement;
 
       Vector<double> serialized_velocity;
+
+      Vector<double> serialized_acceleration;
     };
   } // namespace MPI
 } // namespace Solid

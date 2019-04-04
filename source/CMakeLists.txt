@@ -52,7 +52,7 @@ set(headers fluid_solver.h
             solid_solver.h
             utilities.h)
 
-if(OPENIFEM_WITH_MFREE_IWF)
+if(OPENIFEM_WITH_rkpm-rk4)
   list(APPEND TARGET_SRC "hypo_elasticity.cpp")
   list(APPEND headers "hypo_elasticity.h")
   list(APPEND TARGET_SRC "mpi_shared_hypo_elasticity.cpp")
@@ -62,9 +62,9 @@ endif()
 # Build the library
 add_library(openifem ${TARGET_SRC})
 target_include_directories(openifem PUBLIC "${CMAKE_SOURCE_DIR}/include")
-if(OPENIFEM_WITH_MFREE_IWF)
-  target_include_directories(openifem PRIVATE ${MFREE_IWF_INCLUDE_DIR})
-  target_include_directories(openifem PRIVATE ${GLM_INCLUDE_DIRS})
-  target_link_libraries(openifem ${MFREE_IWF_LIBRARY})
+if(OPENIFEM_WITH_rkpm-rk4)
+  target_include_directories(openifem PUBLIC ${rkpm-rk4_INCLUDE_DIR})
+  target_include_directories(openifem PUBLIC ${EIGEN3_INCLUDE_DIR})
+  target_link_libraries(openifem ${rkpm-rk4_LIBRARY})
 endif()
 deal_ii_setup_target(openifem)

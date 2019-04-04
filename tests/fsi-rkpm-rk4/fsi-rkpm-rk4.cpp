@@ -108,9 +108,9 @@ int main(int argc, char *argv[])
           Triangulation<2> tria_solid;
           dealii::GridGenerator::subdivided_hyper_rectangle(
             tria_solid,
-            {static_cast<unsigned int>(5), static_cast<unsigned int>(40)},
+            {static_cast<unsigned int>(10), static_cast<unsigned int>(40)},
             Point<2>(0, 0),
-            Point<2>(0.25, 2),
+            Point<2>(0.5, 2),
             true);
 
           // Read fluid mesh
@@ -123,7 +123,7 @@ int main(int argc, char *argv[])
             true);
 
           // Translate solid mesh
-          Tensor<1, 2> offset({3, 0});
+          Tensor<1, 2> offset({2, 0});
           GridTools::shift(offset, tria_solid);
 
           // placeholder for hard code BC
@@ -136,9 +136,10 @@ int main(int argc, char *argv[])
           // artificial body force
           auto bf_ptr = std::make_shared<ArtificialBF<2>>(ArtificialBF<2>());
 
-          Fluid::MPI::SCnsIM<2> fluid(tria_fluid, params, ptr, pml, bf_ptr);
+          Fluid::MPI::SCnsIM<2> fluid(tria_fluid,
+                                      params); //, ptr, pml, bf_ptr);
           Solid::MPI::SharedHypoElasticity<2> solid(
-            tria_solid, params, 0.1, 1.3);
+            tria_solid, params, 0.05, 1.3);
           MPI::FSI<2> fsi(fluid, solid, params);
           fsi.run();
         }

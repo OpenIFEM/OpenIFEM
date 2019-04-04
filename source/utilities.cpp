@@ -193,7 +193,7 @@ namespace Utils
   GridInterpolator<dim, VectorType>::get_cell() const
   {
     return cell_point.first;
-  };
+  }
 
   template <int dim, typename MeshType>
   CellLocator<dim, MeshType>::CellLocator(
