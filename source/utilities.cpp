@@ -5,19 +5,19 @@ namespace Utils
 {
   bool Time::time_to_output() const
   {
-    unsigned int delta = output_interval / delta_t;
+    auto delta = static_cast<unsigned int>(output_interval / delta_t);
     return (timestep >= delta && timestep % delta == 0);
   }
 
   bool Time::time_to_refine() const
   {
-    unsigned int delta = refinement_interval / delta_t;
+    auto delta = static_cast<unsigned int>(refinement_interval / delta_t);
     return (timestep >= delta && timestep % delta == 0);
   }
 
   bool Time::time_to_save() const
   {
-    unsigned int delta = save_interval / delta_t;
+    auto delta = static_cast<unsigned int>(save_interval / delta_t);
     return (timestep >= delta && timestep % delta == 0);
   }
 

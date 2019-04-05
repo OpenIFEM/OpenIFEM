@@ -31,7 +31,9 @@ set(mpi_tests acoustic_duct_wave_mpi
 set(rkpm-rk4_serial_tests rkpm-rk4-bending)
 
 set(rkpm-rk4_mpi_tests rkpm-rk4-bending-mpi
-                       fsi-rkpm-rk4)
+                       rkpm-rk4-3D
+                       fsi-rkpm-rk4
+                       fsi-wall-3D)
 
 # All tests
 set(tests ${serial_tests} ${mpi_tests})
