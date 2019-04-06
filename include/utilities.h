@@ -143,30 +143,31 @@ namespace Utils
   };
 
   template <int dim, typename VectorType>
-  class DiracDeltaInterpolator
+  class SPHInterpolator
   {
   public:
-    DiracDeltaInterpolator(const DoFHandler<dim> &, const Point<dim> &, double);
-    void interpolate(const VectorType &,
+    SPHInterpolator(const DoFHandler<dim> &, const Point<dim> &);
+    void point_value(const VectorType &,
                      Vector<typename VectorType::value_type> &);
+    void point_gradient(
+      const VectorType &,
+      std::vector<Tensor<1, dim, typename VectorType::value_type>> &);
 
   private:
     /// Source DoFHandler
     const DoFHandler<dim> &dof_handler;
     /// Target point to interpolate to
-    const Point<dim> &target;
-    /// Background mesh size
-    double h;
+    const Point<dim> target;
     /**
      * Source nodes that contribute to the target point,
-     * denoted as pairs of cell iterator, supporting point id,
-     * and weight
-     * as there is no convenient way to express "global node id".
+     * denoted as pairs of cell iterator, kernel value,
+     * and kernel gradient.
      */
-    std::vector<std::tuple<typename DoFHandler<dim>::active_cell_iterator,
-                           unsigned int,
-                           double>>
+    std::vector<
+      std::pair<typename DoFHandler<dim>::active_cell_iterator, double>>
       sources;
+
+    double cubic_spline(const Point<dim> &, const Point<dim> &, double);
   };
 
   template <int dim, typename MeshType>

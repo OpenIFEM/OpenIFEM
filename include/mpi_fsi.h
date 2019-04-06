@@ -19,8 +19,8 @@ extern template class Utils::GridInterpolator<2,
                                               PETScWrappers::MPI::BlockVector>;
 extern template class Utils::GridInterpolator<3,
                                               PETScWrappers::MPI::BlockVector>;
-extern template class Utils::DiracDeltaInterpolator<2, Vector<double>>;
-extern template class Utils::DiracDeltaInterpolator<3, Vector<double>>;
+extern template class Utils::SPHInterpolator<2, Vector<double>>;
+extern template class Utils::SPHInterpolator<3, Vector<double>>;
 extern template class Utils::CellLocator<2, DoFHandler<2, 2>>;
 extern template class Utils::CellLocator<3, DoFHandler<3, 3>>;
 

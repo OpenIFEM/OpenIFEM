@@ -30,67 +30,110 @@ namespace Utils
   void Time::set_delta_t(double delta) { delta_t = delta; }
 
   template <int dim, typename VectorType>
-  DiracDeltaInterpolator<dim, VectorType>::DiracDeltaInterpolator(
-    const DoFHandler<dim> &dof_handler, const Point<dim> &point, double h)
-    : dof_handler(dof_handler), target(point), h(h)
+  SPHInterpolator<dim, VectorType>::SPHInterpolator(
+    const DoFHandler<dim> &dof_handler, const Point<dim> &point)
+    : dof_handler(dof_handler), target(point)
   {
-    const FiniteElement<dim> &fe = dof_handler.get_fe();
-    const std::vector<Point<dim>> &unit_points = fe.get_unit_support_points();
-    Quadrature<dim> dummy_q(unit_points.size());
-    MappingQGeneric<dim> mapping(1);
-    FEValues<dim> dummy_fe_values(
-      mapping, fe, dummy_q, update_quadrature_points);
-    std::vector<types::global_dof_index> dof_indices(fe.dofs_per_cell);
     for (auto cell : dof_handler.active_cell_iterators())
       {
-        dummy_fe_values.reinit(cell);
-        cell->get_dof_indices(dof_indices);
-        // Real coordinates of the current cell's support points
-        auto support_points = dummy_fe_values.get_quadrature_points();
-        for (unsigned int v = 0; v < unit_points.size(); ++v)
+        if (!cell->is_locally_owned())
+          continue;
+        Point<dim> center = cell->center();
+        double h = cell->diameter();
+        double kernel_value = cubic_spline(center, target, h);
+        if (kernel_value > 1e-12)
           {
-            // Compute the weight of each support point
-            double weight = 1;
-            for (unsigned int d = 0; d < dim; ++d)
-              {
-                double xbar = (unit_points[v][d] - target[d]) / h;
-                weight *= (std::abs(xbar) <= 2
-                             ? xbar * 0.25 * (1 + std::cos(M_PI * xbar / 2))
-                             : 0);
-              }
-            // If weight is nonzero then it is an influential point
-            if (weight > 0)
-              {
-                sources.push_back(std::make_tuple(cell, v, weight));
-              }
+            sources.push_back({cell, kernel_value});
           }
       }
   }
 
   template <int dim, typename VectorType>
-  void DiracDeltaInterpolator<dim, VectorType>::interpolate(
-    const VectorType &source_vector,
-    Vector<typename VectorType::value_type> &target_vector)
+  double SPHInterpolator<dim, VectorType>::cubic_spline(const Point<dim> &pi,
+                                                        const Point<dim> &pj,
+                                                        double h)
   {
-    std::vector<bool> bs(dof_handler.n_dofs(), false);
-    target_vector = 0;
+    double w(0.);
+    double q = pi.distance(pj) / h;
+    // M_1_PI = 1 / pi
+    double coef = (dim == 2 ? 10 * M_1_PI / (7 * h * h) : M_1_PI / (h * h * h));
+    if (q < 2.)
+      {
+        if (q >= 1.)
+          {
+            w = coef * (0.25 * (2 - q) * (2 - q) * (2 - q));
+          }
+        else
+          {
+            w = coef * (1 - 1.5 * q * q + 0.75 * q * q * q);
+          }
+      }
+    return w;
+  }
+
+  template <int dim, typename VectorType>
+  void SPHInterpolator<dim, VectorType>::point_value(
+    const VectorType &fe_function,
+    Vector<typename VectorType::value_type> &value)
+  {
+    typedef typename VectorType::value_type Number;
     const FiniteElement<dim> &fe = dof_handler.get_fe();
-    std::vector<types::global_dof_index> dof_indices(fe.dofs_per_cell);
+    Assert(value.size() == fe.n_components(),
+           ExcDimensionMismatch(value.size(), fe.n_components()));
+
+    // Cell center in unit coordinate system
+    Point<dim> unit_center;
+    for (unsigned int i = 0; i < dim; ++i)
+      unit_center[i] = 0.5;
+    Quadrature<dim> quad(unit_center);
+    MappingQGeneric<dim> mapping(1);
+    FEValues<dim> fe_values(mapping, fe, quad, update_values);
+    value = 0;
     for (auto p : sources)
       {
-        std::get<0>(p)->get_dof_indices(dof_indices);
-        // Vector component of this support point
-        auto d = fe.system_to_component_index(std::get<1>(p)).first;
-        AssertThrow(d < dim, ExcMessage("Vector component not less than dim!"));
-        // Global dof index of this support point
-        auto index = dof_indices[std::get<1>(p)];
-        AssertThrow(index < dof_handler.n_dofs(),
-                    ExcMessage("Wrong index of global dof!"));
-        if (!bs[index])
+        auto cell = p.first;
+        fe_values.reinit(cell);
+        std::vector<Vector<Number>> u_value(1,
+                                            Vector<Number>(fe.n_components()));
+        fe_values.get_function_values(fe_function, u_value);
+        // In SPH interpolation, volume must be multiplied because kernel
+        // function has a unit of LENGTH^{-dim}
+        u_value[0] *= p.second * cell->measure();
+        value += u_value[0];
+      }
+  }
+
+  template <int dim, typename VectorType>
+  void SPHInterpolator<dim, VectorType>::point_gradient(
+    const VectorType &fe_function,
+    std::vector<Tensor<1, dim, typename VectorType::value_type>> &gradient)
+  {
+    typedef typename VectorType::value_type Number;
+    const FiniteElement<dim> &fe = dof_handler.get_fe();
+    Assert(gradient.size() == fe.n_components(),
+           ExcDimensionMismatch(gradient.size(), fe.n_components()));
+    // Cell center in unit coordinate system
+    Point<dim> unit_center;
+    for (unsigned int i = 0; i < dim; ++i)
+      unit_center[i] = 0.5;
+    Quadrature<dim> quad(unit_center);
+    MappingQGeneric<dim> mapping(1);
+    FEValues<dim> fe_values(mapping, fe, quad, update_gradients);
+    for (unsigned int i = 0; i < gradient.size(); ++i)
+      gradient[i] = 0;
+    for (auto p : sources)
+      {
+        auto cell = p.first;
+        fe_values.reinit(cell);
+        std::vector<std::vector<Tensor<1, dim, Number>>> u_gradient(
+          1, std::vector<Tensor<1, dim, Number>>(fe.n_components()));
+        fe_values.get_function_gradients(fe_function, u_gradient);
+        for (unsigned int i = 0; i < gradient.size(); ++i)
           {
-            // Interpolate
-            target_vector[d] += std::get<2>(p) * source_vector[index];
-            bs[index] = true;
+            // In SPH interpolation, volume must be multiplied because kernel
+            // function has a unit of LENGTH^{-dim}
+            u_gradient[0][i] *= p.second * cell->measure();
+            gradient[i] += u_gradient[0][i];
           }
       }
   }
@@ -552,8 +595,8 @@ namespace Utils
   template class GridInterpolator<3, BlockVector<double>>;
   template class GridInterpolator<2, PETScWrappers::MPI::BlockVector>;
   template class GridInterpolator<3, PETScWrappers::MPI::BlockVector>;
-  template class DiracDeltaInterpolator<2, Vector<double>>;
-  template class DiracDeltaInterpolator<3, Vector<double>>;
+  template class SPHInterpolator<2, Vector<double>>;
+  template class SPHInterpolator<3, Vector<double>>;
   template class Utils::CellLocator<2, DoFHandler<2, 2>>;
   template class Utils::CellLocator<3, DoFHandler<3, 3>>;
 } // namespace Utils
