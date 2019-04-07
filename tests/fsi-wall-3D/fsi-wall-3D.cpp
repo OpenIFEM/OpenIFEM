@@ -31,12 +31,11 @@ int main(int argc, char *argv[])
         {
           // Read solid mesh
           Triangulation<3> tria_solid;
-          dealii::GridGenerator::subdivided_hyper_rectangle(
-            tria_solid,
-            {10u, 10u, 40u},
-            Point<3>(0, 0, 0),
-            Point<3>(0.5, 0.5, 2),
-            true);
+          dealii::GridGenerator::subdivided_hyper_rectangle(tria_solid,
+                                                            {20u, 20u, 5u},
+                                                            Point<3>(0, 0, 0),
+                                                            Point<3>(2, 2, 0.5),
+                                                            true);
 
           // Read fluid mesh
           parallel::distributed::Triangulation<3> tria_fluid(MPI_COMM_WORLD);
@@ -45,6 +44,13 @@ int main(int argc, char *argv[])
                                                             Point<3>(0, 0, 0),
                                                             Point<3>(2, 2, 5),
                                                             true);
+          for (auto cell : tria_fluid.active_cell_iterators())
+            {
+              auto center = cell->center();
+              if (center[2] >= 1.5 && center[2] <= 3)
+                cell->set_refine_flag();
+            }
+          tria_fluid.execute_coarsening_and_refinement();
 
           // Translate solid mesh
           Tensor<1, 3> offset({0, 0, 2});
