@@ -597,6 +597,8 @@ namespace Utils
   template class GridInterpolator<3, PETScWrappers::MPI::BlockVector>;
   template class SPHInterpolator<2, Vector<double>>;
   template class SPHInterpolator<3, Vector<double>>;
+  template class SPHInterpolator<2, PETScWrappers::MPI::BlockVector>;
+  template class SPHInterpolator<3, PETScWrappers::MPI::BlockVector>;
   template class Utils::CellLocator<2, DoFHandler<2, 2>>;
   template class Utils::CellLocator<3, DoFHandler<3, 3>>;
 } // namespace Utils
