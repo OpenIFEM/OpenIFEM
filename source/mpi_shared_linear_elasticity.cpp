@@ -290,9 +290,10 @@ namespace Solid
           this->output_results(time.get_timestep());
         }
 
-      if (time.time_to_refine())
+      if (parameters.simulation_type == "Solid" && time.time_to_refine())
         {
-          this->refine_mesh(1, 4);
+          this->refine_mesh(parameters.global_refinements[1],
+                            parameters.global_refinements[1] + 3);
           tmp1.reinit(locally_owned_dofs, mpi_communicator);
           tmp2.reinit(locally_owned_dofs, mpi_communicator);
           tmp3.reinit(locally_owned_dofs, mpi_communicator);
