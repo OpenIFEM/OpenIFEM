@@ -396,6 +396,7 @@ namespace Fluid
       // FSI acceleration
       Vector<float> fsi_acc_x(triangulation.n_active_cells());
       Vector<float> fsi_acc_y(triangulation.n_active_cells());
+      Vector<float> fsi_acc_z(triangulation.n_active_cells());
       for (auto cell = triangulation.begin_active();
            cell != triangulation.end();
            ++cell)
@@ -411,7 +412,6 @@ namespace Fluid
       data_out.add_data_vector(fsi_acc_y, "fsi_force_y");
       if (dim == 3)
         {
-          Vector<float> fsi_acc_z(triangulation.n_active_cells());
           for (auto cell = triangulation.begin_active();
                cell != triangulation.end();
                ++cell)
