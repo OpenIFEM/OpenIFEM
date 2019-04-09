@@ -36,7 +36,8 @@ namespace MPI
   public:
     FSI(Fluid::MPI::FluidSolver<dim> &,
         Solid::MPI::SharedSolidSolver<dim> &,
-        const Parameters::AllParameters &);
+        const Parameters::AllParameters &,
+        bool use_dirichlet_bc = false);
     void run();
 
     //! Destructor
@@ -134,6 +135,8 @@ namespace MPI
       typename parallel::distributed::Triangulation<dim>::active_cell_iterator,
       typename DoFHandler<dim>::active_cell_iterator>
       cell_hints;
+
+    bool use_dirichlet_bc;
   };
 } // namespace MPI
 

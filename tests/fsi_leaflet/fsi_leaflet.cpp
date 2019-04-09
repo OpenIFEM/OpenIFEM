@@ -93,7 +93,7 @@ int main(int argc, char *argv[])
             true);
           Solid::HyperElasticity<2> solid(solid_tria, params);
 
-          FSI<2> fsi(fluid, solid, params);
+          FSI<2> fsi(fluid, solid, params, true);
           fsi.run();
         }
       else

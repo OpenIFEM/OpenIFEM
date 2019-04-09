@@ -55,7 +55,7 @@ int main(int argc, char *argv[])
           Utils::GridCreator<2>::sphere(solid_tria, center, R);
           Solid::MPI::SharedHyperElasticity<2> solid(solid_tria, params);
 
-          MPI::FSI<2> fsi(fluid, solid, params);
+          MPI::FSI<2> fsi(fluid, solid, params, true);
           fsi.run();
         }
       else
@@ -76,7 +76,7 @@ int main(int argc, char *argv[])
           Utils::GridCreator<3>::sphere(solid_tria, center, R);
           Solid::MPI::SharedHyperElasticity<3> solid(solid_tria, params);
 
-          MPI::FSI<3> fsi(fluid, solid, params);
+          MPI::FSI<3> fsi(fluid, solid, params, true);
           fsi.run();
         }
     }

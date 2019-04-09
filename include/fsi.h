@@ -27,7 +27,8 @@ class FSI
 public:
   FSI(Fluid::FluidSolver<dim> &,
       Solid::SolidSolver<dim> &,
-      const Parameters::AllParameters &);
+      const Parameters::AllParameters &,
+      bool use_dirichlet_bc = false);
   void run();
   ~FSI();
 
@@ -96,6 +97,7 @@ private:
   // The point stored is in the order of:
   // (x_min, x_max, y_min, y_max, z_min, z_max)
   Vector<double> solid_box;
+  bool use_dirichlet_bc;
 };
 
 #endif

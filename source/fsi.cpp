@@ -11,7 +11,8 @@ FSI<dim>::~FSI()
 template <int dim>
 FSI<dim>::FSI(Fluid::FluidSolver<dim> &f,
               Solid::SolidSolver<dim> &s,
-              const Parameters::AllParameters &p)
+              const Parameters::AllParameters &p,
+              bool use_dirichlet_bc)
   : fluid_solver(f),
     solid_solver(s),
     parameters(p),
@@ -20,7 +21,8 @@ FSI<dim>::FSI(Fluid::FluidSolver<dim> &f,
          parameters.output_interval,
          parameters.refinement_interval,
          parameters.save_interval),
-    timer(std::cout, TimerOutput::never, TimerOutput::wall_times)
+    timer(std::cout, TimerOutput::never, TimerOutput::wall_times),
+    use_dirichlet_bc(use_dirichlet_bc)
 {
   solid_box.reinit(2 * dim);
 }
@@ -211,9 +213,8 @@ void FSI<dim>::find_fluid_bc()
       auto ptr = fluid_solver.cell_property.get_data(f_cell);
       ptr[0]->fsi_acceleration = 0;
       ptr[0]->fsi_stress = 0;
-      if (ptr[0]->indicator == 1)
+      if (!use_dirichlet_bc && ptr[0]->indicator == 1)
         {
-          /*
           fe_values.reinit(f_cell);
           // Fluid velocity increment at cell center
           fe_values[velocities].get_function_values(
@@ -246,60 +247,66 @@ void FSI<dim>::find_fluid_bc()
                 (parameters.solid_rho - parameters.fluid_rho) *
                 (parameters.gravity[i] - solid_acc[i]);
             }
-            */
         }
       // Dirichlet BCs
-      dummy_fe_values.reinit(f_cell);
-      f_cell->get_dof_indices(dof_indices);
-      auto support_points = dummy_fe_values.get_quadrature_points();
-      // Loop over the support points to set Dirichlet BCs.
-      for (unsigned int i = 0; i < unit_points.size(); ++i)
+      if (use_dirichlet_bc)
         {
-          auto base_index = fluid_solver.fe.system_to_base_index(i);
-          const unsigned int i_group = base_index.first.first;
-          Assert(
-            i_group < 2,
-            ExcMessage("There should be only 2 groups of finite element!"));
-          if (i_group == 1)
-            continue; // skip the pressure dofs
-          bool inside = true;
-          for (unsigned int d = 0; d < dim; ++d)
-            if (std::abs(unit_points[i][d]) < 1e-5)
-              {
-                inside = false;
-                break;
-              }
-          if (inside)
-            continue; // skip the in-cell support point
-          // Same as fluid_solver.fe.system_to_base_index(i).first.second;
-          const unsigned int index =
-            fluid_solver.fe.system_to_component_index(i).first;
-          Assert(index < dim,
-                 ExcMessage("Vector component should be less than dim!"));
-          if (!point_in_solid(solid_solver.dof_handler, support_points[i]))
-            continue;
-          Vector<double> fluid_velocity(dim);
-          VectorTools::point_value(solid_solver.dof_handler,
-                                   solid_solver.current_velocity,
-                                   support_points[i],
-                                   fluid_velocity);
-          auto line = dof_indices[i];
-          inner_nonzero.add_line(line);
-          inner_zero.add_line(line);
-          // Note that we are setting the value of the constraint to the
-          // velocity delta!
-          inner_nonzero.set_inhomogeneity(
-            line, fluid_velocity[index] - fluid_solver.present_solution(line));
+          dummy_fe_values.reinit(f_cell);
+          f_cell->get_dof_indices(dof_indices);
+          auto support_points = dummy_fe_values.get_quadrature_points();
+          // Loop over the support points to set Dirichlet BCs.
+          for (unsigned int i = 0; i < unit_points.size(); ++i)
+            {
+              auto base_index = fluid_solver.fe.system_to_base_index(i);
+              const unsigned int i_group = base_index.first.first;
+              Assert(
+                i_group < 2,
+                ExcMessage("There should be only 2 groups of finite element!"));
+              if (i_group == 1)
+                continue; // skip the pressure dofs
+              bool inside = true;
+              for (unsigned int d = 0; d < dim; ++d)
+                if (std::abs(unit_points[i][d]) < 1e-5)
+                  {
+                    inside = false;
+                    break;
+                  }
+              if (inside)
+                continue; // skip the in-cell support point
+              // Same as fluid_solver.fe.system_to_base_index(i).first.second;
+              const unsigned int index =
+                fluid_solver.fe.system_to_component_index(i).first;
+              Assert(index < dim,
+                     ExcMessage("Vector component should be less than dim!"));
+              if (!point_in_solid(solid_solver.dof_handler, support_points[i]))
+                continue;
+              Vector<double> fluid_velocity(dim);
+              VectorTools::point_value(solid_solver.dof_handler,
+                                       solid_solver.current_velocity,
+                                       support_points[i],
+                                       fluid_velocity);
+              auto line = dof_indices[i];
+              inner_nonzero.add_line(line);
+              inner_zero.add_line(line);
+              // Note that we are setting the value of the constraint to the
+              // velocity delta!
+              inner_nonzero.set_inhomogeneity(
+                line,
+                fluid_velocity[index] - fluid_solver.present_solution(line));
+            }
         }
     }
-  inner_nonzero.close();
-  inner_zero.close();
-  fluid_solver.nonzero_constraints.merge(
-    inner_nonzero,
-    AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
-  fluid_solver.zero_constraints.merge(
-    inner_zero,
-    AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
+  if (use_dirichlet_bc)
+    {
+      inner_nonzero.close();
+      inner_zero.close();
+      fluid_solver.nonzero_constraints.merge(
+        inner_nonzero,
+        AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
+      fluid_solver.zero_constraints.merge(
+        inner_zero,
+        AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
+    }
   move_solid_mesh(false);
 }
 

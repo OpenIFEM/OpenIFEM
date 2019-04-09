@@ -106,7 +106,7 @@ int main(int argc, char *argv[])
             true);
           Solid::MPI::SharedHyperElasticity<2> solid(solid_tria, params);
 
-          MPI::FSI<2> fsi(fluid, solid, params);
+          MPI::FSI<2> fsi(fluid, solid, params, true);
           fsi.run();
         }
       else
@@ -134,7 +134,7 @@ int main(int argc, char *argv[])
             true);
           Solid::MPI::SharedHyperElasticity<3> solid(solid_tria, params);
 
-          MPI::FSI<3> fsi(fluid, solid, params);
+          MPI::FSI<3> fsi(fluid, solid, params, true);
           fsi.run();
         }
     }

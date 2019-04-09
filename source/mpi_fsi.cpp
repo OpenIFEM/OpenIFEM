@@ -12,7 +12,8 @@ namespace MPI
   template <int dim>
   FSI<dim>::FSI(Fluid::MPI::FluidSolver<dim> &f,
                 Solid::MPI::SharedSolidSolver<dim> &s,
-                const Parameters::AllParameters &p)
+                const Parameters::AllParameters &p,
+                bool use_dirichlet_bc)
     : fluid_solver(f),
       solid_solver(s),
       parameters(p),
@@ -24,7 +25,8 @@ namespace MPI
            parameters.refinement_interval,
            parameters.save_interval),
       timer(
-        mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times)
+        mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times),
+      use_dirichlet_bc(use_dirichlet_bc)
   {
     solid_box.reinit(2 * dim);
   }
@@ -371,7 +373,7 @@ namespace MPI
             continue;
           }
         // Now skip the ghost elements because it's not store in cell property.
-        if (f_cell->is_locally_owned())
+        if (!use_dirichlet_bc && f_cell->is_locally_owned())
           {
             // Start working on the cell
             auto ptr = fluid_solver.cell_property.get_data(f_cell);
@@ -412,78 +414,83 @@ namespace MPI
               }
           }
         // Dirichlet BCs
-        /*
-        dummy_fe_values.reinit(f_cell);
-        f_cell->get_dof_indices(dof_indices);
-        auto support_points = dummy_fe_values.get_quadrature_points();
-        auto hints = cell_hints.get_data(f_cell);
-        // Declare the fluid velocity for interpolating BC
-        Vector<double> fluid_velocity(dim);
-        // Loop over the support points to set Dirichlet BCs.
-        for (unsigned int i = 0; i < unit_points.size(); ++i)
+        if (use_dirichlet_bc)
           {
-            // Skip the already-set dofs.
-            if (dof_touched[dof_indices[i]] != 0)
-              continue;
-            auto base_index = fluid_solver.fe.system_to_base_index(i);
-            const unsigned int i_group = base_index.first.first;
-            Assert(
-              i_group < 2,
-              ExcMessage("There should be only 2 groups of finite element!"));
-            if (i_group == 1)
-              continue; // skip the pressure dofs
-            bool inside = true;
-            for (unsigned int d = 0; d < dim; ++d)
-              if (std::abs(unit_points[i][d]) < 1e-5)
-                {
-                  inside = false;
-                  break;
-                }
-            if (inside)
-              continue; // skip the in-cell support point
-            // Same as fluid_solver.fe.system_to_base_index(i).first.second;
-            const unsigned int index =
-              fluid_solver.fe.system_to_component_index(i).first;
-            Assert(index < dim,
-                   ExcMessage("Vector component should be less than dim!"));
-            dof_touched[dof_indices[i]] = 1;
-            if (!point_in_solid(solid_solver.dof_handler, support_points[i]))
-              continue;
-            Utils::CellLocator<dim, DoFHandler<dim>> locator(
-              solid_solver.dof_handler, support_points[i], *(hints[i]));
-            *(hints[i]) = locator.search();
-            Utils::GridInterpolator<dim, Vector<double>> interpolator(
-              solid_solver.dof_handler, support_points[i], {}, *(hints[i]));
-            if (!interpolator.found_cell())
+            dummy_fe_values.reinit(f_cell);
+            f_cell->get_dof_indices(dof_indices);
+            auto support_points = dummy_fe_values.get_quadrature_points();
+            auto hints = cell_hints.get_data(f_cell);
+            // Declare the fluid velocity for interpolating BC
+            Vector<double> fluid_velocity(dim);
+            // Loop over the support points to set Dirichlet BCs.
+            for (unsigned int i = 0; i < unit_points.size(); ++i)
               {
-                std::stringstream message;
-                message << "Cannot find point in solid: " << support_points[i]
-                        << std::endl;
-                AssertThrow(interpolator.found_cell(),
-                            ExcMessage(message.str()));
+                // Skip the already-set dofs.
+                if (dof_touched[dof_indices[i]] != 0)
+                  continue;
+                auto base_index = fluid_solver.fe.system_to_base_index(i);
+                const unsigned int i_group = base_index.first.first;
+                Assert(i_group < 2,
+                       ExcMessage(
+                         "There should be only 2 groups of finite element!"));
+                if (i_group == 1)
+                  continue; // skip the pressure dofs
+                bool inside = true;
+                for (unsigned int d = 0; d < dim; ++d)
+                  if (std::abs(unit_points[i][d]) < 1e-5)
+                    {
+                      inside = false;
+                      break;
+                    }
+                if (inside)
+                  continue; // skip the in-cell support point
+                // Same as fluid_solver.fe.system_to_base_index(i).first.second;
+                const unsigned int index =
+                  fluid_solver.fe.system_to_component_index(i).first;
+                Assert(index < dim,
+                       ExcMessage("Vector component should be less than dim!"));
+                dof_touched[dof_indices[i]] = 1;
+                if (!point_in_solid(solid_solver.dof_handler,
+                                    support_points[i]))
+                  continue;
+                Utils::CellLocator<dim, DoFHandler<dim>> locator(
+                  solid_solver.dof_handler, support_points[i], *(hints[i]));
+                *(hints[i]) = locator.search();
+                Utils::GridInterpolator<dim, Vector<double>> interpolator(
+                  solid_solver.dof_handler, support_points[i], {}, *(hints[i]));
+                if (!interpolator.found_cell())
+                  {
+                    std::stringstream message;
+                    message
+                      << "Cannot find point in solid: " << support_points[i]
+                      << std::endl;
+                    AssertThrow(interpolator.found_cell(),
+                                ExcMessage(message.str()));
+                  }
+                interpolator.point_value(localized_solid_velocity,
+                                         fluid_velocity);
+                auto line = dof_indices[i];
+                inner_nonzero.add_line(line);
+                inner_zero.add_line(line);
+                // Note that we are setting the value of the constraint to the
+                // velocity delta!
+                inner_nonzero.set_inhomogeneity(
+                  line,
+                  fluid_velocity[index] - fluid_solver.present_solution(line));
               }
-            interpolator.point_value(localized_solid_velocity, fluid_velocity);
-            auto line = dof_indices[i];
-            inner_nonzero.add_line(line);
-            inner_zero.add_line(line);
-            // Note that we are setting the value of the constraint to the
-            // velocity delta!
-            inner_nonzero.set_inhomogeneity(
-              line,
-              fluid_velocity[index] - fluid_solver.present_solution(line));
           }
-          */
       }
-    /*
-    inner_nonzero.close();
-    inner_zero.close();
-    fluid_solver.nonzero_constraints.merge(
-      inner_nonzero,
-      AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
-    fluid_solver.zero_constraints.merge(
-      inner_zero,
-      AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
-    */
+    if (use_dirichlet_bc)
+      {
+        inner_nonzero.close();
+        inner_zero.close();
+        fluid_solver.nonzero_constraints.merge(
+          inner_nonzero,
+          AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
+        fluid_solver.zero_constraints.merge(
+          inner_zero,
+          AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
+      }
     move_solid_mesh(false);
   }
 

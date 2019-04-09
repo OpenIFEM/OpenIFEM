@@ -54,7 +54,7 @@ int main(int argc, char *argv[])
           Utils::GridCreator<2>::sphere(solid_tria, center, R);
           Solid::HyperElasticity<2> solid(solid_tria, params);
 
-          FSI<2> fsi(fluid, solid, params);
+          FSI<2> fsi(fluid, solid, params, true);
           fsi.run();
         }
       else
@@ -75,7 +75,7 @@ int main(int argc, char *argv[])
           Utils::GridCreator<3>::sphere(solid_tria, center, R);
           Solid::HyperElasticity<3> solid(solid_tria, params);
 
-          FSI<3> fsi(fluid, solid, params);
+          FSI<3> fsi(fluid, solid, params, true);
           fsi.run();
         }
     }
