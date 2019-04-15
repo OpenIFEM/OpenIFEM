@@ -123,7 +123,7 @@ namespace Solid
               {
                 for (unsigned int q = 0; q < n_face_q_points; ++q)
                   {
-                    auto traction = ptr[f * n_face_q_points + q]->fsi_traction;
+                    auto traction = ptr[f]->fsi_traction;
                     for (unsigned int n = 0; n < dim; ++n)
                       {
                         m_body->get_face_quad_points()[face_quad_point_id]

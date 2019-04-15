@@ -509,13 +509,17 @@ namespace MPI
     // Fluid FEValues to do interpolation
     FEValues<dim> fe_values(
       fluid_solver.fe, fluid_solver.volume_quad_formula, update_values);
-    // Solid FEFaceValues to get the normal
+    // Solid FEFaceValues to get the normal at face center
+    Point<dim - 1> unit_face_center;
+    for (unsigned int i = 0; i < dim - 1; ++i)
+      {
+        unit_face_center[i] = 0.5;
+      }
+    Quadrature<dim - 1> center_quad(unit_face_center);
     FEFaceValues<dim> fe_face_values(solid_solver.fe,
-                                     solid_solver.face_quad_formula,
+                                     unit_face_center,
                                      update_quadrature_points |
                                        update_normal_vectors);
-
-    const unsigned int n_face_q_points = solid_solver.face_quad_formula.size();
 
     for (auto s_cell = solid_solver.dof_handler.begin_active();
          s_cell != solid_solver.dof_handler.end();
@@ -528,50 +532,43 @@ namespace MPI
             if (s_cell->face(f)->at_boundary())
               {
                 fe_face_values.reinit(s_cell, f);
-                for (unsigned int q = 0; q < n_face_q_points; ++q)
+                // face center
+                Point<dim> q_point = fe_face_values.quadrature_point(0);
+                Tensor<1, dim> normal = fe_face_values.normal_vector(0);
+                Vector<double> value(dim + 1);
+                Utils::GridInterpolator<dim, PETScWrappers::MPI::BlockVector>
+                  interpolator(
+                    fluid_solver.dof_handler, q_point, vertices_mask);
+                interpolator.point_value(fluid_solver.present_solution, value);
+                std::vector<Tensor<1, dim>> gradient(dim + 1, Tensor<1, dim>());
+                interpolator.point_gradient(fluid_solver.present_solution,
+                                            gradient);
+                Vector<double> global_value(dim + 1);
+                std::vector<Tensor<1, dim>> global_gradient(dim + 1,
+                                                            Tensor<1, dim>());
+                for (unsigned int i = 0; i < dim + 1; ++i)
                   {
-                    Point<dim> q_point = fe_face_values.quadrature_point(q);
-                    Tensor<1, dim> normal = fe_face_values.normal_vector(q);
-                    Vector<double> value(dim + 1);
-                    Utils::GridInterpolator<dim,
-                                            PETScWrappers::MPI::BlockVector>
-                      interpolator(
-                        fluid_solver.dof_handler, q_point, vertices_mask);
-                    interpolator.point_value(fluid_solver.present_solution,
-                                             value);
-                    std::vector<Tensor<1, dim>> gradient(dim + 1,
-                                                         Tensor<1, dim>());
-                    interpolator.point_gradient(fluid_solver.present_solution,
-                                                gradient);
-                    Vector<double> global_value(dim + 1);
-                    std::vector<Tensor<1, dim>> global_gradient(
-                      dim + 1, Tensor<1, dim>());
-                    for (unsigned int i = 0; i < dim + 1; ++i)
-                      {
-                        global_value[i] =
-                          Utilities::MPI::sum(value[i], mpi_communicator);
-                        global_gradient[i] =
-                          Utilities::MPI::sum(gradient[i], mpi_communicator);
-                      }
-                    // Compute stress
-                    SymmetricTensor<2, dim> sym_deformation;
-                    for (unsigned int i = 0; i < dim; ++i)
-                      {
-                        for (unsigned int j = 0; j < dim; ++j)
-                          {
-                            sym_deformation[i][j] =
-                              (global_gradient[i][j] + global_gradient[j][i]) /
-                              2;
-                          }
-                      }
-                    // \f$ \sigma = -p\bold{I} + \mu\nabla^S v\f$
-                    SymmetricTensor<2, dim> stress =
-                      -global_value[dim] *
-                        Physics::Elasticity::StandardTensors<dim>::I +
-                      2 * parameters.viscosity * sym_deformation;
-                    ptr[f * n_face_q_points + q]->fsi_traction =
-                      stress * normal;
+                    global_value[i] =
+                      Utilities::MPI::sum(value[i], mpi_communicator);
+                    global_gradient[i] =
+                      Utilities::MPI::sum(gradient[i], mpi_communicator);
                   }
+                // Compute stress
+                SymmetricTensor<2, dim> sym_deformation;
+                for (unsigned int i = 0; i < dim; ++i)
+                  {
+                    for (unsigned int j = 0; j < dim; ++j)
+                      {
+                        sym_deformation[i][j] =
+                          (global_gradient[i][j] + global_gradient[j][i]) / 2;
+                      }
+                  }
+                // \f$ \sigma = -p\bold{I} + \mu\nabla^S v\f$
+                SymmetricTensor<2, dim> stress =
+                  -global_value[dim] *
+                    Physics::Elasticity::StandardTensors<dim>::I +
+                  2 * parameters.viscosity * sym_deformation;
+                ptr[f]->fsi_traction = stress * normal;
               }
           }
       }

@@ -348,7 +348,7 @@ namespace Solid
          ++cell)
       {
         auto p = cell_property.get_data(cell);
-        Assert(p.size() == n_f_q_points * GeometryInfo<dim>::faces_per_cell,
+        Assert(p.size() == GeometryInfo<dim>::faces_per_cell,
                ExcMessage("Wrong number of cell data!"));
         fe_values.reinit(cell);
         cell->get_dof_indices(local_dof_indices);
@@ -477,7 +477,7 @@ namespace Solid
                   }
                 else if (parameters.simulation_type == "FSI")
                   {
-                    traction = p[face * n_f_q_points + q]->fsi_traction;
+                    traction = p[face]->fsi_traction;
                   }
 
                 for (unsigned int j = 0; j < dofs_per_cell; ++j)

@@ -78,8 +78,7 @@ namespace Solid
               if (material.size() == 1)
                 mat_id = 1;
               elasticity = material[mat_id - 1].get_elasticity();
-              Assert(p.size() ==
-                       n_f_q_points * GeometryInfo<dim>::faces_per_cell,
+              Assert(p.size() == GeometryInfo<dim>::faces_per_cell,
                      ExcMessage("Wrong number of cell data!"));
               local_matrix = 0;
               local_stiffness = 0;
@@ -179,8 +178,7 @@ namespace Solid
                             }
                           else if (parameters.simulation_type == "FSI")
                             {
-                              traction =
-                                p[face * n_f_q_points + q]->fsi_traction;
+                              traction = p[face]->fsi_traction;
                             }
                           for (unsigned int j = 0; j < dofs_per_cell; ++j)
                             {

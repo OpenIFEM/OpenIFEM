@@ -112,10 +112,9 @@ namespace Solid
 
     // Set up cell property, which contains the FSI traction required in FSI
     // simulation
-    const unsigned int n_data =
-      face_quad_formula.size() * GeometryInfo<dim>::faces_per_cell;
-    cell_property.initialize(
-      triangulation.begin_active(), triangulation.end(), n_data);
+    cell_property.initialize(triangulation.begin_active(),
+                             triangulation.end(),
+                             GeometryInfo<dim>::faces_per_cell);
   }
 
   // Solve linear system \f$Ax = b\f$ using CG solver.
