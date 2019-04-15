@@ -32,22 +32,22 @@ int main(int argc, char *argv[])
           // Read solid mesh
           Triangulation<3> tria_solid;
           dealii::GridGenerator::subdivided_hyper_rectangle(tria_solid,
-                                                            {20u, 20u, 5u},
+                                                            {20u, 20u, 8u},
                                                             Point<3>(0, 0, 0),
-                                                            Point<3>(2, 2, 0.5),
+                                                            Point<3>(1, 1, 0.4),
                                                             true);
 
           // Read fluid mesh
           parallel::distributed::Triangulation<3> tria_fluid(MPI_COMM_WORLD);
           dealii::GridGenerator::subdivided_hyper_rectangle(tria_fluid,
-                                                            {20u, 20u, 50u},
+                                                            {10u, 10u, 40u},
                                                             Point<3>(0, 0, 0),
-                                                            Point<3>(2, 2, 5),
+                                                            Point<3>(1, 1, 4),
                                                             true);
           for (auto cell : tria_fluid.active_cell_iterators())
             {
               auto center = cell->center();
-              if (center[2] >= 1.5 && center[2] <= 3)
+              if (center[2] >= 2 && center[2] <= 2.4)
                 cell->set_refine_flag();
             }
           tria_fluid.execute_coarsening_and_refinement();
