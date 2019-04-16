@@ -325,7 +325,6 @@ namespace MPI
     std::vector<double> p(1);
     std::vector<Tensor<2, dim>> grad_v(1);
     std::vector<Tensor<1, dim>> v(1);
-    std::vector<Tensor<1, dim>> dv(1);
 
     // Cell center in unit coordinate system
     Point<dim> unit_center;
@@ -382,9 +381,9 @@ namespace MPI
             if (ptr[0]->indicator == 0)
               continue;
             fe_values.reinit(f_cell);
-            // Fluid velocity increment at cell center
+            // Fluid velocity at cell center
             fe_values[velocities].get_function_values(
-              fluid_solver.solution_increment, dv);
+              fluid_solver.present_solution, v);
             // Fluid velocity gradient at cell center
             fe_values[velocities].get_function_gradients(
               fluid_solver.present_solution, grad_v);
@@ -398,14 +397,21 @@ namespace MPI
             auto point = fe_values.get_quadrature_points()[0];
             // Solid acceleration at fluid cell center
             Vector<double> solid_acc(dim);
+            Vector<double> solid_vel(dim);
             Utils::GridInterpolator<dim, Vector<double>> interpolator(
               solid_solver.dof_handler, point);
             interpolator.point_value(localized_solid_acceleration, solid_acc);
+            interpolator.point_value(localized_solid_velocity, solid_vel);
+            Tensor<1, dim> vs;
+            for (int i = 0; i < dim; ++i)
+              {
+                vs[i] = solid_vel[i];
+              }
             // Get solid cell material id
             ptr[0]->material_id = interpolator.get_cell()->material_id();
             // Fluid total acceleration at cell center
             Tensor<1, dim> fluid_acc =
-              dv[0] / time.get_delta_t() + grad_v[0] * v[0];
+              (vs - v[0]) / time.get_delta_t() + grad_v[0] * v[0];
             (void)fluid_acc;
             // FSI acceleration term:
             for (unsigned int i = 0; i < dim; ++i)
