@@ -11,7 +11,16 @@ An implementation of the Immersed Finite Element Method based on deal.II
 ## Install
 
 ## References
-1. @article{zhang2004immersed,
+1. @article{cheng2019openifem,
+     title={Openifem: a high performance modular open-source software of the immersed finite element method for fluid-structure interactions},
+     author={Cheng, Jie and Yu, Feimi and Zhang, Lucy T},
+     journal={Computer Modeling in Engineering \& Sciences},
+     volume={119},
+     number={1},
+     pages={91--124},
+     year={2019}
+   }
+2. @article{zhang2004immersed,
      title={Immersed finite element method},
      author={Zhang, Lucy and Gerstenberger, Axel and Wang, Xiaodong and Liu, Wing Kam},
      journal={Computer Methods in Applied Mechanics and Engineering},
@@ -22,7 +31,7 @@ An implementation of the Immersed Finite Element Method based on deal.II
      publisher={Elsevier}
    }
 
-2. @article{zhang2007immersed,
+3. @article{zhang2007immersed,
      title={Immersed finite element method for fluid-structure interactions},
      author={Zhang, LT and Gay, M},
      journal={Journal of Fluids and Structures},
@@ -33,7 +42,7 @@ An implementation of the Immersed Finite Element Method based on deal.II
      publisher={Elsevier}
    }
    
-3. @article{wang2012semi,
+4. @article{wang2012semi,
      title={Semi-implicit formulation of the immersed finite element method},
      author={Wang, Xingshi and Wang, Chu and Zhang, Lucy T},
      journal={Computational Mechanics},
@@ -44,7 +53,7 @@ An implementation of the Immersed Finite Element Method based on deal.II
      publisher={Springer}
    }
 
-4. @article{wang2013modified,
+5. @article{wang2013modified,
      title={Modified immersed finite element method for fully-coupled fluid--structure interactions},
      author={Wang, Xingshi and Zhang, Lucy T},
      journal={Computer methods in applied mechanics and engineering},
