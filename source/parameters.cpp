@@ -155,7 +155,7 @@ namespace Parameters
                         Patterns::Integer(),
                         "Use hard-coded boundary values or the input ones");
       prm.declare_entry("Number of Dirichlet BCs",
-                        "1",
+                        "0",
                         Patterns::Integer(),
                         "Number of boundaries with Dirichlet BCs");
       prm.declare_entry("Dirichlet boundary id",
@@ -236,7 +236,7 @@ namespace Parameters
     prm.enter_subsection("Fluid Neumann BCs");
     {
       prm.declare_entry("Number of Neumann BCs",
-                        "1",
+                        "0",
                         Patterns::Integer(),
                         "Number of boundaries with Neumann BCs");
       prm.declare_entry("Neumann boundary id",
@@ -419,7 +419,7 @@ namespace Parameters
     prm.enter_subsection("Solid Dirichlet BCs");
     {
       prm.declare_entry("Number of Dirichlet BCs",
-                        "1",
+                        "0",
                         Patterns::Integer(),
                         "Number of boundaries with Dirichlet BCs");
       prm.declare_entry("Dirichlet boundary id",
@@ -464,7 +464,7 @@ namespace Parameters
     prm.enter_subsection("Solid Neumann BCs");
     {
       prm.declare_entry("Number of Neumann BCs",
-                        "1",
+                        "0",
                         Patterns::Integer(0),
                         "Number of boundaries with Neumann BCs");
       prm.declare_entry("Neumann boundary id",
