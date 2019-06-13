@@ -41,9 +41,9 @@ find_library(shell-element_LIBRARY
   PATH_SUFFIXES lib
   PATHS ${shell-element_SEARCH_PATHS})
 
-find_path(shell-element_INCLUDE_DIR shell-element/fem-shell.h
+find_path(shell-element_INCLUDE_DIR fem-shell.h
   HINTS ${shell-element_DIR}
-  PATH_SUFFIXES include)
+  PATH_SUFFIXES include/shell-element)
 
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(shell-element REQUIRED_VARS shell-element_LIBRARY shell-element_INCLUDE_DIR)
