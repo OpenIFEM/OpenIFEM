@@ -45,17 +45,6 @@ One or both of the aforementioned combinations of prerequisites are not met by y
     )
 endif()
 
-if(NOT DEAL_II_WITH_METIS)
-  message(FATAL_ERROR "
-Error! OpenIFEM requires a deal.ii libray that was configured with the following options:
-    DEAL_II_WITH_METIS = ON
-However, the deal.II library found at ${DEAL_II_PATH} was configured with these options
-    DEAL_II_WITH_METIS = ${DEAL_II_WITH_METIS}
-which conflict with the requirements.
-The prerequisite are not met by your installation, but this is required for OpenIFEM."
-   )
-endif()
-
 deal_ii_initialize_cached_variables()
 
 project(OpenIFEM)
@@ -71,6 +60,13 @@ if(OPENIFEM_WITH_rkpm-rk4)
   find_package(rkpm-rk4 REQUIRED)
 endif()
 
+option(OPENIFEM_WITH_shell-element "Build with shell-element" OFF)
+set(LIBMESH_INCLUDE_DIR "" CACHE PATH "Path to LibMesh include directory")
+if (OPENIFEM_WITH_shell-element)
+  set(shell-element_DIR "" CACHE PATH "Path to shell-element build directory")
+  find_package(shell-element REQUIRED)
+endif()
+
 if(OPENIFEM_WITH_rkpm-rk4)
   if (NOT rkpm-rk4_FOUND)
     message(FATAL_ERROR "Error! Cannot find rkpm-rk4!")
@@ -78,6 +74,15 @@ if(OPENIFEM_WITH_rkpm-rk4)
   if (NOT EIGEN3_INCLUDE_DIR)
     message(FATAL_ERROR "Error! EIGEN3_INCLUDE_DIR not set! "
       "Ideally rkpm-rk4 should export Eigen3 but I don't know how to do that!")
+  endif()
+endif()
+
+if (OPENIFEM_WITH_shell-element)
+  if (NOT shell-element_FOUND)
+    message(FATAL_ERROR "Error! Cannot find shell-element!")
+  endif()
+  if (NOT LIBMESH_INCLUDE_DIR)
+    message(FATAL_ERROR "Error! LIBMESH_INCLUDE_DIR not set!")
   endif()
 endif()
 
