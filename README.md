@@ -1,12 +1,11 @@
 # OpenIFEM
-An implementation of the Immersed Finite Element Method based on deal.II
+An implementation of the Immersed Finite Element Method based on [deal.II](https://www.dealii.org/)
 
 ## Dependencies
-1. MPICH/Open MPI
-2. PETSc with `MUMPS` and `Hypre`
-3. p4est
-4. metis
-5. deal.II greater than v9.1 with 1-4
+1. [MPICH](https://www.mpich.org/)/[Open MPI](https://www.open-mpi.org/)
+2. [PETSc](https://www.mcs.anl.gov/petsc/) with `MUMPS` and `Hypre`
+3. [p4est](http://www.p4est.org/)
+5. [deal.II](https://www.dealii.org/) greater than v9.1 with 1-4
 
 ## Install
 
