@@ -77,14 +77,14 @@ namespace Solid
     using namespace dealii;
 
     /// Base class for all parallel solid solvers.
-    template <int dim>
+    template <int dim, int spacedim = dim>
     class SharedSolidSolver
     {
     public:
       //! FSI solver need access to the private members of this solver.
-      friend ::MPI::FSI<dim>;
+      friend ::MPI::FSI<spacedim>;
 
-      SharedSolidSolver(Triangulation<dim> &,
+      SharedSolidSolver(Triangulation<dim, spacedim> &,
                         const Parameters::AllParameters &);
       ~SharedSolidSolver();
       void run();
@@ -149,12 +149,13 @@ namespace Solid
        */
       virtual bool load_checkpoint();
 
-      Triangulation<dim> &triangulation;
+      Triangulation<dim, spacedim> &triangulation;
       Parameters::AllParameters parameters;
-      DoFHandler<dim> dof_handler;
-      DoFHandler<dim> scalar_dof_handler; //!< Scalar-valued DoFHandler.
-      FESystem<dim> fe;
-      FE_Q<dim> scalar_fe; //!< Scalar FE for nodal strain/stress.
+      DoFHandler<dim, spacedim> dof_handler;
+      DoFHandler<dim, spacedim>
+        scalar_dof_handler; //!< Scalar-valued DoFHandler.
+      FESystem<dim, spacedim> fe;
+      FE_Q<dim, spacedim> scalar_fe; //!< Scalar FE for nodal strain/stress.
       const QGauss<dim>
         volume_quad_formula; //!< Quadrature formula for volume integration.
       const QGauss<dim - 1>
@@ -208,7 +209,8 @@ namespace Solid
       IndexSet locally_relevant_dofs;
       mutable std::vector<std::pair<double, std::string>> times_and_names;
 
-      CellDataStorage<typename Triangulation<dim>::cell_iterator, CellProperty>
+      CellDataStorage<typename Triangulation<dim, spacedim>::cell_iterator,
+                      CellProperty>
         cell_property;
 
       /**
@@ -216,7 +218,7 @@ namespace Solid
        */
       struct CellProperty
       {
-        Tensor<1, dim> fsi_traction;
+        Tensor<1, spacedim> fsi_traction;
       };
     };
   } // namespace MPI
