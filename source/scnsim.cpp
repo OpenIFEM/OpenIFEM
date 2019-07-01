@@ -200,6 +200,7 @@ namespace Fluid
     TimerOutput::Scope timer_section(timer, "Assemble system");
 
     const double viscosity = parameters.viscosity;
+    const double kappa_s = 1e4;
     Tensor<1, dim> gravity;
     for (unsigned int i = 0; i < dim; ++i)
       gravity[i] = parameters.gravity[i];
@@ -259,7 +260,8 @@ namespace Fluid
       {
         auto p = cell_property.get_data(cell);
         const int ind = p[0]->indicator;
-        const double rho = parameters.fluid_rho;
+        const double rho = parameters.fluid_rho +
+                           ind * (parameters.solid_rho - parameters.fluid_rho);
 
         fe_values.reinit(cell);
 
@@ -402,10 +404,12 @@ namespace Fluid
                       (cp_to_cv * (atm + current_pressure_values[q]) *
                          div_phi_u[j] * phi_p[i] +
                        cp_to_cv * phi_p[j] * current_velocity_divergence *
-                         phi_p[i] +
-                       current_velocity_values[q] * grad_phi_p[j] * phi_p[i] +
+                         phi_p[i] * (1 - ind) +
+                       current_velocity_values[q] * grad_phi_p[j] * phi_p[i] *
+                         (1 - ind) +
                        phi_u[j] * current_pressure_gradients[q] * phi_p[i] +
-                       phi_p[i] * phi_p[j] / time.get_delta_t()) /
+                       phi_p[i] * phi_p[j] / time.get_delta_t() *
+                         (1 - ind + cp_to_cv * atm / kappa_s * ind)) /
                       (cp_to_cv * atm) * fe_values.JxW(q);
                   }
 
@@ -431,9 +435,10 @@ namespace Fluid
                   -(cp_to_cv * (atm + current_pressure_values[q]) *
                       current_velocity_divergence * phi_p[i] +
                     current_velocity_values[q] * current_pressure_gradients[q] *
-                      phi_p[i] +
+                      phi_p[i] * (1 - ind) +
                     (current_pressure_values[q] - present_pressure_values[q]) *
-                      phi_p[i] / time.get_delta_t()) /
+                      phi_p[i] / time.get_delta_t() *
+                      (1 - ind + cp_to_cv * atm / kappa_s * ind)) /
                   (cp_to_cv * atm) * fe_values.JxW(q);
                 // Add SUPG and PSPS rhs terms.
                 local_rhs(i) +=
