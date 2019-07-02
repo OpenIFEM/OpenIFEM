@@ -218,21 +218,23 @@ namespace Solid
             data_component_interpretation(
               spacedim,
               DataComponentInterpretation::component_is_part_of_vector);
-          DataOut<spacedim> data_out;
+          DataOut<dim, DoFHandler<dim, spacedim>> data_out;
           data_out.attach_dof_handler(dof_handler);
 
           // displacements
-          data_out.add_data_vector(displacement,
-                                   solution_names,
-                                   DataOut<spacedim>::type_dof_data,
-                                   data_component_interpretation);
+          data_out.add_data_vector(
+            displacement,
+            solution_names,
+            DataOut<dim, DoFHandler<dim, spacedim>>::type_dof_data,
+            data_component_interpretation);
 
           // velocity
           solution_names = std::vector<std::string>(spacedim, "velocities");
-          data_out.add_data_vector(velocity,
-                                   solution_names,
-                                   DataOut<spacedim>::type_dof_data,
-                                   data_component_interpretation);
+          data_out.add_data_vector(
+            velocity,
+            solution_names,
+            DataOut<dim, DoFHandler<dim, spacedim>>::type_dof_data,
+            data_component_interpretation);
 
           std::vector<unsigned int> subdomain_int(
             triangulation.n_active_cells());
@@ -335,12 +337,15 @@ namespace Solid
         }
 
       // Prepare to transfer previous solutions
-      std::vector<parallel::distributed::
-                    SolutionTransfer<dim, PETScWrappers::MPI::Vector>>
+      std::vector<
+        parallel::distributed::SolutionTransfer<dim,
+                                                PETScWrappers::MPI::Vector,
+                                                DoFHandler<dim, spacedim>>>
         trans(
           3,
           parallel::distributed::SolutionTransfer<dim,
-                                                  PETScWrappers::MPI::Vector>(
+                                                  PETScWrappers::MPI::Vector,
+                                                  DoFHandler<dim, spacedim>>(
             dof_handler));
       std::vector<PETScWrappers::MPI::Vector> buffers(
         3,
@@ -533,5 +538,6 @@ namespace Solid
 
     template class SharedSolidSolver<2>;
     template class SharedSolidSolver<3>;
+    template class SharedSolidSolver<2, 3>;
   } // namespace MPI
 } // namespace Solid

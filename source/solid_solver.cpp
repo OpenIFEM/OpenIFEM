@@ -148,7 +148,7 @@ namespace Solid
     std::vector<DataComponentInterpretation::DataComponentInterpretation>
       data_component_interpretation(
         spacedim, DataComponentInterpretation::component_is_part_of_vector);
-    DataOut<spacedim> data_out;
+    DataOut<dim, DoFHandler<dim, spacedim>> data_out;
     data_out.attach_dof_handler(dof_handler);
 
     // displacements
@@ -215,11 +215,11 @@ namespace Solid
     Vector<float> estimated_error_per_cell(triangulation.n_active_cells());
     using type =
       std::map<types::boundary_id, const Function<spacedim, double> *>;
-    KellyErrorEstimator<spacedim>::estimate(dof_handler,
-                                            face_quad_formula,
-                                            type(),
-                                            current_displacement,
-                                            estimated_error_per_cell);
+    KellyErrorEstimator<dim, spacedim>::estimate(dof_handler,
+                                                 face_quad_formula,
+                                                 type(),
+                                                 current_displacement,
+                                                 estimated_error_per_cell);
     GridRefinement::refine_and_coarsen_fixed_fraction(
       triangulation, estimated_error_per_cell, 0.6, 0.4);
     if (triangulation.n_levels() > max_grid_level)
@@ -239,8 +239,12 @@ namespace Solid
         cell->clear_coarsen_flag();
       }
 
-    std::vector<SolutionTransfer<dim>> solution_trans(
-      3, SolutionTransfer<dim>(dof_handler));
+    std::vector<
+      SolutionTransfer<dim, Vector<double>, DoFHandler<dim, spacedim>>>
+      solution_trans(
+        3,
+        SolutionTransfer<dim, Vector<double>, DoFHandler<dim, spacedim>>(
+          dof_handler));
     std::vector<Vector<double>> buffer{
       previous_displacement, previous_velocity, previous_acceleration};
 
@@ -288,4 +292,5 @@ namespace Solid
 
   template class SolidSolver<2>;
   template class SolidSolver<3>;
+  template class SolidSolver<2, 3>;
 } // namespace Solid
