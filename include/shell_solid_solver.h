@@ -1,7 +1,7 @@
 #ifndef SHELL_ELEMENT
 #define SHELL_ELEMENT
 
-// #include "fem-shell.h"
+#include "fem-shell.h"
 #include "solid_solver.h"
 #include <deal.II/lac/block_sparse_matrix.h>
 #include <deal.II/lac/block_vector.h>
