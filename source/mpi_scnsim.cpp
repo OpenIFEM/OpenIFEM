@@ -277,7 +277,7 @@ namespace Fluid
                                      mpi_communicator)));
 
       // Hard-coded initial condition, only for VF cases!
-      apply_initial_condition();
+      // apply_initial_condition();
     }
 
     template <int dim>
@@ -491,7 +491,10 @@ namespace Fluid
                              tau_SUPG * current_velocity_values[q] *
                                grad_phi_u[i] * grad_phi_p[j] +
                              tau_SUPG * phi_u[j] * grad_phi_u[i] *
-                               current_pressure_gradients[q] +
+                               current_pressure_gradients[q] -
+                             // SUPG body force
+                             tau_SUPG * phi_u[j] * grad_phi_u[i] * rho *
+                               (gravity + artificial_bf[q]) +
                              // SUPG PML
                              tau_SUPG * rho * current_velocity_values[q] *
                                grad_phi_u[i] * sigma_pml[q] * phi_u[j] +
@@ -554,6 +557,13 @@ namespace Fluid
                               atm * fe_values.JxW(q) +
                             1 / kappa_s * phi_p[i] * phi_p[j] * ind /
                               time.get_delta_t() * fe_values.JxW(q);
+                          if (ind == 1)
+                            {
+                              local_matrix(i, j) +=
+                                -(tau_SUPG * phi_u[j] * grad_phi_u[i] *
+                                  (p[0]->fsi_acceleration * rho)) *
+                                fe_values.JxW(q);
+                            }
                         }
 
                       // RHS is \f$-(A_{current} + C_{current}) -
@@ -827,7 +837,8 @@ namespace Fluid
         }
       if (parameters.simulation_type == "Fluid" && time.time_to_refine())
         {
-          refine_mesh(1, 3);
+          refine_mesh(parameters.global_refinements[0],
+                      parameters.global_refinements[0] + 3);
         }
     }
 
@@ -862,12 +873,19 @@ namespace Fluid
                 ExcMessage("There should be only 2 groups of finite element!"));
               if (i_group == 0)
                 continue; // skip the velocity dofs
-              if (support_points[i][0] > 1.0 && support_points[i][0] < 2.0)
+              if (support_points[i][0] > 4.0 && support_points[i][0] < 5.0)
                 {
                   auto line = dof_indices[i];
                   initial_condition.add_line(line);
                   initial_condition.set_inhomogeneity(
-                    line, pressure * (support_points[i][0] - 1.0));
+                    line, pressure * (support_points[i][0] - 4.0));
+                }
+              else if (support_points[i][0] >= 5.0 &&
+                       support_points[i][0] < 12.0)
+                {
+                  auto line = dof_indices[i];
+                  initial_condition.add_line(line);
+                  initial_condition.set_inhomogeneity(line, pressure);
                 }
             }
         }
