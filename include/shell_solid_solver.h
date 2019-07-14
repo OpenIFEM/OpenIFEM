@@ -9,6 +9,14 @@
 template <int>
 class FSI;
 
+namespace ShellSolid
+{
+}
+
+namespace libMesh
+{
+}
+
 namespace Solid
 {
   using namespace dealii;
@@ -60,7 +68,9 @@ namespace Solid
     /// Run one time step.
     void run_one_step(bool);
 
-    // std::unique_ptr<shellsolid> m_shell;
+    libMesh::LibMeshInit libmesh_init;
+
+    std::unique_ptr<ShellSolid::shellsolid> m_shell;
 
     std::vector<int> vertex_mapping;
 
