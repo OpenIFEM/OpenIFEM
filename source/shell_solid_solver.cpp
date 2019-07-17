@@ -67,6 +67,7 @@ namespace Solid
     m_mesh.allow_renumbering(false);
     // Add nodes
     auto vertices = this->triangulation.get_vertices();
+    m_mesh.reserve_nodes(static_cast<unsigned int>(vertices.size()));
     for (int i = 0; i < static_cast<int>(vertices.size()); ++i)
       {
         auto &v = vertices[i];
@@ -80,7 +81,8 @@ namespace Solid
       {
         libMesh::Elem *elem = libMesh::Elem::build(libMesh::QUAD4).release();
         elem->set_id(cell->index());
-        elem->subdomain_id() = cell->material_id();
+        elem->subdomain_id() =
+          static_cast<libMesh::subdomain_id_type>(cell->material_id());
         elem = m_mesh.add_elem(elem);
         // Vertices order in dealii is different from libMesh
         std::vector<unsigned int> vertices{0, 1, 3, 2};
@@ -103,7 +105,9 @@ namespace Solid
               }
           }
       }
-    m_mesh.set_mesh_dimension(3);
+    m_mesh.set_mesh_dimension(2);
+    m_mesh.set_spatial_dimension(3);
+    m_mesh.prepare_for_use();
     // Create internal shell solid solver
     this->m_shell =
       std::make_unique<ShellSolid::shellsolid>(m_mesh, this->shell_params);
