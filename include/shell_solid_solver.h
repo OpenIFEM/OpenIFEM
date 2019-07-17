@@ -29,8 +29,14 @@ namespace Solid
   public:
     friend FSI<3>;
 
-    ShellSolidSolver(Triangulation<2, 3> &, const Parameters::AllParameters &);
+    ShellSolidSolver(Triangulation<2, 3> &,
+                     const Parameters::AllParameters &,
+                     libMesh::LibMeshInit *);
     ~ShellSolidSolver(){};
+
+    void get_forcing_file(const std::string &);
+
+    void run();
 
   private:
     using SolidSolver<2, 3>::triangulation;
@@ -60,6 +66,10 @@ namespace Solid
 
     void initialize_system();
 
+    void construct_mesh();
+
+    void setup_dofs();
+
     virtual void update_strain_and_stress() override;
 
     /** Assemble the lhs and rhs at the same time. */
@@ -68,7 +78,11 @@ namespace Solid
     /// Run one time step.
     void run_one_step(bool);
 
-    libMesh::LibMeshInit libmesh_init;
+    libMesh::LibMeshInit *libmesh_init;
+
+    libMesh::SerialMesh m_mesh;
+
+    ShellSolid::shellparam shell_params;
 
     std::unique_ptr<ShellSolid::shellsolid> m_shell;
 
