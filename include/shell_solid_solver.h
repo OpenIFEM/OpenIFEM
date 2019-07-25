@@ -52,12 +52,7 @@ namespace Solid
     using SolidSolver<2, 3>::system_matrix;
     using SolidSolver<2, 3>::mass_matrix;
     using SolidSolver<2, 3>::system_rhs;
-    using SolidSolver<2, 3>::current_acceleration;
-    using SolidSolver<2, 3>::current_velocity;
     using SolidSolver<2, 3>::current_displacement;
-    using SolidSolver<2, 3>::previous_acceleration;
-    using SolidSolver<2, 3>::previous_velocity;
-    using SolidSolver<2, 3>::previous_displacement;
     using SolidSolver<2, 3>::strain;
     using SolidSolver<2, 3>::stress;
     using SolidSolver<2, 3>::time;
@@ -78,19 +73,25 @@ namespace Solid
     /// Run one time step.
     void run_one_step(bool);
 
+    /// Synchronize the solution and stress
+    void synchronize();
+
+    // Method to get solution from m_shell
+    void get_solution();
+
+    void get_stress();
+
+    void output_results(const unsigned int);
+
     libMesh::LibMeshInit *libmesh_init;
 
     libMesh::SerialMesh m_mesh;
 
     ShellSolid::shellparam shell_params;
 
+    Vector<double> current_drilling;
+
     std::unique_ptr<ShellSolid::shellsolid> m_shell;
-
-    std::vector<int> vertex_mapping;
-
-    std::vector<int> cell_mapping;
-
-    void synchronize();
   };
 } // namespace Solid
 #endif
