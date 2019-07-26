@@ -76,10 +76,11 @@ namespace Solid
     /// Synchronize the solution and stress
     void synchronize();
 
-    // Method to get solution from m_shell
-    void get_solution();
+    // Grab solution from m_shell
+    void grab_solution();
 
-    void get_stress();
+    // Grab stress from m_shell
+    void grab_stress();
 
     void output_results(const unsigned int);
 

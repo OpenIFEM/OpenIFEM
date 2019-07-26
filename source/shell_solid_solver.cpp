@@ -30,7 +30,8 @@ namespace Solid
     setup_dofs();
     initialize_system();
     this->m_shell->run();
-    get_solution();
+    grab_solution();
+    grab_stress();
     this->m_shell->writeOutput();
     output_results(0);
   }
@@ -130,9 +131,13 @@ namespace Solid
       std::make_unique<ShellSolid::shellsolid>(m_mesh, this->shell_params);
   }
 
-  void ShellSolidSolver::synchronize() { get_solution(); }
+  void ShellSolidSolver::synchronize()
+  {
+    grab_solution();
+    grab_stress();
+  }
 
-  void ShellSolidSolver::get_solution()
+  void ShellSolidSolver::grab_solution()
   {
     std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
     const std::vector<libMesh::Number> &solution(m_shell->get_solution());
@@ -159,14 +164,15 @@ namespace Solid
       }
   }
 
-  void ShellSolidSolver::get_stress()
+  void ShellSolidSolver::grab_stress()
   {
     std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
     const std::vector<libMesh::Number> &solution(m_shell->get_solution());
     AssertThrow(solution.size() == current_displacement.size() * 5,
                 ExcMessage("Inconsistent solution size!"));
     // Copy the solutions
-    for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+    for (auto cell = scalar_dof_handler.begin_active();
+         cell != scalar_dof_handler.end();
          ++cell)
       {
         for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_cell; ++v)
@@ -210,15 +216,9 @@ namespace Solid
                              data_component_interpretation);
 
     // strain and stress
-    data_out.add_data_vector(scalar_dof_handler, strain[0][0], "Exx");
-    data_out.add_data_vector(scalar_dof_handler, strain[0][1], "Exy");
-    data_out.add_data_vector(scalar_dof_handler, strain[1][1], "Eyy");
     data_out.add_data_vector(scalar_dof_handler, stress[0][0], "Sxx");
     data_out.add_data_vector(scalar_dof_handler, stress[0][1], "Sxy");
     data_out.add_data_vector(scalar_dof_handler, stress[1][1], "Syy");
-    data_out.add_data_vector(scalar_dof_handler, strain[0][2], "Exz");
-    data_out.add_data_vector(scalar_dof_handler, strain[1][2], "Eyz");
-    data_out.add_data_vector(scalar_dof_handler, strain[2][2], "Ezz");
     data_out.add_data_vector(scalar_dof_handler, stress[0][2], "Sxz");
     data_out.add_data_vector(scalar_dof_handler, stress[1][2], "Syz");
     data_out.add_data_vector(scalar_dof_handler, stress[2][2], "Szz");
