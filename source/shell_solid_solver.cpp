@@ -164,6 +164,30 @@ namespace Solid
       }
   }
 
+  void ShellSolidSolver::push_solution()
+  {
+    std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
+    std::vector<libMesh::Number> solution(current_displacement.size() * 2);
+    // Copy the solutions
+    for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+         ++cell)
+      {
+        for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_cell; ++v)
+          {
+            if (!vertex_touched[cell->vertex_index(v)])
+              {
+                vertex_touched[cell->vertex_index(v)] = true;
+                for (unsigned int n : {0, 1, 2})
+                  {
+                    solution[6 * cell->vertex_index(v) + n] =
+                      current_displacement(cell->vertex_dof_index(v, n));
+                  }
+              }
+          }
+      }
+    this->m_shell->set_solution(solution);
+  }
+
   void ShellSolidSolver::grab_stress()
   {
     std::vector<bool> vertex_touched(triangulation.n_vertices(), false);

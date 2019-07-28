@@ -79,6 +79,9 @@ namespace Solid
     // Grab solution from m_shell
     void grab_solution();
 
+    // Push solution to m_shell
+    void push_solution();
+
     // Grab stress from m_shell
     void grab_stress();
 
