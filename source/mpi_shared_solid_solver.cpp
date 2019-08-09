@@ -6,14 +6,15 @@ namespace Solid
   {
     using namespace dealii;
 
-    template <int dim>
-    SharedSolidSolver<dim>::SharedSolidSolver(
-      Triangulation<dim> &tria, const Parameters::AllParameters &parameters)
+    template <int dim, int spacedim>
+    SharedSolidSolver<dim, spacedim>::SharedSolidSolver(
+      Triangulation<dim, spacedim> &tria,
+      const Parameters::AllParameters &parameters)
       : triangulation(tria),
         parameters(parameters),
         dof_handler(triangulation),
         scalar_dof_handler(triangulation),
-        fe(FE_Q<dim>(parameters.solid_degree), dim),
+        fe(FE_Q<dim, spacedim>(parameters.solid_degree), spacedim),
         scalar_fe(parameters.solid_degree),
         volume_quad_formula(parameters.solid_degree + 1),
         face_quad_formula(parameters.solid_degree + 1),
@@ -31,16 +32,16 @@ namespace Solid
     {
     }
 
-    template <int dim>
-    SharedSolidSolver<dim>::~SharedSolidSolver()
+    template <int dim, int spacedim>
+    SharedSolidSolver<dim, spacedim>::~SharedSolidSolver()
     {
       scalar_dof_handler.clear();
       dof_handler.clear();
       timer.print_summary();
     }
 
-    template <int dim>
-    void SharedSolidSolver<dim>::setup_dofs()
+    template <int dim, int spacedim>
+    void SharedSolidSolver<dim, spacedim>::setup_dofs()
     {
       TimerOutput::Scope timer_section(timer, "Setup system");
 
@@ -80,7 +81,7 @@ namespace Solid
         {
           unsigned int id = itr->first;
           unsigned int flag = itr->second;
-          std::vector<bool> mask(dim, false);
+          std::vector<bool> mask(spacedim, false);
           // 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
           if (flag == 1 || flag == 3 || flag == 5 || flag == 7)
             {
@@ -97,7 +98,7 @@ namespace Solid
           VectorTools::interpolate_boundary_values(
             dof_handler,
             id,
-            Functions::ZeroFunction<dim>(dim),
+            Functions::ZeroFunction<spacedim>(spacedim),
             constraints,
             ComponentMask(mask));
         }
@@ -110,8 +111,8 @@ namespace Solid
             << std::endl;
     }
 
-    template <int dim>
-    void SharedSolidSolver<dim>::initialize_system()
+    template <int dim, int spacedim>
+    void SharedSolidSolver<dim, spacedim>::initialize_system()
     {
       DynamicSparsityPattern dsp(dof_handler.n_dofs(), dof_handler.n_dofs());
 
@@ -141,15 +142,15 @@ namespace Solid
       previous_displacement.reinit(locally_owned_dofs, mpi_communicator);
 
       strain = std::vector<std::vector<PETScWrappers::MPI::Vector>>(
-        dim,
+        spacedim,
         std::vector<PETScWrappers::MPI::Vector>(
-          dim,
+          spacedim,
           PETScWrappers::MPI::Vector(locally_owned_scalar_dofs,
                                      mpi_communicator)));
       stress = std::vector<std::vector<PETScWrappers::MPI::Vector>>(
-        dim,
+        spacedim,
         std::vector<PETScWrappers::MPI::Vector>(
-          dim,
+          spacedim,
           PETScWrappers::MPI::Vector(locally_owned_scalar_dofs,
                                      mpi_communicator)));
 
@@ -161,11 +162,11 @@ namespace Solid
     }
 
     // Solve linear system \f$Ax = b\f$ using CG solver.
-    template <int dim>
-    std::pair<unsigned int, double>
-    SharedSolidSolver<dim>::solve(const PETScWrappers::MPI::SparseMatrix &A,
-                                  PETScWrappers::MPI::Vector &x,
-                                  const PETScWrappers::MPI::Vector &b)
+    template <int dim, int spacedim>
+    std::pair<unsigned int, double> SharedSolidSolver<dim, spacedim>::solve(
+      const PETScWrappers::MPI::SparseMatrix &A,
+      PETScWrappers::MPI::Vector &x,
+      const PETScWrappers::MPI::Vector &b)
     {
       TimerOutput::Scope timer_section(timer, "Solve linear system");
 
@@ -185,8 +186,9 @@ namespace Solid
       return {solver_control.last_step(), solver_control.last_value()};
     }
 
-    template <int dim>
-    void SharedSolidSolver<dim>::output_results(const unsigned int output_index)
+    template <int dim, int spacedim>
+    void SharedSolidSolver<dim, spacedim>::output_results(
+      const unsigned int output_index)
     {
       TimerOutput::Scope timer_section(timer, "Output results");
       pcout << "Writing solid results..." << std::endl;
@@ -198,9 +200,9 @@ namespace Solid
       Vector<double> velocity(current_velocity);
 
       std::vector<std::vector<Vector<double>>> localized_strain(
-        dim, std::vector<Vector<double>>(dim));
+        spacedim, std::vector<Vector<double>>(spacedim));
       std::vector<std::vector<Vector<double>>> localized_stress(
-        dim, std::vector<Vector<double>>(dim));
+        spacedim, std::vector<Vector<double>>(spacedim));
       for (unsigned int i = 0; i < dim; ++i)
         {
           for (unsigned int j = 0; j < dim; ++j)
@@ -211,25 +213,28 @@ namespace Solid
         }
       if (this_mpi_process == 0)
         {
-          std::vector<std::string> solution_names(dim, "displacements");
+          std::vector<std::string> solution_names(spacedim, "displacements");
           std::vector<DataComponentInterpretation::DataComponentInterpretation>
             data_component_interpretation(
-              dim, DataComponentInterpretation::component_is_part_of_vector);
-          DataOut<dim> data_out;
+              spacedim,
+              DataComponentInterpretation::component_is_part_of_vector);
+          DataOut<dim, DoFHandler<dim, spacedim>> data_out;
           data_out.attach_dof_handler(dof_handler);
 
           // displacements
-          data_out.add_data_vector(displacement,
-                                   solution_names,
-                                   DataOut<dim>::type_dof_data,
-                                   data_component_interpretation);
+          data_out.add_data_vector(
+            displacement,
+            solution_names,
+            DataOut<dim, DoFHandler<dim, spacedim>>::type_dof_data,
+            data_component_interpretation);
 
           // velocity
-          solution_names = std::vector<std::string>(dim, "velocities");
-          data_out.add_data_vector(velocity,
-                                   solution_names,
-                                   DataOut<dim>::type_dof_data,
-                                   data_component_interpretation);
+          solution_names = std::vector<std::string>(spacedim, "velocities");
+          data_out.add_data_vector(
+            velocity,
+            solution_names,
+            DataOut<dim, DoFHandler<dim, spacedim>>::type_dof_data,
+            data_component_interpretation);
 
           std::vector<unsigned int> subdomain_int(
             triangulation.n_active_cells());
@@ -260,7 +265,7 @@ namespace Solid
             scalar_dof_handler, localized_stress[0][1], "Sxy");
           data_out.add_data_vector(
             scalar_dof_handler, localized_stress[1][1], "Syy");
-          if (dim == 3)
+          if (spacedim == 3)
             {
               data_out.add_data_vector(
                 scalar_dof_handler, localized_strain[0][2], "Exz");
@@ -292,9 +297,9 @@ namespace Solid
         }
     }
 
-    template <int dim>
-    void SharedSolidSolver<dim>::refine_mesh(const unsigned int min_grid_level,
-                                             const unsigned int max_grid_level)
+    template <int dim, int spacedim>
+    void SharedSolidSolver<dim, spacedim>::refine_mesh(
+      const unsigned int min_grid_level, const unsigned int max_grid_level)
     {
       TimerOutput::Scope timer_section(timer, "Refine mesh");
       pcout << "Refining mesh..." << std::endl;
@@ -304,12 +309,13 @@ namespace Solid
       // In order to estimate error, the vector must has the entire solution.
       Vector<double> solution(current_displacement);
 
-      using type = std::map<types::boundary_id, const Function<dim, double> *>;
-      KellyErrorEstimator<dim>::estimate(dof_handler,
-                                         face_quad_formula,
-                                         type(),
-                                         solution,
-                                         estimated_error_per_cell);
+      using type =
+        std::map<types::boundary_id, const Function<spacedim, double> *>;
+      KellyErrorEstimator<dim, spacedim>::estimate(dof_handler,
+                                                   face_quad_formula,
+                                                   type(),
+                                                   solution,
+                                                   estimated_error_per_cell);
 
       // Set the refine and coarsen flag
       GridRefinement::refine_and_coarsen_fixed_fraction(
@@ -331,12 +337,15 @@ namespace Solid
         }
 
       // Prepare to transfer previous solutions
-      std::vector<parallel::distributed::
-                    SolutionTransfer<dim, PETScWrappers::MPI::Vector>>
+      std::vector<
+        parallel::distributed::SolutionTransfer<dim,
+                                                PETScWrappers::MPI::Vector,
+                                                DoFHandler<dim, spacedim>>>
         trans(
           3,
           parallel::distributed::SolutionTransfer<dim,
-                                                  PETScWrappers::MPI::Vector>(
+                                                  PETScWrappers::MPI::Vector,
+                                                  DoFHandler<dim, spacedim>>(
             dof_handler));
       std::vector<PETScWrappers::MPI::Vector> buffers(
         3,
@@ -370,8 +379,8 @@ namespace Solid
       constraints.distribute(previous_acceleration);
     }
 
-    template <int dim>
-    void SharedSolidSolver<dim>::run()
+    template <int dim, int spacedim>
+    void SharedSolidSolver<dim, spacedim>::run()
     {
       triangulation.refine_global(parameters.global_refinements[1]);
       bool success_load = load_checkpoint();
@@ -393,15 +402,16 @@ namespace Solid
         }
     }
 
-    template <int dim>
+    template <int dim, int spacedim>
     PETScWrappers::MPI::Vector
-    SharedSolidSolver<dim>::get_current_solution() const
+    SharedSolidSolver<dim, spacedim>::get_current_solution() const
     {
       return current_displacement;
     }
 
-    template <int dim>
-    void SharedSolidSolver<dim>::save_checkpoint(const int output_index)
+    template <int dim, int spacedim>
+    void
+    SharedSolidSolver<dim, spacedim>::save_checkpoint(const int output_index)
     {
       // Save the solution
       Vector<double> localized_disp(current_displacement);
@@ -455,8 +465,8 @@ namespace Solid
             << output_index << "!" << std::endl;
     }
 
-    template <int dim>
-    bool SharedSolidSolver<dim>::load_checkpoint()
+    template <int dim, int spacedim>
+    bool SharedSolidSolver<dim, spacedim>::load_checkpoint()
     {
       // Specify the current working path
       fs::path local_path = fs::current_path();
@@ -528,5 +538,6 @@ namespace Solid
 
     template class SharedSolidSolver<2>;
     template class SharedSolidSolver<3>;
+    template class SharedSolidSolver<2, 3>;
   } // namespace MPI
 } // namespace Solid

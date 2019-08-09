@@ -4,14 +4,15 @@ namespace Solid
 {
   using namespace dealii;
 
-  template <int dim>
-  SolidSolver<dim>::SolidSolver(Triangulation<dim> &tria,
-                                const Parameters::AllParameters &parameters)
+  template <int dim, int spacedim>
+  SolidSolver<dim, spacedim>::SolidSolver(
+    Triangulation<dim, spacedim> &tria,
+    const Parameters::AllParameters &parameters)
     : triangulation(tria),
       parameters(parameters),
       dof_handler(triangulation),
       scalar_dof_handler(triangulation),
-      fe(FE_Q<dim>(parameters.solid_degree), dim),
+      fe(FE_Q<dim, spacedim>(parameters.solid_degree), spacedim),
       scalar_fe(parameters.solid_degree),
       volume_quad_formula(parameters.solid_degree + 1),
       face_quad_formula(parameters.solid_degree + 1),
@@ -24,16 +25,16 @@ namespace Solid
   {
   }
 
-  template <int dim>
-  SolidSolver<dim>::~SolidSolver()
+  template <int dim, int spacedim>
+  SolidSolver<dim, spacedim>::~SolidSolver()
   {
     scalar_dof_handler.clear();
     dof_handler.clear();
     timer.print_summary();
   }
 
-  template <int dim>
-  void SolidSolver<dim>::setup_dofs()
+  template <int dim, int spacedim>
+  void SolidSolver<dim, spacedim>::setup_dofs()
   {
     TimerOutput::Scope timer_section(timer, "Setup system");
 
@@ -58,7 +59,7 @@ namespace Solid
       {
         unsigned int id = itr->first;
         unsigned int flag = itr->second;
-        std::vector<bool> mask(dim, false);
+        std::vector<bool> mask(spacedim, false);
         // 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
         if (flag == 1 || flag == 3 || flag == 5 || flag == 7)
           {
@@ -75,7 +76,7 @@ namespace Solid
         VectorTools::interpolate_boundary_values(
           dof_handler,
           id,
-          Functions::ZeroFunction<dim>(dim),
+          Functions::ZeroFunction<spacedim>(spacedim),
           constraints,
           ComponentMask(mask));
       }
@@ -83,8 +84,8 @@ namespace Solid
     constraints.close();
   }
 
-  template <int dim>
-  void SolidSolver<dim>::initialize_system()
+  template <int dim, int spacedim>
+  void SolidSolver<dim, spacedim>::initialize_system()
   {
     DynamicSparsityPattern dsp(dof_handler.n_dofs(), dof_handler.n_dofs());
     DoFTools::make_sparsity_pattern(dof_handler, dsp, constraints);
@@ -102,12 +103,12 @@ namespace Solid
     previous_displacement.reinit(dof_handler.n_dofs());
 
     strain = std::vector<std::vector<Vector<double>>>(
-      dim,
-      std::vector<Vector<double>>(dim,
+      spacedim,
+      std::vector<Vector<double>>(spacedim,
                                   Vector<double>(scalar_dof_handler.n_dofs())));
     stress = std::vector<std::vector<Vector<double>>>(
-      dim,
-      std::vector<Vector<double>>(dim,
+      spacedim,
+      std::vector<Vector<double>>(spacedim,
                                   Vector<double>(scalar_dof_handler.n_dofs())));
 
     // Set up cell property, which contains the FSI traction required in FSI
@@ -118,8 +119,8 @@ namespace Solid
   }
 
   // Solve linear system \f$Ax = b\f$ using CG solver.
-  template <int dim>
-  std::pair<unsigned int, double> SolidSolver<dim>::solve(
+  template <int dim, int spacedim>
+  std::pair<unsigned int, double> SolidSolver<dim, spacedim>::solve(
     const SparseMatrix<double> &A, Vector<double> &x, const Vector<double> &b)
   {
     TimerOutput::Scope timer_section(timer, "Solve linear system");
@@ -136,17 +137,18 @@ namespace Solid
     return {solver_control.last_step(), solver_control.last_value()};
   }
 
-  template <int dim>
-  void SolidSolver<dim>::output_results(const unsigned int output_index)
+  template <int dim, int spacedim>
+  void
+  SolidSolver<dim, spacedim>::output_results(const unsigned int output_index)
   {
     TimerOutput::Scope timer_section(timer, "Output results");
 
-    std::vector<std::string> solution_names(dim, "displacements");
+    std::vector<std::string> solution_names(spacedim, "displacements");
 
     std::vector<DataComponentInterpretation::DataComponentInterpretation>
       data_component_interpretation(
-        dim, DataComponentInterpretation::component_is_part_of_vector);
-    DataOut<dim> data_out;
+        spacedim, DataComponentInterpretation::component_is_part_of_vector);
+    DataOut<dim, DoFHandler<dim, spacedim>> data_out;
     data_out.attach_dof_handler(dof_handler);
 
     // displacements
@@ -155,7 +157,7 @@ namespace Solid
                              solution_names,
                              data_component_interpretation);
     // velocity
-    solution_names = std::vector<std::string>(dim, "velocities");
+    solution_names = std::vector<std::string>(spacedim, "velocities");
     data_out.add_data_vector(dof_handler,
                              current_velocity,
                              solution_names,
@@ -178,7 +180,7 @@ namespace Solid
     data_out.add_data_vector(scalar_dof_handler, stress[0][0], "Sxx");
     data_out.add_data_vector(scalar_dof_handler, stress[0][1], "Sxy");
     data_out.add_data_vector(scalar_dof_handler, stress[1][1], "Syy");
-    if (dim == 3)
+    if (spacedim == 3)
       {
         data_out.add_data_vector(scalar_dof_handler, strain[0][2], "Exz");
         data_out.add_data_vector(scalar_dof_handler, strain[1][2], "Eyz");
@@ -203,19 +205,21 @@ namespace Solid
     DataOutBase::write_pvd_record(pvd_output, times_and_names);
   }
 
-  template <int dim>
-  void SolidSolver<dim>::refine_mesh(const unsigned int min_grid_level,
-                                     const unsigned int max_grid_level)
+  template <int dim, int spacedim>
+  void
+  SolidSolver<dim, spacedim>::refine_mesh(const unsigned int min_grid_level,
+                                          const unsigned int max_grid_level)
   {
     TimerOutput::Scope timer_section(timer, "Refine mesh");
 
     Vector<float> estimated_error_per_cell(triangulation.n_active_cells());
-    using type = std::map<types::boundary_id, const Function<dim, double> *>;
-    KellyErrorEstimator<dim>::estimate(dof_handler,
-                                       face_quad_formula,
-                                       type(),
-                                       current_displacement,
-                                       estimated_error_per_cell);
+    using type =
+      std::map<types::boundary_id, const Function<spacedim, double> *>;
+    KellyErrorEstimator<dim, spacedim>::estimate(dof_handler,
+                                                 face_quad_formula,
+                                                 type(),
+                                                 current_displacement,
+                                                 estimated_error_per_cell);
     GridRefinement::refine_and_coarsen_fixed_fraction(
       triangulation, estimated_error_per_cell, 0.6, 0.4);
     if (triangulation.n_levels() > max_grid_level)
@@ -235,8 +239,12 @@ namespace Solid
         cell->clear_coarsen_flag();
       }
 
-    std::vector<SolutionTransfer<dim>> solution_trans(
-      3, SolutionTransfer<dim>(dof_handler));
+    std::vector<
+      SolutionTransfer<dim, Vector<double>, DoFHandler<dim, spacedim>>>
+      solution_trans(
+        3,
+        SolutionTransfer<dim, Vector<double>, DoFHandler<dim, spacedim>>(
+          dof_handler));
     std::vector<Vector<double>> buffer{
       previous_displacement, previous_velocity, previous_acceleration};
 
@@ -261,8 +269,8 @@ namespace Solid
     constraints.distribute(previous_acceleration);
   }
 
-  template <int dim>
-  void SolidSolver<dim>::run()
+  template <int dim, int spacedim>
+  void SolidSolver<dim, spacedim>::run()
   {
     triangulation.refine_global(parameters.global_refinements[1]);
     setup_dofs();
@@ -276,12 +284,13 @@ namespace Solid
       }
   }
 
-  template <int dim>
-  Vector<double> SolidSolver<dim>::get_current_solution() const
+  template <int dim, int spacedim>
+  Vector<double> SolidSolver<dim, spacedim>::get_current_solution() const
   {
     return current_displacement;
   }
 
   template class SolidSolver<2>;
   template class SolidSolver<3>;
+  template class SolidSolver<2, 3>;
 } // namespace Solid

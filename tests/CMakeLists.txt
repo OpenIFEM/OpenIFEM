@@ -35,7 +35,7 @@ set(rkpm-rk4_mpi_tests rkpm-rk4-bending-mpi
                        fsi-rkpm-rk4
                        fsi-wall-3D)
 
-set(shell-element_tests solid_shell_I_beam)
+set(shell-element_tests solid_shell_plate)
 
 # All tests
 set(tests ${serial_tests} ${mpi_tests})
@@ -80,15 +80,15 @@ endif()
 
 if (OPENIFEM_WITH_shell-element)
   foreach(test ${shell-element_tests})
-    set(meshfile ${CMAKE_CURRENT_SOURCE_DIR}/${test}/${test}.xda)
-    set(forcefile ${CMAKE_CURRENT_SOURCE_DIR}/${test}/${test}_f) 
+    set(input ${CMAKE_CURRENT_SOURCE_DIR}/${test}/${test}.prm)
+    set(meshfile ${CMAKE_CURRENT_SOURCE_DIR}/${test}/${test}.gmsh)
+    set(forcefile ${CMAKE_CURRENT_SOURCE_DIR}/${test}/${test}_f)
     set(output ${CMAKE_CURRENT_BINARY_DIR}/${test})
     file(MAKE_DIRECTORY ${output})
     add_executable(${test} ${CMAKE_CURRENT_SOURCE_DIR}/${test}/${test}.cpp)
     target_include_directories(${test} PUBLIC "${CMAKE_SOURCE_DIR}/include" ${shell-element_INCLUDE_DIR} ${LIBMESH_INCLUDE_DIR})
     deal_ii_setup_target(${test})
     target_link_libraries(${test} openifem stdc++fs ${shell-element_LIBRARY} ${libmesh_LIBRARY})
-    add_test(NAME ${test} COMMAND ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${test} -nu 0.25 -e 30000 -t 1.0 -mesh ${meshfile} 
-    -out ${output}/solid WORKING_DIRECTORY ${output})
+    add_test(NAME ${test} COMMAND ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${test} ${input} ${meshfile} ${forcefile} WORKING_DIRECTORY ${output})
   endforeach()
 endif()

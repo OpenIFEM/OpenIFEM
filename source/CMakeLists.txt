@@ -59,6 +59,11 @@ if(OPENIFEM_WITH_rkpm-rk4)
   list(APPEND headers "mpi_shared_hypo_elasticity.h")
 endif()
 
+if (OPENIFEM_WITH_shell-element)
+  list(APPEND TARGET_SRC "shell_solid_solver.cpp")
+  list(APPEND headers "shell_solid_solver.h")
+endif()
+
 # Build the library
 add_library(openifem ${TARGET_SRC})
 target_include_directories(openifem PUBLIC "${CMAKE_SOURCE_DIR}/include")
