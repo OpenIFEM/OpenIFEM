@@ -4,7 +4,7 @@
 #include "linear_elastic_material.h"
 #include "solid_solver.h"
 
-template <int>
+template <int, int>
 class FSI;
 
 namespace Solid
@@ -27,7 +27,7 @@ namespace Solid
   class LinearElasticity : public SolidSolver<dim>
   {
   public:
-    friend FSI<dim>;
+    friend FSI<dim, dim>;
 
     /*! \brief Constructor.
      *

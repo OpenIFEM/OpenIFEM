@@ -52,7 +52,7 @@
 #include "parameters.h"
 #include "utilities.h"
 
-template <int>
+template <int, int>
 class FSI;
 
 namespace Fluid
@@ -65,7 +65,8 @@ namespace Fluid
   {
   public:
     //! FSI solver need access to the private members of this solver.
-    friend FSI<dim>;
+    friend FSI<dim, dim>;
+    friend FSI<dim, dim - 1>;
 
     //! Constructor
     FluidSolver(Triangulation<dim> &,

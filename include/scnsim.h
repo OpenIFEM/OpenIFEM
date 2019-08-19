@@ -4,7 +4,7 @@
 #include "fluid_solver.h"
 #include <functional>
 
-template <int>
+template <int, int>
 class FSI;
 
 namespace Fluid
@@ -37,7 +37,8 @@ namespace Fluid
   class SCnsIM : public FluidSolver<dim>
   {
   public:
-    friend FSI<dim>;
+    friend FSI<dim, dim>;
+    friend FSI<dim, dim - 1>;
 
     SCnsIM(Triangulation<dim> &,
            const Parameters::AllParameters &,

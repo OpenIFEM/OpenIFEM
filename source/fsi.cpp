@@ -2,17 +2,36 @@
 #include <complex>
 #include <iostream>
 
-template <int dim>
-FSI<dim>::~FSI()
+// Bypass undefined reference to non-existing interpolation
+namespace dealii
+{
+  namespace VectorTools
+  {
+    void point_value(DoFHandler<2, 3> const &dof,
+                     Vector<double> const &fe_function,
+                     Point<3> const &point,
+                     Vector<double> value)
+    {
+      (void)dof;
+      (void)fe_function;
+      (void)point;
+      (void)value;
+      Assert(false, ExcDimensionMismatch(2, 3));
+    }
+  } // namespace VectorTools
+} // namespace dealii
+
+template <int dim, int soliddim>
+FSI<dim, soliddim>::~FSI()
 {
   timer.print_summary();
 }
 
-template <int dim>
-FSI<dim>::FSI(Fluid::FluidSolver<dim> &f,
-              Solid::SolidSolver<dim> &s,
-              const Parameters::AllParameters &p,
-              bool use_dirichlet_bc)
+template <int dim, int soliddim>
+FSI<dim, soliddim>::FSI(Fluid::FluidSolver<dim> &f,
+                        Solid::SolidSolver<soliddim, dim> &s,
+                        const Parameters::AllParameters &p,
+                        bool use_dirichlet_bc)
   : fluid_solver(f),
     solid_solver(s),
     parameters(p),
@@ -27,8 +46,8 @@ FSI<dim>::FSI(Fluid::FluidSolver<dim> &f,
   solid_box.reinit(2 * dim);
 }
 
-template <int dim>
-void FSI<dim>::move_solid_mesh(bool move_forward)
+template <int dim, int soliddim>
+void FSI<dim, soliddim>::move_solid_mesh(bool move_forward)
 {
   TimerOutput::Scope timer_section(timer, "Move solid mesh");
   std::vector<bool> vertex_touched(solid_solver.triangulation.n_vertices(),
@@ -37,7 +56,8 @@ void FSI<dim>::move_solid_mesh(bool move_forward)
        cell != solid_solver.dof_handler.end();
        ++cell)
     {
-      for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
+      for (unsigned int v = 0; v < GeometryInfo<soliddim>::vertices_per_cell;
+           ++v)
         {
           if (!vertex_touched[cell->vertex_index(v)])
             {
@@ -61,8 +81,8 @@ void FSI<dim>::move_solid_mesh(bool move_forward)
     }
 }
 
-template <int dim>
-void FSI<dim>::update_solid_box()
+template <int dim, int soliddim>
+void FSI<dim, soliddim>::update_solid_box()
 {
   move_solid_mesh(true);
   solid_box = 0;
@@ -88,9 +108,9 @@ void FSI<dim>::update_solid_box()
   move_solid_mesh(false);
 }
 
-template <int dim>
-bool FSI<dim>::point_in_solid(const DoFHandler<dim> &df,
-                              const Point<dim> &point)
+template <int dim, int soliddim>
+bool FSI<dim, soliddim>::point_in_solid(const DoFHandler<soliddim, dim> &df,
+                                        const Point<dim> &point)
 {
   // Check whether the point is in the solid box first.
   for (unsigned int i = 0; i < dim; ++i)
@@ -108,15 +128,16 @@ bool FSI<dim>::point_in_solid(const DoFHandler<dim> &df,
   return false;
 }
 
-template <int dim>
-void FSI<dim>::update_solid_displacement()
+template <int dim, int soliddim>
+void FSI<dim, soliddim>::update_solid_displacement()
 {
   move_solid_mesh(true);
   auto displacement = solid_solver.current_displacement;
   std::vector<bool> vertex_touched(solid_solver.dof_handler.n_dofs(), false);
   for (auto cell : solid_solver.dof_handler.active_cell_iterators())
     {
-      for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
+      for (unsigned int v = 0; v < GeometryInfo<soliddim>::vertices_per_cell;
+           ++v)
         {
           if (!vertex_touched[cell->vertex_index(v)] &&
               !solid_solver.constraints.is_constrained(cell->vertex_index(v)))
@@ -146,8 +167,8 @@ void FSI<dim>::update_solid_displacement()
 // settings, we define indicator at quadrature points, but only when all
 // of the vertices of a fluid cell are found to be in solid domain,
 // set the indicators at all quadrature points to be 1.
-template <int dim>
-void FSI<dim>::update_indicator()
+template <int dim, int soliddim>
+void FSI<dim, soliddim>::update_indicator()
 {
   TimerOutput::Scope timer_section(timer, "Update indicator");
   move_solid_mesh(true);
@@ -164,8 +185,8 @@ void FSI<dim>::update_indicator()
 
 // This function interpolates the solid velocity into the fluid solver,
 // as the Dirichlet boundary conditions for artificial fluid vertices
-template <int dim>
-void FSI<dim>::find_fluid_bc()
+template <int dim, int soliddim>
+void FSI<dim, soliddim>::find_fluid_bc()
 {
   TimerOutput::Scope timer_section(timer, "Find fluid BC");
   move_solid_mesh(true);
@@ -310,8 +331,8 @@ void FSI<dim>::find_fluid_bc()
   move_solid_mesh(false);
 }
 
-template <int dim>
-void FSI<dim>::find_solid_bc()
+template <int dim, int soliddim>
+void FSI<dim, soliddim>::find_solid_bc()
 {
   TimerOutput::Scope timer_section(timer, "Find solid BC");
   // Must use the updated solid coordinates
@@ -320,23 +341,23 @@ void FSI<dim>::find_solid_bc()
   FEValues<dim> fe_values(
     fluid_solver.fe, fluid_solver.volume_quad_formula, update_values);
   // Solid FEFaceValues to get the normal at face center
-  Point<dim - 1> unit_face_center;
+  Point<soliddim - 1> unit_face_center;
   for (unsigned int i = 0; i < dim - 1; ++i)
     {
       unit_face_center[i] = 0.5;
     }
-  Quadrature<dim - 1> center_quad(unit_face_center);
-  FEFaceValues<dim> fe_face_values(solid_solver.fe,
-                                   unit_face_center,
-                                   update_quadrature_points |
-                                     update_normal_vectors);
+  Quadrature<soliddim - 1> center_quad(unit_face_center);
+  FEFaceValues<soliddim, dim> fe_face_values(solid_solver.fe,
+                                             unit_face_center,
+                                             update_quadrature_points |
+                                               update_normal_vectors);
 
   for (auto s_cell = solid_solver.dof_handler.begin_active();
        s_cell != solid_solver.dof_handler.end();
        ++s_cell)
     {
       auto ptr = solid_solver.cell_property.get_data(s_cell);
-      for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+      for (unsigned int f = 0; f < GeometryInfo<soliddim>::faces_per_cell; ++f)
         {
           // Current face is at boundary and without Dirichlet bc.
           if (s_cell->face(f)->at_boundary())
@@ -371,9 +392,9 @@ void FSI<dim>::find_solid_bc()
   move_solid_mesh(false);
 }
 
-template <int dim>
-void FSI<dim>::refine_mesh(const unsigned int min_grid_level,
-                           const unsigned int max_grid_level)
+template <int dim, int soliddim>
+void FSI<dim, soliddim>::refine_mesh(const unsigned int min_grid_level,
+                                     const unsigned int max_grid_level)
 {
   TimerOutput::Scope timer_section(timer, "Refine mesh");
   move_solid_mesh(true);
@@ -445,8 +466,8 @@ void FSI<dim>::refine_mesh(const unsigned int min_grid_level,
   fluid_solver.nonzero_constraints.distribute(fluid_solver.present_solution);
 }
 
-template <int dim>
-void FSI<dim>::run()
+template <int dim, int soliddim>
+void FSI<dim, soliddim>::run()
 {
   solid_solver.triangulation.refine_global(parameters.global_refinements[1]);
   solid_solver.setup_dofs();
@@ -504,3 +525,4 @@ void FSI<dim>::run()
 
 template class FSI<2>;
 template class FSI<3>;
+template class FSI<3, 2>;

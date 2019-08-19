@@ -6,7 +6,7 @@
 #include <deal.II/lac/block_sparse_matrix.h>
 #include <deal.II/lac/block_vector.h>
 
-template <int>
+template <int, int>
 class FSI;
 
 namespace ShellSolid
@@ -27,7 +27,7 @@ namespace Solid
   class ShellSolidSolver : public SolidSolver<2, 3>
   {
   public:
-    friend FSI<3>;
+    friend FSI<3, 2>;
 
     ShellSolidSolver(Triangulation<2, 3> &,
                      const Parameters::AllParameters &,

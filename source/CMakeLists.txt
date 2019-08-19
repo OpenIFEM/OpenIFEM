@@ -62,6 +62,8 @@ endif()
 if (OPENIFEM_WITH_shell-element)
   list(APPEND TARGET_SRC "shell_solid_solver.cpp")
   list(APPEND headers "shell_solid_solver.h")
+  list(APPEND TARGET_SRC "shell_fsi.cpp")
+  list(APPEND headers "shell_fsi.h")
 endif()
 
 # Build the library

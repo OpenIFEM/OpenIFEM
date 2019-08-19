@@ -14,6 +14,7 @@ extern template class Fluid::FluidSolver<2>;
 extern template class Fluid::FluidSolver<3>;
 extern template class Solid::SolidSolver<2>;
 extern template class Solid::SolidSolver<3>;
+extern template class Solid::SolidSolver<2, 3>;
 extern template class Utils::GridInterpolator<2, Vector<double>>;
 extern template class Utils::GridInterpolator<3, Vector<double>>;
 extern template class Utils::GridInterpolator<2, BlockVector<double>>;
@@ -21,23 +22,23 @@ extern template class Utils::GridInterpolator<3, BlockVector<double>>;
 extern template class Utils::SPHInterpolator<2, Vector<double>>;
 extern template class Utils::SPHInterpolator<3, Vector<double>>;
 
-template <int dim>
+template <int dim, int soliddim = dim>
 class FSI
 {
 public:
   FSI(Fluid::FluidSolver<dim> &,
-      Solid::SolidSolver<dim> &,
+      Solid::SolidSolver<soliddim, dim> &,
       const Parameters::AllParameters &,
       bool use_dirichlet_bc = false);
-  void run();
+  virtual void run();
   ~FSI();
 
-private:
+protected:
   /// Define a smallest rectangle (or hex in 3d) that contains the solid.
-  void update_solid_box();
+  virtual void update_solid_box();
 
   /// Check if a point is inside a mesh.
-  bool point_in_solid(const DoFHandler<dim> &, const Point<dim> &);
+  bool point_in_solid(const DoFHandler<soliddim, dim> &, const Point<dim> &);
 
   /*! \brief Update the indicator field of the fluid solver.
    *
@@ -47,7 +48,7 @@ private:
    *  all of the vertices are in solid mesh (because later on Dirichlet BCs
    *  obtained from the solid will be applied).
    */
-  void update_indicator();
+  virtual void update_indicator();
 
   /// Move solid triangulation either forward or backward using displacements,
   void move_solid_mesh(bool);
@@ -59,7 +60,7 @@ private:
    *  then interpolate the fluid pressure and symmetric gradient of velocity at
    *  those points, based on which the fluid traction is calculated.
    */
-  void find_solid_bc();
+  virtual void find_solid_bc();
 
   /*! \brief Interpolate the fluid velocity to solid vertices.
    *
@@ -82,13 +83,13 @@ private:
    * quadrature
    *  points to be used by the fluid solver.
    */
-  void find_fluid_bc();
+  virtual void find_fluid_bc();
 
   /// Mesh adaption.
   void refine_mesh(const unsigned int, const unsigned int);
 
   Fluid::FluidSolver<dim> &fluid_solver;
-  Solid::SolidSolver<dim> &solid_solver;
+  Solid::SolidSolver<soliddim, dim> &solid_solver;
   Parameters::AllParameters parameters;
   Utils::Time time;
   mutable TimerOutput timer;

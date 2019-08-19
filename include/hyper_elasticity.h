@@ -12,7 +12,7 @@
 #include "neo_hookean.h"
 #include "solid_solver.h"
 
-template <int>
+template <int, int>
 class FSI;
 
 namespace Internal
@@ -92,7 +92,7 @@ namespace Solid
   class HyperElasticity : public SolidSolver<dim>
   {
   public:
-    friend FSI<dim>;
+    friend FSI<dim, dim>;
 
     HyperElasticity(Triangulation<dim> &, const Parameters::AllParameters &);
     ~HyperElasticity() {}
