@@ -7,6 +7,8 @@
 template <int, int>
 class FSI;
 
+class ShellFSI;
+
 namespace Fluid
 {
   using namespace dealii;
@@ -39,6 +41,7 @@ namespace Fluid
   public:
     friend FSI<dim, dim>;
     friend FSI<dim, dim - 1>;
+    friend ShellFSI;
 
     SCnsIM(Triangulation<dim> &,
            const Parameters::AllParameters &,

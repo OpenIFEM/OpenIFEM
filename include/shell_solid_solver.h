@@ -9,6 +9,8 @@
 template <int, int>
 class FSI;
 
+class ShellFSI;
+
 namespace ShellSolid
 {
 }
@@ -28,6 +30,7 @@ namespace Solid
   {
   public:
     friend FSI<3, 2>;
+    friend ShellFSI;
 
     ShellSolidSolver(Triangulation<2, 3> &,
                      const Parameters::AllParameters &,

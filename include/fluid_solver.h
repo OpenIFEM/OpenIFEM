@@ -55,6 +55,8 @@
 template <int, int>
 class FSI;
 
+class ShellFSI;
+
 namespace Fluid
 {
   using namespace dealii;
@@ -67,6 +69,7 @@ namespace Fluid
     //! FSI solver need access to the private members of this solver.
     friend FSI<dim, dim>;
     friend FSI<dim, dim - 1>;
+    friend ShellFSI;
 
     //! Constructor
     FluidSolver(Triangulation<dim> &,
