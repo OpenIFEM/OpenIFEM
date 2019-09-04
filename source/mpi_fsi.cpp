@@ -288,18 +288,47 @@ namespace MPI
   {
     TimerOutput::Scope timer_section(timer, "Update indicator");
     move_solid_mesh(true);
-    for (auto f_cell = fluid_solver.dof_handler.begin_active();
-         f_cell != fluid_solver.dof_handler.end();
-         ++f_cell)
+    AffineConstraints<double> indicator_constraint;
+    indicator_constraint.clear();
+    indicator_constraint.reinit(fluid_solver.locally_relevant_scalar_dofs);
+
+    const std::vector<Point<dim>> &unit_points =
+      fluid_solver.scalar_fe.get_unit_support_points();
+    std::vector<types::global_dof_index> scalar_dof_indices(
+      fluid_solver.scalar_fe.dofs_per_cell);
+
+    MappingQGeneric<dim> mapping(parameters.fluid_pressure_degree);
+    Quadrature<dim> dummy_q(unit_points);
+    FEValues<dim> dummy_fe_values(
+      mapping, fluid_solver.scalar_fe, dummy_q, update_quadrature_points);
+    for (auto scalar_f_cell = fluid_solver.scalar_dof_handler.begin_active();
+         scalar_f_cell != fluid_solver.scalar_dof_handler.end();
+         ++scalar_f_cell)
       {
-        if (!f_cell->is_locally_owned())
+        if (scalar_f_cell->is_artificial())
           {
             continue;
           }
-        auto p = fluid_solver.cell_property.get_data(f_cell);
-        auto center = f_cell->center();
-        p[0]->indicator = point_in_solid(solid_solver.dof_handler, center);
+        dummy_fe_values.reinit(scalar_f_cell);
+        scalar_f_cell->get_dof_indices(scalar_dof_indices);
+        auto support_points = dummy_fe_values.get_quadrature_points();
+        for (unsigned int i = 0; i < unit_points.size(); ++i)
+          {
+            auto scalar_line = scalar_dof_indices[i];
+            if (!point_in_solid(solid_solver.dof_handler, support_points[i]))
+              {
+                continue;
+              }
+            indicator_constraint.add_line(scalar_line);
+            indicator_constraint.set_inhomogeneity(scalar_line, 1);
+          }
       }
+    indicator_constraint.close();
+    PETScWrappers::MPI::Vector tmp;
+    tmp.reinit(fluid_solver.locally_owned_scalar_dofs,
+               fluid_solver.mpi_communicator);
+    indicator_constraint.distribute(tmp);
+    fluid_solver.indicator = tmp;
     move_solid_mesh(false);
   }
 
@@ -378,7 +407,7 @@ namespace MPI
             auto ptr = fluid_solver.cell_property.get_data(f_cell);
             ptr[0]->fsi_acceleration = 0;
             ptr[0]->fsi_stress = 0;
-            if (ptr[0]->indicator == 0)
+            if (!point_in_solid(solid_solver.dof_handler, f_cell->center()))
               continue;
             fe_values.reinit(f_cell);
             // Fluid velocity at cell center

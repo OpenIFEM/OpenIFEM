@@ -266,6 +266,10 @@ namespace Fluid
       // solver and residual evaluation.
       system_rhs.reinit(owned_partitioning, mpi_communicator);
 
+      indicator.reinit(locally_owned_scalar_dofs,
+                       locally_relevant_scalar_dofs,
+                       mpi_communicator);
+
       // Cell property
       setup_cell_property();
 
@@ -306,6 +310,9 @@ namespace Fluid
                                          update_quadrature_points |
                                          update_JxW_values);
 
+      FEValues<dim> scalar_fe_values(
+        scalar_fe, volume_quad_formula, update_values);
+
       const unsigned int dofs_per_cell = fe.dofs_per_cell;
       const unsigned int u_dofs = fe.base_element(0).dofs_per_cell;
       const unsigned int p_dofs = fe.base_element(1).dofs_per_cell;
@@ -335,8 +342,10 @@ namespace Fluid
       std::vector<Tensor<1, dim>> current_pressure_gradients(n_q_points);
       std::vector<Tensor<1, dim>> present_velocity_values(n_q_points);
       std::vector<double> present_pressure_values(n_q_points);
+      std::vector<Tensor<1, dim>> present_pressure_gradients(n_q_points);
       std::vector<double> sigma_pml(n_q_points);
       std::vector<Tensor<1, dim>> artificial_bf(n_q_points);
+      std::vector<double> ind(n_q_points);
 
       std::vector<double> div_phi_u(dofs_per_cell);
       std::vector<Tensor<1, dim>> phi_u(dofs_per_cell);
@@ -350,15 +359,17 @@ namespace Fluid
       const double atm = 1013250;
       const double kappa_s = 1e4;
 
-      for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
-           ++cell)
+      for (auto cell = dof_handler.begin_active(),
+                scalar_cell = scalar_dof_handler.begin_active();
+           cell != dof_handler.end();
+           ++cell, ++scalar_cell)
         {
           if (cell->is_locally_owned())
             {
               auto p = cell_property.get_data(cell);
-              const int ind = p[0]->indicator;
 
               fe_values.reinit(cell);
+              scalar_fe_values.reinit(scalar_cell);
 
               local_matrix = 0;
               local_rhs = 0;
@@ -386,14 +397,16 @@ namespace Fluid
               body_force->value_list(fe_values.get_quadrature_points(),
                                      artificial_bf);
 
+              scalar_fe_values.get_function_values(indicator, ind);
+
               for (unsigned int q = 0; q < n_q_points; ++q)
                 {
                   const double rho = parameters.fluid_rho *
                                        (1 + present_pressure_values[q] / atm) *
-                                       (1 - ind) +
-                                     ind * parameters.solid_rho;
+                                       (1 - ind[q]) +
+                                     ind[q] * parameters.solid_rho;
                   const double viscosity =
-                    (ind == 1 ? 1 : parameters.viscosity);
+                    (ind[q] == 1 ? 1 : parameters.viscosity);
 
                   for (unsigned int k = 0; k < dofs_per_cell; ++k)
                     {
@@ -515,26 +528,26 @@ namespace Fluid
                                phi_u[j] +
                              // LSIC acceleration
                              tau_LSIC * rho * div_phi_u[i] * phi_p[j] /
-                               time.get_delta_t() * (1 - ind) / atm +
+                               time.get_delta_t() * (1 - ind[q]) / atm +
                              // LSIC bulk acceleration in artificial fluid
                              tau_LSIC * rho * 1 / kappa_s * div_phi_u[i] *
-                               phi_p[j] / time.get_delta_t() * ind +
+                               phi_p[j] / time.get_delta_t() * ind[q] +
                              // LSIC velocity divergence
                              tau_LSIC * rho * cp_to_cv * div_phi_u[i] *
                                div_phi_u[j] +
                              tau_LSIC * rho * cp_to_cv * div_phi_u[i] *
-                               current_pressure_values[q] * (1 - ind) *
+                               current_pressure_values[q] * (1 - ind[q]) *
                                div_phi_u[j] / atm +
                              tau_LSIC * rho * cp_to_cv * div_phi_u[i] *
-                               phi_p[j] * (1 - ind) *
+                               phi_p[j] * (1 - ind[q]) *
                                current_velocity_divergence / atm +
                              // LSIC pressure gradients
                              tau_LSIC * rho * div_phi_u[i] *
                                current_velocity_values[q] * grad_phi_p[j] /
-                               atm * (1 - ind) +
+                               atm * (1 - ind[q]) +
                              tau_LSIC * rho * div_phi_u[i] * phi_u[j] *
                                current_pressure_gradients[q] / atm *
-                               (1 - ind)) *
+                               (1 - ind[q])) *
                             fe_values.JxW(q);
                           // For more clear demonstration, write continuity
                           // equation
@@ -544,20 +557,21 @@ namespace Fluid
                           // \times u) + u (\nabla p) = 0\f$
                           local_matrix(i, j) +=
                             (cp_to_cv *
-                               (atm + current_pressure_values[q] * (1 - ind)) *
+                               (atm +
+                                current_pressure_values[q] * (1 - ind[q])) *
                                div_phi_u[j] * phi_p[i] +
                              phi_p[j] * current_velocity_divergence * phi_p[i] *
-                               (1 - ind) +
+                               (1 - ind[q]) +
                              current_velocity_values[q] * grad_phi_p[j] *
-                               phi_p[i] * (1 - ind) +
+                               phi_p[i] * (1 - ind[q]) +
                              phi_u[j] * current_pressure_gradients[q] *
-                               phi_p[i] * (1 - ind) +
+                               phi_p[i] * (1 - ind[q]) +
                              phi_p[i] * phi_p[j] / time.get_delta_t() *
-                               (1 - ind)) /
+                               (1 - ind[q])) /
                               atm * fe_values.JxW(q) +
-                            1 / kappa_s * phi_p[i] * phi_p[j] * ind /
+                            1 / kappa_s * phi_p[i] * phi_p[j] * ind[q] /
                               time.get_delta_t() * fe_values.JxW(q);
-                          if (ind == 1)
+                          if (ind[q] == 1)
                             {
                               local_matrix(i, j) +=
                                 -(tau_SUPG * phi_u[j] * grad_phi_u[i] *
@@ -589,19 +603,19 @@ namespace Fluid
                         fe_values.JxW(q);
                       local_rhs(i) +=
                         -(cp_to_cv *
-                            (atm + current_pressure_values[q] * (1 - ind)) *
+                            (atm + current_pressure_values[q] * (1 - ind[q])) *
                             current_velocity_divergence * phi_p[i] +
                           current_velocity_values[q] *
                             current_pressure_gradients[q] * phi_p[i] *
-                            (1 - ind) +
+                            (1 - ind[q]) +
                           (current_pressure_values[q] -
                            present_pressure_values[q]) *
-                            phi_p[i] / time.get_delta_t() * (1 - ind)) /
+                            phi_p[i] / time.get_delta_t() * (1 - ind[q])) /
                           atm * fe_values.JxW(q) -
                         1 / kappa_s *
                           (current_pressure_values[q] -
                            present_pressure_values[q]) *
-                          phi_p[i] * ind / time.get_delta_t() *
+                          phi_p[i] * ind[q] / time.get_delta_t() *
                           fe_values.JxW(q);
                       // Add SUPG and PSPS rhs terms.
                       local_rhs(i) +=
@@ -630,21 +644,21 @@ namespace Fluid
                         -((tau_LSIC * rho * div_phi_u[i]) *
                             ((current_pressure_values[q] -
                               present_pressure_values[q]) /
-                               time.get_delta_t() * (1 - ind) +
+                               time.get_delta_t() * (1 - ind[q]) +
                              cp_to_cv * atm * current_velocity_divergence +
                              cp_to_cv * current_pressure_values[q] *
-                               current_velocity_divergence * (1 - ind) +
+                               current_velocity_divergence * (1 - ind[q]) +
                              current_velocity_values[q] *
-                               current_pressure_gradients[q] * (1 - ind)) /
+                               current_pressure_gradients[q] * (1 - ind[q])) /
                             atm +
                           (tau_LSIC * rho * div_phi_u[i]) *
                             (1 / kappa_s *
                              (current_pressure_values[q] -
                               present_pressure_values[q]) /
                              time.get_delta_t()) *
-                            ind) *
+                            ind[q]) *
                         fe_values.JxW(q);
-                      if (ind == 1)
+                      if (ind[q] == 1)
                         {
                           local_rhs(i) +=
                             (scalar_product(grad_phi_u[i], p[0]->fsi_stress) +
@@ -837,8 +851,7 @@ namespace Fluid
         }
       if (parameters.simulation_type == "Fluid" && time.time_to_refine())
         {
-          refine_mesh(parameters.global_refinements[0],
-                      parameters.global_refinements[0] + 3);
+          refine_mesh(1, 3);
         }
     }
 
@@ -873,20 +886,20 @@ namespace Fluid
                 ExcMessage("There should be only 2 groups of finite element!"));
               if (i_group == 0)
                 continue; // skip the velocity dofs
-              if (support_points[i][0] > 4.0 && support_points[i][0] < 5.0)
+              if (support_points[i][0] > 1.0 && support_points[i][0] < 2.0)
                 {
                   auto line = dof_indices[i];
                   initial_condition.add_line(line);
                   initial_condition.set_inhomogeneity(
-                    line, pressure * (support_points[i][0] - 4.0));
+                    line, pressure * (support_points[i][0] - 1.0));
                 }
-              else if (support_points[i][0] >= 5.0 &&
-                       support_points[i][0] < 12.0)
-                {
-                  auto line = dof_indices[i];
-                  initial_condition.add_line(line);
-                  initial_condition.set_inhomogeneity(line, pressure);
-                }
+              // else if (support_points[i][0] >= 5.0 &&
+              //          support_points[i][0] < 12.0)
+              //   {
+              //     auto line = dof_indices[i];
+              //     initial_condition.add_line(line);
+              //     initial_condition.set_inhomogeneity(line, pressure);
+              //   }
             }
         }
       initial_condition.close();
