@@ -232,7 +232,7 @@ namespace Solid
                              current_displacement,
                              solution_names,
                              data_component_interpretation);
-    // velocity
+    // drilling
     solution_names = std::vector<std::string>(3, "drillings");
     data_out.add_data_vector(dof_handler,
                              current_drilling,
@@ -249,7 +249,7 @@ namespace Solid
 
     data_out.build_patches();
 
-    std::string basename = "solid";
+    std::string basename = "shell";
     std::string filename =
       basename + "-" + Utilities::int_to_string(output_index, 6) + ".vtu";
 
