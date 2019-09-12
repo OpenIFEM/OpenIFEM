@@ -99,6 +99,8 @@ namespace Solid
     Vector<double> current_drilling;
 
     std::unique_ptr<ShellSolid::shellsolid> m_shell;
+
+    mutable std::vector<std::vector<Vector<double>>> bending_stress;
   };
 } // namespace Solid
 #endif

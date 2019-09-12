@@ -48,6 +48,10 @@ namespace Solid
       3,
       std::vector<Vector<double>>(3,
                                   Vector<double>(scalar_dof_handler.n_dofs())));
+    bending_stress = std::vector<std::vector<Vector<double>>>(
+      3,
+      std::vector<Vector<double>>(3,
+                                  Vector<double>(scalar_dof_handler.n_dofs())));
 
     // Set up cell property, which contains the FSI traction required in FSI
     // simulation
@@ -141,7 +145,7 @@ namespace Solid
   {
     std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
     const std::vector<libMesh::Number> &solution(m_shell->get_solution());
-    AssertThrow(solution.size() == current_displacement.size() * 5,
+    AssertThrow(solution.size() == current_displacement.size() * 8,
                 ExcMessage("Inconsistent solution size!"));
     // Copy the solutions
     for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
@@ -155,9 +159,9 @@ namespace Solid
                 for (unsigned int n : {0, 1, 2})
                   {
                     current_displacement(cell->vertex_dof_index(v, n)) =
-                      solution[15 * cell->vertex_index(v) + n];
+                      solution[24 * cell->vertex_index(v) + n];
                     current_drilling(cell->vertex_dof_index(v, n)) =
-                      solution[15 * cell->vertex_index(v) + 3 + n];
+                      solution[24 * cell->vertex_index(v) + 3 + n];
                   }
               }
           }
@@ -192,7 +196,7 @@ namespace Solid
   {
     std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
     const std::vector<libMesh::Number> &solution(m_shell->get_solution());
-    AssertThrow(solution.size() == current_displacement.size() * 5,
+    AssertThrow(solution.size() == current_displacement.size() * 8,
                 ExcMessage("Inconsistent solution size!"));
     // Copy the solutions
     for (auto cell = scalar_dof_handler.begin_active();
@@ -207,8 +211,12 @@ namespace Solid
                 for (unsigned int i : {0, 1, 2})
                   {
                     for (unsigned int j : {0, 1, 2})
-                      stress[i][j](cell->vertex_dof_index(v, 0)) =
-                        solution[15 * cell->vertex_index(v) + 3 * i + j];
+                      {
+                        stress[i][j](cell->vertex_dof_index(v, 0)) =
+                          solution[24 * cell->vertex_index(v) + 6 + 3 * i + j];
+                        bending_stress[i][j](cell->vertex_dof_index(v, 0)) =
+                          solution[24 * cell->vertex_index(v) + 15 + 3 * i + j];
+                      }
                   }
               }
           }
@@ -239,13 +247,19 @@ namespace Solid
                              solution_names,
                              data_component_interpretation);
 
-    // strain and stress
+    // stresses
     data_out.add_data_vector(scalar_dof_handler, stress[0][0], "Sxx");
     data_out.add_data_vector(scalar_dof_handler, stress[0][1], "Sxy");
     data_out.add_data_vector(scalar_dof_handler, stress[1][1], "Syy");
     data_out.add_data_vector(scalar_dof_handler, stress[0][2], "Sxz");
     data_out.add_data_vector(scalar_dof_handler, stress[1][2], "Syz");
     data_out.add_data_vector(scalar_dof_handler, stress[2][2], "Szz");
+    data_out.add_data_vector(scalar_dof_handler, bending_stress[0][0], "Sxx_b");
+    data_out.add_data_vector(scalar_dof_handler, bending_stress[0][1], "Sxy_b");
+    data_out.add_data_vector(scalar_dof_handler, bending_stress[1][1], "Syy_b");
+    data_out.add_data_vector(scalar_dof_handler, bending_stress[0][2], "Sxz_b");
+    data_out.add_data_vector(scalar_dof_handler, bending_stress[1][2], "Syz_b");
+    data_out.add_data_vector(scalar_dof_handler, bending_stress[2][2], "Szz_b");
 
     data_out.build_patches();
 
