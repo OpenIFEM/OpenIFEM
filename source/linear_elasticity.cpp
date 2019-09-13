@@ -377,7 +377,7 @@ namespace Solid
         fe_values[displacements].get_function_gradients(
           current_displacement, current_displacement_gradients);
         int mat_id = cell->material_id();
-        if (!mat_id)
+        if (parameters.n_solid_parts == 1)
           mat_id = 1;
         elasticity = material[mat_id - 1].get_elasticity();
 
