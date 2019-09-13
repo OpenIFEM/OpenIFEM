@@ -40,6 +40,7 @@ namespace Solid
   {
     current_displacement.reinit(dof_handler.n_dofs());
     current_drilling.reinit(dof_handler.n_dofs());
+    current_velocity.reinit(dof_handler.n_dofs());
     strain = std::vector<std::vector<Vector<double>>>(
       3,
       std::vector<Vector<double>>(3,

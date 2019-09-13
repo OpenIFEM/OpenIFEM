@@ -38,12 +38,12 @@ namespace MPI
         Solid::MPI::SharedSolidSolver<dim> &,
         const Parameters::AllParameters &,
         bool use_dirichlet_bc = false);
-    void run();
+    virtual void run();
 
     //! Destructor
     ~FSI();
 
-  private:
+  protected:
     /// Collect all the boundary lines in solid triangulation.
     void collect_solid_boundaries();
 
@@ -51,7 +51,7 @@ namespace MPI
     void setup_cell_hints();
 
     /// Define a smallest rectangle (or hex in 3d) that contains the solid.
-    void update_solid_box();
+    virtual void update_solid_box();
 
     /// Find the vertices that are onwed by the local process.
     void update_vertices_mask();
@@ -67,7 +67,7 @@ namespace MPI
      * that whether all of the vertices are in solid mesh (because later on
      * Dirichlet BCs obtained from the solid will be applied).
      */
-    void update_indicator();
+    virtual void update_indicator();
 
     /// Move solid triangulation either forward or backward using
     /// displacements,
@@ -102,7 +102,7 @@ namespace MPI
      * quadrature
      *  points to be used by the fluid solver.
      */
-    void find_fluid_bc();
+    virtual void find_fluid_bc();
 
     /// Mesh adaption.
     void refine_mesh(const unsigned int, const unsigned int);

@@ -51,8 +51,6 @@
 template <int, int>
 class FSI;
 
-class ShellFSI;
-
 namespace Solid
 {
   using namespace dealii;
@@ -63,7 +61,6 @@ namespace Solid
   {
   public:
     friend FSI<spacedim, dim>;
-    friend ShellFSI;
 
     SolidSolver(Triangulation<dim, spacedim> &,
                 const Parameters::AllParameters &);

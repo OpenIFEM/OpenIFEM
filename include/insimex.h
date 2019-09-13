@@ -35,7 +35,6 @@ namespace Fluid
   public:
     //! FSI solver need access to the private members of this solver.
     friend FSI<dim, dim>;
-    friend FSI<dim, dim - 1>;
 
     //! Constructor
     InsIMEX(Triangulation<dim> &,

@@ -6,10 +6,12 @@
 #include <deal.II/lac/block_sparse_matrix.h>
 #include <deal.II/lac/block_vector.h>
 
-template <int, int>
-class FSI;
-
-class ShellFSI;
+namespace MPI
+{
+  template <int>
+  class FSI;
+  class ShellFSI;
+} // namespace MPI
 
 namespace ShellSolid
 {
@@ -29,8 +31,8 @@ namespace Solid
   class ShellSolidSolver : public SolidSolver<2, 3>
   {
   public:
-    friend FSI<3, 2>;
-    friend ShellFSI;
+    friend ::MPI::FSI<3>;
+    friend ::MPI::ShellFSI;
 
     ShellSolidSolver(Triangulation<2, 3> &,
                      const Parameters::AllParameters &,

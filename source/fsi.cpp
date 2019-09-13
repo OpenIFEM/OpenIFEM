@@ -525,4 +525,3 @@ void FSI<dim, soliddim>::run()
 
 template class FSI<2>;
 template class FSI<3>;
-template class FSI<3, 2>;

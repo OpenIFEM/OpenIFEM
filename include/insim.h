@@ -39,7 +39,6 @@ namespace Fluid
   {
   public:
     friend FSI<dim, dim>;
-    friend FSI<dim, dim - 1>;
 
     InsIM(Triangulation<dim> &,
           const Parameters::AllParameters &,
