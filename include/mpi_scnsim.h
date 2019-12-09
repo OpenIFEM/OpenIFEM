@@ -79,6 +79,7 @@ namespace Fluid
       using FluidSolver<dim>::solution_increment;
       using FluidSolver<dim>::system_rhs;
       using FluidSolver<dim>::indicator;
+      using FluidSolver<dim>::fsi_acceleration;
       using FluidSolver<dim>::stress;
       using FluidSolver<dim>::parameters;
       using FluidSolver<dim>::mpi_communicator;

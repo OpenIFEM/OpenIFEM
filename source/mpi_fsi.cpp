@@ -347,27 +347,10 @@ namespace MPI
     inner_zero.clear();
     inner_nonzero.reinit(fluid_solver.locally_relevant_dofs);
     inner_zero.reinit(fluid_solver.locally_relevant_dofs);
+    PETScWrappers::MPI::BlockVector tmp_fsi_acceleration;
+    tmp_fsi_acceleration.reinit(fluid_solver.owned_partitioning,
+                                fluid_solver.mpi_communicator);
 
-    const FEValuesExtractors::Vector velocities(0);
-    const FEValuesExtractors::Scalar pressure(dim);
-    std::vector<SymmetricTensor<2, dim>> sym_grad_v(1);
-    std::vector<double> p(1);
-    std::vector<Tensor<2, dim>> grad_v(1);
-    std::vector<Tensor<1, dim>> v(1);
-
-    // Cell center in unit coordinate system
-    Point<dim> unit_center;
-    for (unsigned int i = 0; i < dim; ++i)
-      {
-        unit_center[i] = 0.5;
-      }
-    Quadrature<dim> quad(unit_center);
-    MappingQGeneric<dim> mapping(parameters.fluid_velocity_degree);
-    FEValues<dim> fe_values(mapping,
-                            fluid_solver.fe,
-                            quad,
-                            update_quadrature_points | update_values |
-                              update_gradients);
     Vector<double> localized_solid_velocity(solid_solver.current_velocity);
     Vector<double> localized_solid_acceleration(
       solid_solver.current_acceleration);
@@ -383,9 +366,21 @@ namespace MPI
 
     const std::vector<Point<dim>> &unit_points =
       fluid_solver.fe.get_unit_support_points();
+
+    const FEValuesExtractors::Vector velocities(0);
+    const FEValuesExtractors::Scalar pressure(dim);
+    std::vector<SymmetricTensor<2, dim>> sym_grad_v(unit_points.size());
+    std::vector<double> p(unit_points.size());
+    std::vector<Tensor<2, dim>> grad_v(unit_points.size());
+    std::vector<Tensor<1, dim>> v(unit_points.size());
+
+    MappingQGeneric<dim> mapping(parameters.fluid_velocity_degree);
     Quadrature<dim> dummy_q(unit_points);
-    FEValues<dim> dummy_fe_values(
-      mapping, fluid_solver.fe, dummy_q, update_quadrature_points);
+    FEValues<dim> dummy_fe_values(mapping,
+                                  fluid_solver.fe,
+                                  dummy_q,
+                                  update_quadrature_points | update_values |
+                                    update_gradients);
     std::vector<types::global_dof_index> dof_indices(
       fluid_solver.fe.dofs_per_cell);
     std::vector<unsigned int> dof_touched(fluid_solver.dof_handler.n_dofs(), 0);
@@ -403,49 +398,86 @@ namespace MPI
         // Now skip the ghost elements because it's not store in cell property.
         if (!use_dirichlet_bc && f_cell->is_locally_owned())
           {
-            // Start working on the cell
-            auto ptr = fluid_solver.cell_property.get_data(f_cell);
-            ptr[0]->fsi_acceleration = 0;
-            ptr[0]->fsi_stress = 0;
-            if (!point_in_solid(solid_solver.dof_handler, f_cell->center()))
-              continue;
-            fe_values.reinit(f_cell);
-            // Fluid velocity at cell center
-            fe_values[velocities].get_function_values(
+            auto hints = cell_hints.get_data(f_cell);
+            dummy_fe_values.reinit(f_cell);
+            f_cell->get_dof_indices(dof_indices);
+            auto support_points = dummy_fe_values.get_quadrature_points();
+            // Fluid velocity at support points
+            dummy_fe_values[velocities].get_function_values(
               fluid_solver.present_solution, v);
-            // Fluid velocity gradient at cell center
-            fe_values[velocities].get_function_gradients(
+            // Fluid velocity gradient at support points
+            dummy_fe_values[velocities].get_function_gradients(
               fluid_solver.present_solution, grad_v);
-            // Fluid symmetric velocity gradient at cell center
-            fe_values[velocities].get_function_symmetric_gradients(
+            // Fluid symmetric velocity gradient at support points
+            dummy_fe_values[velocities].get_function_symmetric_gradients(
               fluid_solver.present_solution, sym_grad_v);
-            // Fluid pressure at cell center
-            fe_values[pressure].get_function_values(
+            // Fluid pressure at support points
+            dummy_fe_values[pressure].get_function_values(
               fluid_solver.present_solution, p);
-            // Real coordinates of fluid cell center
-            auto point = fe_values.get_quadrature_points()[0];
-            // Solid acceleration at fluid cell center
-            Vector<double> solid_acc(dim);
-            Vector<double> solid_vel(dim);
-            Utils::GridInterpolator<dim, Vector<double>> interpolator(
-              solid_solver.dof_handler, point);
-            interpolator.point_value(localized_solid_acceleration, solid_acc);
-            interpolator.point_value(localized_solid_velocity, solid_vel);
-            Tensor<1, dim> vs;
-            for (int i = 0; i < dim; ++i)
+            // Loop over the support points to calculate fsi acceleration.
+            for (unsigned int i = 0; i < unit_points.size(); ++i)
               {
-                vs[i] = solid_vel[i];
-              }
-            // Get solid cell material id
-            ptr[0]->material_id = interpolator.get_cell()->material_id();
-            // Fluid total acceleration at cell center
-            Tensor<1, dim> fluid_acc =
-              (vs - v[0]) / time.get_delta_t() + grad_v[0] * v[0];
-            (void)fluid_acc;
-            // FSI acceleration term:
-            for (unsigned int i = 0; i < dim; ++i)
-              {
-                ptr[0]->fsi_acceleration[i] = fluid_acc[i] - solid_acc[i];
+                // Skip the already-set dofs.
+                if (dof_touched[dof_indices[i]] != 0)
+                  continue;
+                auto base_index = fluid_solver.fe.system_to_base_index(i);
+                const unsigned int i_group = base_index.first.first;
+                Assert(i_group < 2,
+                       ExcMessage(
+                         "There should be only 2 groups of finite element!"));
+                if (i_group == 1)
+                  continue; // skip the pressure dofs
+                bool inside = true;
+                for (unsigned int d = 0; d < dim; ++d)
+                  if (std::abs(unit_points[i][d]) < 1e-5)
+                    {
+                      inside = false;
+                      break;
+                    }
+                if (inside)
+                  continue; // skip the in-cell support point
+                // Same as fluid_solver.fe.system_to_base_index(i).first.second;
+                const unsigned int index =
+                  fluid_solver.fe.system_to_component_index(i).first;
+                Assert(index < dim,
+                       ExcMessage("Vector component should be less than dim!"));
+                dof_touched[dof_indices[i]] = 1;
+                if (!point_in_solid(solid_solver.dof_handler,
+                                    support_points[i]))
+                  continue;
+                Utils::CellLocator<dim, DoFHandler<dim>> locator(
+                  solid_solver.dof_handler, support_points[i], *(hints[i]));
+                *(hints[i]) = locator.search();
+                Utils::GridInterpolator<dim, Vector<double>> interpolator(
+                  solid_solver.dof_handler, support_points[i], {}, *(hints[i]));
+                if (!interpolator.found_cell())
+                  {
+                    std::stringstream message;
+                    message
+                      << "Cannot find point in solid: " << support_points[i]
+                      << std::endl;
+                    AssertThrow(interpolator.found_cell(),
+                                ExcMessage(message.str()));
+                  }
+                // Solid acceleration at fluid unit point
+                Vector<double> solid_acc(dim);
+                Vector<double> solid_vel(dim);
+                interpolator.point_value(localized_solid_acceleration,
+                                         solid_acc);
+                interpolator.point_value(localized_solid_velocity, solid_vel);
+                Tensor<1, dim> vs;
+                for (int j = 0; j < dim; ++j)
+                  {
+                    vs[j] = solid_vel[j];
+                  }
+                // Fluid total acceleration at support points
+                Tensor<1, dim> fluid_acc =
+                  (vs - v[i]) / time.get_delta_t() + grad_v[i] * v[i];
+                auto line = dof_indices[i];
+                // Note that we are setting the value of the constraint to the
+                // velocity delta!
+                tmp_fsi_acceleration(line) =
+                  fluid_acc[index] - solid_acc[index];
               }
           }
         // Dirichlet BCs
@@ -515,6 +547,8 @@ namespace MPI
               }
           }
       }
+    tmp_fsi_acceleration.compress(VectorOperation::insert);
+    fluid_solver.fsi_acceleration = tmp_fsi_acceleration;
     if (use_dirichlet_bc)
       {
         inner_nonzero.close();

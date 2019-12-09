@@ -270,6 +270,9 @@ namespace Fluid
                        locally_relevant_scalar_dofs,
                        mpi_communicator);
 
+      fsi_acceleration.reinit(
+        owned_partitioning, relevant_partitioning, mpi_communicator);
+
       // Cell property
       setup_cell_property();
 
@@ -346,6 +349,7 @@ namespace Fluid
       std::vector<double> sigma_pml(n_q_points);
       std::vector<Tensor<1, dim>> artificial_bf(n_q_points);
       std::vector<double> ind(n_q_points);
+      std::vector<Tensor<1, dim>> fsi_acc_values(n_q_points);
 
       std::vector<double> div_phi_u(dofs_per_cell);
       std::vector<Tensor<1, dim>> phi_u(dofs_per_cell);
@@ -398,6 +402,9 @@ namespace Fluid
                                      artificial_bf);
 
               scalar_fe_values.get_function_values(indicator, ind);
+
+              fe_values[velocities].get_function_values(fsi_acceleration,
+                                                        fsi_acc_values);
 
               for (unsigned int q = 0; q < n_q_points; ++q)
                 {
@@ -575,7 +582,7 @@ namespace Fluid
                             {
                               local_matrix(i, j) +=
                                 -(tau_SUPG * phi_u[j] * grad_phi_u[i] *
-                                  (p[0]->fsi_acceleration * rho)) *
+                                  (fsi_acc_values[q] * rho)) *
                                 fe_values.JxW(q);
                             }
                         }
@@ -658,11 +665,11 @@ namespace Fluid
                              time.get_delta_t()) *
                             ind[q]) *
                         fe_values.JxW(q);
-                      if (ind[q] == 1)
+                      if (ind[q] > 0)
                         {
                           local_rhs(i) +=
                             (scalar_product(grad_phi_u[i], p[0]->fsi_stress) +
-                             (p[0]->fsi_acceleration * rho) *
+                             (fsi_acc_values[q] * rho) *
                                (phi_u[i] + tau_PSPG * grad_phi_p[i] +
                                 tau_SUPG * current_velocity_values[q] *
                                   grad_phi_u[i])) *
@@ -851,7 +858,8 @@ namespace Fluid
         }
       if (parameters.simulation_type == "Fluid" && time.time_to_refine())
         {
-          refine_mesh(1, 3);
+          refine_mesh(parameters.global_refinements[0],
+                      parameters.global_refinements[0] + 3);
         }
     }
 
