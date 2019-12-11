@@ -58,7 +58,8 @@ namespace Solid
               construct_particles();
               utilities<dim>::vtk_write_particle(m_body->get_particles(),
                                                  m_body->get_num_part(),
-                                                 time.get_timestep());
+                                                 time.get_timestep(),
+                                                 "particles");
             }
           this->output_results(time.get_timestep());
         }
@@ -90,7 +91,8 @@ namespace Solid
             {
               utilities<dim>::vtk_write_particle(m_body->get_particles(),
                                                  m_body->get_num_part(),
-                                                 time.get_timestep());
+                                                 time.get_timestep(),
+                                                 "particles");
             }
         }
       if (parameters.simulation_type == "Solid" && time.time_to_save())

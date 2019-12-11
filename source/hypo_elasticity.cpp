@@ -52,8 +52,10 @@ namespace Solid
       {
         construct_particles();
         this->output_results(time.get_timestep());
-        utilities<dim>::vtk_write_particle(
-          m_body->get_particles(), m_body->get_num_part(), time.get_timestep());
+        utilities<dim>::vtk_write_particle(m_body->get_particles(),
+                                           m_body->get_num_part(),
+                                           time.get_timestep(),
+                                           "particles");
       }
     time.increment();
     std::cout << std::endl
@@ -64,8 +66,10 @@ namespace Solid
     if (time.time_to_output())
       {
         this->output_results(time.get_timestep());
-        utilities<dim>::vtk_write_particle(
-          m_body->get_particles(), m_body->get_num_part(), time.get_timestep());
+        utilities<dim>::vtk_write_particle(m_body->get_particles(),
+                                           m_body->get_num_part(),
+                                           time.get_timestep(),
+                                           "particles");
       }
   }
 
