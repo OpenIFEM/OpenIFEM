@@ -27,7 +27,8 @@ int main(int argc, char *argv[])
             Point<2>(0, 0),
             Point<2>(L, H),
             true);
-          Solid::HypoElasticity<2> solid(solid_tria, params, 0.125, 1.3);
+          Solid::HypoElasticity<2> solid(
+            solid_tria, params, h / pow(2, params.global_refinements[1]), 1.3);
           solid.run();
         }
       else

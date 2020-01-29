@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
             Point<3>(L, H, H),
             true);
           Solid::MPI::SharedHypoElasticity<3> solid(
-            solid_tria, params, 0.125, 1.3);
+            solid_tria, params, h / pow(2, params.global_refinements[1]), 1.3);
           solid.run();
         }
       else
