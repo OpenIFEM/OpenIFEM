@@ -312,15 +312,27 @@ namespace MPI
         dummy_fe_values.reinit(scalar_f_cell);
         scalar_f_cell->get_dof_indices(scalar_dof_indices);
         auto support_points = dummy_fe_values.get_quadrature_points();
+        int inside_count = 0;
         for (unsigned int i = 0; i < unit_points.size(); ++i)
           {
-            auto scalar_line = scalar_dof_indices[i];
             if (!point_in_solid(solid_solver.dof_handler, support_points[i]))
               {
-                continue;
+                break;
               }
+            ++inside_count;
+            auto scalar_line = scalar_dof_indices[i];
             indicator_constraint.add_line(scalar_line);
             indicator_constraint.set_inhomogeneity(scalar_line, 1);
+          }
+        // Only four nodes are all in solid we count it as artificial
+        if (inside_count == GeometryInfo<dim>::vertices_per_cell)
+          {
+            for (unsigned int i = 0; i < unit_points.size(); ++i)
+              {
+                auto scalar_line = scalar_dof_indices[i];
+                indicator_constraint.add_line(scalar_line);
+                indicator_constraint.set_inhomogeneity(scalar_line, 1);
+              }
           }
       }
     indicator_constraint.close();
