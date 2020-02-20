@@ -129,6 +129,13 @@ namespace Solid
       std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
       unsigned int n_face_q_points = face_quad_formula.size();
       unsigned int face_quad_point_id = 0;
+
+      FEFaceValues<dim> fe_face_values(
+        fe,
+        face_quad_formula,
+        update_values | update_quadrature_points | update_normal_vectors |
+          update_JxW_values);
+
       for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
            ++cell)
         {
@@ -159,9 +166,26 @@ namespace Solid
             {
               if (cell->face(f)->at_boundary())
                 {
+                  fe_face_values.reinit(cell, f);
+                  // Get FSI stress values on face quadrature points
+                  std::vector<Tensor<2, dim>> fsi_stress(n_face_q_points);
                   for (unsigned int q = 0; q < n_face_q_points; ++q)
                     {
-                      auto traction = ptr[f]->fsi_traction;
+                      Tensor<1, dim> traction;
+                      Assert(parameters.solid_degree == 1,
+                             ExcMessage(
+                               "FSI traction only supports 1st order solid!"));
+                      for (unsigned int v = 0;
+                           v < GeometryInfo<dim>::vertices_per_face;
+                           ++v)
+                        {
+                          unsigned int function_no = v * dim;
+                          fsi_stress[q] +=
+                            fe_face_values.shape_value(function_no, q) *
+                            ptr[f]->fsi_stress[v];
+                        }
+                      traction =
+                        fsi_stress[q] * fe_face_values.normal_vector(0);
                       for (unsigned int n = 0; n < dim; ++n)
                         {
                           m_body->get_face_quad_points()[face_quad_point_id]

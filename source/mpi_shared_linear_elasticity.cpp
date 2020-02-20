@@ -166,6 +166,27 @@ namespace Solid
                         }
 
                       fe_face_values.reinit(cell, face);
+                      // Get FSI stress values on face quadrature points
+                      std::vector<Tensor<2, dim>> fsi_stress(n_f_q_points);
+                      if (parameters.simulation_type == "FSI")
+                        {
+                          Assert(
+                            parameters.solid_degree == 1,
+                            ExcMessage(
+                              "FSI traction only supports 1st order solid!"));
+                          for (unsigned int q = 0; q < n_f_q_points; ++q)
+                            {
+                              for (unsigned int v = 0;
+                                   v < GeometryInfo<dim>::vertices_per_face;
+                                   ++v)
+                                {
+                                  unsigned int function_no = v * dim;
+                                  fsi_stress[q] +=
+                                    fe_face_values.shape_value(function_no, q) *
+                                    p[face]->fsi_stress[v];
+                                }
+                            }
+                        }
                       for (unsigned int q = 0; q < n_f_q_points; ++q)
                         {
                           if (parameters.simulation_type != "FSI" &&
@@ -178,7 +199,8 @@ namespace Solid
                             }
                           else if (parameters.simulation_type == "FSI")
                             {
-                              traction = p[face]->fsi_traction;
+                              traction =
+                                fsi_stress[q] * fe_face_values.normal_vector(0);
                             }
                           for (unsigned int j = 0; j < dofs_per_cell; ++j)
                             {
