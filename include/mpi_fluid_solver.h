@@ -161,9 +161,6 @@ namespace Fluid
       PETScWrappers::MPI::BlockVector solution_increment;
       PETScWrappers::MPI::BlockVector system_rhs;
 
-      /// Indicator vector
-      PETScWrappers::MPI::Vector indicator;
-
       /// FSI acceleration vector, which is attached on the solution dof
       /// handloer
       PETScWrappers::MPI::BlockVector fsi_acceleration;
@@ -218,6 +215,8 @@ namespace Fluid
       /// will only be used in FSI simulations.
       struct CellProperty
       {
+        int indicator; //!< Domain indicator: 1 for artificial fluid 0 for real
+                       //! fluid.
         Tensor<1, dim>
           fsi_acceleration; //!< The acceleration term in FSI force.
         SymmetricTensor<2, dim> fsi_stress; //!< The stress term in FSI force.

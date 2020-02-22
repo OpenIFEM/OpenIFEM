@@ -225,6 +225,7 @@ namespace Fluid
               cell_property.initialize(cell, 1);
               const std::vector<std::shared_ptr<CellProperty>> p =
                 cell_property.get_data(cell);
+              p[0]->indicator = 0;
               p[0]->fsi_acceleration = 0;
               p[0]->fsi_stress = 0;
               p[0]->material_id = 1;
@@ -269,11 +270,6 @@ namespace Fluid
       // system_rhs is non-ghosted because it is only used in the linear
       // solver and residual evaluation.
       system_rhs.reinit(owned_partitioning, mpi_communicator);
-
-      // indicator and fsi_acceleration for fsi
-      indicator.reinit(locally_owned_scalar_dofs,
-                       locally_relevant_scalar_dofs,
-                       mpi_communicator);
 
       // Cell property
       setup_cell_property();
@@ -394,8 +390,18 @@ namespace Fluid
       data_out.add_data_vector(subdomain, "subdomain");
 
       // Indicator
-      data_out.add_data_vector(scalar_dof_handler, indicator, "Indicator");
-
+      Vector<float> ind(triangulation.n_active_cells());
+      for (auto cell = triangulation.begin_active();
+           cell != triangulation.end();
+           ++cell)
+        {
+          if (cell->is_locally_owned())
+            {
+              auto p = cell_property.get_data(cell);
+              ind[cell->active_cell_index()] = p[0]->indicator;
+            }
+        }
+      data_out.add_data_vector(ind, "Indicator");
       // FSI acceleration
       Vector<float> fsi_acc_x(triangulation.n_active_cells());
       Vector<float> fsi_acc_y(triangulation.n_active_cells());

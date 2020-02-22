@@ -176,9 +176,6 @@ namespace Fluid
                                          update_quadrature_points |
                                          update_JxW_values);
 
-      FEValues<dim> scalar_fe_values(
-        scalar_fe, volume_quad_formula, update_values);
-
       const unsigned int dofs_per_cell = fe.dofs_per_cell;
       const unsigned int n_q_points = volume_quad_formula.size();
       const unsigned int n_face_q_points = face_quad_formula.size();
@@ -196,7 +193,6 @@ namespace Fluid
       std::vector<Tensor<2, dim>> current_velocity_gradients(n_q_points);
       std::vector<double> current_velocity_divergences(n_q_points);
       std::vector<double> current_pressure_values(n_q_points);
-      std::vector<double> ind(n_q_points);
       std::vector<Tensor<1, dim>> fsi_acc_values(n_q_points);
 
       std::vector<double> div_phi_u(dofs_per_cell);
@@ -204,18 +200,16 @@ namespace Fluid
       std::vector<Tensor<2, dim>> grad_phi_u(dofs_per_cell);
       std::vector<double> phi_p(dofs_per_cell);
 
-      for (auto cell = dof_handler.begin_active(),
-                scalar_cell = scalar_dof_handler.begin_active();
-           cell != dof_handler.end();
-           ++cell, ++scalar_cell)
+      for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+           ++cell)
         {
           if (cell->is_locally_owned())
             {
               auto p = cell_property.get_data(cell);
+              const int ind = p[0]->indicator;
               const double rho = parameters.fluid_rho;
 
               fe_values.reinit(cell);
-              scalar_fe_values.reinit(scalar_cell);
 
               if (assemble_system)
                 {
@@ -235,8 +229,6 @@ namespace Fluid
 
               fe_values[pressure].get_function_values(present_solution,
                                                       current_pressure_values);
-
-              scalar_fe_values.get_function_values(indicator, ind);
 
               fe_values[velocities].get_function_values(fsi_acceleration,
                                                         fsi_acc_values);
@@ -286,7 +278,7 @@ namespace Fluid
                            current_velocity_values[q] * phi_u[i] * rho -
                          gravity * phi_u[i] * rho) *
                         fe_values.JxW(q);
-                      if (ind[q] > 0)
+                      if (ind == 1)
                         {
                           local_rhs(i) +=
                             (scalar_product(grad_phi_u[i], p[0]->fsi_stress) +

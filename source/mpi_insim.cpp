@@ -175,9 +175,6 @@ namespace Fluid
                                          update_quadrature_points |
                                          update_JxW_values);
 
-      FEValues<dim> scalar_fe_values(
-        scalar_fe, volume_quad_formula, update_values);
-
       const unsigned int dofs_per_cell = fe.dofs_per_cell;
       const unsigned int u_dofs = fe.base_element(0).dofs_per_cell;
       const unsigned int p_dofs = fe.base_element(1).dofs_per_cell;
@@ -200,7 +197,6 @@ namespace Fluid
       std::vector<Tensor<2, dim>> current_velocity_gradients(n_q_points);
       std::vector<double> current_pressure_values(n_q_points);
       std::vector<Tensor<1, dim>> present_velocity_values(n_q_points);
-      std::vector<double> ind(n_q_points);
       std::vector<Tensor<1, dim>> fsi_acc_values(n_q_points);
 
       std::vector<double> div_phi_u(dofs_per_cell);
@@ -208,17 +204,14 @@ namespace Fluid
       std::vector<Tensor<2, dim>> grad_phi_u(dofs_per_cell);
       std::vector<double> phi_p(dofs_per_cell);
 
-      for (auto cell = dof_handler.begin_active(),
-                scalar_cell = scalar_dof_handler.begin_active();
-           cell != dof_handler.end();
-           ++cell, ++scalar_cell)
+      for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+           ++cell)
         {
           if (cell->is_locally_owned())
             {
               auto p = cell_property.get_data(cell);
 
               fe_values.reinit(cell);
-              scalar_fe_values.reinit(scalar_cell);
 
               local_matrix = 0;
               local_mass_matrix = 0;
@@ -236,8 +229,6 @@ namespace Fluid
               fe_values[velocities].get_function_values(
                 present_solution, present_velocity_values);
 
-              scalar_fe_values.get_function_values(indicator, ind);
-
               fe_values[velocities].get_function_values(fsi_acceleration,
                                                         fsi_acc_values);
 
@@ -246,6 +237,7 @@ namespace Fluid
               //
               for (unsigned int q = 0; q < n_q_points; ++q)
                 {
+                  const int ind = p[0]->indicator;
                   const double rho = parameters.fluid_rho;
                   for (unsigned int k = 0; k < dofs_per_cell; ++k)
                     {
@@ -304,7 +296,7 @@ namespace Fluid
                            phi_u[i] / time.get_delta_t() * rho +
                          gravity * phi_u[i] * rho) *
                         fe_values.JxW(q);
-                      if (ind[q] > 0)
+                      if (ind == 1)
                         {
                           local_rhs(i) +=
                             (scalar_product(grad_phi_u[i], p[0]->fsi_stress) +
