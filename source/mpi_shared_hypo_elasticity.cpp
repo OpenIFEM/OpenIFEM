@@ -166,7 +166,26 @@ namespace Solid
             {
               if (cell->face(f)->at_boundary())
                 {
+                  std::vector<Point<dim>> vertex_displacement(
+                    GeometryInfo<dim>::vertices_per_face);
+                  for (unsigned int v = 0;
+                       v < GeometryInfo<dim>::vertices_per_face;
+                       ++v)
+                    {
+                      for (unsigned int d = 0; d < dim; ++d)
+                        {
+                          vertex_displacement[v][d] = serialized_displacement(
+                            cell->face(f)->vertex_dof_index(v, d));
+                        }
+                      cell->face(f)->vertex(v) += vertex_displacement[v];
+                    }
                   fe_face_values.reinit(cell, f);
+                  for (unsigned int v = 0;
+                       v < GeometryInfo<dim>::vertices_per_face;
+                       ++v)
+                    {
+                      cell->face(f)->vertex(v) -= vertex_displacement[v];
+                    }
                   // Get FSI stress values on face quadrature points
                   std::vector<Tensor<2, dim>> fsi_stress(n_face_q_points);
                   for (unsigned int q = 0; q < n_face_q_points; ++q)
@@ -179,7 +198,8 @@ namespace Solid
                            v < GeometryInfo<dim>::vertices_per_face;
                            ++v)
                         {
-                          unsigned int function_no = v * dim;
+                          const unsigned int function_no =
+                            fe.system_to_component_index(0).first;
                           fsi_stress[q] +=
                             fe_face_values.shape_value(function_no, q) *
                             ptr[f]->fsi_stress[v];
