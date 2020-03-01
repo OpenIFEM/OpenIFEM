@@ -40,6 +40,9 @@ set(shell-element_tests solid_shell_plate)
 # All tests
 set(tests ${serial_tests} ${mpi_tests})
 
+# Number of cores used in MPI tests
+set(MPI_TEST_N_CORES "2" CACHE STRING "Number of cores used in MPI tests")
+
 # Create a subdirectory and add an executible for each test
 foreach(test ${tests})
   set(input ${CMAKE_CURRENT_SOURCE_DIR}/${test}/${test}.prm)
@@ -56,7 +59,7 @@ foreach(test ${tests})
   list(FIND mpi_tests ${test} index)
   if(${index} GREATER -1)
     # FIXME: it is not good practice to specify the number of processors in this way
-    add_test(NAME ${test} COMMAND mpirun -n 2 ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${test} ${input} WORKING_DIRECTORY ${output})
+    add_test(NAME ${test} COMMAND mpirun -n ${MPI_TEST_N_CORES} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${test} ${input} WORKING_DIRECTORY ${output})
   else()
     add_test(NAME ${test} COMMAND ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${test} ${input} WORKING_DIRECTORY ${output})
   endif()
