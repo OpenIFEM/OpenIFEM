@@ -118,6 +118,7 @@ namespace MPI
   void FSI<dim>::update_vertices_mask()
   {
     // Initilize vertices mask
+    vertices_mask.clear();
     vertices_mask.resize(fluid_solver.triangulation.n_vertices(), false);
     for (auto cell = fluid_solver.triangulation.begin_active();
          cell != fluid_solver.triangulation.end();
