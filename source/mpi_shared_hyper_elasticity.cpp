@@ -502,8 +502,32 @@ namespace Solid
                            v < GeometryInfo<dim>::vertices_per_face;
                            ++v)
                         {
-                          const unsigned int function_no =
-                            fe.system_to_component_index(0).first;
+                          // shape_value() has the size of
+                          // dof_per_cells, even for fe_face_values. So
+                          // we have to loop over the cell vertices to
+                          // locate where we are
+                          unsigned int function_no;
+                          for (unsigned int cell_v = 0;
+                               cell_v < GeometryInfo<dim>::vertices_per_cell;
+                               ++cell_v)
+                            {
+                              // Get the corresponding cell vertex
+                              if (cell->face(face)->vertex_index(v) ==
+                                  cell->vertex_index(cell_v))
+                                // Get the dof number
+                                {
+                                  types::global_dof_index v_dof =
+                                    cell->vertex_dof_index(cell_v, 0);
+                                  for (unsigned d = 0;
+                                       d < local_dof_indices.size();
+                                       ++d)
+                                    {
+                                      if (local_dof_indices[d] == v_dof)
+                                        function_no = d;
+                                    }
+                                  break;
+                                }
+                            }
                           fsi_stress[q] +=
                             fe_face_values.shape_value(function_no, q) *
                             p[face]->fsi_stress[v];
