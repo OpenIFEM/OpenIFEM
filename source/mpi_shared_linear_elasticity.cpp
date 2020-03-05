@@ -25,8 +25,9 @@ namespace Solid
     {
       TimerOutput::Scope timer_section(timer, "Assemble system");
 
-      double gamma = 0.5 + parameters.damping;
-      double beta = gamma / 2;
+      double alpha = 0.95;
+      double gamma = 1.5 - alpha;
+      double beta = pow((2 - alpha), 2) / 4;
 
       system_matrix = 0;
       stiffness_matrix = 0;
@@ -293,8 +294,9 @@ namespace Solid
       std::cout.precision(6);
       std::cout.width(12);
 
-      double gamma = 0.5 + parameters.damping;
-      double beta = gamma / 2;
+      double alpha = 0.95;
+      double gamma = 1.5 - alpha;
+      double beta = pow((2 - alpha), 2) / 4;
 
       if (first_step)
         {
@@ -348,6 +350,11 @@ namespace Solid
                                previous_acceleration,
                                dt * dt * beta,
                                current_acceleration);
+
+      current_displacement *= alpha;
+      current_displacement.add(1 - alpha, previous_displacement);
+      current_velocity *= alpha;
+      current_velocity.add(1 - alpha, previous_velocity);
 
       // update the previous values
       previous_acceleration = current_acceleration;
