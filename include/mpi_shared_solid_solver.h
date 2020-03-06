@@ -196,7 +196,7 @@ namespace Solid
        * denotes sigma_{ij} at vertex k.
        */
       mutable std::vector<std::vector<PETScWrappers::MPI::Vector>> strain,
-        stress, previous_strain;
+        stress, strain_rate;
 
       MPI_Comm mpi_communicator;
       const unsigned int n_mpi_processes;

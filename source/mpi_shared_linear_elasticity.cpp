@@ -70,12 +70,7 @@ namespace Solid
           for (unsigned int j = 0; j < dim; ++j)
 
             {
-              localized_strain_rate[i][j] = strain[i][j];
-              Vector<double> localized_previous_strain_component(
-                previous_strain[i][j]);
-              localized_strain_rate[i][j] -=
-                localized_previous_strain_component;
-              localized_strain_rate[i][j] /= time.get_delta_t();
+              localized_strain_rate[i][j] = strain_rate[i][j];
             }
         }
 
@@ -444,7 +439,7 @@ namespace Solid
         {
           for (unsigned int j = 0; j < dim; ++j)
             {
-              previous_strain[i][j] = strain[i][j];
+              strain_rate[i][j] = 0.0;
               strain[i][j] = 0.0;
               stress[i][j] = 0.0;
             }
@@ -462,6 +457,10 @@ namespace Solid
         dim,
         std::vector<Vector<double>>(dim,
                                     Vector<double>(scalar_fe.dofs_per_cell)));
+      std::vector<std::vector<Vector<double>>> cell_strain_rate(
+        dim,
+        std::vector<Vector<double>>(dim,
+                                    Vector<double>(scalar_fe.dofs_per_cell)));
       std::vector<std::vector<Vector<double>>> quad_strain(
         dim,
         std::vector<Vector<double>>(
@@ -470,9 +469,15 @@ namespace Solid
         dim,
         std::vector<Vector<double>>(
           dim, Vector<double>(volume_quad_formula.size())));
+      std::vector<std::vector<Vector<double>>> quad_strain_rate(
+        dim,
+        std::vector<Vector<double>>(
+          dim, Vector<double>(volume_quad_formula.size())));
 
       // Displacement gradients at quadrature points.
       std::vector<Tensor<2, dim>> current_displacement_gradients(
+        volume_quad_formula.size());
+      std::vector<Tensor<2, dim>> current_velocity_gradients(
         volume_quad_formula.size());
 
       // The projection matrix from quadrature points to the dofs.
@@ -494,6 +499,7 @@ namespace Solid
       local_sorrounding_cells = 1.0;
 
       Vector<double> localized_current_displacement(current_displacement);
+      Vector<double> localized_current_velocity(current_velocity);
 
       for (; cell != dof_handler.end(); ++cell, ++scalar_cell)
         {
@@ -502,6 +508,8 @@ namespace Solid
               fe_values.reinit(cell);
               fe_values[displacements].get_function_gradients(
                 localized_current_displacement, current_displacement_gradients);
+              fe_values[displacements].get_function_gradients(
+                localized_current_velocity, current_velocity_gradients);
               int mat_id = cell->material_id();
               if (parameters.n_solid_parts == 1)
                 mat_id = 1;
@@ -509,7 +517,8 @@ namespace Solid
 
               for (unsigned int q = 0; q < volume_quad_formula.size(); ++q)
                 {
-                  SymmetricTensor<2, dim> tmp_strain, tmp_stress;
+                  SymmetricTensor<2, dim> tmp_strain, tmp_stress,
+                    tmp_strain_rate;
                   for (unsigned int i = 0; i < dim; ++i)
                     {
                       for (unsigned int j = 0; j < dim; ++j)
@@ -519,6 +528,11 @@ namespace Solid
                              current_displacement_gradients[q][j][i]) /
                             2;
                           quad_strain[i][j][q] = tmp_strain[i][j];
+                          tmp_strain_rate[i][j] =
+                            (current_velocity_gradients[q][i][j] +
+                             current_velocity_gradients[q][j][i]) /
+                            2;
+                          quad_strain_rate[i][j][q] = tmp_strain_rate[i][j];
                         }
                     }
                   tmp_stress = elasticity * tmp_strain;
@@ -537,10 +551,14 @@ namespace Solid
                     {
                       qpt_to_dof.vmult(cell_strain[i][j], quad_strain[i][j]);
                       qpt_to_dof.vmult(cell_stress[i][j], quad_stress[i][j]);
+                      qpt_to_dof.vmult(cell_strain_rate[i][j],
+                                       quad_strain_rate[i][j]);
                       scalar_cell->distribute_local_to_global(cell_strain[i][j],
                                                               strain[i][j]);
                       scalar_cell->distribute_local_to_global(cell_stress[i][j],
                                                               stress[i][j]);
+                      scalar_cell->distribute_local_to_global(
+                        cell_strain_rate[i][j], strain_rate[i][j]);
                     }
                 }
               scalar_cell->distribute_local_to_global(local_sorrounding_cells,
@@ -555,6 +573,7 @@ namespace Solid
             {
               strain[i][j].compress(VectorOperation::add);
               stress[i][j].compress(VectorOperation::add);
+              strain_rate[i][j].compress(VectorOperation::add);
               const unsigned int local_begin =
                 surrounding_cells.local_range().first;
               const unsigned int local_end =
@@ -563,9 +582,11 @@ namespace Solid
                 {
                   strain[i][j][k] /= surrounding_cells[k];
                   stress[i][j][k] /= surrounding_cells[k];
+                  strain_rate[i][j][k] /= surrounding_cells[k];
                 }
               strain[i][j].compress(VectorOperation::insert);
               stress[i][j].compress(VectorOperation::insert);
+              strain_rate[i][j].compress(VectorOperation::insert);
             }
         }
     }
