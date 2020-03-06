@@ -26,7 +26,6 @@ namespace Solid
       TimerOutput::Scope timer_section(timer, "Assemble system");
 
       double alpha = 0.95;
-      double gamma = 1.5 - alpha;
       double beta = pow((2 - alpha), 2) / 4;
 
       system_matrix = 0;
@@ -37,6 +36,11 @@ namespace Solid
                               volume_quad_formula,
                               update_values | update_gradients |
                                 update_quadrature_points | update_JxW_values);
+
+      FEValues<dim> scalar_fe_values(scalar_fe,
+                                     volume_quad_formula,
+                                     update_values | update_gradients |
+                                       update_quadrature_points);
 
       FEFaceValues<dim> fe_face_values(
         fe,
@@ -59,6 +63,21 @@ namespace Solid
       std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
       Vector<double> localized_displacement(current_displacement);
+      std::vector<std::vector<Vector<double>>> localized_strain_rate(dim);
+      for (unsigned int i = 0; i < dim; ++i)
+        {
+          localized_strain_rate[i].resize(dim);
+          for (unsigned int j = 0; j < dim; ++j)
+
+            {
+              localized_strain_rate[i][j] = strain[i][j];
+              Vector<double> localized_previous_strain_component(
+                previous_strain[i][j]);
+              localized_strain_rate[i][j] -=
+                localized_previous_strain_component;
+              localized_strain_rate[i][j] /= time.get_delta_t();
+            }
+        }
 
       // The symmetric gradients of the displacement shape functions at a
       // certain point. There are dofs_per_cell shape functions so the size is
@@ -69,9 +88,15 @@ namespace Solid
       // A "viewer" to describe the nodal dofs as a vector.
       FEValuesExtractors::Vector displacements(0);
 
+      // Strain rate used for viscous damping
+      std::vector<Tensor<1, dim>> strain_rate_divergence(n_q_points);
+      std::vector<Tensor<1, dim>> strain_rate_components(n_q_points);
+
       // Loop over cells
-      for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
-           ++cell)
+      for (auto cell = dof_handler.begin_active(),
+                scalar_cell = scalar_dof_handler.begin_active();
+           cell != dof_handler.end();
+           ++cell, ++scalar_cell)
         {
           // Only operates on the locally owned cells
           if (cell->subdomain_id() == this_mpi_process)
@@ -88,6 +113,27 @@ namespace Solid
               local_rhs = 0;
 
               fe_values.reinit(cell);
+              scalar_fe_values.reinit(scalar_cell);
+
+              // Compute the divergence of strain rate
+              for (unsigned int q = 0; q < n_q_points; ++q)
+                {
+                  strain_rate_divergence[q] = 0;
+                }
+              for (unsigned int i = 0; i < dim; ++i)
+                {
+                  for (unsigned int j = 0; j < dim; ++j)
+                    {
+
+                      scalar_fe_values.get_function_gradients(
+                        localized_strain_rate[i][j], strain_rate_components);
+                      for (unsigned int q = 0; q < n_q_points; ++q)
+                        {
+                          strain_rate_divergence[q][i] +=
+                            strain_rate_components[q][j];
+                        }
+                    }
+                }
 
               // Loop over quadrature points
               for (unsigned int q = 0; q < n_q_points; ++q)
@@ -121,9 +167,12 @@ namespace Solid
                                 symmetric_grad_phi[j] * fe_values.JxW(q);
                             }
                         }
-                      // zero body force
+                      // zero body force, viscous damping
                       Tensor<1, dim> gravity;
-                      local_rhs[i] += phi[i] * gravity * rho * fe_values.JxW(q);
+                      local_rhs[i] +=
+                        (phi[i] * gravity * rho - parameters.damping * phi[i] *
+                                                    strain_rate_divergence[q]) *
+                        fe_values.JxW(q);
                     }
                 }
 
@@ -309,7 +358,7 @@ namespace Solid
           this->output_results(time.get_timestep());
         }
 
-      else if (parameters.simulation_type == "FSI")
+      else
         assemble_system(false);
 
       const double dt = time.get_delta_t();
@@ -395,6 +444,7 @@ namespace Solid
         {
           for (unsigned int j = 0; j < dim; ++j)
             {
+              previous_strain[i][j] = strain[i][j];
               strain[i][j] = 0.0;
               stress[i][j] = 0.0;
             }

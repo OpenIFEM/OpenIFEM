@@ -69,6 +69,7 @@ namespace Solid
       using SharedSolidSolver<dim>::previous_displacement;
       using SharedSolidSolver<dim>::strain;
       using SharedSolidSolver<dim>::stress;
+      using SharedSolidSolver<dim>::previous_strain;
       using SharedSolidSolver<dim>::mpi_communicator;
       using SharedSolidSolver<dim>::n_mpi_processes;
       using SharedSolidSolver<dim>::this_mpi_process;

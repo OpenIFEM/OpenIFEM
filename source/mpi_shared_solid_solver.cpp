@@ -153,6 +153,12 @@ namespace Solid
           spacedim,
           PETScWrappers::MPI::Vector(locally_owned_scalar_dofs,
                                      mpi_communicator)));
+      previous_strain = std::vector<std::vector<PETScWrappers::MPI::Vector>>(
+        spacedim,
+        std::vector<PETScWrappers::MPI::Vector>(
+          spacedim,
+          PETScWrappers::MPI::Vector(locally_owned_scalar_dofs,
+                                     mpi_communicator)));
 
       // Set up cell property, which contains the FSI traction required in FSI
       // simulation
