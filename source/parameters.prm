@@ -125,7 +125,7 @@ subsection Solid material properties
 end
 
 subsection Solid solver control
-  # Artifitial damping.
+  # Artifitial damping -alpha for HHT-alpha time integraion. 0 < -alpha < 0.3.
   set Damping = 0.0
 
   # Number of Newton-Raphson iterations allowed, used by hyperelastic solver only
