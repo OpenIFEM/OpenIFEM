@@ -153,7 +153,7 @@ namespace Solid
           spacedim,
           PETScWrappers::MPI::Vector(locally_owned_scalar_dofs,
                                      mpi_communicator)));
-      strain_rate = std::vector<std::vector<PETScWrappers::MPI::Vector>>(
+      previous_strain = std::vector<std::vector<PETScWrappers::MPI::Vector>>(
         spacedim,
         std::vector<PETScWrappers::MPI::Vector>(
           spacedim,
