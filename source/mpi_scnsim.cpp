@@ -266,6 +266,9 @@ namespace Fluid
       // solver and residual evaluation.
       system_rhs.reinit(owned_partitioning, mpi_communicator);
 
+      fsi_acceleration.reinit(
+        owned_partitioning, relevant_partitioning, mpi_communicator);
+
       // Cell property
       setup_cell_property();
 
@@ -337,6 +340,7 @@ namespace Fluid
       std::vector<double> present_pressure_values(n_q_points);
       std::vector<double> sigma_pml(n_q_points);
       std::vector<Tensor<1, dim>> artificial_bf(n_q_points);
+      std::vector<Tensor<1, dim>> fsi_acc_values(n_q_points);
 
       std::vector<double> div_phi_u(dofs_per_cell);
       std::vector<Tensor<1, dim>> phi_u(dofs_per_cell);
@@ -385,6 +389,9 @@ namespace Fluid
                 fe_values.get_quadrature_points(), sigma_pml, 0);
               body_force->value_list(fe_values.get_quadrature_points(),
                                      artificial_bf);
+
+              fe_values[velocities].get_function_values(fsi_acceleration,
+                                                        fsi_acc_values);
 
               for (unsigned int q = 0; q < n_q_points; ++q)
                 {
@@ -561,7 +568,7 @@ namespace Fluid
                             {
                               local_matrix(i, j) +=
                                 -(tau_SUPG * phi_u[j] * grad_phi_u[i] *
-                                  (p[0]->fsi_acceleration * rho)) *
+                                  (fsi_acc_values[q] * rho)) *
                                 fe_values.JxW(q);
                             }
                         }
@@ -648,7 +655,7 @@ namespace Fluid
                         {
                           local_rhs(i) +=
                             (scalar_product(grad_phi_u[i], p[0]->fsi_stress) +
-                             (p[0]->fsi_acceleration * rho) *
+                             (fsi_acc_values[q] * rho) *
                                (phi_u[i] + tau_PSPG * grad_phi_p[i] +
                                 tau_SUPG * current_velocity_values[q] *
                                   grad_phi_u[i])) *

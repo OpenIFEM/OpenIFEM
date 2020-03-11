@@ -218,7 +218,7 @@ namespace Solid
        */
       struct CellProperty
       {
-        Tensor<1, spacedim> fsi_traction;
+        std::vector<Tensor<2, spacedim>> fsi_stress;
       };
     };
   } // namespace MPI

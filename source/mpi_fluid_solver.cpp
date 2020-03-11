@@ -265,6 +265,8 @@ namespace Fluid
         owned_partitioning, relevant_partitioning, mpi_communicator);
       solution_increment.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
+      fsi_acceleration.reinit(
+        owned_partitioning, relevant_partitioning, mpi_communicator);
       // system_rhs is non-ghosted because it is only used in the linear
       // solver and residual evaluation.
       system_rhs.reinit(owned_partitioning, mpi_communicator);
@@ -349,6 +351,9 @@ namespace Fluid
       std::vector<std::string> solution_names(dim, "velocity");
       solution_names.push_back("pressure");
 
+      std::vector<std::string> fsi_force_names(dim, "fsi_force");
+      fsi_force_names.push_back("dummy_fsi_force");
+
       std::vector<std::vector<PETScWrappers::MPI::Vector>> tmp_stress =
         std::vector<std::vector<PETScWrappers::MPI::Vector>>(
           dim,
@@ -369,6 +374,10 @@ namespace Fluid
       // vector to be output must be ghosted
       data_out.add_data_vector(present_solution,
                                solution_names,
+                               DataOut<dim>::type_dof_data,
+                               data_component_interpretation);
+      data_out.add_data_vector(fsi_acceleration,
+                               fsi_force_names,
                                DataOut<dim>::type_dof_data,
                                data_component_interpretation);
 

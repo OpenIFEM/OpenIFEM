@@ -127,8 +127,20 @@ namespace Solid
     void SharedHypoElasticity<dim>::synchronize()
     {
       std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
+      const unsigned int dofs_per_cell = fe.dofs_per_cell;
       unsigned int n_face_q_points = face_quad_formula.size();
       unsigned int face_quad_point_id = 0;
+
+      FEValues<dim> fe_values(fe, volume_quad_formula, update_values);
+
+      FEFaceValues<dim> fe_face_values(
+        fe,
+        face_quad_formula,
+        update_values | update_quadrature_points | update_normal_vectors |
+          update_JxW_values);
+
+      std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+
       for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
            ++cell)
         {
@@ -154,14 +166,76 @@ namespace Solid
                     }
                 }
             }
+          cell->get_dof_indices(local_dof_indices);
           auto ptr = cell_property.get_data(cell);
           for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
             {
               if (cell->face(f)->at_boundary())
                 {
+                  std::vector<Point<dim>> vertex_displacement(
+                    GeometryInfo<dim>::vertices_per_face);
+                  for (unsigned int v = 0;
+                       v < GeometryInfo<dim>::vertices_per_face;
+                       ++v)
+                    {
+                      for (unsigned int d = 0; d < dim; ++d)
+                        {
+                          vertex_displacement[v][d] = serialized_displacement(
+                            cell->face(f)->vertex_dof_index(v, d));
+                        }
+                      cell->face(f)->vertex(v) += vertex_displacement[v];
+                    }
+                  fe_face_values.reinit(cell, f);
+                  for (unsigned int v = 0;
+                       v < GeometryInfo<dim>::vertices_per_face;
+                       ++v)
+                    {
+                      cell->face(f)->vertex(v) -= vertex_displacement[v];
+                    }
+                  // Get FSI stress values on face quadrature points
+                  std::vector<Tensor<2, dim>> fsi_stress(n_face_q_points);
                   for (unsigned int q = 0; q < n_face_q_points; ++q)
                     {
-                      auto traction = ptr[f]->fsi_traction;
+                      Tensor<1, dim> traction;
+                      Assert(parameters.solid_degree == 1,
+                             ExcMessage(
+                               "FSI traction only supports 1st order solid!"));
+                      for (unsigned int v = 0;
+                           v < GeometryInfo<dim>::vertices_per_face;
+                           ++v)
+                        {
+                          // shape_value() has the size of
+                          // dof_per_cells, even for fe_face_values. So
+                          // we have to loop over the cell vertices to
+                          // locate where we are
+                          unsigned int function_no;
+                          for (unsigned int cell_v = 0;
+                               cell_v < GeometryInfo<dim>::vertices_per_cell;
+                               ++cell_v)
+                            {
+                              // Get the corresponding cell vertex
+                              if (cell->face(f)->vertex_index(v) ==
+                                  cell->vertex_index(cell_v))
+                                // Get the dof number
+                                {
+                                  types::global_dof_index v_dof =
+                                    cell->vertex_dof_index(cell_v, 0);
+                                  for (unsigned d = 0;
+                                       d < local_dof_indices.size();
+                                       ++d)
+                                    {
+                                      if (local_dof_indices[d] == v_dof)
+                                        function_no = d;
+                                    }
+                                  break;
+                                }
+                            }
+                          fsi_stress[q] +=
+                            fe_face_values.shape_value(function_no, q) *
+                            ptr[f]->fsi_stress[v];
+                        }
+                      traction =
+                        fsi_stress[q] * fe_face_values.normal_vector(q);
                       for (unsigned int n = 0; n < dim; ++n)
                         {
                           m_body->get_face_quad_points()[face_quad_point_id]

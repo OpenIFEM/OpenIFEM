@@ -57,6 +57,8 @@ namespace Solid
 
       std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
+      Vector<double> localized_displacement(current_displacement);
+
       // The symmetric gradients of the displacement shape functions at a
       // certain point. There are dofs_per_cell shape functions so the size is
       // dofs_per_cell.
@@ -165,7 +167,81 @@ namespace Solid
                             }
                         }
 
-                      fe_face_values.reinit(cell, face);
+                      // Get FSI stress values on face quadrature points
+                      std::vector<Tensor<2, dim>> fsi_stress(n_f_q_points);
+                      if (parameters.simulation_type == "FSI")
+                        {
+                          Assert(
+                            parameters.solid_degree == 1,
+                            ExcMessage(
+                              "FSI traction only supports 1st order solid!"));
+                          std::vector<Point<dim>> vertex_displacement(
+                            GeometryInfo<dim>::vertices_per_face);
+                          for (unsigned int v = 0;
+                               v < GeometryInfo<dim>::vertices_per_face;
+                               ++v)
+                            {
+                              for (unsigned int d = 0; d < dim; ++d)
+                                {
+                                  vertex_displacement[v][d] =
+                                    localized_displacement(
+                                      cell->face(face)->vertex_dof_index(v, d));
+                                }
+                              cell->face(face)->vertex(v) +=
+                                vertex_displacement[v];
+                            }
+                          fe_face_values.reinit(cell, face);
+                          for (unsigned int v = 0;
+                               v < GeometryInfo<dim>::vertices_per_face;
+                               ++v)
+                            {
+                              cell->face(face)->vertex(v) -=
+                                vertex_displacement[v];
+                            }
+                          for (unsigned int q = 0; q < n_f_q_points; ++q)
+                            {
+                              for (unsigned int v = 0;
+                                   v < GeometryInfo<dim>::vertices_per_face;
+                                   ++v)
+                                {
+                                  // shape_value() has the size of
+                                  // dof_per_cells, even for fe_face_values. So
+                                  // we have to loop over the cell vertices to
+                                  // locate where we are
+                                  unsigned int function_no;
+                                  for (unsigned int cell_v = 0;
+                                       cell_v <
+                                       GeometryInfo<dim>::vertices_per_cell;
+                                       ++cell_v)
+                                    {
+                                      // Get the corresponding cell vertex
+                                      if (cell->face(face)->vertex_index(v) ==
+                                          cell->vertex_index(cell_v))
+                                        // Get the dof number
+                                        {
+                                          types::global_dof_index v_dof =
+                                            cell->vertex_dof_index(cell_v, 0);
+                                          for (unsigned d = 0;
+                                               d < local_dof_indices.size();
+                                               ++d)
+                                            {
+                                              if (local_dof_indices[d] == v_dof)
+                                                function_no = d;
+                                            }
+                                          break;
+                                        }
+                                    }
+                                  fsi_stress[q] +=
+                                    fe_face_values.shape_value(function_no, q) *
+                                    p[face]->fsi_stress[v];
+                                }
+                            }
+                        }
+                      else
+                        {
+                          fe_face_values.reinit(cell, face);
+                        }
+
                       for (unsigned int q = 0; q < n_f_q_points; ++q)
                         {
                           if (parameters.simulation_type != "FSI" &&
@@ -178,7 +254,8 @@ namespace Solid
                             }
                           else if (parameters.simulation_type == "FSI")
                             {
-                              traction = p[face]->fsi_traction;
+                              traction =
+                                fsi_stress[q] * fe_face_values.normal_vector(q);
                             }
                           for (unsigned int j = 0; j < dofs_per_cell; ++j)
                             {

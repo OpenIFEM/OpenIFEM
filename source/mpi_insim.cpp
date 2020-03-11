@@ -197,6 +197,7 @@ namespace Fluid
       std::vector<Tensor<2, dim>> current_velocity_gradients(n_q_points);
       std::vector<double> current_pressure_values(n_q_points);
       std::vector<Tensor<1, dim>> present_velocity_values(n_q_points);
+      std::vector<Tensor<1, dim>> fsi_acc_values(n_q_points);
 
       std::vector<double> div_phi_u(dofs_per_cell);
       std::vector<Tensor<1, dim>> phi_u(dofs_per_cell);
@@ -227,6 +228,9 @@ namespace Fluid
 
               fe_values[velocities].get_function_values(
                 present_solution, present_velocity_values);
+
+              fe_values[velocities].get_function_values(fsi_acceleration,
+                                                        fsi_acc_values);
 
               // Assemble the system matrix and mass matrix simultaneouly.
               // The mass matrix only uses the (0, 0) and (1, 1) blocks.
@@ -296,7 +300,7 @@ namespace Fluid
                         {
                           local_rhs(i) +=
                             (scalar_product(grad_phi_u[i], p[0]->fsi_stress) +
-                             (p[0]->fsi_acceleration * rho * phi_u[i])) *
+                             (fsi_acc_values[q] * rho * phi_u[i])) *
                             fe_values.JxW(q);
                         }
                     }
@@ -481,7 +485,8 @@ namespace Fluid
         }
       if (parameters.simulation_type == "Fluid" && time.time_to_refine())
         {
-          refine_mesh(1, 3);
+          refine_mesh(parameters.global_refinements[0],
+                      parameters.global_refinements[0] + 3);
         }
     }
 
