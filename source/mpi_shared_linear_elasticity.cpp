@@ -68,6 +68,12 @@ namespace Solid
       // A "viewer" to describe the nodal dofs as a vector.
       FEValuesExtractors::Vector displacements(0);
 
+      std::vector<std::vector<Tensor<1, dim>>> fsi_stress_rows_values(dim);
+      for (unsigned int d = 0; d < dim; ++d)
+        {
+          fsi_stress_rows_values[d].resize(n_f_q_points);
+        }
+
       // Loop over cells
       for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
            ++cell)
@@ -75,13 +81,10 @@ namespace Solid
           // Only operates on the locally owned cells
           if (cell->subdomain_id() == this_mpi_process)
             {
-              auto p = cell_property.get_data(cell);
               int mat_id = cell->material_id();
               if (material.size() == 1)
                 mat_id = 1;
               elasticity = material[mat_id - 1].get_elasticity();
-              Assert(p.size() == GeometryInfo<dim>::faces_per_cell,
-                     ExcMessage("Wrong number of cell data!"));
               local_matrix = 0;
               local_stiffness = 0;
               local_rhs = 0;
@@ -171,10 +174,6 @@ namespace Solid
                       std::vector<Tensor<2, dim>> fsi_stress(n_f_q_points);
                       if (parameters.simulation_type == "FSI")
                         {
-                          Assert(
-                            parameters.solid_degree == 1,
-                            ExcMessage(
-                              "FSI traction only supports 1st order solid!"));
                           std::vector<Point<dim>> vertex_displacement(
                             GeometryInfo<dim>::vertices_per_face);
                           for (unsigned int v = 0;
@@ -191,6 +190,12 @@ namespace Solid
                                 vertex_displacement[v];
                             }
                           fe_face_values.reinit(cell, face);
+                          for (unsigned int d = 0; d < dim; ++d)
+                            {
+
+                              fe_face_values[displacements].get_function_values(
+                                fsi_stress_rows[d], fsi_stress_rows_values[d]);
+                            }
                           for (unsigned int v = 0;
                                v < GeometryInfo<dim>::vertices_per_face;
                                ++v)
@@ -200,42 +205,15 @@ namespace Solid
                             }
                           for (unsigned int q = 0; q < n_f_q_points; ++q)
                             {
-                              for (unsigned int v = 0;
-                                   v < GeometryInfo<dim>::vertices_per_face;
-                                   ++v)
+                              for (unsigned int d1 = 0; d1 < dim; ++d1)
                                 {
-                                  // shape_value() has the size of
-                                  // dof_per_cells, even for fe_face_values. So
-                                  // we have to loop over the cell vertices to
-                                  // locate where we are
-                                  unsigned int function_no;
-                                  for (unsigned int cell_v = 0;
-                                       cell_v <
-                                       GeometryInfo<dim>::vertices_per_cell;
-                                       ++cell_v)
+                                  for (unsigned int d2 = 0; d2 < dim; ++d2)
                                     {
-                                      // Get the corresponding cell vertex
-                                      if (cell->face(face)->vertex_index(v) ==
-                                          cell->vertex_index(cell_v))
-                                        // Get the dof number
-                                        {
-                                          types::global_dof_index v_dof =
-                                            cell->vertex_dof_index(cell_v, 0);
-                                          for (unsigned d = 0;
-                                               d < local_dof_indices.size();
-                                               ++d)
-                                            {
-                                              if (local_dof_indices[d] == v_dof)
-                                                function_no = d;
-                                            }
-                                          break;
-                                        }
+                                      fsi_stress[q][d1][d2] =
+                                        fsi_stress_rows_values[d1][q][d2];
                                     }
-                                  fsi_stress[q] +=
-                                    fe_face_values.shape_value(function_no, q) *
-                                    p[face]->fsi_stress[v];
                                 }
-                            }
+                            } // End looping face quadrature points
                         }
                       else
                         {
