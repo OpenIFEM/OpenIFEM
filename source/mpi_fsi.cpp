@@ -576,6 +576,11 @@ namespace MPI
         local_fsi_stress_rows[d].reinit(solid_solver.dof_handler.n_dofs(), 0);
       }
 
+    for (unsigned int d = 0; d < dim; ++d)
+      {
+        solid_solver.fsi_stress_rows[d] = 0;
+      }
+
     for (auto s_cell = solid_solver.dof_handler.begin_active();
          s_cell != solid_solver.dof_handler.end();
          ++s_cell)
