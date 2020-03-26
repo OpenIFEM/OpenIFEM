@@ -25,8 +25,8 @@ namespace Solid
     {
       TimerOutput::Scope timer_section(timer, "Assemble system");
 
-      double gamma = 0.5 + parameters.damping;
-      double beta = gamma / 2;
+      double alpha = parameters.damping;
+      double beta = pow((1 + alpha), 2) / 4;
 
       system_matrix = 0;
       stiffness_matrix = 0;
@@ -293,8 +293,9 @@ namespace Solid
       std::cout.precision(6);
       std::cout.width(12);
 
-      double gamma = 0.5 + parameters.damping;
-      double beta = gamma / 2;
+      double alpha = -parameters.damping;
+      double gamma = 0.5 - alpha;
+      double beta = pow((1 - alpha), 2) / 4;
 
       if (first_step)
         {
@@ -325,8 +326,10 @@ namespace Solid
       // Modify the RHS
       tmp1 = system_rhs;
       tmp2 = previous_displacement;
-      tmp2.add(
-        dt, previous_velocity, (0.5 - beta) * dt * dt, previous_acceleration);
+      tmp2.add((1 + alpha) * dt,
+               previous_velocity,
+               (0.5 - beta) * dt * dt * (1 + alpha),
+               previous_acceleration);
       stiffness_matrix.vmult(tmp3, tmp2);
       tmp1 -= tmp3;
 
