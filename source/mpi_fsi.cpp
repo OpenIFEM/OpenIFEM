@@ -558,24 +558,6 @@ namespace MPI
     FEValues<dim> fe_values(
       fluid_solver.fe, fluid_solver.volume_quad_formula, update_values);
 
-    // Dummy FEValues for solid nodes
-    const std::vector<Point<dim>> &unit_points =
-      solid_solver.fe.get_unit_support_points();
-    MappingQGeneric<dim> mapping(parameters.solid_degree);
-    Quadrature<dim> dummy_q(unit_points);
-    FEValues<dim> dummy_fe_values(
-      mapping, solid_solver.fe, dummy_q, update_quadrature_points);
-    std::vector<types::global_dof_index> dof_indices(
-      solid_solver.fe.dofs_per_cell);
-
-    // local fsi force vectors
-    std::vector<Vector<double>> local_fsi_stress_rows;
-    local_fsi_stress_rows.resize(dim);
-    for (unsigned int d = 0; d < dim; ++d)
-      {
-        local_fsi_stress_rows[d].reinit(solid_solver.dof_handler.n_dofs(), 0);
-      }
-
     for (unsigned int d = 0; d < dim; ++d)
       {
         solid_solver.fsi_stress_rows[d] = 0;
@@ -590,22 +572,17 @@ namespace MPI
             // Current face is at boundary and without Dirichlet bc.
             if (s_cell->face(f)->at_boundary())
               {
-                dummy_fe_values.reinit(s_cell);
-                s_cell->get_dof_indices(dof_indices);
-                auto support_poionts = dummy_fe_values.get_quadrature_points();
-                for (unsigned int i = 0; i < unit_points.size(); ++i)
+                for (unsigned int v = 0;
+                     v < GeometryInfo<dim>::vertices_per_face;
+                     ++v)
                   {
-                    const unsigned int index =
-                      solid_solver.fe.system_to_component_index(i).first;
-                    // Only compute the stress once from the first component
-                    if (index != 0)
-                      continue;
+                    auto line = s_cell->face(f)->vertex_dof_index(v, 0);
                     // Get interpolated solution from the fluid
                     Vector<double> value(dim + 1);
                     Utils::GridInterpolator<dim,
                                             PETScWrappers::MPI::BlockVector>
                       interpolator(fluid_solver.dof_handler,
-                                   support_poionts[i],
+                                   s_cell->face(f)->vertex(v),
                                    vertices_mask);
                     interpolator.point_value(fluid_solver.present_solution,
                                              value);
@@ -628,13 +605,12 @@ namespace MPI
                       -value[dim] *
                         Physics::Elasticity::StandardTensors<dim>::I +
                       2 * parameters.viscosity * sym_deformation;
-                    auto line = dof_indices[i];
                     // Assign the cell stress to local row vectors
                     for (unsigned int d1 = 0; d1 < dim; ++d1)
                       {
                         for (unsigned int d2 = 0; d2 < dim; ++d2)
                           {
-                            local_fsi_stress_rows[d1][line + d2] =
+                            solid_solver.fsi_stress_rows[d1][line + d2] =
                               stress[d1][d2];
                           }
                       }
@@ -646,7 +622,7 @@ namespace MPI
     // Add up the local vectors
     for (unsigned int d = 0; d < dim; ++d)
       {
-        Utilities::MPI::sum(local_fsi_stress_rows[d],
+        Utilities::MPI::sum(solid_solver.fsi_stress_rows[d],
                             solid_solver.mpi_communicator,
                             solid_solver.fsi_stress_rows[d]);
       }
