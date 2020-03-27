@@ -141,6 +141,12 @@ namespace Solid
 
       previous_displacement.reinit(locally_owned_dofs, mpi_communicator);
 
+      fsi_stress_rows.resize(dim);
+      for (unsigned int d = 0; d < dim; ++d)
+        {
+          fsi_stress_rows[d].reinit(dof_handler.n_dofs());
+        }
+
       strain = std::vector<std::vector<PETScWrappers::MPI::Vector>>(
         spacedim,
         std::vector<PETScWrappers::MPI::Vector>(
@@ -153,12 +159,6 @@ namespace Solid
           spacedim,
           PETScWrappers::MPI::Vector(locally_owned_scalar_dofs,
                                      mpi_communicator)));
-
-      // Set up cell property, which contains the FSI traction required in FSI
-      // simulation
-      cell_property.initialize(triangulation.begin_active(),
-                               triangulation.end(),
-                               GeometryInfo<dim>::faces_per_cell);
     }
 
     // Solve linear system \f$Ax = b\f$ using CG solver.

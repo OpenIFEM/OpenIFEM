@@ -558,24 +558,26 @@ namespace MPI
     FEValues<dim> fe_values(
       fluid_solver.fe, fluid_solver.volume_quad_formula, update_values);
 
+    for (unsigned int d = 0; d < dim; ++d)
+      {
+        solid_solver.fsi_stress_rows[d] = 0;
+      }
+
     for (auto s_cell = solid_solver.dof_handler.begin_active();
          s_cell != solid_solver.dof_handler.end();
          ++s_cell)
       {
-        auto ptr = solid_solver.cell_property.get_data(s_cell);
         for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
           {
             // Current face is at boundary and without Dirichlet bc.
             if (s_cell->face(f)->at_boundary())
               {
-                ptr[f]->fsi_stress.resize(GeometryInfo<dim>::vertices_per_face);
-                Assert(parameters.solid_degree == 1,
-                       ExcMessage(
-                         "find_solid_bc() only supports 1st degree solid!"));
                 for (unsigned int v = 0;
                      v < GeometryInfo<dim>::vertices_per_face;
                      ++v)
                   {
+                    auto line = s_cell->face(f)->vertex_dof_index(v, 0);
+                    // Get interpolated solution from the fluid
                     Vector<double> value(dim + 1);
                     Utils::GridInterpolator<dim,
                                             PETScWrappers::MPI::BlockVector>
@@ -588,16 +590,6 @@ namespace MPI
                                                          Tensor<1, dim>());
                     interpolator.point_gradient(fluid_solver.present_solution,
                                                 gradient);
-                    Vector<double> global_value(dim + 1);
-                    std::vector<Tensor<1, dim>> global_gradient(
-                      dim + 1, Tensor<1, dim>());
-                    for (unsigned int i = 0; i < dim + 1; ++i)
-                      {
-                        global_value[i] =
-                          Utilities::MPI::sum(value[i], mpi_communicator);
-                        global_gradient[i] =
-                          Utilities::MPI::sum(gradient[i], mpi_communicator);
-                      }
                     // Compute stress
                     SymmetricTensor<2, dim> sym_deformation;
                     for (unsigned int i = 0; i < dim; ++i)
@@ -605,19 +597,34 @@ namespace MPI
                         for (unsigned int j = 0; j < dim; ++j)
                           {
                             sym_deformation[i][j] =
-                              (global_gradient[i][j] + global_gradient[j][i]) /
-                              2;
+                              (gradient[i][j] + gradient[j][i]) / 2;
                           }
                       }
                     // \f$ \sigma = -p\bold{I} + \mu\nabla^S v\f$
                     SymmetricTensor<2, dim> stress =
-                      -global_value[dim] *
+                      -value[dim] *
                         Physics::Elasticity::StandardTensors<dim>::I +
                       2 * parameters.viscosity * sym_deformation;
-                    ptr[f]->fsi_stress[v] = stress;
-                  }
+                    // Assign the cell stress to local row vectors
+                    for (unsigned int d1 = 0; d1 < dim; ++d1)
+                      {
+                        for (unsigned int d2 = 0; d2 < dim; ++d2)
+                          {
+                            solid_solver.fsi_stress_rows[d1][line + d2] =
+                              stress[d1][d2];
+                          }
+                      }
+                    // End assigning local fluid stress values
+                  } // End looping support points
               }
-          }
+          } // End looping cell faces
+      }     // End looping solid cells
+    // Add up the local vectors
+    for (unsigned int d = 0; d < dim; ++d)
+      {
+        Utilities::MPI::sum(solid_solver.fsi_stress_rows[d],
+                            solid_solver.mpi_communicator,
+                            solid_solver.fsi_stress_rows[d]);
       }
     move_solid_mesh(false);
   }
