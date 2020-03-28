@@ -127,6 +127,9 @@ namespace Solid
       stiffness_matrix.reinit(
         locally_owned_dofs, locally_owned_dofs, dsp, mpi_communicator);
 
+      damping_matrix.reinit(
+        locally_owned_dofs, locally_owned_dofs, dsp, mpi_communicator);
+
       system_rhs.reinit(locally_owned_dofs, mpi_communicator);
 
       current_acceleration.reinit(locally_owned_dofs, mpi_communicator);

@@ -22,12 +22,14 @@ namespace Solid
      */
     LinearElasticMaterial(double, double, double);
     dealii::SymmetricTensor<4, dim> get_elasticity() const;
+    dealii::SymmetricTensor<4, dim> get_viscosity() const;
 
   protected:
     double E;      //!< Young's modulus
     double nu;     //!< Poisson's ratio
     double lambda; //!< First lame parameter
     double mu;     //!< Second lame parameter
+    double eta;    //!< Viscosity
   };
 } // namespace Solid
 
