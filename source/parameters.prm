@@ -125,7 +125,9 @@ subsection Solid material properties
 end
 
 subsection Solid solver control
-  # Artifitial damping -alpha for HHT-alpha time integraion. 0 < -alpha < 0.3.
+  # Artifitial damping. 
+  # -alpha for HHT-alpha time integraion (In MPI::SharedLinearLeasticity). 0 < -alpha < 0.3.
+  # For other solid solvers, this is the value added to 0.5 for gamma.
   set Damping = 0.0
 
   # Number of Newton-Raphson iterations allowed, used by hyperelastic solver only
