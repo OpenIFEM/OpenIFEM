@@ -61,9 +61,8 @@ namespace Solid
     template <int dim>
     void SharedHyperElasticity<dim>::run_one_step(bool first_step)
     {
-      double alpha = -parameters.damping;
-      double gamma = 0.5 - alpha;
-      double beta = pow((1 - alpha), 2) / 4;
+      double gamma = 0.5 + parameters.damping;
+      double beta = pow((gamma + 0.5), 2) / 4;
 
       if (first_step)
         {
@@ -97,10 +96,8 @@ namespace Solid
       // The prediction of the current displacement,
       // which is what we want to solve.
       predicted_displacement = previous_displacement;
-      predicted_displacement.add((1 + alpha) * dt,
-                                 previous_velocity,
-                                 (0.5 - beta) * dt * dt * (1 + alpha),
-                                 previous_acceleration);
+      predicted_displacement.add(
+        dt, previous_velocity, (0.5 - beta) * dt * dt, previous_acceleration);
 
       pcout << std::string(100, '_') << std::endl;
 
@@ -309,8 +306,8 @@ namespace Solid
       const unsigned int n_f_q_points = face_quad_formula.size();
       const unsigned int dofs_per_cell = fe.dofs_per_cell;
       FEValuesExtractors::Vector displacement(0);
-      double alpha = -parameters.damping;
-      double beta = pow((1 - alpha), 2) / 4;
+      double gamma = 1 + parameters.damping;
+      double beta = pow((gamma + 0.5), 2) / 4;
 
       if (initial_step)
         {
