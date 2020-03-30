@@ -73,6 +73,11 @@ namespace Solid
         {
           fsi_stress_rows_values[d].resize(n_f_q_points);
         }
+      Tensor<1, dim> gravity;
+      for (unsigned int i = 0; i < dim; ++i)
+        {
+          gravity[i] = parameters.gravity[i];
+        }
 
       // Loop over cells
       for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
@@ -123,8 +128,6 @@ namespace Solid
                                 symmetric_grad_phi[j] * fe_values.JxW(q);
                             }
                         }
-                      // zero body force
-                      Tensor<1, dim> gravity;
                       local_rhs[i] += phi[i] * gravity * rho * fe_values.JxW(q);
                     }
                 }
