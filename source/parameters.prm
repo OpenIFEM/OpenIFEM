@@ -115,10 +115,12 @@ subsection Solid material properties
   # Solid density, used by all solid solvers
   set Solid density = 1
 
-  # E and nu are only used by linearElasticMaterial
+  # E, nu and eta are only used by linearElasticMaterial
   set Young's modulus = 2.5
 
   set Poisson's ratio = 0.25
+
+  set Viscosity = 0.0
 
   # A list of parameters used by hyperelasticMaterial
   set Hyperelastic parameters = 0.5, 1.67

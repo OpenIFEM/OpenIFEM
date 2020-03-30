@@ -323,6 +323,10 @@ namespace Parameters
                         "0.0",
                         Patterns::List(dealii::Patterns::Double(0, 0.5)),
                         "Poisson's ratio, only used by linear elastic solver");
+      prm.declare_entry("Viscosity",
+                        "0.0",
+                        Patterns::List(dealii::Patterns::Double(0)),
+                        "Viscous damping, only used by linear elastic solver");
       const char *text = "A list of material constants separated by comma, "
                          "only used by hyperelastic materials."
                          "NeoHookean requires C1, kappa;";
@@ -357,6 +361,11 @@ namespace Parameters
       nu = Utilities::string_to_double(parsed_input);
       AssertThrow(nu.size() == n_solid_parts,
                   ExcMessage("Inconsistent Poisson's ratios!"));
+      raw_input = prm.get("Viscosity");
+      parsed_input = Utilities::split_string_list(raw_input);
+      eta = Utilities::string_to_double(parsed_input);
+      AssertThrow(eta.size() == n_solid_parts,
+                  ExcMessage("Inconsistent viscosity!"));
       raw_input = prm.get("Hyperelastic parameters");
       parsed_input = Utilities::split_string_list(raw_input);
       // declare the size for each vector defining one hyperelastic material

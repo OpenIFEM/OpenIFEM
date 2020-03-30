@@ -5,12 +5,12 @@ namespace Solid
   template <int dim>
   LinearElasticMaterial<dim>::LinearElasticMaterial(double young,
                                                     double poisson,
-                                                    double rho)
-    : Material<dim>(rho), E(young), nu(poisson)
+                                                    double rho,
+                                                    double eta)
+    : Material<dim>(rho), E(young), nu(poisson), eta(eta)
   {
     this->lambda = E * nu / ((1 + nu) * (1 - 2 * nu));
     this->mu = E / (2 * (1 + nu));
-    this->eta = 10; // hard-coded viscosity
   }
 
   template <int dim>

@@ -14,8 +14,10 @@ namespace Solid
       material.resize(parameters.n_solid_parts, LinearElasticMaterial<dim>());
       for (unsigned int i = 0; i < parameters.n_solid_parts; ++i)
         {
-          LinearElasticMaterial<dim> tmp(
-            parameters.E[i], parameters.nu[i], parameters.solid_rho);
+          LinearElasticMaterial<dim> tmp(parameters.E[i],
+                                         parameters.nu[i],
+                                         parameters.solid_rho,
+                                         parameters.eta[i]);
           material[i] = tmp;
         }
     }

@@ -14,13 +14,13 @@ namespace Solid
   {
   public:
     LinearElasticMaterial()
-      : Material<dim>(), E(0.0), nu(0.0), lambda(0.0), mu(0.0)
+      : Material<dim>(), E(0.0), nu(0.0), lambda(0.0), mu(0.0), eta(0.0)
     {
     }
     /**
      * Constructor using Young's modulus and Poisson's ratio.
      */
-    LinearElasticMaterial(double, double, double);
+    LinearElasticMaterial(double, double, double, double);
     dealii::SymmetricTensor<4, dim> get_elasticity() const;
     dealii::SymmetricTensor<4, dim> get_viscosity() const;
 
