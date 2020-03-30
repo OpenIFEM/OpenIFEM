@@ -97,6 +97,7 @@ namespace Solid
               viscosity = material[mat_id - 1].get_viscosity();
               local_matrix = 0;
               local_stiffness = 0;
+              local_damping = 0;
               local_rhs = 0;
 
               fe_values.reinit(cell);
@@ -272,12 +273,15 @@ namespace Solid
                                                      system_rhs);
               constraints.distribute_local_to_global(
                 local_stiffness, local_dof_indices, stiffness_matrix);
+              constraints.distribute_local_to_global(
+                local_damping, local_dof_indices, damping_matrix);
             }
         }
       // Synchronize with other processors.
       system_matrix.compress(VectorOperation::add);
       system_rhs.compress(VectorOperation::add);
       stiffness_matrix.compress(VectorOperation::add);
+      damping_matrix.compress(VectorOperation::add);
     }
 
     template <int dim>
