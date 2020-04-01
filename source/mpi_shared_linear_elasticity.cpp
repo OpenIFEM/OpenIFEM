@@ -14,8 +14,10 @@ namespace Solid
       material.resize(parameters.n_solid_parts, LinearElasticMaterial<dim>());
       for (unsigned int i = 0; i < parameters.n_solid_parts; ++i)
         {
-          LinearElasticMaterial<dim> tmp(
-            parameters.E[i], parameters.nu[i], parameters.solid_rho);
+          LinearElasticMaterial<dim> tmp(parameters.E[i],
+                                         parameters.nu[i],
+                                         parameters.solid_rho,
+                                         parameters.eta[i]);
           material[i] = tmp;
         }
     }
@@ -25,11 +27,13 @@ namespace Solid
     {
       TimerOutput::Scope timer_section(timer, "Assemble system");
 
-      double alpha = parameters.damping;
+      double alpha = -parameters.damping;
+      double gamma = 0.5 - alpha;
       double beta = pow((1 + alpha), 2) / 4;
 
       system_matrix = 0;
       stiffness_matrix = 0;
+      damping_matrix = 0;
       system_rhs = 0;
 
       FEValues<dim> fe_values(fe,
@@ -44,6 +48,7 @@ namespace Solid
           update_JxW_values);
 
       SymmetricTensor<4, dim> elasticity;
+      SymmetricTensor<4, dim> viscosity;
       const double rho = material[0].get_density();
       const double dt = time.get_delta_t();
 
@@ -53,6 +58,7 @@ namespace Solid
 
       FullMatrix<double> local_matrix(dofs_per_cell, dofs_per_cell);
       FullMatrix<double> local_stiffness(dofs_per_cell, dofs_per_cell);
+      FullMatrix<double> local_damping(dofs_per_cell, dofs_per_cell);
       Vector<double> local_rhs(dofs_per_cell);
 
       std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
@@ -90,8 +96,10 @@ namespace Solid
               if (material.size() == 1)
                 mat_id = 1;
               elasticity = material[mat_id - 1].get_elasticity();
+              viscosity = material[mat_id - 1].get_viscosity();
               local_matrix = 0;
               local_stiffness = 0;
+              local_damping = 0;
               local_rhs = 0;
 
               fe_values.reinit(cell);
@@ -120,11 +128,18 @@ namespace Solid
                             {
                               local_matrix[i][j] +=
                                 (rho * phi[i] * phi[j] +
+                                 symmetric_grad_phi[i] * viscosity *
+                                   symmetric_grad_phi[j] * gamma * dt *
+                                   (1 + alpha) +
                                  symmetric_grad_phi[i] * elasticity *
-                                   symmetric_grad_phi[j] * beta * dt * dt) *
+                                   symmetric_grad_phi[j] * beta * dt * dt *
+                                   (1 + alpha)) *
                                 fe_values.JxW(q);
                               local_stiffness[i][j] +=
                                 symmetric_grad_phi[i] * elasticity *
+                                symmetric_grad_phi[j] * fe_values.JxW(q);
+                              local_damping[i][j] +=
+                                symmetric_grad_phi[i] * viscosity *
                                 symmetric_grad_phi[j] * fe_values.JxW(q);
                             }
                         }
@@ -260,12 +275,15 @@ namespace Solid
                                                      system_rhs);
               constraints.distribute_local_to_global(
                 local_stiffness, local_dof_indices, stiffness_matrix);
+              constraints.distribute_local_to_global(
+                local_damping, local_dof_indices, damping_matrix);
             }
         }
       // Synchronize with other processors.
       system_matrix.compress(VectorOperation::add);
       system_rhs.compress(VectorOperation::add);
       stiffness_matrix.compress(VectorOperation::add);
+      damping_matrix.compress(VectorOperation::add);
     }
 
     template <int dim>
@@ -296,8 +314,9 @@ namespace Solid
 
       PETScWrappers::MPI::Vector tmp1(locally_owned_dofs, mpi_communicator);
       PETScWrappers::MPI::Vector tmp2(locally_owned_dofs, mpi_communicator);
-
       PETScWrappers::MPI::Vector tmp3(locally_owned_dofs, mpi_communicator);
+      PETScWrappers::MPI::Vector tmp4(locally_owned_dofs, mpi_communicator);
+      PETScWrappers::MPI::Vector tmp5(locally_owned_dofs, mpi_communicator);
 
       time.increment();
       pcout << std::string(91, '*') << std::endl
@@ -312,7 +331,12 @@ namespace Solid
                (0.5 - beta) * dt * dt * (1 + alpha),
                previous_acceleration);
       stiffness_matrix.vmult(tmp3, tmp2);
+
+      tmp4 = previous_velocity;
+      tmp4.add((1 + alpha) * (1 - gamma) * dt, previous_acceleration);
+      damping_matrix.vmult(tmp5, tmp4);
       tmp1 -= tmp3;
+      tmp1 -= tmp5;
 
       auto state = this->solve(system_matrix, current_acceleration, tmp1);
 

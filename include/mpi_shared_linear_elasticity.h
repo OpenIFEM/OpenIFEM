@@ -60,6 +60,7 @@ namespace Solid
       using SharedSolidSolver<dim>::constraints;
       using SharedSolidSolver<dim>::system_matrix;
       using SharedSolidSolver<dim>::stiffness_matrix;
+      using SharedSolidSolver<dim>::damping_matrix;
       using SharedSolidSolver<dim>::system_rhs;
       using SharedSolidSolver<dim>::current_acceleration;
       using SharedSolidSolver<dim>::current_velocity;

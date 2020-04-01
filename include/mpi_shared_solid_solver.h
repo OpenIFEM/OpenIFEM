@@ -173,6 +173,8 @@ namespace Solid
         mass_matrix; //!< Required by hyperelastic solver.
       PETScWrappers::MPI::SparseMatrix
         stiffness_matrix; //!< The stiffness is used in the rhs.
+      PETScWrappers::MPI::SparseMatrix
+        damping_matrix; //!< The damping matrix for visco-linearelastic solver.
       PETScWrappers::MPI::Vector system_rhs;
 
       /**
