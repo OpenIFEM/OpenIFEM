@@ -306,7 +306,7 @@ namespace Solid
       const unsigned int n_f_q_points = face_quad_formula.size();
       const unsigned int dofs_per_cell = fe.dofs_per_cell;
       FEValuesExtractors::Vector displacement(0);
-      double gamma = 1 + parameters.damping;
+      double gamma = 0.5 + parameters.damping;
       double beta = pow((gamma + 0.5), 2) / 4;
 
       if (initial_step)
