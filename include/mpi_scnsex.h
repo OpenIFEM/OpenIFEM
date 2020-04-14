@@ -14,21 +14,20 @@ namespace Fluid
 
     /*! \brief the parallel Slightly Compresisble Navier Stokes equation solver
      *
-     * This program is built upon dealii tutorials step-57, step-22, step-20.
      * Although the density does not matter in the incompressible flow, we still
      * include it in the formulation in order to be consistent with the
      * slightly compressible flow. Correspondingly the viscosity represents
      * the dynamic visocity \f$\mu\f$ instead of the kinetic visocity \f$\nu\f$,
      * and the pressure block in the solution is the non-normalized pressure.
      *
-     * Fully implicit scheme is used for time stepping. Newton's method is
-     * applied to solve the nonlinear system, thus the actual dofs being solved
-     * is the velocity and pressure increment.
+     * Explicit time scheme is used for time stepping. The velocity and pressure
+     * dofs are decoupled and solved separately. A inner iteration is
+     * incoporated to make sure the solution converges. However, the explicit
+     * solver has a strict restriction on time step size. For pure acoustic wave
+     * propagation, the time step must be smaller than 1e-7s for convergence.
      *
-     * The final linear system to be solved is nonsymmetric. GMRES solver with
-     * SUPG incomplete Schur complement right preconditioner is applied, which
-     * does modify the linear system a little bit, and requires the velocity
-     * shape functions to be one order higher than that of the pressure.
+     * CG solver is used for both pressure and velocity matrices as they only
+     * consist of the mass and viscosity components.
      */
     template <int dim>
     class SCnsEX : public FluidSolver<dim>
@@ -98,19 +97,15 @@ namespace Fluid
 
       /*! \brief Assemble the system matrix, mass mass matrix, and the RHS.
        *
-       *  Since backward Euler method is used, the linear system must be
-       * reassembled
-       *  at every Newton iteration. The Dirichlet BCs are applied at the same
-       * time
-       *  as the cell matrix and rhs are distributed to the global matrix and
-       * rhs, which is optimal according to the deal.II documentation. The
-       * boolean argument is used to determine whether nonzero constraints or
-       * zero constraints should be used.
+       * The Dirichlet BCs are applied at the sametime as the cell matrix and
+       * rhs are distributed to the global matrix and rhs, which is optimal
+       * according to the deal.II documentation. The 2 boolean arguments are
+       * used to determine whether assemble velocity or pressure, and whether to
+       * assemble the matrix or only the rhs.
        */
       void assemble(const bool assemble_velocity);
 
-      /*! \brief Solve the linear system using FGMRES solver plus block
-       * preconditioner.
+      /*! \brief Solve the linear system using CG
        *
        *  After solving the linear system, the same AffineConstraints<double> as
        * used in assembly must be used again, to set the solution to the right
@@ -120,12 +115,10 @@ namespace Fluid
 
       /*! \brief Run the simulation for one time step.
        *
-       *  If the Dirichlet BC is time-dependent, nonzero constraints must be
-       * applied
-       *  at every first Newton iteration in every time step. If it is not, only
-       *  apply nonzero constraints at the first iteration in the first time
-       * step. A boolean argument controls whether nonzero constraints should be
-       *  applied in a certain time step.
+       *  Unlike SCnsIM, InsIM or InsIMEX, SCnsEX solves for the absolute
+       * velocity and pressure other than the increments. Therefore, the
+       * Dirichlet BCs in SCnsEX are always applied as non-zero constraints.
+       * Zero constraints are not in use here.
        */
       void run_one_step(bool apply_nonzero_constraints,
                         bool assemble_system = true) override;
@@ -138,12 +131,15 @@ namespace Fluid
        */
       void apply_initial_condition();
 
-      /// The increment at a certain Newton iteration.
+      /*! The intermiediate solution within every time step, generated from each
+       * iteration.
+       */
       PETScWrappers::MPI::BlockVector intermediate_solution;
 
       /**
-       * The latest know solution plus the cumulation of all newton_updates
-       * in the current time step, which approaches to the new present_solution.
+       * Same as intermediate solution, we need this because intermediate
+       * solution non-ghosted, and a ghosted vector is needed for interpolation
+       * to the quadrature points when do the assembly.
        */
       PETScWrappers::MPI::BlockVector evaluation_point;
 
