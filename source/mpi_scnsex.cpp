@@ -55,6 +55,20 @@ namespace Fluid
       // Cell property
       setup_cell_property();
 
+      // Setup local matrices
+      for (auto cell = triangulation.begin_active();
+           cell != triangulation.end();
+           ++cell)
+        {
+          if (cell->is_locally_owned())
+            {
+              local_matrices.initialize(cell, 1);
+              const std::vector<std::shared_ptr<FullMatrix<double>>> m =
+                local_matrices.get_data(cell);
+              *(m[0]) = 0;
+            }
+        }
+
       stress = std::vector<std::vector<PETScWrappers::MPI::Vector>>(
         dim,
         std::vector<PETScWrappers::MPI::Vector>(
@@ -67,7 +81,8 @@ namespace Fluid
     }
 
     template <int dim>
-    void SCnsEX<dim>::assemble(const bool assemble_velocity)
+    void SCnsEX<dim>::assemble(const bool assemble_system,
+                               const bool assemble_velocity)
     {
       TimerOutput::Scope timer_section(timer, "Assemble system");
 
@@ -75,7 +90,10 @@ namespace Fluid
       for (unsigned int i = 0; i < dim; ++i)
         gravity[i] = parameters.gravity[i];
 
-      system_matrix = 0;
+      if (assemble_system)
+        system_matrix = 0;
+      else if (assemble_velocity)
+        system_matrix.block(0, 0) = 0;
 
       system_rhs = 0;
 
@@ -120,7 +138,6 @@ namespace Fluid
       std::vector<double> present_pressure_values(n_q_points);
       std::vector<double> sigma_pml(n_q_points);
       std::vector<Tensor<1, dim>> artificial_bf(n_q_points);
-      std::vector<Tensor<1, dim>> fsi_acc_values(n_q_points);
 
       std::vector<double> div_phi_u(dofs_per_cell);
       std::vector<Tensor<1, dim>> phi_u(dofs_per_cell);
@@ -132,16 +149,13 @@ namespace Fluid
       // heat capacity ratio and atmospheric pressure.
       const double cp_to_cv = 1.4;
       const double atm = 1013250;
-      const double kappa_s = 1e4;
 
       for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
            ++cell)
         {
           if (cell->is_locally_owned())
             {
-              auto p = cell_property.get_data(cell);
-              const int ind = p[0]->indicator;
-
+              auto m = local_matrices.get_data(cell);
               fe_values.reinit(cell);
 
               local_matrix = 0;
@@ -150,11 +164,14 @@ namespace Fluid
               fe_values[velocities].get_function_values(
                 evaluation_point, current_velocity_values);
 
+              fe_values[velocities].get_function_gradients(
+                evaluation_point, current_velocity_gradients);
+
+              fe_values[pressure].get_function_gradients(
+                evaluation_point, current_pressure_gradients);
+
               if (assemble_velocity)
                 {
-                  fe_values[pressure].get_function_gradients(
-                    evaluation_point, current_pressure_gradients);
-
                   fe_values[velocities].get_function_values(
                     present_solution, present_velocity_values);
                 }
@@ -162,9 +179,6 @@ namespace Fluid
                 {
                   fe_values[pressure].get_function_values(
                     present_solution, present_pressure_values);
-
-                  fe_values[velocities].get_function_gradients(
-                    evaluation_point, current_velocity_gradients);
 
                   fe_values[pressure].get_function_values(
                     evaluation_point, current_pressure_values);
@@ -175,17 +189,10 @@ namespace Fluid
               body_force->value_list(fe_values.get_quadrature_points(),
                                      artificial_bf);
 
-              fe_values[velocities].get_function_values(fsi_acceleration,
-                                                        fsi_acc_values);
-
               for (unsigned int q = 0; q < n_q_points; ++q)
                 {
-                  const double rho = parameters.fluid_rho *
-                                       (1 + present_pressure_values[q] / atm) *
-                                       (1 - ind) +
-                                     ind * parameters.solid_rho;
-                  const double viscosity =
-                    (ind == 1 ? 1 : parameters.viscosity);
+                  const double rho = parameters.fluid_rho;
+                  const double viscosity = parameters.viscosity;
 
                   for (unsigned int k = 0; k < dofs_per_cell; ++k)
                     {
@@ -200,51 +207,49 @@ namespace Fluid
                     {
                       double current_velocity_divergence =
                         trace(current_velocity_gradients[q]);
-                      for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                      if (assemble_system)
                         {
-                          // Let the linearized diffusion, continuity
-                          // terms be written as
-                          // the bilinear operator: \f$A = a((\delta{u},
-                          // \delta{p}), (\delta{v}, \delta{q}))\f$,
-                          // the linearized convection term be: \f$C =
-                          // c(u;\delta{u}, \delta{v})\f$,
-                          // and the linearized inertial term be:
-                          // \f$M = m(\delta{u}, \delta{v})$, then LHS is: $(A
-                          // +
-                          // C) + M/{\Delta{t}}\f$
-                          if (assemble_velocity)
+                          for (unsigned int j = 0; j < dofs_per_cell; ++j)
                             {
-                              local_matrix(i, j) +=
-                                (viscosity * scalar_product(grad_phi_u[j],
-                                                            grad_phi_u[i]) +
-                                 rho *
-                                   (phi_u[i] * phi_u[j] / time.get_delta_t() +
-                                    grad_phi_u[j] * current_velocity_values[q] *
-                                      phi_u[i])) *
-                                fe_values.JxW(q);
-                              // PML attenuation
-                              local_matrix(i, j) += rho * sigma_pml[q] *
-                                                    phi_u[j] * phi_u[i] *
-                                                    fe_values.JxW(q);
-                            }
-                          // For more clear demonstration, write continuity
-                          // equation separately.
-                          // The original strong form is:
-                          // \f$p_{,t} + \frac{C_p}{C_v} * (p_0 + p) * (\nabla
-                          // \times u) + u (\nabla p) = 0\f$
-                          else
-                            {
-                              local_matrix(i, j) +=
-                                (phi_p[i] * phi_p[j] / time.get_delta_t() +
-                                 phi_p[i] * grad_phi_p[j] *
-                                   current_velocity_values[q]) *
-                                  (1 - ind) / atm * fe_values.JxW(q) +
-                                1 / kappa_s * phi_p[i] * phi_p[j] * ind /
-                                  time.get_delta_t() * fe_values.JxW(q);
-                              // PML attenuation
-                              local_matrix(i, j) += sigma_pml[q] * phi_p[j] *
-                                                    phi_p[i] / atm *
-                                                    fe_values.JxW(q);
+                              // Let the linearized diffusion, continuity
+                              // terms be written as
+                              // the bilinear operator: \f$A = a((\delta{u},
+                              // \delta{p}), (\delta{v}, \delta{q}))\f$,
+                              // the linearized convection term be: \f$C =
+                              // c(u;\delta{u}, \delta{v})\f$,
+                              // and the linearized inertial term be:
+                              // \f$M = m(\delta{u}, \delta{v})$, then LHS is:
+                              // $(A
+                              // +
+                              // C) + M/{\Delta{t}}\f$
+                              if (assemble_velocity)
+                                {
+                                  local_matrix(i, j) +=
+                                    (viscosity * scalar_product(grad_phi_u[j],
+                                                                grad_phi_u[i]) +
+                                     rho * phi_u[i] * phi_u[j] /
+                                       time.get_delta_t()) *
+                                    fe_values.JxW(q);
+                                  // PML attenuation
+                                  local_matrix(i, j) += rho * sigma_pml[q] *
+                                                        phi_u[j] * phi_u[i] *
+                                                        fe_values.JxW(q);
+                                }
+                              // For more clear demonstration, write continuity
+                              // equation separately.
+                              // The original strong form is:
+                              // \f$p_{,t} + \frac{C_p}{C_v} * (p_0 + p) *
+                              // (\nabla \times u) + u (\nabla p) = 0\f$
+                              else
+                                {
+                                  local_matrix(i, j) += phi_p[i] * phi_p[j] /
+                                                        time.get_delta_t() /
+                                                        atm * fe_values.JxW(q);
+                                  // PML attenuation
+                                  local_matrix(i, j) += sigma_pml[q] *
+                                                        phi_p[j] * phi_p[i] /
+                                                        atm * fe_values.JxW(q);
+                                }
                             }
                         }
 
@@ -253,8 +258,10 @@ namespace Fluid
                       if (assemble_velocity)
                         {
                           local_rhs(i) +=
-                            (rho * present_velocity_values[q] * phi_u[i] /
-                               time.get_delta_t() -
+                            (rho * (present_velocity_values[q] * phi_u[i] /
+                                      time.get_delta_t() -
+                                    current_velocity_gradients[q] *
+                                      current_velocity_values[q] * phi_u[i]) -
                              phi_u[i] * current_pressure_gradients[q] +
                              (gravity + artificial_bf[q]) * phi_u[i] * rho) *
                             fe_values.JxW(q);
@@ -262,22 +269,13 @@ namespace Fluid
                       else
                         {
                           local_rhs(i) +=
-                            (-cp_to_cv *
-                               (atm + current_pressure_values[q] * (1 - ind)) *
+                            (-cp_to_cv * (atm + current_pressure_values[q]) *
                                current_velocity_divergence * phi_p[i] +
                              present_pressure_values[q] * phi_p[i] /
-                               time.get_delta_t() * (1 - ind)) /
-                              atm * fe_values.JxW(q) +
-                            1 / kappa_s * present_pressure_values[q] *
-                              phi_p[i] * ind / time.get_delta_t() *
-                              fe_values.JxW(q);
-                        }
-                      if (ind == 1 && assemble_velocity)
-                        {
-                          local_rhs(i) +=
-                            (scalar_product(grad_phi_u[i], p[0]->fsi_stress) +
-                             fsi_acc_values[q] * rho * phi_u[i]) *
-                            fe_values.JxW(q);
+                               time.get_delta_t() -
+                             phi_p[i] * current_pressure_gradients[q] *
+                               current_velocity_values[q]) /
+                            atm * fe_values.JxW(q);
                         }
                     }
                 }
@@ -319,12 +317,40 @@ namespace Fluid
 
               cell->get_dof_indices(local_dof_indices);
 
-              nonzero_constraints.distribute_local_to_global(local_matrix,
-                                                             local_rhs,
-                                                             local_dof_indices,
-                                                             system_matrix,
-                                                             system_rhs,
-                                                             true);
+              if (assemble_system)
+                {
+                  nonzero_constraints.distribute_local_to_global(
+                    local_matrix,
+                    local_rhs,
+                    local_dof_indices,
+                    system_matrix,
+                    system_rhs,
+                    true);
+                  if (assemble_velocity)
+                    {
+                      *(m[0]) = local_matrix;
+                    }
+                }
+              else
+                {
+                  // *(m[0]) is the local matrix stored when the system
+                  // matrix is assembled
+                  if (assemble_velocity && parameters.use_hard_coded_values)
+                    {
+                      nonzero_constraints.distribute_local_to_global(
+                        *(m[0]),
+                        local_rhs,
+                        local_dof_indices,
+                        system_matrix,
+                        system_rhs,
+                        false);
+                    }
+                  else
+                    {
+                      nonzero_constraints.distribute_local_to_global(
+                        local_rhs, local_dof_indices, system_rhs);
+                    }
+                }
             }
         }
 
@@ -336,36 +362,33 @@ namespace Fluid
     std::pair<unsigned int, double>
     SCnsEX<dim>::solve(const bool solve_for_velocity)
     {
-      // This section includes the work done in the preconditioner
-      // and GMRES solver.
+      // This section includes the work done in the CG solver
       TimerOutput::Scope timer_section(timer, "Solve linear system");
 
       SolverControl solver_control(
         system_matrix.m(), 1e-6 * system_rhs.l2_norm(), true);
 
-      // Because PETScWrappers::SolverGMRES requires preconditioner derived
-      // from PETScWrappers::PreconditionBase, we use dealii SolverFGMRES.
       GrowingVectorMemory<PETScWrappers::MPI::Vector> vector_memory;
-      PETScWrappers::SolverBicgstab bicgstab(solver_control, mpi_communicator);
+      PETScWrappers::SolverCG cg(solver_control, mpi_communicator);
 
       // The solution vector must be non-ghosted
       if (solve_for_velocity)
         {
           PETScWrappers::PreconditionBoomerAMG preconditioner(
             system_matrix.block(0, 0));
-          bicgstab.solve(system_matrix.block(0, 0),
-                         intermediate_solution.block(0),
-                         system_rhs.block(0),
-                         preconditioner);
+          cg.solve(system_matrix.block(0, 0),
+                   intermediate_solution.block(0),
+                   system_rhs.block(0),
+                   preconditioner);
         }
       else
         {
           PETScWrappers::PreconditionBoomerAMG preconditioner(
             system_matrix.block(1, 1));
-          bicgstab.solve(system_matrix.block(1, 1),
-                         intermediate_solution.block(1),
-                         system_rhs.block(1),
-                         preconditioner);
+          cg.solve(system_matrix.block(1, 1),
+                   intermediate_solution.block(1),
+                   system_rhs.block(1),
+                   preconditioner);
         }
 
       nonzero_constraints.distribute(intermediate_solution);
@@ -377,7 +400,6 @@ namespace Fluid
     void SCnsEX<dim>::run_one_step(bool apply_nonzero_constraints,
                                    bool assemble_system)
     {
-      (void)assemble_system;
       (void)apply_nonzero_constraints;
       std::cout.precision(6);
       std::cout.width(12);
@@ -419,11 +441,11 @@ namespace Fluid
           // should be applied at the first iteration of every time step;
           // if they are time-independent, nonzero_constraints should be
           // applied only at the first iteration of the first time step.
-          assemble(true);
+          assemble(assemble_system, true);
           auto state_velocity = solve(true);
           evaluation_point.block(0) = intermediate_solution.block(0);
 
-          assemble(false);
+          assemble(assemble_system, false);
           auto state_pressure = solve(false);
           evaluation_point.block(1) = intermediate_solution.block(1);
 
@@ -544,8 +566,6 @@ namespace Fluid
       // which means nonzero_constraints will be applied at the first iteration
       // in the first time step only, and never be used again.
       // This corresponds to time-independent Dirichlet BCs.
-      if (!success_load)
-        run_one_step(true);
       while (time.end() - time.current() > 1e-12)
         {
           if (parameters.use_hard_coded_values)
@@ -554,10 +574,8 @@ namespace Fluid
               // Advance the time by delta_t and make constraints
               boundary_values->advance_time(time.get_delta_t());
               make_constraints();
-              run_one_step(true);
             }
-          else
-            run_one_step(false);
+          run_one_step(true, time.get_timestep() < 1 || success_load);
         }
     }
     template class SCnsEX<2>;

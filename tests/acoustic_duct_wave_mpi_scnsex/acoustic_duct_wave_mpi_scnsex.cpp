@@ -98,7 +98,7 @@ int main(int argc, char *argv[])
           auto solution = flow.get_current_solution();
           auto v = solution.block(0);
           double vmax = v.max();
-          double verror = std::abs(vmax - 5.94) / 5.94;
+          double verror = std::abs(vmax - 5.97) / 5.97;
           AssertThrow(verror < 1e-3,
                       ExcMessage("Maximum velocity is incorrect!"));
         }

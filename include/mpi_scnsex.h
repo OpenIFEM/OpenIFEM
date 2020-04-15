@@ -103,7 +103,7 @@ namespace Fluid
        * used to determine whether assemble velocity or pressure, and whether to
        * assemble the matrix or only the rhs.
        */
-      void assemble(const bool assemble_velocity);
+      void assemble(const bool assemble_system, const bool assemble_velocity);
 
       /*! \brief Solve the linear system using CG
        *
@@ -121,7 +121,7 @@ namespace Fluid
        * Zero constraints are not in use here.
        */
       void run_one_step(bool apply_nonzero_constraints,
-                        bool assemble_system = true) override;
+                        bool assemble_system) override;
 
       /*! \brief Apply the initial condition
        *
@@ -153,6 +153,18 @@ namespace Fluid
 
       /// Hard-coded body force. It will be added onto gravity.
       std::shared_ptr<TensorFunction<1, dim>> body_force;
+
+      /** \breif local_matrices
+       * The local matrices is stored in each cell such that the program does
+       * not need repeatly assemble the system matrix. Usually, one global
+       * matrix suffices for such purpose. However, for time-dependent BC, we
+       * need to update the inhomogenius constraints which needs the information
+       * from the local system matrices.
+       */
+      CellDataStorage<
+        typename parallel::distributed::Triangulation<dim>::cell_iterator,
+        FullMatrix<double>>
+        local_matrices;
     };
   } // namespace MPI
 } // namespace Fluid
