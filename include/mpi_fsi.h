@@ -47,7 +47,7 @@ namespace MPI
     //! Destructor
     ~FSI();
 
-  private:
+  protected:
     /// Collect all the boundary lines in solid triangulation.
     void collect_solid_boundaries();
 
