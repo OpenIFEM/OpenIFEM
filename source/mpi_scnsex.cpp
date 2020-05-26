@@ -465,7 +465,7 @@ namespace Fluid
                 << " VEL_ITR = " << std::setw(3) << state_velocity.first
                 << " PRE_ITR = " << std::setw(3) << state_pressure.first
                 << " VEL_RES = " << state_velocity.second
-                << " PRE_ITR = " << state_pressure.second << std::endl;
+                << " PRE_RES = " << state_pressure.second << std::endl;
           outer_iteration++;
           last_solution = intermediate_solution;
         }
