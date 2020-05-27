@@ -173,6 +173,8 @@ namespace Solid
         mass_matrix; //!< Required by hyperelastic solver.
       PETScWrappers::MPI::SparseMatrix
         stiffness_matrix; //!< The stiffness is used in the rhs.
+      PETScWrappers::MPI::SparseMatrix
+        damping_matrix; //!< The damping matrix for visco-linearelastic solver.
       PETScWrappers::MPI::Vector system_rhs;
 
       /**
@@ -188,6 +190,7 @@ namespace Solid
       PETScWrappers::MPI::Vector previous_acceleration;
       PETScWrappers::MPI::Vector previous_velocity;
       PETScWrappers::MPI::Vector previous_displacement;
+      std::vector<Vector<double>> fsi_stress_rows;
 
       /**
        * Nodal strain and stress obtained by taking the average of surrounding
@@ -208,10 +211,6 @@ namespace Solid
       IndexSet locally_owned_scalar_dofs;
       IndexSet locally_relevant_dofs;
       mutable std::vector<std::pair<double, std::string>> times_and_names;
-
-      CellDataStorage<typename Triangulation<dim, spacedim>::cell_iterator,
-                      CellProperty>
-        cell_property;
 
       /**
        * The fluid traction in FSI simulation, which should be set by the FSI.

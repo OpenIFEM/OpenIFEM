@@ -87,16 +87,23 @@ namespace Fluid
 
       //! Constructor.
       FluidSolver(parallel::distributed::Triangulation<dim> &,
-                  const Parameters::AllParameters &,
-                  std::shared_ptr<Function<dim>> bc =
-                    std::make_shared<Functions::ZeroFunction<dim>>(
-                      Functions::ZeroFunction<dim>(dim + 1)));
+                  const Parameters::AllParameters &);
 
       //! Run the simulation.
       virtual void run() = 0;
 
       //! Destructor
       ~FluidSolver();
+
+      //! Setup the hard-coded boundary conditions. The first argument stands
+      //! for the boundary ID that the condition is applied to, and the second
+      //! is the hard-coded boundary value function. The ID must be included in
+      //! Dirichlet bunndaries in the parameters input file and calling this
+      //! function will override the original boundary condition.
+      void add_hard_coded_boundary_condition(
+        const int,
+        const std::function<
+          double(const Point<dim> &, const unsigned int, const double)> &);
 
       //! Return the solution for testing.
       PETScWrappers::MPI::BlockVector get_current_solution() const;
@@ -208,7 +215,7 @@ namespace Fluid
 
       /// Hard-coded boundary values, only used when told so in the input
       /// parameters.
-      std::shared_ptr<Function<dim>> boundary_values;
+      std::map<int, BoundaryValues> hard_coded_boundary_values;
 
       /// A data structure that caches the real/artificial fluid indicator,
       /// FSI stress, and FSI acceleration terms at quadrature points, that
@@ -221,6 +228,26 @@ namespace Fluid
           fsi_acceleration; //!< The acceleration term in FSI force.
         SymmetricTensor<2, dim> fsi_stress; //!< The stress term in FSI force.
         int material_id; //!< The material id of the surrounding solid cell.
+      };
+
+      class BoundaryValues : public Function<dim>
+      {
+      public:
+        BoundaryValues() = delete;
+        BoundaryValues(const BoundaryValues &);
+        BoundaryValues(
+          const std::function<
+            double(const Point<dim> &, const unsigned int, const double)> &);
+        virtual void vector_value(const Point<dim> &, Vector<double> &) const;
+
+      private:
+        // The value function being used to apply the hard coded boundary
+        // condition. The first argument is the points on the boundary, second
+        // is the component which the condition is applied to, and the third is
+        // the time, for time dependent conditions.
+        std::function<double(
+          const Point<dim> &, const unsigned int &, const double)>
+          value_function;
       };
     };
   } // namespace MPI

@@ -7,12 +7,9 @@ namespace Fluid
     template <int dim>
     SCnsEX<dim>::SCnsEX(parallel::distributed::Triangulation<dim> &tria,
                         const Parameters::AllParameters &parameters,
-                        std::shared_ptr<Function<dim>> bc,
                         std::shared_ptr<Function<dim>> pml,
                         std::shared_ptr<TensorFunction<1, dim>> bf)
-      : FluidSolver<dim>(tria, parameters, bc),
-        sigma_pml_field(pml),
-        body_force(bf)
+      : FluidSolver<dim>(tria, parameters), sigma_pml_field(pml), body_force(bf)
     {
       AssertThrow(parameters.fluid_velocity_degree ==
                     parameters.fluid_pressure_degree,
@@ -555,6 +552,13 @@ namespace Fluid
       bool success_load = load_checkpoint();
       if (!success_load)
         {
+          if (!hard_coded_boundary_values.empty())
+            {
+              for (auto &bc : hard_coded_boundary_values)
+                {
+                  bc.second.advance_time(time.get_delta_t());
+                }
+            }
           triangulation.refine_global(parameters.global_refinements[0]);
           setup_dofs();
           make_constraints();
@@ -568,11 +572,14 @@ namespace Fluid
       // This corresponds to time-independent Dirichlet BCs.
       while (time.end() - time.current() > 1e-12)
         {
-          if (parameters.use_hard_coded_values)
+          if (!hard_coded_boundary_values.empty())
             {
               // Only for time dependent BCs!
               // Advance the time by delta_t and make constraints
-              boundary_values->advance_time(time.get_delta_t());
+              for (auto &bc : hard_coded_boundary_values)
+                {
+                  bc.second.advance_time(time.get_delta_t());
+                }
               make_constraints();
             }
           run_one_step(true, time.get_timestep() < 1 || success_load);

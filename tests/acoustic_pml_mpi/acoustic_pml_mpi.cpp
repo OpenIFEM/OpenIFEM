@@ -16,26 +16,6 @@ extern template class Fluid::MPI::SCnsIM<3>;
 using namespace dealii;
 
 template <int dim>
-class TimeDependentBoundaryValues : public Function<dim>
-{
-public:
-  TimeDependentBoundaryValues() : Function<dim>(dim + 1) {}
-  TimeDependentBoundaryValues(double t, double dt)
-    : Function<dim>(dim + 1, t), dt(dt)
-  {
-  }
-  virtual double value(const Point<dim> &p, const unsigned int component) const;
-
-  virtual void vector_value(const Point<dim> &p, Vector<double> &values) const;
-
-private:
-  double time_value(const Point<dim> &p,
-                    const unsigned int component,
-                    const double t) const;
-  double dt;
-};
-
-template <int dim>
 class SigmaPMLField : public Function<dim>
 {
 public:
@@ -53,37 +33,6 @@ private:
   double SigmaPMLMax;
   double PMLLength;
 };
-
-template <int dim>
-double
-TimeDependentBoundaryValues<dim>::value(const Point<dim> &p,
-                                        const unsigned int component) const
-{
-  return time_value(p, component, this->get_time()) -
-         time_value(p, component, this->get_time() - dt);
-}
-
-template <int dim>
-void TimeDependentBoundaryValues<dim>::vector_value(
-  const Point<dim> &p, Vector<double> &values) const
-{
-  for (unsigned int c = 0; c < this->n_components; ++c)
-    values(c) = TimeDependentBoundaryValues::value(p, c);
-}
-
-template <int dim>
-double TimeDependentBoundaryValues<dim>::time_value(
-  const Point<dim> &p, const unsigned int component, const double t) const
-{
-  Assert(component < this->n_components,
-         ExcIndexRange(component, 0, this->n_components));
-  if (component == 0 && std::abs(p[0]) < 1e-10)
-    {
-      // Gaussian wave
-      return 6.0 * exp(-0.5 * pow((t - 0.5e-6) / 0.15e-6, 2));
-    }
-  return 0;
-}
 
 template <int dim>
 double SigmaPMLField<dim>::value(const Point<dim> &p,
@@ -128,20 +77,30 @@ int main(int argc, char *argv[])
       double L = 1.4, H = 0.4;
       double PMLlength = 1.2, SigmaMax = 340000;
 
+      auto gaussian_pulse = [dt =
+                               params.time_step](const Point<2> &p,
+                                                 const unsigned int component,
+                                                 const double time) -> double {
+        auto time_value = [](double t) {
+          return 6.0 * exp(-0.5 * pow((t - 0.5e-6) / 0.15e-6, 2));
+        };
+
+        if (component == 0 && std::abs(p[0]) < 1e-10)
+          return time_value(time) - time_value(time - dt);
+
+        return 0.0;
+      };
+
       if (params.dimension == 2)
         {
           parallel::distributed::Triangulation<2> tria(MPI_COMM_WORLD);
           dealii::GridGenerator::subdivided_hyper_rectangle(
             tria, {7, 2}, Point<2>(0, 0), Point<2>(L, H), true);
-          // initialize the shared pointer the time dependent BC
-          std::shared_ptr<TimeDependentBoundaryValues<2>> ptr =
-            std::make_shared<TimeDependentBoundaryValues<2>>(
-              TimeDependentBoundaryValues<2>(params.time_step,
-                                             params.time_step));
           // initialize the pml field
           auto pml = std::make_shared<SigmaPMLField<2>>(
             SigmaPMLField<2>(SigmaMax, PMLlength));
-          Fluid::MPI::SCnsIM<2> flow(tria, params, ptr, pml);
+          Fluid::MPI::SCnsIM<2> flow(tria, params, pml);
+          flow.add_hard_coded_boundary_condition(0, gaussian_pulse);
           flow.run();
           auto solution = flow.get_current_solution();
           // The wave is absorbed at last, so the solution should be zero.

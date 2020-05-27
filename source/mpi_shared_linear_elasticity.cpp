@@ -14,8 +14,10 @@ namespace Solid
       material.resize(parameters.n_solid_parts, LinearElasticMaterial<dim>());
       for (unsigned int i = 0; i < parameters.n_solid_parts; ++i)
         {
-          LinearElasticMaterial<dim> tmp(
-            parameters.E[i], parameters.nu[i], parameters.solid_rho);
+          LinearElasticMaterial<dim> tmp(parameters.E[i],
+                                         parameters.nu[i],
+                                         parameters.solid_rho,
+                                         parameters.eta[i]);
           material[i] = tmp;
         }
     }
@@ -25,11 +27,13 @@ namespace Solid
     {
       TimerOutput::Scope timer_section(timer, "Assemble system");
 
-      double gamma = 0.5 + parameters.damping;
-      double beta = gamma / 2;
+      double alpha = -parameters.damping;
+      double gamma = 0.5 - alpha;
+      double beta = pow((1 + alpha), 2) / 4;
 
       system_matrix = 0;
       stiffness_matrix = 0;
+      damping_matrix = 0;
       system_rhs = 0;
 
       FEValues<dim> fe_values(fe,
@@ -44,6 +48,7 @@ namespace Solid
           update_JxW_values);
 
       SymmetricTensor<4, dim> elasticity;
+      SymmetricTensor<4, dim> viscosity;
       const double rho = material[0].get_density();
       const double dt = time.get_delta_t();
 
@@ -53,6 +58,7 @@ namespace Solid
 
       FullMatrix<double> local_matrix(dofs_per_cell, dofs_per_cell);
       FullMatrix<double> local_stiffness(dofs_per_cell, dofs_per_cell);
+      FullMatrix<double> local_damping(dofs_per_cell, dofs_per_cell);
       Vector<double> local_rhs(dofs_per_cell);
 
       std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
@@ -68,6 +74,17 @@ namespace Solid
       // A "viewer" to describe the nodal dofs as a vector.
       FEValuesExtractors::Vector displacements(0);
 
+      std::vector<std::vector<Tensor<1, dim>>> fsi_stress_rows_values(dim);
+      for (unsigned int d = 0; d < dim; ++d)
+        {
+          fsi_stress_rows_values[d].resize(n_f_q_points);
+        }
+      Tensor<1, dim> gravity;
+      for (unsigned int i = 0; i < dim; ++i)
+        {
+          gravity[i] = parameters.gravity[i];
+        }
+
       // Loop over cells
       for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
            ++cell)
@@ -75,15 +92,14 @@ namespace Solid
           // Only operates on the locally owned cells
           if (cell->subdomain_id() == this_mpi_process)
             {
-              auto p = cell_property.get_data(cell);
               int mat_id = cell->material_id();
               if (material.size() == 1)
                 mat_id = 1;
               elasticity = material[mat_id - 1].get_elasticity();
-              Assert(p.size() == GeometryInfo<dim>::faces_per_cell,
-                     ExcMessage("Wrong number of cell data!"));
+              viscosity = material[mat_id - 1].get_viscosity();
               local_matrix = 0;
               local_stiffness = 0;
+              local_damping = 0;
               local_rhs = 0;
 
               fe_values.reinit(cell);
@@ -112,16 +128,21 @@ namespace Solid
                             {
                               local_matrix[i][j] +=
                                 (rho * phi[i] * phi[j] +
+                                 symmetric_grad_phi[i] * viscosity *
+                                   symmetric_grad_phi[j] * gamma * dt *
+                                   (1 + alpha) +
                                  symmetric_grad_phi[i] * elasticity *
-                                   symmetric_grad_phi[j] * beta * dt * dt) *
+                                   symmetric_grad_phi[j] * beta * dt * dt *
+                                   (1 + alpha)) *
                                 fe_values.JxW(q);
                               local_stiffness[i][j] +=
                                 symmetric_grad_phi[i] * elasticity *
                                 symmetric_grad_phi[j] * fe_values.JxW(q);
+                              local_damping[i][j] +=
+                                symmetric_grad_phi[i] * viscosity *
+                                symmetric_grad_phi[j] * fe_values.JxW(q);
                             }
                         }
-                      // zero body force
-                      Tensor<1, dim> gravity;
                       local_rhs[i] += phi[i] * gravity * rho * fe_values.JxW(q);
                     }
                 }
@@ -171,10 +192,6 @@ namespace Solid
                       std::vector<Tensor<2, dim>> fsi_stress(n_f_q_points);
                       if (parameters.simulation_type == "FSI")
                         {
-                          Assert(
-                            parameters.solid_degree == 1,
-                            ExcMessage(
-                              "FSI traction only supports 1st order solid!"));
                           std::vector<Point<dim>> vertex_displacement(
                             GeometryInfo<dim>::vertices_per_face);
                           for (unsigned int v = 0;
@@ -191,6 +208,12 @@ namespace Solid
                                 vertex_displacement[v];
                             }
                           fe_face_values.reinit(cell, face);
+                          for (unsigned int d = 0; d < dim; ++d)
+                            {
+
+                              fe_face_values[displacements].get_function_values(
+                                fsi_stress_rows[d], fsi_stress_rows_values[d]);
+                            }
                           for (unsigned int v = 0;
                                v < GeometryInfo<dim>::vertices_per_face;
                                ++v)
@@ -200,42 +223,15 @@ namespace Solid
                             }
                           for (unsigned int q = 0; q < n_f_q_points; ++q)
                             {
-                              for (unsigned int v = 0;
-                                   v < GeometryInfo<dim>::vertices_per_face;
-                                   ++v)
+                              for (unsigned int d1 = 0; d1 < dim; ++d1)
                                 {
-                                  // shape_value() has the size of
-                                  // dof_per_cells, even for fe_face_values. So
-                                  // we have to loop over the cell vertices to
-                                  // locate where we are
-                                  unsigned int function_no;
-                                  for (unsigned int cell_v = 0;
-                                       cell_v <
-                                       GeometryInfo<dim>::vertices_per_cell;
-                                       ++cell_v)
+                                  for (unsigned int d2 = 0; d2 < dim; ++d2)
                                     {
-                                      // Get the corresponding cell vertex
-                                      if (cell->face(face)->vertex_index(v) ==
-                                          cell->vertex_index(cell_v))
-                                        // Get the dof number
-                                        {
-                                          types::global_dof_index v_dof =
-                                            cell->vertex_dof_index(cell_v, 0);
-                                          for (unsigned d = 0;
-                                               d < local_dof_indices.size();
-                                               ++d)
-                                            {
-                                              if (local_dof_indices[d] == v_dof)
-                                                function_no = d;
-                                            }
-                                          break;
-                                        }
+                                      fsi_stress[q][d1][d2] =
+                                        fsi_stress_rows_values[d1][q][d2];
                                     }
-                                  fsi_stress[q] +=
-                                    fe_face_values.shape_value(function_no, q) *
-                                    p[face]->fsi_stress[v];
                                 }
-                            }
+                            } // End looping face quadrature points
                         }
                       else
                         {
@@ -279,12 +275,15 @@ namespace Solid
                                                      system_rhs);
               constraints.distribute_local_to_global(
                 local_stiffness, local_dof_indices, stiffness_matrix);
+              constraints.distribute_local_to_global(
+                local_damping, local_dof_indices, damping_matrix);
             }
         }
       // Synchronize with other processors.
       system_matrix.compress(VectorOperation::add);
       system_rhs.compress(VectorOperation::add);
       stiffness_matrix.compress(VectorOperation::add);
+      damping_matrix.compress(VectorOperation::add);
     }
 
     template <int dim>
@@ -293,8 +292,9 @@ namespace Solid
       std::cout.precision(6);
       std::cout.width(12);
 
-      double gamma = 0.5 + parameters.damping;
-      double beta = gamma / 2;
+      double alpha = -parameters.damping;
+      double gamma = 0.5 - alpha;
+      double beta = pow((1 - alpha), 2) / 4;
 
       if (first_step)
         {
@@ -314,8 +314,9 @@ namespace Solid
 
       PETScWrappers::MPI::Vector tmp1(locally_owned_dofs, mpi_communicator);
       PETScWrappers::MPI::Vector tmp2(locally_owned_dofs, mpi_communicator);
-
       PETScWrappers::MPI::Vector tmp3(locally_owned_dofs, mpi_communicator);
+      PETScWrappers::MPI::Vector tmp4(locally_owned_dofs, mpi_communicator);
+      PETScWrappers::MPI::Vector tmp5(locally_owned_dofs, mpi_communicator);
 
       time.increment();
       pcout << std::string(91, '*') << std::endl
@@ -325,10 +326,17 @@ namespace Solid
       // Modify the RHS
       tmp1 = system_rhs;
       tmp2 = previous_displacement;
-      tmp2.add(
-        dt, previous_velocity, (0.5 - beta) * dt * dt, previous_acceleration);
+      tmp2.add((1 + alpha) * dt,
+               previous_velocity,
+               (0.5 - beta) * dt * dt * (1 + alpha),
+               previous_acceleration);
       stiffness_matrix.vmult(tmp3, tmp2);
+
+      tmp4 = previous_velocity;
+      tmp4.add((1 + alpha) * (1 - gamma) * dt, previous_acceleration);
+      damping_matrix.vmult(tmp5, tmp4);
       tmp1 -= tmp3;
+      tmp1 -= tmp5;
 
       auto state = this->solve(system_matrix, current_acceleration, tmp1);
 

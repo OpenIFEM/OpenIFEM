@@ -60,6 +60,7 @@ namespace Solid
       using SharedSolidSolver<dim>::constraints;
       using SharedSolidSolver<dim>::system_matrix;
       using SharedSolidSolver<dim>::stiffness_matrix;
+      using SharedSolidSolver<dim>::damping_matrix;
       using SharedSolidSolver<dim>::system_rhs;
       using SharedSolidSolver<dim>::current_acceleration;
       using SharedSolidSolver<dim>::current_velocity;
@@ -67,6 +68,7 @@ namespace Solid
       using SharedSolidSolver<dim>::previous_acceleration;
       using SharedSolidSolver<dim>::previous_velocity;
       using SharedSolidSolver<dim>::previous_displacement;
+      using SharedSolidSolver<dim>::fsi_stress_rows;
       using SharedSolidSolver<dim>::strain;
       using SharedSolidSolver<dim>::stress;
       using SharedSolidSolver<dim>::mpi_communicator;
@@ -79,7 +81,6 @@ namespace Solid
       using SharedSolidSolver<dim>::locally_owned_scalar_dofs;
       using SharedSolidSolver<dim>::locally_relevant_dofs;
       using SharedSolidSolver<dim>::times_and_names;
-      using SharedSolidSolver<dim>::cell_property;
 
       /**
        * Assembles lhs and rhs. At time step 0, the lhs is the mass matrix;

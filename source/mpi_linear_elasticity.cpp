@@ -15,8 +15,10 @@ namespace Solid
       material.resize(parameters.n_solid_parts, LinearElasticMaterial<dim>());
       for (unsigned int i = 0; i < parameters.n_solid_parts; ++i)
         {
-          LinearElasticMaterial<dim> tmp(
-            parameters.E[i], parameters.nu[i], parameters.solid_rho);
+          LinearElasticMaterial<dim> tmp(parameters.E[i],
+                                         parameters.nu[i],
+                                         parameters.solid_rho,
+                                         parameters.eta[i]);
           material[i] = tmp;
         }
     }
@@ -116,8 +118,12 @@ namespace Solid
                                 symmetric_grad_phi[j] * fe_values.JxW(q);
                             }
                         }
-                      // zero body force
+                      // body force
                       Tensor<1, dim> gravity;
+                      for (unsigned int i = 0; i < dim; ++i)
+                        {
+                          gravity[i] = parameters.gravity[i];
+                        }
                       local_rhs[i] += phi[i] * gravity * rho * fe_values.JxW(q);
                     }
                 }

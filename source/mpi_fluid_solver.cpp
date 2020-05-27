@@ -21,8 +21,7 @@ namespace Fluid
     template <int dim>
     FluidSolver<dim>::FluidSolver(
       parallel::distributed::Triangulation<dim> &tria,
-      const Parameters::AllParameters &parameters,
-      std::shared_ptr<Function<dim>> bc)
+      const Parameters::AllParameters &parameters)
       : triangulation(tria),
         fe(FE_Q<dim>(parameters.fluid_velocity_degree),
            dim,
@@ -45,9 +44,24 @@ namespace Fluid
         timer(
           mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times),
         timer2(
-          mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times),
-        boundary_values(bc)
+          mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times)
     {
+    }
+
+    template <int dim>
+    void FluidSolver<dim>::add_hard_coded_boundary_condition(
+      const int id,
+      const std::function<double(
+        const Point<dim> &, const unsigned int, const double)> &value_function)
+    {
+      AssertThrow(
+        parameters.fluid_dirichlet_bcs.find(id) !=
+          parameters.fluid_dirichlet_bcs.end(),
+        ExcMessage("Hard coded BC ID not included in parameters file!"));
+      auto success = this->hard_coded_boundary_values.insert(
+        {id, BoundaryValues(value_function)});
+      AssertThrow(success.second,
+                  ExcMessage("Duplicated hard coded boundary conditions!"));
     }
 
     template <int dim>
@@ -179,13 +193,14 @@ namespace Fluid
                 AssertThrow(false, ExcMessage("Unrecogonized component flag!"));
                 break;
               }
-            if (parameters.use_hard_coded_values == 1)
+            auto hbc = hard_coded_boundary_values.find(id);
+            if (hbc != hard_coded_boundary_values.end())
               {
                 VectorTools::interpolate_boundary_values(
                   MappingQGeneric<dim>(parameters.fluid_velocity_degree),
                   dof_handler,
                   id,
-                  *boundary_values,
+                  hbc->second,
                   nonzero_constraints,
                   ComponentMask(mask));
               }
@@ -547,9 +562,12 @@ namespace Fluid
             break;
           time.increment();
           // Update the time for hard coded boundary conditions
-          if (parameters.use_hard_coded_values)
+          if (!this->hard_coded_boundary_values.empty())
             {
-              boundary_values->advance_time(time.get_delta_t());
+              for (auto &bc : hard_coded_boundary_values)
+                {
+                  bc.second.advance_time(time.get_delta_t());
+                }
             }
         }
 
@@ -659,6 +677,30 @@ namespace Fluid
               stress[i][j].compress(VectorOperation::insert);
             }
         }
+    }
+
+    template <int dim>
+    FluidSolver<dim>::BoundaryValues::BoundaryValues(
+      const BoundaryValues &source)
+      : Function<dim>(dim + 1), value_function(source.value_function)
+    {
+    }
+
+    template <int dim>
+    FluidSolver<dim>::BoundaryValues::BoundaryValues(
+      const std::function<double(
+        const Point<dim> &, const unsigned int, const double)> &value_function)
+      : Function<dim>(dim + 1), value_function(value_function)
+    {
+    }
+
+    template <int dim>
+    void
+    FluidSolver<dim>::BoundaryValues::vector_value(const Point<dim> &p,
+                                                   Vector<double> &values) const
+    {
+      for (unsigned int c = 0; c < this->n_components; ++c)
+        values(c) = value_function(p, c, this->get_time());
     }
 
     template class FluidSolver<2>;

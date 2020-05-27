@@ -16,47 +16,6 @@ extern template class MPI::FSI<3>;
 
 const double L = 4, H = 1, a = 0.1, b = 0.4, h = 0.05, U = 1.5;
 
-template <int dim>
-class BoundaryValues : public Function<dim>
-{
-public:
-  BoundaryValues() : Function<dim>(dim + 1) {}
-  virtual double value(const Point<dim> &p, const unsigned int component) const;
-
-  virtual void vector_value(const Point<dim> &p, Vector<double> &values) const;
-};
-
-template <>
-double BoundaryValues<2>::value(const Point<2> &p,
-                                const unsigned int component) const
-{
-  if (component == 0 && std::abs(p[0]) < 1e-10 && std::abs(p[1]) > 1e-10)
-    {
-      return U;
-    }
-  return 0;
-}
-
-template <>
-double BoundaryValues<3>::value(const Point<3> &p,
-                                const unsigned int component) const
-{
-  if (component == 2 && std::abs(p[2]) < 1e-10 && std::abs(p[0]) > 1e-10 &&
-      std::abs(p[1]) > 1e-10)
-    {
-      return U;
-    }
-  return 0;
-}
-
-template <int dim>
-void BoundaryValues<dim>::vector_value(const Point<dim> &p,
-                                       Vector<double> &values) const
-{
-  for (unsigned int c = 0; c < this->n_components; ++c)
-    values(c) = BoundaryValues::value(p, c);
-}
-
 int main(int argc, char *argv[])
 {
   using namespace dealii;
@@ -70,6 +29,29 @@ int main(int argc, char *argv[])
           infile = argv[1];
         }
       Parameters::AllParameters params(infile);
+
+      auto inflow_bc = [U = U](const Point<2> &p,
+                               const unsigned int component,
+                               const double time) -> double {
+        (void)time;
+        if (component == 0 && std::abs(p[0]) < 1e-10)
+          {
+            return U;
+          }
+        return 0.0;
+      };
+
+      auto inflow_bc_3d = [U = U](const Point<3> &p,
+                                  const unsigned int component,
+                                  const double time) -> double {
+        (void)time;
+        if (component == 2 && std::abs(p[2]) < 1e-10 &&
+            std::abs(p[0]) > 1e-10 && std::abs(p[1]) > 1e-10)
+          {
+            return U;
+          }
+        return 0.0;
+      };
 
       if (params.dimension == 2)
         {
@@ -93,8 +75,8 @@ int main(int argc, char *argv[])
             }
           fluid_tria.execute_coarsening_and_refinement();
 
-          auto ptr = std::make_shared<BoundaryValues<2>>(BoundaryValues<2>());
-          Fluid::MPI::SCnsIM<2> fluid(fluid_tria, params, ptr);
+          Fluid::MPI::SCnsIM<2> fluid(fluid_tria, params);
+          fluid.add_hard_coded_boundary_condition(0, inflow_bc);
 
           Triangulation<2> solid_tria;
           dealii::GridGenerator::subdivided_hyper_rectangle(
@@ -120,8 +102,8 @@ int main(int argc, char *argv[])
             Point<3>(0, 0, 0),
             Point<3>(H, H, L),
             true);
-          auto ptr = std::make_shared<BoundaryValues<3>>(BoundaryValues<3>());
-          Fluid::MPI::InsIMEX<3> fluid(fluid_tria, params, ptr);
+          Fluid::MPI::InsIMEX<3> fluid(fluid_tria, params);
+          fluid.add_hard_coded_boundary_condition(4, inflow_bc_3d);
 
           Triangulation<3> solid_tria;
           dealii::GridGenerator::subdivided_hyper_rectangle(
