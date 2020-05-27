@@ -38,9 +38,6 @@ namespace Fluid
       //! Constructor.
       SCnsIM(parallel::distributed::Triangulation<dim> &,
              const Parameters::AllParameters &,
-             std::shared_ptr<Function<dim>> bc =
-               std::make_shared<Functions::ZeroFunction<dim>>(
-                 Functions::ZeroFunction<dim>(dim + 1)),
              std::shared_ptr<Function<dim>> pml =
                std::make_shared<Functions::ZeroFunction<dim>>(
                  Functions::ZeroFunction<dim>(dim + 1)),
@@ -50,6 +47,8 @@ namespace Fluid
       ~SCnsIM(){};
       //! Run the simulation.
       void run();
+
+      using FluidSolver<dim>::add_hard_coded_boundary_condition;
 
     private:
       class BlockIncompSchurPreconditioner;
@@ -93,7 +92,7 @@ namespace Fluid
       using FluidSolver<dim>::timer;
       using FluidSolver<dim>::timer2;
       using FluidSolver<dim>::cell_property;
-      using FluidSolver<dim>::boundary_values;
+      using FluidSolver<dim>::hard_coded_boundary_values;
 
       /// Specify the sparsity pattern and reinit matrices and vectors based on
       /// the dofs and constraints.
