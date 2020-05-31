@@ -46,6 +46,10 @@ namespace Fluid
       //! Run the simulation.
       void run();
 
+      //! Set up the time limit for specified hard coded boundary condition.
+      void set_hard_coded_boundary_condition_time(const unsigned int,
+                                                  const double);
+
       using FluidSolver<dim>::add_hard_coded_boundary_condition;
 
     private:
@@ -164,6 +168,16 @@ namespace Fluid
         typename parallel::distributed::Triangulation<dim>::cell_iterator,
         FullMatrix<double>>
         local_matrices;
+
+      /** \breif boundary_condition_time_limits
+       * This map stores the time limit for each time dependent hard coded
+       * boundary conditions. In the explicit solver, the system matrix does not
+       * have to re-assemble at each time step unless a time dependent boundary
+       * condition is applied. Using this time limit helps accelerate the solver
+       * when the hard coded condition (for example, a pulse) becomes zero after
+       * some time and does not require to re-calculate the value anymore.
+       */
+      std::map<unsigned int, double> boundary_condition_time_limits;
     };
   } // namespace MPI
 } // namespace Fluid

@@ -52,6 +52,7 @@ int main(int argc, char *argv[])
             tria, {8, 2}, Point<2>(0, 0), Point<2>(L, H), true);
           Fluid::MPI::SCnsEX<2> flow(tria, params);
           flow.add_hard_coded_boundary_condition(0, gaussian_pulse);
+          flow.set_hard_coded_boundary_condition_time(0, 1.1e-4);
           flow.run();
           // After the computation the max velocity should be ~
           // the peak of the Gaussian pulse (with dispersion).

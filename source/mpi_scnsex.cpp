@@ -78,6 +78,21 @@ namespace Fluid
     }
 
     template <int dim>
+    void
+    SCnsEX<dim>::set_hard_coded_boundary_condition_time(const unsigned int id,
+                                                        const double time)
+    {
+      AssertThrow(
+        parameters.fluid_dirichlet_bcs.find(id) !=
+          parameters.fluid_dirichlet_bcs.end(),
+        ExcMessage("Hard coded BC ID not included in parameters file!"));
+      AssertThrow(this->hard_coded_boundary_values.find(id) !=
+                    this->hard_coded_boundary_values.end(),
+                  ExcMessage("Bundary condition is not hard coded!"));
+      boundary_condition_time_limits[id] = time;
+    }
+
+    template <int dim>
     void SCnsEX<dim>::assemble(const bool assemble_system,
                                const bool assemble_velocity)
     {
@@ -88,9 +103,20 @@ namespace Fluid
         gravity[i] = parameters.gravity[i];
 
       if (assemble_system)
-        system_matrix = 0;
-      else if (assemble_velocity)
-        system_matrix.block(0, 0) = 0;
+        {
+          if (assemble_velocity)
+            {
+              system_matrix.block(0, 0) = 0;
+            }
+          else
+            {
+              system_matrix.block(1, 1) = 0;
+            }
+        }
+      else if (assemble_velocity && !hard_coded_boundary_values.empty())
+        {
+          system_matrix.block(0, 0) = 0;
+        }
 
       system_rhs = 0;
 
@@ -322,7 +348,7 @@ namespace Fluid
                     local_dof_indices,
                     system_matrix,
                     system_rhs,
-                    true);
+                    false);
                   if (assemble_velocity)
                     {
                       *(m[0]) = local_matrix;
@@ -332,7 +358,7 @@ namespace Fluid
                 {
                   // *(m[0]) is the local matrix stored when the system
                   // matrix is assembled
-                  if (assemble_velocity && parameters.use_hard_coded_values)
+                  if (assemble_velocity && !hard_coded_boundary_values.empty())
                     {
                       nonzero_constraints.distribute_local_to_global(
                         *(m[0]),
@@ -351,7 +377,11 @@ namespace Fluid
             }
         }
 
-      system_matrix.compress(VectorOperation::add);
+      if (assemble_system ||
+          (assemble_velocity && !hard_coded_boundary_values.empty()))
+        {
+          system_matrix.compress(VectorOperation::add);
+        }
       system_rhs.compress(VectorOperation::add);
     }
 
@@ -367,6 +397,8 @@ namespace Fluid
 
       GrowingVectorMemory<PETScWrappers::MPI::Vector> vector_memory;
       PETScWrappers::SolverCG cg(solver_control, mpi_communicator);
+
+      nonzero_constraints.set_zero(intermediate_solution);
 
       // The solution vector must be non-ghosted
       if (solve_for_velocity)
@@ -438,11 +470,11 @@ namespace Fluid
           // should be applied at the first iteration of every time step;
           // if they are time-independent, nonzero_constraints should be
           // applied only at the first iteration of the first time step.
-          assemble(assemble_system, true);
+          assemble(assemble_system && outer_iteration == 0, true);
           auto state_velocity = solve(true);
           evaluation_point.block(0) = intermediate_solution.block(0);
 
-          assemble(assemble_system, false);
+          assemble(assemble_system && outer_iteration == 0, false);
           auto state_pressure = solve(false);
           evaluation_point.block(1) = intermediate_solution.block(1);
 
@@ -572,6 +604,22 @@ namespace Fluid
       // This corresponds to time-independent Dirichlet BCs.
       while (time.end() - time.current() > 1e-12)
         {
+          for (auto b = boundary_condition_time_limits.begin();
+               b != boundary_condition_time_limits.end();
+               ++b)
+            {
+              if (b->second < time.current())
+                {
+                  std::cout << "timse's up. Erase id: " << b->first
+                            << std::endl;
+                  hard_coded_boundary_values.erase(b->first);
+                  b = boundary_condition_time_limits.erase(b);
+                  if (b == boundary_condition_time_limits.end())
+                    {
+                      break;
+                    }
+                }
+            }
           if (!hard_coded_boundary_values.empty())
             {
               // Only for time dependent BCs!
