@@ -631,6 +631,7 @@ namespace Fluid
               make_constraints();
             }
           run_one_step(true, time.get_timestep() < 1 || success_load);
+          success_load = false;
         }
     }
     template class SCnsEX<2>;
