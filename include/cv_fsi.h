@@ -56,6 +56,7 @@ namespace MPI
     void get_separation_point();
     void compute_efflux();
     void compute_volume_integral();
+    void compute_interface_integral();
 
     PETScWrappers::MPI::BlockVector fluid_previous_solution;
 

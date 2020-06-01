@@ -438,13 +438,18 @@ namespace MPI
     cv_values.reset();
     compute_efflux();
     compute_volume_integral();
+    compute_interface_integral();
     get_separation_point();
     // Output results to file
     if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
       {
         cv_values.output << std::scientific << time.current() << ","
                          << cv_values.inlet_volume_flow << ","
-                         << cv_values.energy.rate_kinetic_energy << std::endl;
+                         << cv_values.inlet_pressure << ","
+                         << cv_values.outlet_volume_flow << ","
+                         << cv_values.outlet_pressure << ","
+                         << cv_values.energy.rate_kinetic_energy << ","
+                         << cv_values.momentum.VF_drag << std::endl;
       }
   }
 
@@ -529,6 +534,10 @@ namespace MPI
       Utilities::MPI::sum(cv_values.inlet_volume_flow, this->mpi_communicator);
     cv_values.outlet_volume_flow =
       Utilities::MPI::sum(cv_values.outlet_volume_flow, this->mpi_communicator);
+    cv_values.inlet_pressure =
+      Utilities::MPI::sum(cv_values.inlet_pressure, this->mpi_communicator);
+    cv_values.outlet_pressure =
+      Utilities::MPI::sum(cv_values.outlet_pressure, this->mpi_communicator);
   }
 
   template <int dim>
@@ -629,6 +638,130 @@ namespace MPI
   }
 
   template <int dim>
+  void ControlVolumeFSI<dim>::compute_interface_integral()
+  {
+    cv_values.momentum.VF_drag = 0;
+
+    FEFaceValues<dim> fe_face_values(solid_solver.fe,
+                                     solid_solver.face_quad_formula,
+                                     update_values | update_quadrature_points |
+                                       update_normal_vectors |
+                                       update_JxW_values);
+
+    const unsigned int dofs_per_cell = solid_solver.fe.dofs_per_cell;
+    const unsigned int n_f_q_points = solid_solver.face_quad_formula.size();
+
+    Vector<double> localized_displacement(solid_solver.current_displacement);
+
+    std::vector<std::vector<Tensor<1, dim>>> fsi_stress_rows_values(dim);
+    for (unsigned int d = 0; d < dim; ++d)
+      {
+        fsi_stress_rows_values[d].resize(n_f_q_points);
+      }
+    // A "viewer" to describe the nodal dofs as a vector.
+    FEValuesExtractors::Vector displacements(0);
+
+    for (auto cell = solid_solver.dof_handler.begin_active();
+         cell != solid_solver.dof_handler.end();
+         ++cell)
+      {
+        if (cell->subdomain_id() != solid_solver.this_mpi_process)
+          {
+            continue;
+          }
+        for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
+             ++face)
+          {
+            if (cell->face(face)->at_boundary())
+              {
+                if (!cell->face(face)->at_boundary())
+                  {
+                    continue;
+                  }
+
+                // Get FSI stress values on face quadrature points
+                std::vector<Tensor<2, dim>> fsi_stress(n_f_q_points);
+                std::vector<Point<dim>> vertex_displacement(
+                  GeometryInfo<dim>::vertices_per_face);
+                for (unsigned int v = 0;
+                     v < GeometryInfo<dim>::vertices_per_face;
+                     ++v)
+                  {
+                    for (unsigned int d = 0; d < dim; ++d)
+                      {
+                        vertex_displacement[v][d] = localized_displacement(
+                          cell->face(face)->vertex_dof_index(v, d));
+                      }
+                    cell->face(face)->vertex(v) += vertex_displacement[v];
+                  }
+                fe_face_values.reinit(cell, face);
+                for (unsigned int d = 0; d < dim; ++d)
+                  {
+                    fe_face_values[displacements].get_function_values(
+                      solid_solver.fsi_stress_rows[d],
+                      fsi_stress_rows_values[d]);
+                  }
+                for (unsigned int v = 0;
+                     v < GeometryInfo<dim>::vertices_per_face;
+                     ++v)
+                  {
+                    cell->face(face)->vertex(v) -= vertex_displacement[v];
+                  }
+                for (unsigned int q = 0; q < n_f_q_points; ++q)
+                  {
+                    for (unsigned int d1 = 0; d1 < dim; ++d1)
+                      {
+                        for (unsigned int d2 = 0; d2 < dim; ++d2)
+                          {
+                            fsi_stress[q][d1][d2] =
+                              fsi_stress_rows_values[d1][q][d2];
+                          }
+                      }
+                  } // End looping face quadrature points
+
+                Tensor<1, dim> drag;
+                Tensor<1, dim> friction;
+
+                Tensor<2, dim> normal_stress;
+                Tensor<2, dim> tangential_stress;
+
+                for (unsigned int q = 0; q < n_f_q_points; ++q)
+                  {
+                    normal_stress = fsi_stress[q];
+                    tangential_stress = fsi_stress[q];
+                    for (unsigned int i = 0; i < dim; ++i)
+                      {
+                        for (unsigned int j = 0; j < dim; ++j)
+                          {
+                            if (i == j)
+                              tangential_stress[i][j] = 0;
+                            else
+                              normal_stress[i][j] = 0;
+                          }
+                      }
+
+                    drag = normal_stress * fe_face_values.normal_vector(q);
+                    friction =
+                      tangential_stress * fe_face_values.normal_vector(q);
+
+                    for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                      {
+                        const unsigned int component_j =
+                          solid_solver.fe.system_to_component_index(j).first;
+                        cv_values.momentum.VF_drag +=
+                          fe_face_values.shape_value(j, q) * drag[component_j] *
+                          fe_face_values.JxW(q);
+                      }
+                  }
+              }
+          }
+      }
+    // Sum the results over all MPI ranks
+    cv_values.momentum.VF_drag =
+      Utilities::MPI::sum(cv_values.momentum.VF_drag, this->mpi_communicator);
+  }
+
+  template <int dim>
   void
   ControlVolumeFSI<dim>::CVValues::initialize_output(MPI_Comm &mpi_communicator)
   {
@@ -639,7 +772,11 @@ namespace MPI
         output.precision(6);
         output << "Time,"
                << "Inlet volume flow,"
-               << "Rate kinetic energy" << std::endl;
+               << "Inlet pressure,"
+               << "Outlet volume flow,"
+               << "Outlet pressure,"
+               << "Rate kinetic energy,"
+               << "VF drag" << std::endl;
       }
   }
 
