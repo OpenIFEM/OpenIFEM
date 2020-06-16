@@ -606,8 +606,11 @@ namespace MPI
                       {
                         for (unsigned int d2 = 0; d2 < dim; ++d2)
                           {
+                            // fluid stress for traction computation
                             solid_solver.fsi_stress_rows[d1][line + d2] =
                               stress[d1][d2];
+                            // fluid velocity for friction work computation
+                            solid_solver.fluid_velocity[line + d2] = value[d2];
                           }
                       }
                     // End assigning local fluid stress values
@@ -622,6 +625,9 @@ namespace MPI
                             solid_solver.mpi_communicator,
                             solid_solver.fsi_stress_rows[d]);
       }
+    Utilities::MPI::sum(solid_solver.fluid_velocity,
+                        solid_solver.mpi_communicator,
+                        solid_solver.fluid_velocity);
     move_solid_mesh(false);
   }
 

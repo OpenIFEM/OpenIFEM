@@ -449,13 +449,17 @@ namespace MPI
                          << cv_values.outlet_volume_flow << ","
                          << cv_values.outlet_pressure << ","
                          << cv_values.energy.rate_kinetic_energy << ","
-                         << cv_values.momentum.VF_drag << std::endl;
+                         << cv_values.momentum.VF_drag << ","
+                         << cv_values.energy.rate_friction_work << std::endl;
       }
   }
 
   template <int dim>
   void ControlVolumeFSI<dim>::get_separation_point()
   {
+    // **IMPORTANT** this method only works for VF simulation with enforeced
+    // symmetry
+    // Get solid surface velocity
   }
 
   template <int dim>
@@ -654,10 +658,12 @@ namespace MPI
     Vector<double> localized_displacement(solid_solver.current_displacement);
 
     std::vector<std::vector<Tensor<1, dim>>> fsi_stress_rows_values(dim);
+    std::vector<Tensor<1, dim>> fluid_velocity_values(dim);
     for (unsigned int d = 0; d < dim; ++d)
       {
         fsi_stress_rows_values[d].resize(n_f_q_points);
       }
+    fluid_velocity_values.resize(n_f_q_points);
     // A "viewer" to describe the nodal dofs as a vector.
     FEValuesExtractors::Vector displacements(0);
 
@@ -701,6 +707,8 @@ namespace MPI
                       solid_solver.fsi_stress_rows[d],
                       fsi_stress_rows_values[d]);
                   }
+                fe_face_values[displacements].get_function_values(
+                  solid_solver.fluid_velocity, fluid_velocity_values);
                 for (unsigned int v = 0;
                      v < GeometryInfo<dim>::vertices_per_face;
                      ++v)
@@ -719,8 +727,12 @@ namespace MPI
                       }
                   } // End looping face quadrature points
 
+                // Pressure drag force is the normal component of the traction
+                // Friction work is the tangential component of the traction
+                // *times* surface fluid velocity
                 Tensor<1, dim> drag;
                 Tensor<1, dim> friction;
+                Tensor<1, dim> tangential_velocity;
 
                 Tensor<2, dim> normal_stress;
                 Tensor<2, dim> tangential_stress;
@@ -743,6 +755,11 @@ namespace MPI
                     drag = normal_stress * fe_face_values.normal_vector(q);
                     friction =
                       tangential_stress * fe_face_values.normal_vector(q);
+                    tangential_velocity =
+                      fluid_velocity_values[q] -
+                      fe_face_values.normal_vector(q) *
+                        scalar_product(fluid_velocity_values[q],
+                                       fe_face_values.normal_vector(q));
 
                     for (unsigned int j = 0; j < dofs_per_cell; ++j)
                       {
@@ -750,6 +767,10 @@ namespace MPI
                           solid_solver.fe.system_to_component_index(j).first;
                         cv_values.momentum.VF_drag +=
                           fe_face_values.shape_value(j, q) * drag[component_j] *
+                          fe_face_values.JxW(q);
+                        cv_values.energy.rate_friction_work +=
+                          fe_face_values.shape_value(j, q) *
+                          friction[component_j] * tangential_velocity.norm() *
                           fe_face_values.JxW(q);
                       }
                   }
@@ -759,6 +780,8 @@ namespace MPI
     // Sum the results over all MPI ranks
     cv_values.momentum.VF_drag =
       Utilities::MPI::sum(cv_values.momentum.VF_drag, this->mpi_communicator);
+    cv_values.energy.rate_friction_work = Utilities::MPI::sum(
+      cv_values.energy.rate_friction_work, this->mpi_communicator);
   }
 
   template <int dim>
@@ -776,7 +799,8 @@ namespace MPI
                << "Outlet volume flow,"
                << "Outlet pressure,"
                << "Rate kinetic energy,"
-               << "VF drag" << std::endl;
+               << "VF drag, "
+               << "Rate friction work" << std::endl;
       }
   }
 
@@ -797,6 +821,7 @@ namespace MPI
     energy.outlet_pressure_work = 0;
     energy.rate_kinetic_energy = 0;
     energy.rate_dissipation = 0;
+    energy.rate_friction_work = 0;
   }
 
   template <int dim>

@@ -101,6 +101,7 @@ namespace MPI
         double outlet_pressure_work;
         double rate_kinetic_energy;
         double rate_dissipation;
+        double rate_friction_work;
       };
       momentum_equation momentum;
       energy_equation energy;

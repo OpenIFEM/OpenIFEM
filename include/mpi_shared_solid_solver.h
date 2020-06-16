@@ -194,7 +194,16 @@ namespace Solid
       PETScWrappers::MPI::Vector previous_acceleration;
       PETScWrappers::MPI::Vector previous_velocity;
       PETScWrappers::MPI::Vector previous_displacement;
+
+      /**
+       * Arrays to store the fsi-related quantities. fsi_stress_rows has dim
+       * elements and each element is an array of n_dof elements, representing a
+       * row in the rank 2 stress tensor. The fsi stresses are used to evaluate
+       * tractions. fluid_velocity stores the fluid velocity at the FSI
+       * interface and will be used when computing the friction work.
+       */
       std::vector<Vector<double>> fsi_stress_rows;
+      Vector<double> fluid_velocity;
 
       /**
        * Nodal strain and stress obtained by taking the average of surrounding
