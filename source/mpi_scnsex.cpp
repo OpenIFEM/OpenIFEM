@@ -234,17 +234,6 @@ namespace Fluid
                         {
                           for (unsigned int j = 0; j < dofs_per_cell; ++j)
                             {
-                              // Let the linearized diffusion, continuity
-                              // terms be written as
-                              // the bilinear operator: \f$A = a((\delta{u},
-                              // \delta{p}), (\delta{v}, \delta{q}))\f$,
-                              // the linearized convection term be: \f$C =
-                              // c(u;\delta{u}, \delta{v})\f$,
-                              // and the linearized inertial term be:
-                              // \f$M = m(\delta{u}, \delta{v})$, then LHS is:
-                              // $(A
-                              // +
-                              // C) + M/{\Delta{t}}\f$
                               if (assemble_velocity)
                                 {
                                   local_matrix(i, j) +=
@@ -258,11 +247,6 @@ namespace Fluid
                                                         phi_u[j] * phi_u[i] *
                                                         fe_values.JxW(q);
                                 }
-                              // For more clear demonstration, write continuity
-                              // equation separately.
-                              // The original strong form is:
-                              // \f$p_{,t} + \frac{C_p}{C_v} * (p_0 + p) *
-                              // (\nabla \times u) + u (\nabla p) = 0\f$
                               else
                                 {
                                   local_matrix(i, j) += phi_p[i] * phi_p[j] /
@@ -276,8 +260,6 @@ namespace Fluid
                             }
                         }
 
-                      // RHS is \f$-(A_{current} + C_{current}) -
-                      // M_{present-current}/\Delta{t}\f$.
                       if (assemble_velocity)
                         {
                           local_rhs(i) +=
@@ -610,8 +592,6 @@ namespace Fluid
             {
               if (b->second < time.current())
                 {
-                  std::cout << "timse's up. Erase id: " << b->first
-                            << std::endl;
                   hard_coded_boundary_values.erase(b->first);
                   b = boundary_condition_time_limits.erase(b);
                   if (b == boundary_condition_time_limits.end())

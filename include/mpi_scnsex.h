@@ -46,7 +46,10 @@ namespace Fluid
       //! Run the simulation.
       void run();
 
-      //! Set up the time limit for specified hard coded boundary condition.
+      /*! \brief Set up the time limit for specified hard coded boundary
+       * condition. This function is problematic for now, do not use it just
+       * yet.
+       */
       void set_hard_coded_boundary_condition_time(const unsigned int,
                                                   const double);
 
