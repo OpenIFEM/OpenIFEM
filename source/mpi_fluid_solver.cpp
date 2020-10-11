@@ -417,38 +417,6 @@ namespace Fluid
             }
         }
       data_out.add_data_vector(ind, "Indicator");
-      // FSI acceleration
-      Vector<float> fsi_acc_x(triangulation.n_active_cells());
-      Vector<float> fsi_acc_y(triangulation.n_active_cells());
-      Vector<float> fsi_acc_z(triangulation.n_active_cells());
-      for (auto cell = triangulation.begin_active();
-           cell != triangulation.end();
-           ++cell)
-        {
-          if (cell->is_locally_owned())
-            {
-              auto p = cell_property.get_data(cell);
-              fsi_acc_x[cell->active_cell_index()] = p[0]->fsi_acceleration[0];
-              fsi_acc_y[cell->active_cell_index()] = p[0]->fsi_acceleration[1];
-            }
-        }
-      data_out.add_data_vector(fsi_acc_x, "fsi_force_x");
-      data_out.add_data_vector(fsi_acc_y, "fsi_force_y");
-      if (dim == 3)
-        {
-          for (auto cell = triangulation.begin_active();
-               cell != triangulation.end();
-               ++cell)
-            {
-              if (cell->is_locally_owned())
-                {
-                  auto p = cell_property.get_data(cell);
-                  fsi_acc_z[cell->active_cell_index()] =
-                    p[0]->fsi_acceleration[2];
-                }
-            }
-          data_out.add_data_vector(fsi_acc_z, "fsi_force_z");
-        }
 
       // stress
       data_out.add_data_vector(scalar_dof_handler, tmp_stress[0][0], "Sxx");

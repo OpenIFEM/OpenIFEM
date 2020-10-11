@@ -17,6 +17,7 @@ set(serial_tests acoustic_duct_wave
 
 # mpi tests
 set(mpi_tests acoustic_duct_wave_mpi
+              acoustic_duct_wave_mpi_scnsex
               acoustic_pml_mpi
               fluid_cylinder_mpi
               fluid_cylinder_mpi_insimex
