@@ -22,6 +22,7 @@ set(mpi_tests acoustic_duct_wave_mpi
               fluid_cylinder_mpi
               fluid_cylinder_mpi_insimex
               fluid_pipe_mpi
+              fsi_contact_model_mpi
               fsi_gravity_mpi
               fsi_leaflet_mpi
               solid_beam_bending_mpi_linearelastic

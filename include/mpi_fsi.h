@@ -40,6 +40,10 @@ namespace MPI
         bool use_dirichlet_bc = false);
     void run();
 
+    void
+    set_penetration_criterion(const std::function<double(const Point<dim>)> &,
+                              Tensor<1, dim>);
+
     //! Destructor
     ~FSI();
 
@@ -104,6 +108,10 @@ namespace MPI
      */
     void find_fluid_bc();
 
+    /*! \brief Apply contact model specific to VF simulation
+     */
+    void apply_contact_model();
+
     /// Mesh adaption.
     void refine_mesh(const unsigned int, const unsigned int);
 
@@ -135,6 +143,11 @@ namespace MPI
       typename parallel::distributed::Triangulation<dim>::active_cell_iterator,
       typename DoFHandler<dim>::active_cell_iterator>
       cell_hints;
+
+    // A function that determines if a point is penetrating the fluid domain
+    std::shared_ptr<std::function<double(const Point<dim>)>>
+      penetration_criterion;
+    Tensor<1, dim> penetration_direction;
 
     bool use_dirichlet_bc;
   };

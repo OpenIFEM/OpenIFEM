@@ -27,6 +27,12 @@ namespace Utils
     ++timestep;
   }
 
+  void Time::decrement()
+  {
+    time_current -= delta_t;
+    --timestep;
+  }
+
   void Time::set_delta_t(double delta) { delta_t = delta; }
 
   template <int dim, typename VectorType>
