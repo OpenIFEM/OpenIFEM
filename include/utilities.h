@@ -46,6 +46,7 @@ namespace Utils
     bool time_to_refine() const;
     bool time_to_save() const;
     void increment();
+    void decrement();
     void set_delta_t(double delta);
 
   private:

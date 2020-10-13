@@ -407,6 +407,11 @@ namespace Parameters
                         "1e-10",
                         Patterns::Double(0.0),
                         "The tolerance of the force equilibrium");
+      prm.declare_entry(
+        "Contact force multiplier",
+        "1e8",
+        Patterns::Double(0.0),
+        "Multiplier of the penetration distance to compute contact force.");
     }
     prm.leave_subsection();
   }
@@ -419,6 +424,7 @@ namespace Parameters
       solid_max_iterations = prm.get_integer("Max Newton iterations");
       tol_d = prm.get_double("Displacement tolerance");
       tol_f = prm.get_double("Force tolerance");
+      contact_force_multiplier = prm.get_double("Contact force multiplier");
     }
     prm.leave_subsection();
   }
