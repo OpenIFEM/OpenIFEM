@@ -631,11 +631,22 @@ namespace MPI
   }
 
   template <int dim>
-  void FSI<dim>::apply_contact_model()
+  void FSI<dim>::apply_contact_model(bool first_step)
   {
     // We need to increment the force until it does not penetrate
     bool still_penetrate = true;
-    double force_increment = 1e8;
+    double force_increment = parameters.contact_force_multiplier;
+    // Cache the current solutions
+    Vector<double> cached_current_acceleration(
+      solid_solver.current_acceleration);
+    Vector<double> cached_current_velocity(solid_solver.current_velocity);
+    Vector<double> cached_current_displacement(
+      solid_solver.current_displacement);
+    Vector<double> cached_previous_acceleration(
+      solid_solver.previous_acceleration);
+    Vector<double> cached_previous_velocity(solid_solver.previous_velocity);
+    Vector<double> cached_previous_displacement(
+      solid_solver.previous_displacement);
     if (dim == 2)
       {
         // By default, the force to mimic contact model is towards
@@ -648,22 +659,10 @@ namespace MPI
                                            update_quadrature_points);
         while (still_penetrate)
           {
-            move_solid_mesh(true);
             // Reset the flag
             still_penetrate = false;
-            // Cache the current solutions
-            Vector<double> cached_current_acceleration(
-              solid_solver.current_acceleration);
-            Vector<double> cached_current_velocity(
-              solid_solver.current_velocity);
-            Vector<double> cached_current_displacement(
-              solid_solver.current_displacement);
-            Vector<double> cached_previous_acceleration(
-              solid_solver.previous_acceleration);
-            Vector<double> cached_previous_velocity(
-              solid_solver.previous_velocity);
-            Vector<double> cached_previous_displacement(
-              solid_solver.previous_displacement);
+            solid_solver.run_one_step(first_step);
+            move_solid_mesh(true);
             // Loop over the solid cells and determine if they penetrate
             for (auto s_cell = solid_solver.dof_handler.begin_active();
                  s_cell != solid_solver.dof_handler.end();
@@ -684,7 +683,7 @@ namespace MPI
                             double penetration_value =
                               std::invoke(*penetration_criterion,
                                           s_cell->face(f)->vertex(v));
-                            if (penetration_value > 0)
+                            if (penetration_value > 1e-5)
                               {
                                 still_penetrate = true;
                                 traction = force_increment * penetration_value /
@@ -734,7 +733,6 @@ namespace MPI
                 solid_solver.previous_displacement =
                   cached_previous_displacement;
                 solid_solver.time.decrement();
-                solid_solver.run_one_step(false);
               }
           } // End adding extra stress
       }     // End dim == 2
@@ -883,10 +881,13 @@ namespace MPI
           }
         {
           TimerOutput::Scope timer_section(timer, "Run solid solver");
-          solid_solver.run_one_step(first_step);
           if (penetration_criterion)
             {
-              apply_contact_model();
+              apply_contact_model(first_step);
+            }
+          else
+            {
+              solid_solver.run_one_step(first_step);
             }
         }
         update_solid_box();

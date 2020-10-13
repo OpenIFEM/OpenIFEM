@@ -110,6 +110,8 @@ namespace Parameters
                                        //! hyperelastic only.
     double tol_f;                      //!< Force tolerance
     double tol_d; //!< Displacement tolerance, hyperelastic only.
+    double contact_force_multiplier; //!< Multiplier of the penetration distance
+                                     //!< to compute contact force.
     static void declareParameters(ParameterHandler &);
     void parseParameters(ParameterHandler &);
   };

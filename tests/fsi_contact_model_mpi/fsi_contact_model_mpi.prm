@@ -136,6 +136,9 @@ subsection Solid solver control
 
   # Force residual tolerance (relative to the first iteration at each timestep)
   set Force tolerance  = 1.0e-6
+
+  # Contact force multiplier (only used in FSI)
+  set Contact force multiplier = 1.0e10
 end
 
 # Only homogeneous Dirichlet BC is supported, i.e., the prescribed value is always 0.

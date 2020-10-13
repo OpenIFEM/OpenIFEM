@@ -110,7 +110,7 @@ namespace MPI
 
     /*! \brief Apply contact model specific to VF simulation
      */
-    void apply_contact_model();
+    void apply_contact_model(bool);
 
     /// Mesh adaption.
     void refine_mesh(const unsigned int, const unsigned int);

@@ -46,8 +46,7 @@ int main(int argc, char *argv[])
 
           auto penetration_criterion = [](const Point<2> p) -> double {
             double wall_height = 1.0;
-            double tolerance = 1e-5;
-            return (p[1] - wall_height - tolerance);
+            return (p[1] - wall_height);
           };
 
           MPI::FSI<2> fsi(fluid, solid, params);
@@ -56,7 +55,7 @@ int main(int argc, char *argv[])
           fsi.run();
           Vector<double> u(solid.get_current_solution());
           double umin = *std::min_element(u.begin(), u.end());
-          double uerror = std::abs(umin + 0.0402) / 0.0402;
+          double uerror = std::abs(umin + 0.01999) / 0.01999;
           AssertThrow(uerror < 1e-3,
                       ExcMessage("Minimum displacement is incorrect!"));
         }
