@@ -91,44 +91,14 @@ namespace Solid
     template <int dim>
     class SharedHyperElasticity : public SharedSolidSolver<dim>
     {
+      MPISharedSolidSolverInheritanceMacro();
+
     public:
       SharedHyperElasticity(Triangulation<dim> &,
                             const Parameters::AllParameters &);
       ~SharedHyperElasticity() {}
 
     private:
-      using SharedSolidSolver<dim>::triangulation;
-      using SharedSolidSolver<dim>::parameters;
-      using SharedSolidSolver<dim>::dof_handler;
-      using SharedSolidSolver<dim>::scalar_dof_handler;
-      using SharedSolidSolver<dim>::fe;
-      using SharedSolidSolver<dim>::scalar_fe;
-      using SharedSolidSolver<dim>::volume_quad_formula;
-      using SharedSolidSolver<dim>::face_quad_formula;
-      using SharedSolidSolver<dim>::constraints;
-      using SharedSolidSolver<dim>::system_matrix;
-      using SharedSolidSolver<dim>::mass_matrix;
-      using SharedSolidSolver<dim>::system_rhs;
-      using SharedSolidSolver<dim>::current_acceleration;
-      using SharedSolidSolver<dim>::current_velocity;
-      using SharedSolidSolver<dim>::current_displacement;
-      using SharedSolidSolver<dim>::previous_acceleration;
-      using SharedSolidSolver<dim>::previous_velocity;
-      using SharedSolidSolver<dim>::previous_displacement;
-      using SharedSolidSolver<dim>::fsi_stress_rows;
-      using SharedSolidSolver<dim>::strain;
-      using SharedSolidSolver<dim>::stress;
-      using SharedSolidSolver<dim>::mpi_communicator;
-      using SharedSolidSolver<dim>::n_mpi_processes;
-      using SharedSolidSolver<dim>::this_mpi_process;
-      using SharedSolidSolver<dim>::pcout;
-      using SharedSolidSolver<dim>::time;
-      using SharedSolidSolver<dim>::timer;
-      using SharedSolidSolver<dim>::locally_owned_dofs;
-      using SharedSolidSolver<dim>::locally_owned_scalar_dofs;
-      using SharedSolidSolver<dim>::locally_relevant_dofs;
-      using SharedSolidSolver<dim>::times_and_names;
-
       void initialize_system() override;
 
       virtual void update_strain_and_stress() override;
