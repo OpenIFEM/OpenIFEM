@@ -30,6 +30,7 @@ set(headers fluid_solver.h
             fsi.h
             hyper_elastic_material.h
             hyper_elasticity.h
+            inheritance_macros.h
             insim.h
             insimex.h
             linear_elastic_material.h

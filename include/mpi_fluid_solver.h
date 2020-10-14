@@ -60,6 +60,7 @@
 #include <iostream>
 #include <sstream>
 
+#include "inheritance_macros.h"
 #include "parameters.h"
 #include "utilities.h"
 
@@ -95,15 +96,24 @@ namespace Fluid
       //! Destructor
       ~FluidSolver();
 
-      //! Setup the hard-coded boundary conditions. The first argument stands
-      //! for the boundary ID that the condition is applied to, and the second
-      //! is the hard-coded boundary value function. The ID must be included in
-      //! Dirichlet bunndaries in the parameters input file and calling this
-      //! function will override the original boundary condition.
+      /*! \brief Setup the hard-coded boundary conditions. The first argument
+       * stands for the boundary ID that the condition is applied to, and the
+       * second is the hard-coded boundary value function. The ID must be
+       * included in Dirichlet bunndaries in the parameters input file and
+       * calling this function will override the original boundary condition.
+       */
       void add_hard_coded_boundary_condition(
         const int,
         const std::function<
           double(const Point<dim> &, const unsigned int, const double)> &);
+
+      /*! \brief Setup the initial condition. A std::function can be passed into
+       * to solver where takes a dealii::Point<dim>, a component (0 to dim-1 for
+       * velocity and dim for pressure), and returns the initial condition
+       * value.
+       */
+      void set_initial_condition(
+        const std::function<double(const Point<dim> &, const unsigned int)> &);
 
       //! Return the solution for testing.
       PETScWrappers::MPI::BlockVector get_current_solution() const;
@@ -129,6 +139,9 @@ namespace Fluid
       /// Specify the sparsity pattern and reinit matrices and vectors based on
       /// the dofs and constraints.
       virtual void initialize_system();
+
+      /// Apply the initial condition passed to the solver.
+      void apply_initial_condition();
 
       /// Mesh adaption.
       void refine_mesh(const unsigned int, const unsigned int);
@@ -216,6 +229,11 @@ namespace Fluid
       /// Hard-coded boundary values, only used when told so in the input
       /// parameters.
       std::map<int, BoundaryValues> hard_coded_boundary_values;
+
+      /// Initial condition
+      std::shared_ptr<
+        std::function<double(const Point<dim> &, const unsigned int)>>
+        initial_condition_field;
 
       /// A data structure that caches the real/artificial fluid indicator,
       /// FSI stress, and FSI acceleration terms at quadrature points, that

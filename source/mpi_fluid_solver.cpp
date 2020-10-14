@@ -65,6 +65,16 @@ namespace Fluid
     }
 
     template <int dim>
+    void FluidSolver<dim>::set_initial_condition(
+      const std::function<double(const Point<dim> &, const unsigned int)>
+        &condition)
+    {
+      initial_condition_field.reset(
+        new std::function<double(const Point<dim> &, const unsigned int)>(
+          condition));
+    }
+
+    template <int dim>
     void FluidSolver<dim>::setup_dofs()
     {
       // The first step is to associate DoFs with a given mesh.
@@ -289,12 +299,67 @@ namespace Fluid
       // Cell property
       setup_cell_property();
 
+      // Apply initial condition
+      if (initial_condition_field)
+        {
+          apply_initial_condition();
+        }
+
       stress = std::vector<std::vector<PETScWrappers::MPI::Vector>>(
         dim,
         std::vector<PETScWrappers::MPI::Vector>(
           dim,
           PETScWrappers::MPI::Vector(locally_owned_scalar_dofs,
                                      mpi_communicator)));
+    }
+
+    template <int dim>
+    void FluidSolver<dim>::apply_initial_condition()
+    {
+      AssertThrow(initial_condition_field != nullptr,
+                  ExcMessage("No initial condition specified!"));
+      AffineConstraints<double> initial_condition;
+      initial_condition.reinit(locally_relevant_dofs);
+
+      const std::vector<Point<dim>> &unit_points = fe.get_unit_support_points();
+      Quadrature<dim> dummy_q(unit_points.size());
+      MappingQGeneric<dim> mapping(1);
+      FEValues<dim> dummy_fe_values(
+        mapping, fe, dummy_q, update_quadrature_points);
+
+      std::vector<types::global_dof_index> dof_indices(fe.dofs_per_cell);
+      for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+           ++cell)
+        {
+          if (cell->is_artificial())
+            continue;
+          dummy_fe_values.reinit(cell);
+          auto support_points = dummy_fe_values.get_quadrature_points();
+          cell->get_dof_indices(dof_indices);
+          for (unsigned int i = 0; i < unit_points.size(); ++i)
+            {
+              // Identify the component from the group
+              auto base_index = fe.system_to_base_index(i);
+              unsigned int component =
+                base_index.first.first == 0 ? base_index.first.second : dim;
+              Assert(component <= dim,
+                     ExcMessage("Component should not excess dim!"));
+              // Compute the initial condition value from the component and
+              // coordinate
+              double initial_condition_value = std::invoke(
+                *initial_condition_field, support_points[i], component);
+              // Assign it to the corresponding dof index
+              auto line = dof_indices[i];
+              initial_condition.add_line(line);
+              initial_condition.set_inhomogeneity(line,
+                                                  initial_condition_value);
+            }
+        }
+      initial_condition.close();
+      PETScWrappers::MPI::BlockVector tmp;
+      tmp.reinit(owned_partitioning, mpi_communicator);
+      initial_condition.distribute(tmp);
+      present_solution = tmp;
     }
 
     template <int dim>
