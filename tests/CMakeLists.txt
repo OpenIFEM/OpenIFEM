@@ -19,9 +19,10 @@ set(serial_tests acoustic_duct_wave
 set(mpi_tests acoustic_duct_wave_mpi
               acoustic_duct_wave_mpi_scnsex
               acoustic_pml_mpi
-              fluid_initial_condition_mpi
+              fluid_body_force_mpi
               fluid_cylinder_mpi
               fluid_cylinder_mpi_insimex
+              fluid_initial_condition_mpi
               fluid_pipe_mpi
               fsi_contact_model_mpi
               fsi_gravity_mpi

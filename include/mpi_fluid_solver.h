@@ -107,6 +107,14 @@ namespace Fluid
         const std::function<
           double(const Point<dim> &, const unsigned int, const double)> &);
 
+      //! Set the artificial body force field. Same as initial condition
+      void set_body_force(
+        const std::function<double(const Point<dim> &, const unsigned int)> &);
+
+      //! Set the sigmal pml field. Same as initial condition
+      void set_sigma_pml_field(
+        const std::function<double(const Point<dim> &, const unsigned int)> &);
+
       /*! \brief Setup the initial condition. A std::function can be passed into
        * to solver where takes a dealii::Point<dim>, a component (0 to dim-1 for
        * velocity and dim for pressure), and returns the initial condition
@@ -119,7 +127,7 @@ namespace Fluid
       PETScWrappers::MPI::BlockVector get_current_solution() const;
 
     protected:
-      class BoundaryValues;
+      class Field;
       struct CellProperty;
 
       //! Pure abstract function to run simulation for one step
@@ -228,7 +236,18 @@ namespace Fluid
 
       /// Hard-coded boundary values, only used when told so in the input
       /// parameters.
-      std::map<int, BoundaryValues> hard_coded_boundary_values;
+      std::map<int, Field> hard_coded_boundary_values;
+
+      /// Artificial body force
+      std::shared_ptr<Field> body_force;
+
+      /** \brief sigma_pml_field
+       * the sigma_pml_field is predefined outside the class. It specifies
+       * the sigma PML field to determine where and how sigma pml is
+       * distributed. With strong sigma PML it absorbs faster waves/vortices
+       * but reflects more slow waves/vortices.
+       */
+      std::shared_ptr<Field> sigma_pml_field;
 
       /// Initial condition
       std::shared_ptr<
@@ -248,15 +267,21 @@ namespace Fluid
         int material_id; //!< The material id of the surrounding solid cell.
       };
 
-      class BoundaryValues : public Function<dim>
+      class Field : public Function<dim>
       {
       public:
-        BoundaryValues() = delete;
-        BoundaryValues(const BoundaryValues &);
-        BoundaryValues(
-          const std::function<
-            double(const Point<dim> &, const unsigned int, const double)> &);
+        Field() = delete;
+        Field(const Field &);
+        Field(const std::function<
+              double(const Point<dim> &, const unsigned int, const double)> &);
+        virtual double value(const Point<dim> &, const unsigned int) const;
         virtual void vector_value(const Point<dim> &, Vector<double> &) const;
+        void double_value_list(const std::vector<Point<dim>> &,
+                               std::vector<double> &,
+                               const unsigned int);
+        // Function for tensor values sucha as body forces
+        void tensor_value_list(const std::vector<Point<dim>> &,
+                               std::vector<Tensor<1, dim>> &);
 
       private:
         // The value function being used to apply the hard coded boundary

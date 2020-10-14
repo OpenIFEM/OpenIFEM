@@ -29,35 +29,56 @@ int main(int argc, char *argv[])
 
       if (params.dimension == 2)
         {
-          auto initial_condition = [](const Point<2> &point,
-                                      const unsigned int component) -> double {
-            double pressure = 1e4;
-            if (component == 2)
+          auto body_force = [](const Point<2> &point,
+                               const unsigned int component) -> double {
+            double rho = 1.3e-3;
+            double bf = 1.0e3 / rho;
+            if (point[0] > 3.5 - 5e-4 && point[0] < 4.5 + 5e-4 &&
+                component == 0)
               {
-                if (point[0] > 4.0 && point[0] < 5.0)
-                  {
-                    return pressure * (point[0] - 4.0);
-                  }
-                else if (point[0] >= 5.0 && point[0] < 12.0)
-                  {
-                    return pressure;
-                  }
+                return bf;
               }
             return 0.0;
           };
+
+          auto sigma_pml = [](const Point<2> &point,
+                              const unsigned int component) -> double {
+            (void)component;
+            double sigmaMax = 340000;
+            double pmlLength = 3.0;
+            double sigmaPML = 0.0;
+            std::vector<double> boundary = {0.0, 8.0};
+            std::vector<unsigned int> boundary_dir = {0, 0};
+            for (unsigned int i = 0; i < boundary.size(); ++i)
+              {
+                if (std::abs(point[boundary_dir[i]] - boundary[i]) < pmlLength)
+                  {
+                    sigmaPML =
+                      sigmaMax *
+                      pow((pmlLength -
+                           std::abs(point[boundary_dir[i]] - boundary[i])) /
+                            pmlLength,
+                          4);
+                  }
+              }
+            return sigmaPML;
+          };
+
           parallel::distributed::Triangulation<2> tria(MPI_COMM_WORLD);
           GridGenerator::subdivided_hyper_rectangle(
-            tria, {150, 20}, Point<2>(0, 0), Point<2>(15, 2), true);
+            tria, {160, 30}, Point<2>(0, 0), Point<2>(8, 2), true);
           Fluid::MPI::SCnsIM<2> flow(tria, params);
-          flow.set_initial_condition(initial_condition);
+          flow.set_body_force(body_force);
+          flow.set_sigma_pml_field(sigma_pml);
           flow.run();
           // Check the max values of pressure
           auto solution = flow.get_current_solution();
           auto p = solution.block(1);
           double pmax = p.max();
-          double perror = std::abs(pmax - 1e4) / 1e4;
-          AssertThrow(perror < 1e-8,
-                      ExcMessage("Maximum pressure is incorrect!"));
+          double pmin = p.min();
+          double perror = std::abs((pmax - pmin) - 1e3) / 1e3;
+          AssertThrow(perror < 1e-3,
+                      ExcMessage("Pressure difference is incorrect!"));
         }
       else
         {

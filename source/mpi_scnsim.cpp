@@ -190,10 +190,8 @@ namespace Fluid
 
     template <int dim>
     SCnsIM<dim>::SCnsIM(parallel::distributed::Triangulation<dim> &tria,
-                        const Parameters::AllParameters &parameters,
-                        std::shared_ptr<Function<dim>> pml,
-                        std::shared_ptr<TensorFunction<1, dim>> bf)
-      : FluidSolver<dim>(tria, parameters), sigma_pml_field(pml), body_force(bf)
+                        const Parameters::AllParameters &parameters)
+      : FluidSolver<dim>(tria, parameters)
     {
       AssertThrow(parameters.fluid_velocity_degree ==
                     parameters.fluid_pressure_degree,
@@ -353,6 +351,15 @@ namespace Fluid
       const double atm = 1013250;
       const double kappa_s = 1e4;
 
+      // Zero out sigma field and body force if their fields are not specified
+      if (sigma_pml_field == nullptr)
+        {
+          for (auto &e : sigma_pml)
+            {
+              e = 0.0;
+            }
+        }
+
       for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
            ++cell)
         {
@@ -384,10 +391,16 @@ namespace Fluid
               fe_values[pressure].get_function_values(present_solution,
                                                       present_pressure_values);
 
-              sigma_pml_field->value_list(
-                fe_values.get_quadrature_points(), sigma_pml, 0);
-              body_force->value_list(fe_values.get_quadrature_points(),
-                                     artificial_bf);
+              if (sigma_pml_field)
+                {
+                  sigma_pml_field->double_value_list(
+                    fe_values.get_quadrature_points(), sigma_pml, 0);
+                }
+              if (body_force)
+                {
+                  body_force->tensor_value_list(
+                    fe_values.get_quadrature_points(), artificial_bf);
+                }
 
               fe_values[velocities].get_function_values(fsi_acceleration,
                                                         fsi_acc_values);

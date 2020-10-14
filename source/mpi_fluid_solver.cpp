@@ -58,10 +58,34 @@ namespace Fluid
         parameters.fluid_dirichlet_bcs.find(id) !=
           parameters.fluid_dirichlet_bcs.end(),
         ExcMessage("Hard coded BC ID not included in parameters file!"));
-      auto success = this->hard_coded_boundary_values.insert(
-        {id, BoundaryValues(value_function)});
+      auto success =
+        this->hard_coded_boundary_values.insert({id, Field(value_function)});
       AssertThrow(success.second,
                   ExcMessage("Duplicated hard coded boundary conditions!"));
+    }
+
+    template <int dim>
+    void FluidSolver<dim>::set_body_force(
+      const std::function<double(const Point<dim> &, const unsigned int)> &bf)
+    {
+      body_force.reset(new Field([bf](const Point<dim> &p,
+                                      const unsigned int component,
+                                      const double time) {
+        (void)time;
+        return bf(p, component);
+      }));
+    }
+
+    template <int dim>
+    void FluidSolver<dim>::set_sigma_pml_field(
+      const std::function<double(const Point<dim> &, const unsigned int)> &pml)
+    {
+      sigma_pml_field.reset(new Field([pml](const Point<dim> &p,
+                                            const unsigned int component,
+                                            const double time) {
+        (void)time;
+        return pml(p, component);
+      }));
     }
 
     template <int dim>
@@ -745,14 +769,13 @@ namespace Fluid
     }
 
     template <int dim>
-    FluidSolver<dim>::BoundaryValues::BoundaryValues(
-      const BoundaryValues &source)
+    FluidSolver<dim>::Field::Field(const Field &source)
       : Function<dim>(dim + 1), value_function(source.value_function)
     {
     }
 
     template <int dim>
-    FluidSolver<dim>::BoundaryValues::BoundaryValues(
+    FluidSolver<dim>::Field::Field(
       const std::function<double(
         const Point<dim> &, const unsigned int, const double)> &value_function)
       : Function<dim>(dim + 1), value_function(value_function)
@@ -760,12 +783,46 @@ namespace Fluid
     }
 
     template <int dim>
-    void
-    FluidSolver<dim>::BoundaryValues::vector_value(const Point<dim> &p,
-                                                   Vector<double> &values) const
+    double FluidSolver<dim>::Field::value(const Point<dim> &p,
+                                          const unsigned int component) const
+    {
+      return value_function(p, component, this->get_time());
+    }
+
+    template <int dim>
+    void FluidSolver<dim>::Field::vector_value(const Point<dim> &p,
+                                               Vector<double> &values) const
     {
       for (unsigned int c = 0; c < this->n_components; ++c)
-        values(c) = value_function(p, c, this->get_time());
+        {
+          values(c) = value_function(p, c, this->get_time());
+        }
+    }
+
+    template <int dim>
+    void FluidSolver<dim>::Field::double_value_list(
+      const std::vector<Point<dim>> &points,
+      std::vector<double> &values,
+      const unsigned int component)
+    {
+      for (unsigned int i = 0; i < points.size(); ++i)
+        {
+          values[i] = this->value(points[i], component);
+        }
+    }
+
+    template <int dim>
+    void FluidSolver<dim>::Field::tensor_value_list(
+      const std::vector<Point<dim>> &points,
+      std::vector<Tensor<1, dim>> &values)
+    {
+      for (unsigned int i = 0; i < points.size(); ++i)
+        {
+          for (unsigned int c = 0; c < dim; ++c)
+            {
+              values[i][c] = this->value(points[i], c);
+            }
+        }
     }
 
     template class FluidSolver<2>;

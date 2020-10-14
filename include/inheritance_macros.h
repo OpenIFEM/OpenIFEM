@@ -4,6 +4,8 @@
 #define MPIFluidSolverInheritanceMacro()                                       \
 public:                                                                        \
   using FluidSolver<dim>::add_hard_coded_boundary_condition;                   \
+  using FluidSolver<dim>::set_body_force;                                      \
+  using FluidSolver<dim>::set_sigma_pml_field;                                 \
   using FluidSolver<dim>::set_initial_condition;                               \
                                                                                \
 private:                                                                       \
@@ -50,6 +52,8 @@ private:                                                                       \
   using FluidSolver<dim>::timer2;                                              \
   using FluidSolver<dim>::cell_property;                                       \
   using FluidSolver<dim>::hard_coded_boundary_values;                          \
+  using FluidSolver<dim>::body_force;                                          \
+  using FluidSolver<dim>::sigma_pml_field;                                     \
   using FluidSolver<dim>::initial_condition_field
 
 #define MPISharedSolidSolverInheritanceMacro()                                 \

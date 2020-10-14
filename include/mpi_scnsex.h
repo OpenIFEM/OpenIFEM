@@ -37,13 +37,7 @@ namespace Fluid
     public:
       //! Constructor.
       SCnsEX(parallel::distributed::Triangulation<dim> &,
-             const Parameters::AllParameters &,
-             std::shared_ptr<Function<dim>> pml =
-               std::make_shared<Functions::ZeroFunction<dim>>(
-                 Functions::ZeroFunction<dim>(dim + 1)),
-             std::shared_ptr<TensorFunction<1, dim>> bf =
-               std::make_shared<ZeroTensorFunction<1, dim>>(
-                 ZeroTensorFunction<1, dim>()));
+             const Parameters::AllParameters &);
       ~SCnsEX(){};
       //! Run the simulation.
       void run();
@@ -88,14 +82,6 @@ namespace Fluid
       void run_one_step(bool apply_nonzero_constraints,
                         bool assemble_system) override;
 
-      /*! \brief Apply the initial condition
-       *
-       * This is a hard-coded function that is only used for VF cases where an
-       * initial condition is applied for fast convergence. For general cases,
-       * do not include it.
-       */
-      void apply_initial_condition();
-
       /*! The intermiediate solution within every time step, generated from each
        * iteration.
        */
@@ -107,17 +93,6 @@ namespace Fluid
        * to the quadrature points when do the assembly.
        */
       PETScWrappers::MPI::BlockVector evaluation_point;
-
-      /** \brief sigma_pml_field
-       * the sigma_pml_field is predefined outside the class. It specifies
-       * the sigma PML field to determine where and how sigma pml is
-       * distributed. With strong sigma PML it absorbs faster waves/vortices
-       * but reflects more slow waves/vortices.
-       */
-      std::shared_ptr<Function<dim>> sigma_pml_field;
-
-      /// Hard-coded body force. It will be added onto gravity.
-      std::shared_ptr<TensorFunction<1, dim>> body_force;
 
       /** \breif local_matrices
        * The local matrices is stored in each cell such that the program does
