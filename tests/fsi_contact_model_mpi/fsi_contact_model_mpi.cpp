@@ -44,7 +44,7 @@ int main(int argc, char *argv[])
           Fluid::MPI::SCnsIM<2> fluid(tria_fluid, params);
           Solid::MPI::SharedLinearElasticity<2> solid(tria_solid, params);
 
-          auto penetration_criterion = [](const Point<2> p) -> double {
+          auto penetration_criterion = [](const Point<2> &p) -> double {
             double wall_height = 1.0;
             return (p[1] - wall_height);
           };

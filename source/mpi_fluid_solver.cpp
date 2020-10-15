@@ -58,10 +58,44 @@ namespace Fluid
         parameters.fluid_dirichlet_bcs.find(id) !=
           parameters.fluid_dirichlet_bcs.end(),
         ExcMessage("Hard coded BC ID not included in parameters file!"));
-      auto success = this->hard_coded_boundary_values.insert(
-        {id, BoundaryValues(value_function)});
+      auto success =
+        this->hard_coded_boundary_values.insert({id, Field(value_function)});
       AssertThrow(success.second,
                   ExcMessage("Duplicated hard coded boundary conditions!"));
+    }
+
+    template <int dim>
+    void FluidSolver<dim>::set_body_force(
+      const std::function<double(const Point<dim> &, const unsigned int)> &bf)
+    {
+      body_force.reset(new Field([bf](const Point<dim> &p,
+                                      const unsigned int component,
+                                      const double time) {
+        (void)time;
+        return bf(p, component);
+      }));
+    }
+
+    template <int dim>
+    void FluidSolver<dim>::set_sigma_pml_field(
+      const std::function<double(const Point<dim> &, const unsigned int)> &pml)
+    {
+      sigma_pml_field.reset(new Field([pml](const Point<dim> &p,
+                                            const unsigned int component,
+                                            const double time) {
+        (void)time;
+        return pml(p, component);
+      }));
+    }
+
+    template <int dim>
+    void FluidSolver<dim>::set_initial_condition(
+      const std::function<double(const Point<dim> &, const unsigned int)>
+        &condition)
+    {
+      initial_condition_field.reset(
+        new std::function<double(const Point<dim> &, const unsigned int)>(
+          condition));
     }
 
     template <int dim>
@@ -289,12 +323,67 @@ namespace Fluid
       // Cell property
       setup_cell_property();
 
+      // Apply initial condition
+      if (initial_condition_field)
+        {
+          apply_initial_condition();
+        }
+
       stress = std::vector<std::vector<PETScWrappers::MPI::Vector>>(
         dim,
         std::vector<PETScWrappers::MPI::Vector>(
           dim,
           PETScWrappers::MPI::Vector(locally_owned_scalar_dofs,
                                      mpi_communicator)));
+    }
+
+    template <int dim>
+    void FluidSolver<dim>::apply_initial_condition()
+    {
+      AssertThrow(initial_condition_field != nullptr,
+                  ExcMessage("No initial condition specified!"));
+      AffineConstraints<double> initial_condition;
+      initial_condition.reinit(locally_relevant_dofs);
+
+      const std::vector<Point<dim>> &unit_points = fe.get_unit_support_points();
+      Quadrature<dim> dummy_q(unit_points.size());
+      MappingQGeneric<dim> mapping(1);
+      FEValues<dim> dummy_fe_values(
+        mapping, fe, dummy_q, update_quadrature_points);
+
+      std::vector<types::global_dof_index> dof_indices(fe.dofs_per_cell);
+      for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+           ++cell)
+        {
+          if (cell->is_artificial())
+            continue;
+          dummy_fe_values.reinit(cell);
+          auto support_points = dummy_fe_values.get_quadrature_points();
+          cell->get_dof_indices(dof_indices);
+          for (unsigned int i = 0; i < unit_points.size(); ++i)
+            {
+              // Identify the component from the group
+              auto base_index = fe.system_to_base_index(i);
+              unsigned int component =
+                base_index.first.first == 0 ? base_index.first.second : dim;
+              Assert(component <= dim,
+                     ExcMessage("Component should not excess dim!"));
+              // Compute the initial condition value from the component and
+              // coordinate
+              double initial_condition_value = std::invoke(
+                *initial_condition_field, support_points[i], component);
+              // Assign it to the corresponding dof index
+              auto line = dof_indices[i];
+              initial_condition.add_line(line);
+              initial_condition.set_inhomogeneity(line,
+                                                  initial_condition_value);
+            }
+        }
+      initial_condition.close();
+      PETScWrappers::MPI::BlockVector tmp;
+      tmp.reinit(owned_partitioning, mpi_communicator);
+      initial_condition.distribute(tmp);
+      present_solution = tmp;
     }
 
     template <int dim>
@@ -680,14 +769,13 @@ namespace Fluid
     }
 
     template <int dim>
-    FluidSolver<dim>::BoundaryValues::BoundaryValues(
-      const BoundaryValues &source)
+    FluidSolver<dim>::Field::Field(const Field &source)
       : Function<dim>(dim + 1), value_function(source.value_function)
     {
     }
 
     template <int dim>
-    FluidSolver<dim>::BoundaryValues::BoundaryValues(
+    FluidSolver<dim>::Field::Field(
       const std::function<double(
         const Point<dim> &, const unsigned int, const double)> &value_function)
       : Function<dim>(dim + 1), value_function(value_function)
@@ -695,12 +783,46 @@ namespace Fluid
     }
 
     template <int dim>
-    void
-    FluidSolver<dim>::BoundaryValues::vector_value(const Point<dim> &p,
-                                                   Vector<double> &values) const
+    double FluidSolver<dim>::Field::value(const Point<dim> &p,
+                                          const unsigned int component) const
+    {
+      return value_function(p, component, this->get_time());
+    }
+
+    template <int dim>
+    void FluidSolver<dim>::Field::vector_value(const Point<dim> &p,
+                                               Vector<double> &values) const
     {
       for (unsigned int c = 0; c < this->n_components; ++c)
-        values(c) = value_function(p, c, this->get_time());
+        {
+          values(c) = value_function(p, c, this->get_time());
+        }
+    }
+
+    template <int dim>
+    void FluidSolver<dim>::Field::double_value_list(
+      const std::vector<Point<dim>> &points,
+      std::vector<double> &values,
+      const unsigned int component)
+    {
+      for (unsigned int i = 0; i < points.size(); ++i)
+        {
+          values[i] = this->value(points[i], component);
+        }
+    }
+
+    template <int dim>
+    void FluidSolver<dim>::Field::tensor_value_list(
+      const std::vector<Point<dim>> &points,
+      std::vector<Tensor<1, dim>> &values)
+    {
+      for (unsigned int i = 0; i < points.size(); ++i)
+        {
+          for (unsigned int c = 0; c < dim; ++c)
+            {
+              values[i][c] = this->value(points[i], c);
+            }
+        }
     }
 
     template class FluidSolver<2>;

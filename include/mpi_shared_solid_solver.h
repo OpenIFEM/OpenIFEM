@@ -59,6 +59,7 @@
 #include <fstream>
 #include <iostream>
 
+#include "inheritance_macros.h"
 #include "parameters.h"
 #include "utilities.h"
 

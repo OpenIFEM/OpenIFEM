@@ -633,6 +633,8 @@ namespace MPI
   template <int dim>
   void FSI<dim>::apply_contact_model(bool first_step)
   {
+    AssertThrow(penetration_criterion != nullptr,
+                ExcMessage("No penetration criterion specified!"));
     // We need to increment the force until it does not penetrate
     bool still_penetrate = true;
     double force_increment = parameters.contact_force_multiplier;
@@ -647,95 +649,87 @@ namespace MPI
     Vector<double> cached_previous_velocity(solid_solver.previous_velocity);
     Vector<double> cached_previous_displacement(
       solid_solver.previous_displacement);
-    if (dim == 2)
-      {
-        // By default, the force to mimic contact model is towards
-        // the bottom.
-        Tensor<1, dim> traction;
+    // By default, the force to mimic contact model is towards
+    // the bottom.
+    Tensor<1, dim> traction;
 
-        FEFaceValues<dim> fe_face_values(solid_solver.fe,
-                                         solid_solver.face_quad_formula,
-                                         update_normal_vectors |
-                                           update_quadrature_points);
-        while (still_penetrate)
+    FEFaceValues<dim> fe_face_values(solid_solver.fe,
+                                     solid_solver.face_quad_formula,
+                                     update_normal_vectors |
+                                       update_quadrature_points);
+    while (still_penetrate)
+      {
+        // Reset the flag
+        still_penetrate = false;
+        solid_solver.run_one_step(first_step);
+        move_solid_mesh(true);
+        // Loop over the solid cells and determine if they penetrate
+        for (auto s_cell = solid_solver.dof_handler.begin_active();
+             s_cell != solid_solver.dof_handler.end();
+             ++s_cell)
           {
-            // Reset the flag
-            still_penetrate = false;
-            solid_solver.run_one_step(first_step);
-            move_solid_mesh(true);
-            // Loop over the solid cells and determine if they penetrate
-            for (auto s_cell = solid_solver.dof_handler.begin_active();
-                 s_cell != solid_solver.dof_handler.end();
-                 ++s_cell)
+            for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
               {
-                for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell;
-                     ++f)
+                // Current face is at boundary and without Dirichlet bc.
+                if (s_cell->face(f)->at_boundary())
                   {
-                    // Current face is at boundary and without Dirichlet bc.
-                    if (s_cell->face(f)->at_boundary())
+                    fe_face_values.reinit(s_cell, f);
+                    for (unsigned int v = 0;
+                         v < GeometryInfo<dim>::vertices_per_face;
+                         ++v)
                       {
-                        fe_face_values.reinit(s_cell, f);
-                        for (unsigned int v = 0;
-                             v < GeometryInfo<dim>::vertices_per_face;
-                             ++v)
+                        // Check if the vertex is penetrating
+                        double penetration_value = std::invoke(
+                          *penetration_criterion, s_cell->face(f)->vertex(v));
+                        if (penetration_value > 1e-5)
                           {
-                            // Check if the vertex is penetrating
-                            double penetration_value =
-                              std::invoke(*penetration_criterion,
-                                          s_cell->face(f)->vertex(v));
-                            if (penetration_value > 1e-5)
+                            still_penetrate = true;
+                            traction = force_increment * penetration_value /
+                                       penetration_direction.norm() *
+                                       penetration_direction;
+                          }
+                        else
+                          {
+                            continue;
+                          }
+                        auto line = s_cell->face(f)->vertex_dof_index(v, 0);
+                        // Compute the extra stress from the face
+                        Tensor<2, dim> extra_stress;
+                        for (unsigned int d = 0; d < dim; ++d)
+                          {
+                            extra_stress[d][dim - 1] =
+                              fe_face_values.normal_vector(0)[d] > 1e-5
+                                ? traction[d] /
+                                    fe_face_values.normal_vector(0)[d]
+                                : 0;
+                          }
+                        // Assign the extra stress to local row vectors
+                        for (unsigned int d1 = 0; d1 < dim; ++d1)
+                          {
+                            for (unsigned int d2 = 0; d2 < dim; ++d2)
                               {
-                                still_penetrate = true;
-                                traction = force_increment * penetration_value /
-                                           penetration_direction.norm() *
-                                           penetration_direction;
+                                solid_solver.fsi_stress_rows[d1][line + d2] +=
+                                  extra_stress[d1][d2];
                               }
-                            else
-                              {
-                                continue;
-                              }
-                            auto line = s_cell->face(f)->vertex_dof_index(v, 0);
-                            // Compute the extra stress from the face
-                            Tensor<2, dim> extra_stress;
-                            for (unsigned int d = 0; d < dim; ++d)
-                              {
-                                extra_stress[d][dim - 1] =
-                                  fe_face_values.normal_vector(0)[d] > 1e-5
-                                    ? traction[d] /
-                                        fe_face_values.normal_vector(0)[d]
-                                    : 0;
-                              }
-                            // Assign the extra stress to local row vectors
-                            for (unsigned int d1 = 0; d1 < dim; ++d1)
-                              {
-                                for (unsigned int d2 = 0; d2 < dim; ++d2)
-                                  {
-                                    solid_solver
-                                      .fsi_stress_rows[d1][line + d2] +=
-                                      extra_stress[d1][d2];
-                                  }
-                              }
-                            // End assigning local fluid stress values
-                          } // End looping support points
-                      }
-                  } // End looping cell faces
-              }     // End looping solid cells
-            move_solid_mesh(false);
-            if (still_penetrate)
-              {
-                pcout << "Penetrating, apply contact model!" << std::endl;
-                solid_solver.current_acceleration = cached_current_acceleration;
-                solid_solver.current_velocity = cached_current_velocity;
-                solid_solver.current_displacement = cached_current_displacement;
-                solid_solver.previous_acceleration =
-                  cached_previous_acceleration;
-                solid_solver.previous_velocity = cached_previous_velocity;
-                solid_solver.previous_displacement =
-                  cached_previous_displacement;
-                solid_solver.time.decrement();
-              }
-          } // End adding extra stress
-      }     // End dim == 2
+                          }
+                        // End assigning local fluid stress values
+                      } // End looping support points
+                  }
+              } // End looping cell faces
+          }     // End looping solid cells
+        move_solid_mesh(false);
+        if (still_penetrate)
+          {
+            pcout << "Penetrating, apply contact model!" << std::endl;
+            solid_solver.current_acceleration = cached_current_acceleration;
+            solid_solver.current_velocity = cached_current_velocity;
+            solid_solver.current_displacement = cached_current_displacement;
+            solid_solver.previous_acceleration = cached_previous_acceleration;
+            solid_solver.previous_velocity = cached_previous_velocity;
+            solid_solver.previous_displacement = cached_previous_displacement;
+            solid_solver.time.decrement();
+          }
+      } // End adding extra stress
   }
 
   template <int dim>
@@ -922,11 +916,11 @@ namespace MPI
 
   template <int dim>
   void FSI<dim>::set_penetration_criterion(
-    const std::function<double(const Point<dim>)> &criterion,
+    const std::function<double(const Point<dim> &)> &criterion,
     Tensor<1, dim> direction)
   {
     penetration_criterion.reset(
-      new std::function<double(const Point<dim>)>(criterion));
+      new std::function<double(const Point<dim> &)>(criterion));
     penetration_direction = direction;
   }
 

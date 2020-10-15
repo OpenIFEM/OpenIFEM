@@ -34,65 +34,18 @@ namespace Fluid
     template <int dim>
     class SCnsIM : public FluidSolver<dim>
     {
+      MPIFluidSolverInheritanceMacro();
+
     public:
       //! Constructor.
       SCnsIM(parallel::distributed::Triangulation<dim> &,
-             const Parameters::AllParameters &,
-             std::shared_ptr<Function<dim>> pml =
-               std::make_shared<Functions::ZeroFunction<dim>>(
-                 Functions::ZeroFunction<dim>(dim + 1)),
-             std::shared_ptr<TensorFunction<1, dim>> bf =
-               std::make_shared<ZeroTensorFunction<1, dim>>(
-                 ZeroTensorFunction<1, dim>()));
+             const Parameters::AllParameters &);
       ~SCnsIM(){};
       //! Run the simulation.
       void run();
 
-      using FluidSolver<dim>::add_hard_coded_boundary_condition;
-
     private:
       class BlockIncompSchurPreconditioner;
-
-      using FluidSolver<dim>::setup_dofs;
-      using FluidSolver<dim>::make_constraints;
-      using FluidSolver<dim>::setup_cell_property;
-      using FluidSolver<dim>::refine_mesh;
-      using FluidSolver<dim>::output_results;
-      using FluidSolver<dim>::save_checkpoint;
-      using FluidSolver<dim>::load_checkpoint;
-      using FluidSolver<dim>::update_stress;
-
-      using FluidSolver<dim>::dofs_per_block;
-      using FluidSolver<dim>::triangulation;
-      using FluidSolver<dim>::fe;
-      using FluidSolver<dim>::scalar_fe;
-      using FluidSolver<dim>::dof_handler;
-      using FluidSolver<dim>::scalar_dof_handler;
-      using FluidSolver<dim>::volume_quad_formula;
-      using FluidSolver<dim>::face_quad_formula;
-      using FluidSolver<dim>::zero_constraints;
-      using FluidSolver<dim>::nonzero_constraints;
-      using FluidSolver<dim>::sparsity_pattern;
-      using FluidSolver<dim>::system_matrix;
-      using FluidSolver<dim>::present_solution;
-      using FluidSolver<dim>::solution_increment;
-      using FluidSolver<dim>::system_rhs;
-      using FluidSolver<dim>::fsi_acceleration;
-      using FluidSolver<dim>::stress;
-      using FluidSolver<dim>::parameters;
-      using FluidSolver<dim>::mpi_communicator;
-      using FluidSolver<dim>::pcout;
-      using FluidSolver<dim>::owned_partitioning;
-      using FluidSolver<dim>::relevant_partitioning;
-      using FluidSolver<dim>::locally_owned_scalar_dofs;
-      using FluidSolver<dim>::locally_relevant_dofs;
-      using FluidSolver<dim>::locally_relevant_scalar_dofs;
-      using FluidSolver<dim>::times_and_names;
-      using FluidSolver<dim>::time;
-      using FluidSolver<dim>::timer;
-      using FluidSolver<dim>::timer2;
-      using FluidSolver<dim>::cell_property;
-      using FluidSolver<dim>::hard_coded_boundary_values;
 
       /// Specify the sparsity pattern and reinit matrices and vectors based on
       /// the dofs and constraints.
@@ -132,14 +85,6 @@ namespace Fluid
       void run_one_step(bool apply_nonzero_constraints,
                         bool assemble_system = true) override;
 
-      /*! \brief Apply the initial condition
-       *
-       * This is a hard-coded function that is only used for VF cases where an
-       * initial condition is applied for fast convergence. For general cases,
-       * do not include it.
-       */
-      void apply_initial_condition();
-
       PETScWrappers::MPI::SparseMatrix Abs_A_matrix;
       PETScWrappers::MPI::SparseMatrix schur_matrix;
       PETScWrappers::MPI::SparseMatrix B2pp_matrix;
@@ -154,17 +99,6 @@ namespace Fluid
 
       /// The BlockIncompSchurPreconditioner for the entire system.
       std::shared_ptr<BlockIncompSchurPreconditioner> preconditioner;
-
-      /** \brief sigma_pml_field
-       * the sigma_pml_field is predefined outside the class. It specifies
-       * the sigma PML field to determine where and how sigma pml is
-       * distributed. With strong sigma PML it absorbs faster waves/vortices
-       * but reflects more slow waves/vortices.
-       */
-      std::shared_ptr<Function<dim>> sigma_pml_field;
-
-      /// Hard-coded body force. It will be added onto gravity.
-      std::shared_ptr<TensorFunction<1, dim>> body_force;
 
       /** \brief Incomplete Schur Complement Block Preconditioner
        * The format of this preconditioner is as follow:

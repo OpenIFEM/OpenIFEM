@@ -15,50 +15,6 @@ extern template class Fluid::MPI::SCnsIM<3>;
 
 using namespace dealii;
 
-template <int dim>
-class SigmaPMLField : public Function<dim>
-{
-public:
-  SigmaPMLField(double sig, double l)
-    : Function<dim>(), SigmaPMLMax(sig), PMLLength(l)
-  {
-  }
-  virtual double value(const Point<dim> &p,
-                       const unsigned int component = 0) const;
-  virtual void value_list(const std::vector<Point<dim>> &points,
-                          std::vector<double> &values,
-                          const unsigned int component = 0) const;
-
-private:
-  double SigmaPMLMax;
-  double PMLLength;
-};
-
-template <int dim>
-double SigmaPMLField<dim>::value(const Point<dim> &p,
-                                 const unsigned int component) const
-{
-  (void)component;
-  (void)p;
-  double SigmaPML = 0.0;
-  double boundary = 1.4;
-  // For tube acoustics
-  if (p[0] > boundary - PMLLength)
-    // A quadratic increasing function from boundary-PMLlength to the boundary
-    SigmaPML = SigmaPMLMax * pow((p[0] + PMLLength - boundary) / PMLLength, 4);
-  return SigmaPML;
-}
-
-template <int dim>
-void SigmaPMLField<dim>::value_list(const std::vector<Point<dim>> &points,
-                                    std::vector<double> &values,
-                                    const unsigned int component) const
-{
-  (void)component;
-  for (unsigned int i = 0; i < points.size(); ++i)
-    values[i] = this->value(points[i]);
-}
-
 int main(int argc, char *argv[])
 {
   using namespace dealii;
@@ -76,6 +32,22 @@ int main(int argc, char *argv[])
 
       double L = 1.4, H = 0.4;
       double PMLlength = 1.2, SigmaMax = 340000;
+
+      auto sigma_pml_field =
+        [PMLlength, SigmaMax](const Point<2> &p, const unsigned int component) {
+          (void)component;
+          double SigmaPML = 0.0;
+          double boundary = 1.4;
+          // For tube acoustics
+          if (p[0] > boundary - PMLlength)
+            {
+              // A quadratic increasing function from boundary-PMLlength to the
+              // boundary
+              SigmaPML =
+                SigmaMax * pow((p[0] + PMLlength - boundary) / PMLlength, 4);
+            }
+          return SigmaPML;
+        };
 
       auto gaussian_pulse = [dt =
                                params.time_step](const Point<2> &p,
@@ -96,11 +68,9 @@ int main(int argc, char *argv[])
           parallel::distributed::Triangulation<2> tria(MPI_COMM_WORLD);
           dealii::GridGenerator::subdivided_hyper_rectangle(
             tria, {7, 2}, Point<2>(0, 0), Point<2>(L, H), true);
-          // initialize the pml field
-          auto pml = std::make_shared<SigmaPMLField<2>>(
-            SigmaPMLField<2>(SigmaMax, PMLlength));
-          Fluid::MPI::SCnsIM<2> flow(tria, params, pml);
+          Fluid::MPI::SCnsIM<2> flow(tria, params);
           flow.add_hard_coded_boundary_condition(0, gaussian_pulse);
+          flow.set_sigma_pml_field(sigma_pml_field);
           flow.run();
           auto solution = flow.get_current_solution();
           // The wave is absorbed at last, so the solution should be zero.
