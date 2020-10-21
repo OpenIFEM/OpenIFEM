@@ -581,7 +581,7 @@ namespace Fluid
       parallel::distributed::SolutionTransfer<dim,
                                               PETScWrappers::MPI::BlockVector>
         sol_trans(dof_handler);
-      sol_trans.prepare_serialization(present_solution);
+      sol_trans.prepare_for_serialization(present_solution);
       triangulation.save(checkpoint_file.c_str());
       pcout << "Checkpoint file successfully saved at time step "
             << output_index << "!" << std::endl;
