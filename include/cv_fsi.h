@@ -30,6 +30,7 @@ namespace MPI
     using FSI<dim>::update_indicator;
     using FSI<dim>::move_solid_mesh;
     using FSI<dim>::find_solid_bc;
+    using FSI<dim>::apply_contact_model;
     using FSI<dim>::update_solid_displacement;
     using FSI<dim>::find_fluid_bc;
     using FSI<dim>::refine_mesh;
@@ -45,6 +46,8 @@ namespace MPI
     using FSI<dim>::vertices_mask;
     using FSI<dim>::cell_hints;
     using FSI<dim>::use_dirichlet_bc;
+    using FSI<dim>::penetration_criterion;
+    using FSI<dim>::penetration_direction;
 
     struct CVValues;
     struct SurfaceCutter;
@@ -82,7 +85,8 @@ namespace MPI
 
     struct CVValues
     {
-      void initialize_output(MPI_Comm &mpi_communicator);
+      void initialize_output(const Utils::Time &time,
+                             MPI_Comm &mpi_communicator);
       void reset();
       Point<dim> separation_point;
       double inlet_volume_flow;

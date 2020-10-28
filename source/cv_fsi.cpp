@@ -29,7 +29,7 @@ namespace
         cut_point[0] = x;
         for (unsigned d = 1; d < dim; ++d)
           {
-            if (p1[d] != p2[d])
+            if (std::abs(p1[d] - p2[d]) > std::abs(p1[d]) * 1e-10)
               {
                 cut_point[d] = p1[d] + (x - p1[d]) / (p2[d] - p1[d]);
               }
@@ -186,6 +186,10 @@ namespace MPI
           {
             time.increment();
           }
+        fluid_previous_solution.reinit(fluid_solver.owned_partitioning,
+                                       fluid_solver.relevant_partitioning,
+                                       mpi_communicator);
+        fluid_previous_solution = fluid_solver.present_solution;
       }
 
     collect_solid_boundaries();
@@ -193,7 +197,7 @@ namespace MPI
     update_vertices_mask();
     collect_inlet_outlet_cells();
     collect_control_volume_cells();
-    cv_values.initialize_output(this->mpi_communicator);
+    cv_values.initialize_output(this->time, this->mpi_communicator);
 
     pcout << "Number of fluid active cells and dofs: ["
           << fluid_solver.triangulation.n_active_cells() << ", "
@@ -219,7 +223,14 @@ namespace MPI
           }
         {
           TimerOutput::Scope timer_section(timer, "Run solid solver");
-          solid_solver.run_one_step(first_step);
+          if (penetration_criterion)
+            {
+              apply_contact_model(first_step);
+            }
+          else
+            {
+              solid_solver.run_one_step(first_step);
+            }
         }
         update_solid_box();
         update_indicator();
@@ -786,21 +797,44 @@ namespace MPI
 
   template <int dim>
   void
-  ControlVolumeFSI<dim>::CVValues::initialize_output(MPI_Comm &mpi_communicator)
+  ControlVolumeFSI<dim>::CVValues::initialize_output(const Utils::Time &time,
+                                                     MPI_Comm &mpi_communicator)
   {
     if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
       {
+        // Need to make sure there is a file instance
+        std::fstream tmp_file("./control_volume_analysis.csv",
+                              std::ios::out | std::ios::app);
+        tmp_file.close();
         output.open("./control_volume_analysis.csv",
-                    std::ios::in | std::ios::out | std::ios::app);
+                    std::ios::in | std::ios::out);
         output.precision(6);
-        output << "Time,"
-               << "Inlet volume flow,"
-               << "Inlet pressure,"
-               << "Outlet volume flow,"
-               << "Outlet pressure,"
-               << "Rate kinetic energy,"
-               << "VF drag, "
-               << "Rate friction work" << std::endl;
+        // If we start from beginning
+        if (time.get_timestep() == 0)
+          {
+            output << "Time,"
+                   << "Inlet volume flow,"
+                   << "Inlet pressure,"
+                   << "Outlet volume flow,"
+                   << "Outlet pressure,"
+                   << "Rate kinetic energy,"
+                   << "VF drag,"
+                   << "Rate friction work" << std::endl;
+          }
+        else // Start from a checkpoint
+          {
+            output.seekg(std::ios::beg);
+            // Ignore the first line (labels)
+            output.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            double read_time = 0.0;
+            while (read_time < time.current())
+              {
+                output >> read_time;
+                output.ignore(std::numeric_limits<std::streamsize>::max(),
+                              '\n');
+              }
+            output.seekp(output.tellg());
+          }
       }
   }
 
