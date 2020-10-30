@@ -447,21 +447,34 @@ namespace MPI
   void ControlVolumeFSI<dim>::control_volume_analysis()
   {
     cv_values.reset();
-    compute_efflux();
+    compute_flux();
     compute_volume_integral();
     compute_interface_integral();
     get_separation_point();
+    cv_values.reduce(this->mpi_communicator);
     // Output results to file
     if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
       {
         cv_values.output << std::scientific << time.current() << ","
                          << cv_values.inlet_volume_flow << ","
-                         << cv_values.inlet_pressure << ","
                          << cv_values.outlet_volume_flow << ","
-                         << cv_values.outlet_pressure << ","
-                         << cv_values.energy.rate_kinetic_energy << ","
+                         << cv_values.inlet_pressure_force << ","
+                         << cv_values.outlet_pressure_force << ","
+                         << cv_values.VF_volume << ","
+                         << cv_values.momentum.inlet_flux << ","
+                         << cv_values.momentum.outlet_flux << ","
+                         << cv_values.momentum.rate_momentum << ","
                          << cv_values.momentum.VF_drag << ","
-                         << cv_values.energy.rate_friction_work << std::endl;
+                         << cv_values.momentum.VF_friction << ","
+                         << cv_values.energy.inlet_pressure_work << ","
+                         << cv_values.energy.outlet_pressure_work << ","
+                         << cv_values.energy.inlet_flux << ","
+                         << cv_values.energy.outlet_flux << ","
+                         << cv_values.energy.rate_kinetic_energy << ","
+                         << cv_values.energy.rate_dissipation << ","
+                         << cv_values.energy.rate_compression_work << ","
+                         << cv_values.energy.rate_friction_work << ","
+                         << cv_values.energy.rate_vf_work << std::endl;
       }
   }
 
@@ -474,7 +487,7 @@ namespace MPI
   }
 
   template <int dim>
-  void ControlVolumeFSI<dim>::compute_efflux()
+  void ControlVolumeFSI<dim>::compute_flux()
   {
     const FEValuesExtractors::Vector velocities(0);
     const FEValuesExtractors::Scalar pressure(dim);
@@ -488,12 +501,20 @@ namespace MPI
     // Quantities to be integrated
     auto int_x_velocity = [&vel](int q) { return vel[q][0]; };
     auto int_pressure = [&pre](int q) { return pre[q]; };
+    auto int_momentum = [&vel, this](int q) {
+      return parameters.fluid_rho * vel[q][0] * vel[q][0];
+    };
+    auto int_KE = [&vel, this](int q) {
+      return 0.5 * parameters.fluid_rho * vel[q][0] * vel[q].norm_square();
+    };
     auto int_pressure_work = [&vel, &pre](int q) { return pre[q] * vel[q][0]; };
 
     auto compute_efflux_internal =
       [&](typename DoFHandler<dim>::active_cell_iterator f_cell) mutable {
         double volume_flow = 0.0;
-        double integrated_pressure = 0.0;
+        double pressure_force = 0.0;
+        double momentum_flux = 0.0;
+        double KE_flux = 0.0;
         double rate_pressure_work = 0.0;
         // We don't check localness here because they are local already
         auto cutter = surface_cutters.get_data(f_cell);
@@ -525,34 +546,34 @@ namespace MPI
           return results;
         };
         volume_flow += integrate(int_x_velocity);
-        integrated_pressure += integrate(int_pressure);
+        pressure_force += integrate(int_pressure);
+        momentum_flux += integrate(int_momentum);
+        KE_flux += integrate(int_KE);
         rate_pressure_work += integrate(int_pressure_work);
-        return std::make_tuple(
-          volume_flow, integrated_pressure, rate_pressure_work);
+        return std::make_tuple(volume_flow,
+                               pressure_force,
+                               momentum_flux,
+                               KE_flux,
+                               rate_pressure_work);
       };
     for (auto f_cell : this->inlet_cells)
       {
         auto increases = compute_efflux_internal(f_cell);
         cv_values.inlet_volume_flow += std::get<0>(increases);
-        cv_values.inlet_pressure += std::get<1>(increases);
-        cv_values.energy.inlet_pressure_work += std::get<2>(increases);
+        cv_values.inlet_pressure_force += std::get<1>(increases);
+        cv_values.momentum.inlet_flux += std::get<2>(increases);
+        cv_values.energy.inlet_flux += std::get<3>(increases);
+        cv_values.energy.inlet_pressure_work += std::get<4>(increases);
       }
     for (auto f_cell : this->outlet_cells)
       {
         auto increases = compute_efflux_internal(f_cell);
         cv_values.outlet_volume_flow += std::get<0>(increases);
-        cv_values.outlet_pressure += std::get<1>(increases);
-        cv_values.energy.outlet_pressure_work += std::get<2>(increases);
+        cv_values.outlet_pressure_force += std::get<1>(increases);
+        cv_values.momentum.outlet_flux += std::get<2>(increases);
+        cv_values.energy.outlet_flux += std::get<3>(increases);
+        cv_values.energy.outlet_pressure_work += std::get<4>(increases);
       }
-    // Sum the results over all MPI ranks
-    cv_values.inlet_volume_flow =
-      Utilities::MPI::sum(cv_values.inlet_volume_flow, this->mpi_communicator);
-    cv_values.outlet_volume_flow =
-      Utilities::MPI::sum(cv_values.outlet_volume_flow, this->mpi_communicator);
-    cv_values.inlet_pressure =
-      Utilities::MPI::sum(cv_values.inlet_pressure, this->mpi_communicator);
-    cv_values.outlet_pressure =
-      Utilities::MPI::sum(cv_values.outlet_pressure, this->mpi_communicator);
   }
 
   template <int dim>
@@ -568,10 +589,16 @@ namespace MPI
 
     std::vector<Tensor<1, dim>> present_vel(fe_values.n_quadrature_points);
     std::vector<double> present_pre(fe_values.n_quadrature_points);
+    std::vector<Tensor<2, dim>> vel_grad(fe_values.n_quadrature_points);
     std::vector<Tensor<1, dim>> previous_vel(fe_values.n_quadrature_points);
-    std::vector<double> previous_pre(fe_values.n_quadrature_points);
 
     // Quantities to be integrated
+    auto int_rate_momentum = [&present_vel,
+                              &previous_vel,
+                              rho = parameters.fluid_rho,
+                              dt = time.get_delta_t()](int q) {
+      return rho * (present_vel[q][0] - previous_vel[q][0]) / dt;
+    };
     auto int_rate_kinetic_energy = [&present_vel,
                                     &previous_vel,
                                     rho = parameters.fluid_rho,
@@ -579,6 +606,26 @@ namespace MPI
       return 0.5 * rho *
              (present_vel[q].norm_square() - previous_vel[q].norm_square()) /
              dt;
+    };
+    auto int_rate_dissipation = [&vel_grad, mu = parameters.viscosity](int q) {
+      double retval = 0.0;
+      for (unsigned i = 0; i < dim; ++i)
+        {
+          for (unsigned j = 0; j < dim; ++j)
+            {
+              retval += mu * (vel_grad[q][i][j] * vel_grad[q][i][j] +
+                              vel_grad[q][i][j] * vel_grad[q][j][i]);
+            }
+        }
+      return retval;
+    };
+    auto int_rate_compression = [&present_pre, &vel_grad](int q) {
+      double retval = 0.0;
+      for (unsigned i = 0; i < dim; ++i)
+        {
+          retval += present_pre[q] * vel_grad[q][i][i];
+        }
+      return retval;
     };
 
     // The integrate function
@@ -601,14 +648,20 @@ namespace MPI
                                                   present_vel);
         fe_values[velocities].get_function_values(fluid_previous_solution,
                                                   previous_vel);
+        fe_values[velocities].get_function_gradients(
+          fluid_solver.present_solution, vel_grad);
         fe_values[pressure].get_function_values(fluid_solver.present_solution,
                                                 present_pre);
-        fe_values[pressure].get_function_values(fluid_previous_solution,
-                                                previous_pre);
 
         // Integrate the quantities on the cells
+        cv_values.momentum.rate_momentum +=
+          integrate(int_rate_momentum) * volume_fraction;
         cv_values.energy.rate_kinetic_energy +=
           integrate(int_rate_kinetic_energy) * volume_fraction;
+        cv_values.energy.rate_dissipation +=
+          integrate(int_rate_dissipation) * volume_fraction;
+        cv_values.energy.rate_compression_work +=
+          integrate(int_rate_compression) * volume_fraction;
       };
 
     for (auto sections : cv_f_cells)
@@ -647,40 +700,47 @@ namespace MPI
         auto cutter = surface_cutters.get_data(f_cell);
         compute_volume_integral_internal(f_cell, cutter[0]->volume_fraction);
       }
-    // Sum the results over all MPI ranks
-    cv_values.energy.rate_kinetic_energy = Utilities::MPI::sum(
-      cv_values.energy.rate_kinetic_energy, this->mpi_communicator);
+    // Carry out the VF volume integral
+    move_solid_mesh(true);
+    for (auto s_cell : this->solid_solver.dof_handler.active_cell_iterators())
+      {
+        if (s_cell->subdomain_id() == solid_solver.this_mpi_process)
+          {
+            cv_values.VF_volume += s_cell->measure();
+          }
+      }
+    move_solid_mesh(false);
   }
 
   template <int dim>
   void ControlVolumeFSI<dim>::compute_interface_integral()
   {
-    cv_values.momentum.VF_drag = 0;
-
     FEFaceValues<dim> fe_face_values(solid_solver.fe,
                                      solid_solver.face_quad_formula,
                                      update_values | update_quadrature_points |
                                        update_normal_vectors |
                                        update_JxW_values);
+    FEFaceValues<dim> scalar_fe_face_values(
+      solid_solver.scalar_fe, solid_solver.face_quad_formula, update_values);
 
-    const unsigned int dofs_per_cell = solid_solver.fe.dofs_per_cell;
     const unsigned int n_f_q_points = solid_solver.face_quad_formula.size();
 
     Vector<double> localized_displacement(solid_solver.current_displacement);
 
     std::vector<std::vector<Tensor<1, dim>>> fsi_stress_rows_values(dim);
-    std::vector<Tensor<1, dim>> fluid_velocity_values(dim);
+    std::vector<Tensor<1, dim>> fluid_velocity_values(n_f_q_points);
+    std::vector<double> fluid_pressure_values(n_f_q_points);
     for (unsigned int d = 0; d < dim; ++d)
       {
         fsi_stress_rows_values[d].resize(n_f_q_points);
       }
-    fluid_velocity_values.resize(n_f_q_points);
     // A "viewer" to describe the nodal dofs as a vector.
     FEValuesExtractors::Vector displacements(0);
 
-    for (auto cell = solid_solver.dof_handler.begin_active();
+    for (auto cell = solid_solver.dof_handler.begin_active(),
+              scalar_cell = solid_solver.scalar_dof_handler.begin_active();
          cell != solid_solver.dof_handler.end();
-         ++cell)
+         ++cell, ++scalar_cell)
       {
         if (cell->subdomain_id() != solid_solver.this_mpi_process)
           {
@@ -697,7 +757,7 @@ namespace MPI
                   }
 
                 // Get FSI stress values on face quadrature points
-                std::vector<Tensor<2, dim>> fsi_stress(n_f_q_points);
+                std::vector<SymmetricTensor<2, dim>> fsi_stress(n_f_q_points);
                 std::vector<Point<dim>> vertex_displacement(
                   GeometryInfo<dim>::vertices_per_face);
                 for (unsigned int v = 0;
@@ -712,6 +772,7 @@ namespace MPI
                     cell->face(face)->vertex(v) += vertex_displacement[v];
                   }
                 fe_face_values.reinit(cell, face);
+                scalar_fe_face_values.reinit(scalar_cell, face);
                 for (unsigned int d = 0; d < dim; ++d)
                   {
                     fe_face_values[displacements].get_function_values(
@@ -720,6 +781,8 @@ namespace MPI
                   }
                 fe_face_values[displacements].get_function_values(
                   solid_solver.fluid_velocity, fluid_velocity_values);
+                scalar_fe_face_values.get_function_values(
+                  solid_solver.fluid_pressure, fluid_pressure_values);
                 for (unsigned int v = 0;
                      v < GeometryInfo<dim>::vertices_per_face;
                      ++v)
@@ -736,63 +799,52 @@ namespace MPI
                               fsi_stress_rows_values[d1][q][d2];
                           }
                       }
+                    fsi_stress[q] +=
+                      fluid_pressure_values[q] *
+                      Physics::Elasticity::StandardTensors<dim>::I;
                   } // End looping face quadrature points
 
                 // Pressure drag force is the normal component of the traction
                 // Friction work is the tangential component of the traction
                 // *times* surface fluid velocity
-                Tensor<1, dim> drag;
-                Tensor<1, dim> friction;
-                Tensor<1, dim> tangential_velocity;
-
-                Tensor<2, dim> normal_stress;
-                Tensor<2, dim> tangential_stress;
+                double drag_force, drag_work = 0.0, friction_force = 0.0,
+                                   friction_work = 0.0;
 
                 for (unsigned int q = 0; q < n_f_q_points; ++q)
                   {
-                    normal_stress = fsi_stress[q];
-                    tangential_stress = fsi_stress[q];
-                    for (unsigned int i = 0; i < dim; ++i)
+                    // Drag: \int_S_{VF}{p n_1}dS
+                    drag_force = fluid_pressure_values[q] *
+                                 fe_face_values.normal_vector(q)[0] *
+                                 fe_face_values.JxW(q);
+                    for (unsigned int j = 0; j < dim; ++j)
                       {
-                        for (unsigned int j = 0; j < dim; ++j)
+                        // Friction (in x): \int_S_{VF}{\tau_{1j}n_j}dS
+                        friction_force += fsi_stress[q][0][j] *
+                                          fe_face_values.normal_vector(q)[j] *
+                                          fe_face_values.JxW(q);
+                        // Drag work: \int_S{p u_i n_i}dS
+                        drag_work += fluid_pressure_values[q] *
+                                     fluid_velocity_values[q][j] *
+                                     fe_face_values.normal_vector(q)[j] *
+                                     fe_face_values.JxW(q);
+                        // Friction work: \int_S_{VF}{\tau_{ij} u_i n_j}dS
+                        for (unsigned int i = 0; i < dim; ++i)
                           {
-                            if (i == j)
-                              tangential_stress[i][j] = 0;
-                            else
-                              normal_stress[i][j] = 0;
+                            friction_work +=
+                              fsi_stress[q][i][j] *
+                              fluid_velocity_values[q][i] *
+                              fe_face_values.normal_vector(q)[j] *
+                              fe_face_values.JxW(q);
                           }
                       }
-
-                    drag = normal_stress * fe_face_values.normal_vector(q);
-                    friction =
-                      tangential_stress * fe_face_values.normal_vector(q);
-                    tangential_velocity =
-                      fluid_velocity_values[q] -
-                      fe_face_values.normal_vector(q) *
-                        scalar_product(fluid_velocity_values[q],
-                                       fe_face_values.normal_vector(q));
-
-                    for (unsigned int j = 0; j < dofs_per_cell; ++j)
-                      {
-                        const unsigned int component_j =
-                          solid_solver.fe.system_to_component_index(j).first;
-                        cv_values.momentum.VF_drag +=
-                          fe_face_values.shape_value(j, q) * drag[component_j] *
-                          fe_face_values.JxW(q);
-                        cv_values.energy.rate_friction_work +=
-                          fe_face_values.shape_value(j, q) *
-                          friction[component_j] * tangential_velocity.norm() *
-                          fe_face_values.JxW(q);
-                      }
+                    cv_values.momentum.VF_drag += drag_force;
+                    cv_values.momentum.VF_friction += friction_force;
+                    cv_values.energy.rate_vf_work += drag_work;
+                    cv_values.energy.rate_friction_work += friction_work;
                   }
               }
           }
       }
-    // Sum the results over all MPI ranks
-    cv_values.momentum.VF_drag =
-      Utilities::MPI::sum(cv_values.momentum.VF_drag, this->mpi_communicator);
-    cv_values.energy.rate_friction_work = Utilities::MPI::sum(
-      cv_values.energy.rate_friction_work, this->mpi_communicator);
   }
 
   template <int dim>
@@ -814,12 +866,24 @@ namespace MPI
           {
             output << "Time,"
                    << "Inlet volume flow,"
-                   << "Inlet pressure,"
                    << "Outlet volume flow,"
-                   << "Outlet pressure,"
-                   << "Rate kinetic energy,"
+                   << "Inlet pressure force,"
+                   << "Outlet pressure force,"
+                   << "VF volume,"
+                   << "Inlet momentum flux,"
+                   << "outlet momentum flux,"
+                   << "Momentum change rate,"
                    << "VF drag,"
-                   << "Rate friction work" << std::endl;
+                   << "Friction force,"
+                   << "Inlet pressure work,"
+                   << "Outlet pressure work,"
+                   << "Inlet KE flux,"
+                   << "Outlet KE flux,"
+                   << "Rate KE,"
+                   << "Rate dissipation,"
+                   << "Rate compression work,"
+                   << "Rate friction work,"
+                   << "Rate VF work" << std::endl;
           }
         else // Start from a checkpoint
           {
@@ -839,23 +903,61 @@ namespace MPI
   }
 
   template <int dim>
+  void ControlVolumeFSI<dim>::CVValues::reduce(MPI_Comm &mpi_communicator)
+  {
+    auto reduce_internal = [&](double &quantity) {
+      quantity = Utilities::MPI::sum(quantity, mpi_communicator);
+    };
+    // Sum the results over all MPI ranks
+    // fluxes
+    reduce_internal(inlet_volume_flow);
+    reduce_internal(outlet_volume_flow);
+    reduce_internal(inlet_pressure_force);
+    reduce_internal(outlet_pressure_force);
+    reduce_internal(momentum.inlet_flux);
+    reduce_internal(momentum.outlet_flux);
+    reduce_internal(energy.inlet_pressure_work);
+    reduce_internal(energy.outlet_pressure_work);
+    reduce_internal(energy.inlet_flux);
+    reduce_internal(energy.outlet_flux);
+    // volume integrals
+    reduce_internal(VF_volume);
+    reduce_internal(momentum.rate_momentum);
+    reduce_internal(energy.rate_kinetic_energy);
+    reduce_internal(energy.rate_dissipation);
+    reduce_internal(energy.rate_compression_work);
+    // surface integrals;
+    reduce_internal(momentum.VF_drag);
+    reduce_internal(momentum.VF_friction);
+    reduce_internal(energy.rate_friction_work);
+    reduce_internal(energy.rate_vf_work);
+  }
+
+  template <int dim>
   void ControlVolumeFSI<dim>::CVValues::reset()
   {
     // General terms
     inlet_volume_flow = 0;
     outlet_volume_flow = 0;
-    inlet_pressure = 0;
-    outlet_pressure = 0;
+    inlet_pressure_force = 0;
+    outlet_pressure_force = 0;
+    VF_volume = 0;
     // Momentum equation terms
-    momentum.inlet_efflux = 0;
-    momentum.outlet_efflux = 0;
+    momentum.inlet_flux = 0;
+    momentum.outlet_flux = 0;
+    momentum.rate_momentum = 0;
     momentum.VF_drag = 0;
+    momentum.VF_friction = 0;
     // Energy equation terms
     energy.inlet_pressure_work = 0;
     energy.outlet_pressure_work = 0;
+    energy.inlet_flux = 0;
+    energy.outlet_flux = 0;
     energy.rate_kinetic_energy = 0;
     energy.rate_dissipation = 0;
+    energy.rate_compression_work = 0;
     energy.rate_friction_work = 0;
+    energy.rate_vf_work = 0;
   }
 
   template <int dim>

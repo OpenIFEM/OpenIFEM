@@ -57,7 +57,7 @@ namespace MPI
     void control_volume_analysis();
     void compute_relative_velocity();
     void get_separation_point();
-    void compute_efflux();
+    void compute_flux();
     void compute_volume_integral();
     void compute_interface_integral();
 
@@ -85,27 +85,53 @@ namespace MPI
 
     struct CVValues
     {
+      // Initialize the output file
       void initialize_output(const Utils::Time &time,
                              MPI_Comm &mpi_communicator);
+      // Sum the results over all MPI ranks
+      void reduce(MPI_Comm &mpi_communicator);
+      // Reset all quantities to zero
       void reset();
       Point<dim> separation_point;
+      // Defined as \int_S_{in/out}{u_1}dS
       double inlet_volume_flow;
       double outlet_volume_flow;
-      double inlet_pressure;
-      double outlet_pressure;
+      // Defined as \int_S_{in/out}{p}dS
+      double inlet_pressure_force;
+      double outlet_pressure_force;
+      // Defined as \int_V_{VF}{1}dV
+      double VF_volume;
       struct momentum_equation
       {
-        double inlet_efflux;
-        double outlet_efflux;
+        // Defined as \int_S_{in/out}{\rho u_1 (u_1 - w_1)n_1}dS
+        // Here, w_1 is the wall velcotiy which is 0.
+        double inlet_flux;
+        double outlet_flux;
+        // Defined as \frac{d}{dt}\int_V{\rho u_1}dV
+        double rate_momentum;
+        // Defined as \int_S_{VF}{p n_1}dS
         double VF_drag;
+        // Defined as \int_S_{VF}{\tau_{1j}n_j}dS
+        double VF_friction;
       };
       struct energy_equation
       {
+        // Defined as \int_S_{in/out}{pQ}dS
         double inlet_pressure_work;
         double outlet_pressure_work;
+        // Defined as 0.5 * \int_S_{in/out}{\rho u1 u_i u_i}dS
+        double inlet_flux;
+        double outlet_flux;
+        // Defined as 0.5 * \frac{d}{dt}\int_V{\rho u_i u_i}dV
         double rate_kinetic_energy;
+        // Defined as \int_V{\mu (u_{i,j}^2 + u_{i,j}u_{j,i})}dV
         double rate_dissipation;
+        // Defined as \int_V{p u_{i,i}}dV
+        double rate_compression_work;
+        // Defined as \int_S_{VF}{\tau_{ij} u_i n_j}dS
         double rate_friction_work;
+        // Defined as \int_S{p u_i n_i}dS
+        double rate_vf_work;
       };
       momentum_equation momentum;
       energy_equation energy;

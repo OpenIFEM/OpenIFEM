@@ -150,6 +150,7 @@ namespace Solid
           fsi_stress_rows[d].reinit(dof_handler.n_dofs());
         }
       fluid_velocity.reinit(dof_handler.n_dofs());
+      fluid_pressure.reinit(scalar_dof_handler.n_dofs());
 
       strain = std::vector<std::vector<PETScWrappers::MPI::Vector>>(
         spacedim,

@@ -199,11 +199,13 @@ namespace Solid
        * Arrays to store the fsi-related quantities. fsi_stress_rows has dim
        * elements and each element is an array of n_dof elements, representing a
        * row in the rank 2 stress tensor. The fsi stresses are used to evaluate
-       * tractions. fluid_velocity stores the fluid velocity at the FSI
-       * interface and will be used when computing the friction work.
+       * tractions. fluid_velocity stores the fluid velocity and fluid_pressure
+       * stores the pressure at the FSI interface and will be used when
+       * computing the friction work and drag force.
        */
       std::vector<Vector<double>> fsi_stress_rows;
       Vector<double> fluid_velocity;
+      Vector<double> fluid_pressure;
 
       /**
        * Nodal strain and stress obtained by taking the average of surrounding
