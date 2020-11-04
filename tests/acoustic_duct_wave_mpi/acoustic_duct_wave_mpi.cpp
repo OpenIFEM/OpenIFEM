@@ -40,7 +40,10 @@ int main(int argc, char *argv[])
         };
 
         if (component == 0 && std::abs(p[0]) < 1e-10)
-          return time_value(time) - time_value(time - dt);
+          {
+            double previous_value = time < 2 * dt ? 0.0 : time_value(time - dt);
+            return time_value(time) - previous_value;
+          }
 
         return 0;
       };
@@ -59,7 +62,7 @@ int main(int argc, char *argv[])
           auto solution = flow.get_current_solution();
           auto v = solution.block(0);
           double vmax = v.max();
-          double verror = std::abs(vmax - 5.91) / 5.91;
+          double verror = std::abs(vmax - 5.93) / 5.93;
           AssertThrow(verror < 1e-3,
                       ExcMessage("Maximum velocity is incorrect!"));
         }
