@@ -471,6 +471,7 @@ namespace MPI
                          << cv_values.energy.inlet_flux << ","
                          << cv_values.energy.outlet_flux << ","
                          << cv_values.energy.rate_kinetic_energy << ","
+                         << cv_values.energy.rate_kinetic_energy_direct << ","
                          << cv_values.energy.pressure_convection << ","
                          << cv_values.energy.rate_dissipation << ","
                          << cv_values.energy.rate_compression_work << ","
@@ -611,6 +612,13 @@ namespace MPI
                                        &present_vel](int q) {
       return 0.5 * rho * present_vel[q].norm_square();
     };
+    auto int_rate_kinetic_energy = [&rho = parameters.fluid_rho,
+                                    dt = time.get_delta_t(),
+                                    &previous_vel,
+                                    &present_vel](int q) {
+      return rho * scalar_product((present_vel[q] - previous_vel[q]) / dt,
+                                  present_vel[q]);
+    };
     auto int_pressure_convection = [&present_vel, &pre_grad](int q) {
       double retval = 0.0;
       for (unsigned i = 0; i < dim; ++i)
@@ -674,6 +682,8 @@ namespace MPI
           integrate(int_previous_kinetic_energy) * volume_fraction;
         cv_values.energy.present_KE +=
           integrate(int_present_kinetic_energy) * volume_fraction;
+        cv_values.energy.rate_kinetic_energy_direct +=
+          integrate(int_rate_kinetic_energy) * volume_fraction;
         cv_values.energy.pressure_convection +=
           integrate(int_pressure_convection) * volume_fraction;
         cv_values.energy.rate_dissipation +=
@@ -912,6 +922,7 @@ namespace MPI
                    << "Inlet KE flux,"
                    << "Outlet KE flux,"
                    << "Rate KE,"
+                   << "Rate KE direct,"
                    << "Pressure convection,"
                    << "Rate dissipation,"
                    << "Rate compression work,"
@@ -960,6 +971,7 @@ namespace MPI
     reduce_internal(momentum.rate_momentum);
     reduce_internal(energy.previous_KE);
     reduce_internal(energy.present_KE);
+    reduce_internal(energy.rate_kinetic_energy_direct);
     reduce_internal(energy.pressure_convection);
     reduce_internal(energy.rate_dissipation);
     reduce_internal(energy.rate_compression_work);
@@ -998,6 +1010,7 @@ namespace MPI
     energy.present_KE = 0;
     energy.pressure_convection = 0;
     energy.rate_kinetic_energy = 0;
+    energy.rate_kinetic_energy_direct = 0;
     energy.rate_dissipation = 0;
     energy.rate_compression_work = 0;
     energy.rate_friction_work = 0;

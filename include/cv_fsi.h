@@ -129,6 +129,7 @@ namespace MPI
         double pressure_convection;
         // Defined as 0.5 * \frac{d}{dt}\int_V{\rho u_i u_i}dV
         double rate_kinetic_energy;
+        double rate_kinetic_energy_direct;
         // Defined as \int_V{\mu (u_{i,j}^2 + u_{i,j}u_{j,i})}dV
         double rate_dissipation;
         // Defined as \int_V{p u_{i,i}}dV
