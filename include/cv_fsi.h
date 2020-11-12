@@ -89,7 +89,7 @@ namespace MPI
       void initialize_output(const Utils::Time &time,
                              MPI_Comm &mpi_communicator);
       // Sum the results over all MPI ranks
-      void reduce(MPI_Comm &mpi_communicator);
+      void reduce(MPI_Comm &mpi_communicator, double);
       // Reset all quantities to zero
       void reset();
       Point<dim> separation_point;
@@ -122,6 +122,11 @@ namespace MPI
         // Defined as 0.5 * \int_S_{in/out}{\rho u1 u_i u_i}dS
         double inlet_flux;
         double outlet_flux;
+        // Previous and present KE
+        double previous_KE;
+        double present_KE;
+        // \int_V{p_,i u_i}dV
+        double pressure_convection;
         // Defined as 0.5 * \frac{d}{dt}\int_V{\rho u_i u_i}dV
         double rate_kinetic_energy;
         // Defined as \int_V{\mu (u_{i,j}^2 + u_{i,j}u_{j,i})}dV
@@ -132,6 +137,8 @@ namespace MPI
         double rate_friction_work;
         // Defined as \int_S{p u_i n_i}dS
         double rate_vf_work;
+        // Defined as \int_S{p u_i n_i}dS
+        double rate_vf_work_from_solid;
       };
       momentum_equation momentum;
       energy_equation energy;

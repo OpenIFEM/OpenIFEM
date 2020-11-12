@@ -451,7 +451,7 @@ namespace MPI
     compute_volume_integral();
     compute_interface_integral();
     get_separation_point();
-    cv_values.reduce(this->mpi_communicator);
+    cv_values.reduce(this->mpi_communicator, time.get_delta_t());
     // Output results to file
     if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
       {
@@ -471,10 +471,13 @@ namespace MPI
                          << cv_values.energy.inlet_flux << ","
                          << cv_values.energy.outlet_flux << ","
                          << cv_values.energy.rate_kinetic_energy << ","
+                         << cv_values.energy.pressure_convection << ","
                          << cv_values.energy.rate_dissipation << ","
                          << cv_values.energy.rate_compression_work << ","
                          << cv_values.energy.rate_friction_work << ","
-                         << cv_values.energy.rate_vf_work << std::endl;
+                         << cv_values.energy.rate_vf_work << ","
+                         << cv_values.energy.rate_vf_work_from_solid
+                         << std::endl;
       }
   }
 
@@ -590,6 +593,7 @@ namespace MPI
     std::vector<Tensor<1, dim>> present_vel(fe_values.n_quadrature_points);
     std::vector<double> present_pre(fe_values.n_quadrature_points);
     std::vector<Tensor<2, dim>> vel_grad(fe_values.n_quadrature_points);
+    std::vector<Tensor<1, dim>> pre_grad(fe_values.n_quadrature_points);
     std::vector<Tensor<1, dim>> previous_vel(fe_values.n_quadrature_points);
 
     // Quantities to be integrated
@@ -599,13 +603,21 @@ namespace MPI
                               dt = time.get_delta_t()](int q) {
       return rho * (present_vel[q][0] - previous_vel[q][0]) / dt;
     };
-    auto int_rate_kinetic_energy = [&present_vel,
-                                    &previous_vel,
-                                    rho = parameters.fluid_rho,
-                                    dt = time.get_delta_t()](int q) {
-      return 0.5 * rho *
-             (present_vel[q].norm_square() - previous_vel[q].norm_square()) /
-             dt;
+    auto int_previous_kinetic_energy = [rho = parameters.fluid_rho,
+                                        &previous_vel](int q) {
+      return 0.5 * rho * previous_vel[q].norm_square();
+    };
+    auto int_present_kinetic_energy = [rho = parameters.fluid_rho,
+                                       &present_vel](int q) {
+      return 0.5 * rho * present_vel[q].norm_square();
+    };
+    auto int_pressure_convection = [&present_vel, &pre_grad](int q) {
+      double retval = 0.0;
+      for (unsigned i = 0; i < dim; ++i)
+        {
+          retval += pre_grad[q][i] * present_vel[q][i];
+        }
+      return retval;
     };
     auto int_rate_dissipation = [&vel_grad, mu = parameters.viscosity](int q) {
       double retval = 0.0;
@@ -652,12 +664,18 @@ namespace MPI
           fluid_solver.present_solution, vel_grad);
         fe_values[pressure].get_function_values(fluid_solver.present_solution,
                                                 present_pre);
+        fe_values[pressure].get_function_gradients(
+          fluid_solver.present_solution, pre_grad);
 
         // Integrate the quantities on the cells
         cv_values.momentum.rate_momentum +=
           integrate(int_rate_momentum) * volume_fraction;
-        cv_values.energy.rate_kinetic_energy +=
-          integrate(int_rate_kinetic_energy) * volume_fraction;
+        cv_values.energy.previous_KE +=
+          integrate(int_previous_kinetic_energy) * volume_fraction;
+        cv_values.energy.present_KE +=
+          integrate(int_present_kinetic_energy) * volume_fraction;
+        cv_values.energy.pressure_convection +=
+          integrate(int_pressure_convection) * volume_fraction;
         cv_values.energy.rate_dissipation +=
           integrate(int_rate_dissipation) * volume_fraction;
         cv_values.energy.rate_compression_work +=
@@ -726,9 +744,11 @@ namespace MPI
     const unsigned int n_f_q_points = solid_solver.face_quad_formula.size();
 
     Vector<double> localized_displacement(solid_solver.current_displacement);
+    Vector<double> localized_velocity(solid_solver.current_velocity);
 
     std::vector<std::vector<Tensor<1, dim>>> fsi_stress_rows_values(dim);
     std::vector<Tensor<1, dim>> fluid_velocity_values(n_f_q_points);
+    std::vector<Tensor<1, dim>> solid_velocity_values(n_f_q_points);
     std::vector<double> fluid_pressure_values(n_f_q_points);
     for (unsigned int d = 0; d < dim; ++d)
       {
@@ -749,7 +769,10 @@ namespace MPI
         for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
              ++face)
           {
-            if (cell->face(face)->at_boundary())
+            if (cell->face(face)->at_boundary() &&
+                parameters.solid_dirichlet_bcs.find(
+                  cell->face(face)->boundary_id()) ==
+                  parameters.solid_dirichlet_bcs.end())
               {
                 if (!cell->face(face)->at_boundary())
                   {
@@ -781,6 +804,8 @@ namespace MPI
                   }
                 fe_face_values[displacements].get_function_values(
                   solid_solver.fluid_velocity, fluid_velocity_values);
+                fe_face_values[displacements].get_function_values(
+                  localized_velocity, solid_velocity_values);
                 scalar_fe_face_values.get_function_values(
                   solid_solver.fluid_pressure, fluid_pressure_values);
                 for (unsigned int v = 0;
@@ -807,8 +832,8 @@ namespace MPI
                 // Pressure drag force is the normal component of the traction
                 // Friction work is the tangential component of the traction
                 // *times* surface fluid velocity
-                double drag_force, drag_work = 0.0, friction_force = 0.0,
-                                   friction_work = 0.0;
+                double drag_force, drag_work = 0.0, drag_work_from_solid = 0.0,
+                                   friction_force = 0.0, friction_work = 0.0;
 
                 for (unsigned int q = 0; q < n_f_q_points; ++q)
                   {
@@ -827,12 +852,17 @@ namespace MPI
                                      fluid_velocity_values[q][j] *
                                      fe_face_values.normal_vector(q)[j] *
                                      fe_face_values.JxW(q);
+                        drag_work_from_solid +=
+                          fluid_pressure_values[q] *
+                          solid_velocity_values[q][j] *
+                          fe_face_values.normal_vector(q)[j] *
+                          fe_face_values.JxW(q);
                         // Friction work: \int_S_{VF}{\tau_{ij} u_i n_j}dS
                         for (unsigned int i = 0; i < dim; ++i)
                           {
                             friction_work +=
                               fsi_stress[q][i][j] *
-                              fluid_velocity_values[q][i] *
+                              solid_velocity_values[q][i] *
                               fe_face_values.normal_vector(q)[j] *
                               fe_face_values.JxW(q);
                           }
@@ -840,6 +870,8 @@ namespace MPI
                     cv_values.momentum.VF_drag += drag_force;
                     cv_values.momentum.VF_friction += friction_force;
                     cv_values.energy.rate_vf_work += drag_work;
+                    cv_values.energy.rate_vf_work_from_solid +=
+                      drag_work_from_solid;
                     cv_values.energy.rate_friction_work += friction_work;
                   }
               }
@@ -880,10 +912,12 @@ namespace MPI
                    << "Inlet KE flux,"
                    << "Outlet KE flux,"
                    << "Rate KE,"
+                   << "Pressure convection,"
                    << "Rate dissipation,"
                    << "Rate compression work,"
                    << "Rate friction work,"
-                   << "Rate VF work" << std::endl;
+                   << "Rate VF work,"
+                   << "Rate VF work from solid" << std::endl;
           }
         else // Start from a checkpoint
           {
@@ -891,7 +925,7 @@ namespace MPI
             // Ignore the first line (labels)
             output.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
             double read_time = 0.0;
-            while (read_time < time.current())
+            while (time.current() - read_time > 1e-6 * time.get_delta_t())
               {
                 output >> read_time;
                 output.ignore(std::numeric_limits<std::streamsize>::max(),
@@ -903,7 +937,8 @@ namespace MPI
   }
 
   template <int dim>
-  void ControlVolumeFSI<dim>::CVValues::reduce(MPI_Comm &mpi_communicator)
+  void ControlVolumeFSI<dim>::CVValues::reduce(MPI_Comm &mpi_communicator,
+                                               double delta_t)
   {
     auto reduce_internal = [&](double &quantity) {
       quantity = Utilities::MPI::sum(quantity, mpi_communicator);
@@ -923,14 +958,20 @@ namespace MPI
     // volume integrals
     reduce_internal(VF_volume);
     reduce_internal(momentum.rate_momentum);
-    reduce_internal(energy.rate_kinetic_energy);
+    reduce_internal(energy.previous_KE);
+    reduce_internal(energy.present_KE);
+    reduce_internal(energy.pressure_convection);
     reduce_internal(energy.rate_dissipation);
     reduce_internal(energy.rate_compression_work);
+    // KE rate from volume integral
+    energy.rate_kinetic_energy =
+      (energy.present_KE - energy.previous_KE) / delta_t;
     // surface integrals;
     reduce_internal(momentum.VF_drag);
     reduce_internal(momentum.VF_friction);
     reduce_internal(energy.rate_friction_work);
     reduce_internal(energy.rate_vf_work);
+    reduce_internal(energy.rate_vf_work_from_solid);
   }
 
   template <int dim>
@@ -953,11 +994,15 @@ namespace MPI
     energy.outlet_pressure_work = 0;
     energy.inlet_flux = 0;
     energy.outlet_flux = 0;
+    energy.previous_KE = 0;
+    energy.present_KE = 0;
+    energy.pressure_convection = 0;
     energy.rate_kinetic_energy = 0;
     energy.rate_dissipation = 0;
     energy.rate_compression_work = 0;
     energy.rate_friction_work = 0;
     energy.rate_vf_work = 0;
+    energy.rate_vf_work_from_solid = 0;
   }
 
   template <int dim>
