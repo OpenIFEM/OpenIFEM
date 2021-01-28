@@ -22,6 +22,7 @@ namespace MPI
     ~ControlVolumeFSI();
 
   protected:
+    using cell_iterator = typename DoFHandler<dim>::active_cell_iterator;
     using FSI<dim>::collect_solid_boundaries;
     using FSI<dim>::setup_cell_hints;
     using FSI<dim>::update_solid_box;
@@ -60,19 +61,33 @@ namespace MPI
     void compute_flux();
     void compute_volume_integral();
     void compute_interface_integral();
+    void compute_bernoulli_terms();
 
     PETScWrappers::MPI::BlockVector fluid_previous_solution;
 
+    /* Control volume boundaries. It has 2 * dim length with the following
+       sequence: left right lower upper (front back)
+    */
     std::vector<double> control_volume_boundaries;
     /* The outer map stores the inner maps by the sequence of x coordinates.
        the inner map stores the fluid cells in the control volume by the sequnce
        of y coordinates.
     */
-    std::map<double,
-             std::map<double, typename DoFHandler<dim>::active_cell_iterator>>
-      cv_f_cells;
-    std::set<typename DoFHandler<dim>::active_cell_iterator> inlet_cells;
-    std::set<typename DoFHandler<dim>::active_cell_iterator> outlet_cells;
+    std::map<double, std::map<double, cell_iterator>> cv_f_cells;
+    std::set<cell_iterator> inlet_cells;
+    std::set<cell_iterator> outlet_cells;
+    /* Two ends for Bernoulli contraction and jet region. The first is left
+       (point A) and second is right (point B). If gap is not zero then B for
+       contraction coincides with A for jet.
+       A for contraction and B for jet region (local). Second arg is the
+       fraction in the region for integral computation.
+    */
+    std::pair<std::pair<cell_iterator, double>,
+              std::pair<cell_iterator, double>>
+      bernoulli_start_end;
+    // Streamline path for Bernoulli analysis. The key is the center x
+    // coordinate for sorting. Note: this is local
+    std::map<double, cell_iterator> streamline_path_cells;
     CellDataStorage<
       typename parallel::distributed::Triangulation<dim>::active_cell_iterator,
       Tensor<1, dim>>
@@ -101,6 +116,19 @@ namespace MPI
       double outlet_pressure_force;
       // Defined as \int_V_{VF}{1}dV
       double VF_volume;
+      struct bernoulli_equation
+      {
+        double rate_convection_contraction;
+        double rate_convection_jet;
+        double rate_pressure_grad_contraction;
+        double rate_pressure_grad_jet;
+        double acceleration_contraction;
+        double acceleration_jet;
+        double rate_density_contraction;
+        double rate_density_jet;
+        double rate_friction_contraction;
+        double rate_friction_jet;
+      };
       struct momentum_equation
       {
         // Defined as \int_S_{in/out}{\rho u_1 (u_1 - w_1)n_1}dS
@@ -141,6 +169,7 @@ namespace MPI
         // Defined as \int_S{p u_i n_i}dS
         double rate_vf_work_from_solid;
       };
+      bernoulli_equation bernoulli;
       momentum_equation momentum;
       energy_equation energy;
       std::fstream output;

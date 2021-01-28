@@ -313,6 +313,14 @@ namespace MPI
             cv_f_cells[center[0]].insert(
               std::pair<double, typename DoFHandler<dim>::active_cell_iterator>(
                 center[1], f_cell));
+            // Collect streamline path cells for Bernoulli analysis
+            // For now (enforeced symmetry), use upper boundary of CV
+            if (f_cell->at_boundary() &&
+                std::fabs(f_cell->center()[1] - control_volume_boundaries[3]) <
+                  f_cell->diameter())
+              {
+                streamline_path_cells.emplace(f_cell->center()[0], f_cell);
+              }
           }
       }
   }
@@ -386,6 +394,32 @@ namespace MPI
             cutter[0]->volume_fraction =
               ::compute_volume_fraction(f_cell, cut_points, "inlet");
             this->inlet_cells.insert(f_cell);
+            // Identify the start point for contraction region in Bernoulli
+            // analysis
+            if (f_cell->at_boundary() &&
+                std::fabs(f_cell->center()[1] - control_volume_boundaries[3]) <
+                  f_cell->diameter())
+              {
+                bernoulli_start_end.first.first = f_cell;
+                for (unsigned int face_n = 0;
+                     face_n < GeometryInfo<dim>::faces_per_cell;
+                     ++face_n)
+                  {
+                    if (f_cell->at_boundary(face_n))
+                      {
+                        if (dim == 2)
+                          {
+                            auto v0 = f_cell->face(face_n)->vertex(0);
+                            auto v1 = f_cell->face(face_n)->vertex(1);
+                            double left = std::min({v0[0], v1[0]});
+                            double right = std::max({v0[0], v1[0]});
+                            bernoulli_start_end.first.second =
+                              (right - control_volume_boundaries[0]) /
+                              (right - left);
+                          }
+                      }
+                  }
+              }
           }
         else if (has_left_vertex_for_outlet && has_right_vertex_for_outlet)
           {
@@ -396,6 +430,31 @@ namespace MPI
             cutter[0]->volume_fraction =
               ::compute_volume_fraction(f_cell, cut_points, "outlet");
             this->outlet_cells.insert(f_cell);
+            // Identify the end point for jet region in Bernoulli analysis
+            if (f_cell->at_boundary() &&
+                std::fabs(f_cell->center()[1] - control_volume_boundaries[3]) <
+                  f_cell->diameter())
+              {
+                bernoulli_start_end.second.first = f_cell;
+                for (unsigned int face_n = 0;
+                     face_n < GeometryInfo<dim>::faces_per_cell;
+                     ++face_n)
+                  {
+                    if (f_cell->at_boundary(face_n))
+                      {
+                        if (dim == 2)
+                          {
+                            auto v0 = f_cell->face(face_n)->vertex(0);
+                            auto v1 = f_cell->face(face_n)->vertex(1);
+                            double left = std::min({v0[0], v1[0]});
+                            double right = std::max({v0[0], v1[0]});
+                            bernoulli_start_end.second.second =
+                              (control_volume_boundaries[1] - left) /
+                              (right - left);
+                          }
+                      }
+                  }
+              }
           }
         if (!cut_points.empty())
           {
@@ -450,6 +509,7 @@ namespace MPI
     compute_flux();
     compute_volume_integral();
     compute_interface_integral();
+    compute_bernoulli_terms();
     get_separation_point();
     cv_values.reduce(this->mpi_communicator, time.get_delta_t());
     // Output results to file
@@ -461,6 +521,17 @@ namespace MPI
                          << cv_values.inlet_pressure_force << ","
                          << cv_values.outlet_pressure_force << ","
                          << cv_values.VF_volume << ","
+                         << cv_values.bernoulli.rate_convection_contraction
+                         << "," << cv_values.bernoulli.rate_convection_jet
+                         << ","
+                         << cv_values.bernoulli.rate_pressure_grad_contraction
+                         << "," << cv_values.bernoulli.rate_pressure_grad_jet
+                         << "," << cv_values.bernoulli.acceleration_contraction
+                         << "," << cv_values.bernoulli.acceleration_jet << ","
+                         << cv_values.bernoulli.rate_density_contraction << ","
+                         << cv_values.bernoulli.rate_density_jet << ","
+                         << cv_values.bernoulli.rate_friction_contraction << ","
+                         << cv_values.bernoulli.rate_friction_jet << ","
                          << cv_values.momentum.inlet_flux << ","
                          << cv_values.momentum.outlet_flux << ","
                          << cv_values.momentum.rate_momentum << ","
@@ -890,6 +961,285 @@ namespace MPI
   }
 
   template <int dim>
+  void ControlVolumeFSI<dim>::compute_bernoulli_terms()
+  {
+    /*
+     ONLY WORKS FOR HALF SPACE NOW!
+    */
+    double centerline_y = control_volume_boundaries[3];
+    // Identify the separation point for contraction and jet regions
+    double tol = 1e-4;
+    double highest_y = 0.0;
+    // Get the highest y coordinate
+    for (auto &s_vert : solid_solver.triangulation.get_vertices())
+      {
+        if (std::fabs(s_vert[1] - centerline_y) <
+            std::fabs(highest_y - centerline_y))
+          {
+            highest_y = s_vert[1];
+          }
+      }
+    // Collect the highest points and sort them from left to right
+    std::vector<Point<dim>> highest_points;
+    for (auto &s_vert : solid_solver.triangulation.get_vertices())
+      {
+        if (std::fabs(s_vert[1] - highest_y) < tol)
+          {
+            highest_points.emplace_back(s_vert);
+          }
+      }
+    std::sort(highest_points.begin(),
+              highest_points.end(),
+              [](Point<dim> &a, Point<dim> &b) { return a[0] < b[0]; });
+    Point<dim> contraction_end_point, jet_start_point;
+    // Check if the contraction end point overlaps with jet start point
+    if (std::fabs(highest_y - centerline_y) < tol)
+      {
+        // Left most for contraction end point and right most for jet start
+        // point
+        contraction_end_point = *(highest_points.begin());
+        jet_start_point = *(highest_points.rbegin());
+      }
+    else // They overlap, use the center for both
+      {
+        Point<dim> center_point;
+        for (unsigned d = 0; d < dim; ++d)
+          {
+            center_point[d] =
+              ((*highest_points.begin())[d] + (*highest_points.rbegin())[d]) /
+              2;
+          }
+        contraction_end_point = center_point;
+        jet_start_point = center_point;
+      }
+
+    // Compute the streamline path integral
+    const FEValuesExtractors::Vector velocities(0);
+    const FEValuesExtractors::Scalar pressure(dim);
+
+    FEFaceValues<dim> fe_face_values(fluid_solver.fe,
+                                     fluid_solver.face_quad_formula,
+                                     update_values | update_quadrature_points |
+                                       update_gradients | update_JxW_values);
+    std::vector<Tensor<1, dim>> present_vel(fe_face_values.n_quadrature_points);
+    std::vector<Tensor<2, dim>> vel_grad(fe_face_values.n_quadrature_points);
+    std::vector<Tensor<1, dim>> previous_vel(
+      fe_face_values.n_quadrature_points);
+
+    // Helper functions to compute integrals
+    auto int_acceleration_head =
+      [dt = time.get_delta_t(), &present_vel, &previous_vel](int q) {
+        return (present_vel[q][0] - previous_vel[q][0]) / dt;
+      };
+    auto int_friction_head = [&present_vel, &vel_grad](int q) {
+      (void)q;
+      return 0.0;
+    };
+
+    auto integrate =
+      [&fe_face_values](const std::function<double(int)> &quant) {
+        double results = 0;
+        for (unsigned q = 0; q < fe_face_values.n_quadrature_points; ++q)
+          {
+            results += quant(q) * fe_face_values.JxW(q);
+          }
+        return results;
+      };
+
+    // Declaration for Bernoulli quantities
+    double pressure_contraction_end = 0.0;
+    double pressure_jet_start = 0.0;
+
+    for (auto &cell_pairs : streamline_path_cells)
+      {
+        auto &cell = cell_pairs.second;
+        for (unsigned int face_n = 0;
+             face_n < GeometryInfo<dim>::faces_per_cell;
+             ++face_n)
+          {
+            if (cell->at_boundary(face_n))
+              {
+                /* Check if the cell is in contraction or jet region (or
+                neither). Use bit flags:
+                For separated contraction end & jet start points
+                    contraction end    jet start
+                          |              |
+                |------|------|------|------|------|
+                  0101   0111   0110   1110   1010
+                    5      7      6     14     10
+
+                For overlapped contraction end & jet start points
+                    contraction end
+                          |
+                |------|------|------|
+                  0101   1111   1010
+                    5     15     10
+                */
+                int region = 0;
+                int in_contraction = 1;
+                int not_in_contraction = 2;
+                int not_in_jet = 4;
+                int in_jet = 8;
+
+                for (unsigned v = 0; v < GeometryInfo<dim>::vertices_per_face;
+                     ++v)
+                  {
+                    Point<dim> vertex = cell->face(face_n)->vertex(v);
+                    region = region | (vertex[0] <= contraction_end_point[0]
+                                         ? in_contraction
+                                         : 0);
+                    region = region | (vertex[0] > contraction_end_point[0]
+                                         ? not_in_contraction
+                                         : 0);
+                    region = region |
+                             (vertex[0] <= jet_start_point[0] ? not_in_jet : 0);
+                    region =
+                      region | (vertex[0] > jet_start_point[0] ? in_jet : 0);
+                  }
+                fe_face_values.reinit(cell, face_n);
+
+                fe_face_values[velocities].get_function_values(
+                  fluid_solver.present_solution, present_vel);
+                fe_face_values[velocities].get_function_values(
+                  fluid_previous_solution, previous_vel);
+                fe_face_values[velocities].get_function_gradients(
+                  fluid_solver.present_solution, vel_grad);
+
+                double acceleration = 0.0;
+                double rate_friction = 0.0;
+                // Compute fractions for integrals
+                double contraction_region_fraction = 1.0;
+                double jet_region_fraction = 1.0;
+                // Partially in contraction region or jet region
+                bool contraction_end =
+                  (region & in_contraction) && (region & not_in_contraction);
+                bool jet_start = (region & in_jet) && (region & not_in_jet);
+                if (contraction_end)
+                  {
+                    if (dim == 2)
+                      {
+                        auto v0 = cell->face(face_n)->vertex(0);
+                        auto v1 = cell->face(face_n)->vertex(1);
+                        double left = std::min({v0[0], v1[0]});
+                        double right = std::max({v0[0], v1[0]});
+                        contraction_region_fraction =
+                          (contraction_end_point[0] - left) / (right - left);
+                      }
+                  }
+                // Partially in jet region
+                if (jet_start)
+                  {
+                    if (dim == 2)
+                      {
+                        auto v0 = cell->face(face_n)->vertex(0);
+                        auto v1 = cell->face(face_n)->vertex(1);
+                        double left = std::min({v0[0], v1[0]});
+                        double right = std::max({v0[0], v1[0]});
+                        jet_region_fraction =
+                          (right - jet_start_point[0]) / (right - left);
+                      }
+                  }
+
+                if (region != (not_in_contraction | not_in_jet))
+                  {
+                    // Compute integral for unsteady acceleration
+                    acceleration = integrate(int_acceleration_head);
+                  }
+                // Integral for contracion region
+                if (region & in_contraction)
+                  {
+                    cv_values.bernoulli.acceleration_contraction +=
+                      acceleration * contraction_region_fraction;
+                  }
+                // Integral for jet region
+                if (region & in_jet)
+                  {
+                    cv_values.bernoulli.acceleration_jet +=
+                      acceleration * jet_region_fraction;
+                  }
+                // Probe data for contraction end point or jet start point
+                if (contraction_end || jet_start)
+                  {
+                    Point<dim> probe_point;
+                    probe_point[0] = contraction_end ? contraction_end_point[0]
+                                                     : jet_start_point[0];
+                    probe_point[1] = centerline_y - tol;
+                    Utils::GridInterpolator<dim,
+                                            PETScWrappers::MPI::BlockVector>
+                      interpolator(
+                        fluid_solver.dof_handler, probe_point, {}, cell);
+                    Vector<double> value(dim + 1);
+                    interpolator.point_value(fluid_solver.present_solution,
+                                             value);
+                    if (contraction_end)
+                      {
+                        pressure_contraction_end = value[dim];
+                      }
+                    if (jet_start)
+                      {
+                        pressure_jet_start = value[dim];
+                      }
+                  }
+              }
+          }
+      }
+    // Start point for contraction region and end point for jet region
+    double pressure_contraction_start = 0.0;
+    double pressure_jet_end = 0.0;
+    auto get_start_end_quantities =
+      [&](double &pressure,
+          double &acc_int,
+          double x_coord,
+          std::pair<cell_iterator, double> &cell_pair) {
+        auto cell = cell_pair.first;
+        double fraction = cell_pair.second;
+        if (cell.state() == IteratorState::IteratorStates::valid &&
+            cell->is_locally_owned())
+          {
+            // Probe point data;
+            Point<dim> probe_point;
+            probe_point[0] = x_coord;
+            probe_point[1] = centerline_y - tol;
+            Utils::GridInterpolator<dim, PETScWrappers::MPI::BlockVector>
+              interpolator(fluid_solver.dof_handler, probe_point, {}, cell);
+            Vector<double> value(dim + 1);
+            interpolator.point_value(fluid_solver.present_solution, value);
+            pressure = value[dim];
+            // Compute integral
+            for (unsigned int face_n = 0;
+                 face_n < GeometryInfo<dim>::faces_per_cell;
+                 ++face_n)
+              {
+                if (cell->at_boundary(face_n))
+                  {
+                    fe_face_values.reinit(cell, face_n);
+                    fe_face_values[velocities].get_function_values(
+                      fluid_solver.present_solution, present_vel);
+                    fe_face_values[velocities].get_function_values(
+                      fluid_previous_solution, previous_vel);
+                    fe_face_values[velocities].get_function_gradients(
+                      fluid_solver.present_solution, vel_grad);
+                    acc_int += integrate(int_acceleration_head) * fraction;
+                  }
+              }
+          }
+      };
+    get_start_end_quantities(pressure_contraction_start,
+                             cv_values.bernoulli.acceleration_contraction,
+                             control_volume_boundaries[0],
+                             bernoulli_start_end.first);
+    get_start_end_quantities(pressure_jet_end,
+                             cv_values.bernoulli.acceleration_jet,
+                             control_volume_boundaries[1],
+                             bernoulli_start_end.second);
+
+    cv_values.bernoulli.rate_pressure_grad_contraction =
+      pressure_contraction_end - pressure_contraction_start;
+    cv_values.bernoulli.rate_pressure_grad_jet =
+      pressure_jet_end - pressure_jet_start;
+  }
+
+  template <int dim>
   void
   ControlVolumeFSI<dim>::CVValues::initialize_output(const Utils::Time &time,
                                                      MPI_Comm &mpi_communicator)
@@ -912,6 +1262,16 @@ namespace MPI
                    << "Inlet pressure force,"
                    << "Outlet pressure force,"
                    << "VF volume,"
+                   << "Rate convection contraction,"
+                   << "Rate convection jet,"
+                   << "Rate pressure contraction,"
+                   << "Rate pressure jet,"
+                   << "Acceleration contraction,"
+                   << "Acceleration jet,"
+                   << "Rate density contraction,"
+                   << "Rate density jet,"
+                   << "Rate friction contraction,"
+                   << "Rate friction jet,"
                    << "Inlet momentum flux,"
                    << "outlet momentum flux,"
                    << "Momentum change rate,"
@@ -955,6 +1315,17 @@ namespace MPI
       quantity = Utilities::MPI::sum(quantity, mpi_communicator);
     };
     // Sum the results over all MPI ranks
+    // Bernoulli terms
+    reduce_internal(bernoulli.rate_convection_contraction);
+    reduce_internal(bernoulli.rate_convection_jet);
+    reduce_internal(bernoulli.rate_pressure_grad_contraction);
+    reduce_internal(bernoulli.rate_pressure_grad_jet);
+    reduce_internal(bernoulli.acceleration_contraction);
+    reduce_internal(bernoulli.acceleration_jet);
+    reduce_internal(bernoulli.rate_density_contraction);
+    reduce_internal(bernoulli.rate_density_jet);
+    reduce_internal(bernoulli.rate_friction_contraction);
+    reduce_internal(bernoulli.rate_friction_jet);
     // fluxes
     reduce_internal(inlet_volume_flow);
     reduce_internal(outlet_volume_flow);
@@ -995,6 +1366,17 @@ namespace MPI
     inlet_pressure_force = 0;
     outlet_pressure_force = 0;
     VF_volume = 0;
+    // Bernoulli terms
+    bernoulli.rate_convection_contraction = 0;
+    bernoulli.rate_convection_jet = 0;
+    bernoulli.rate_pressure_grad_contraction = 0;
+    bernoulli.rate_pressure_grad_jet = 0;
+    bernoulli.acceleration_contraction = 0;
+    bernoulli.acceleration_jet = 0;
+    bernoulli.rate_density_contraction = 0;
+    bernoulli.rate_density_jet = 0;
+    bernoulli.rate_friction_contraction = 0;
+    bernoulli.rate_friction_jet = 0;
     // Momentum equation terms
     momentum.inlet_flux = 0;
     momentum.outlet_flux = 0;
