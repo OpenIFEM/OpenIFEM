@@ -288,9 +288,9 @@ namespace MPI
   void ControlVolumeFSI<dim>::collect_control_volume_cells()
   {
     AssertThrow(dim == 2, ExcNotImplemented());
-    for (auto f_cell = fluid_solver.dof_handler.begin_active();
-         f_cell != fluid_solver.dof_handler.end();
-         ++f_cell)
+    auto f_cell = fluid_solver.dof_handler.begin_active();
+    auto f_scalar_cell = fluid_solver.scalar_dof_handler.begin_active();
+    for (; f_cell != fluid_solver.dof_handler.end(); ++f_cell, ++f_scalar_cell)
       {
         if (!f_cell->is_locally_owned())
           {
@@ -319,7 +319,8 @@ namespace MPI
                 std::fabs(f_cell->center()[1] - control_volume_boundaries[3]) <
                   f_cell->diameter())
               {
-                streamline_path_cells.emplace(f_cell->center()[0], f_cell);
+                streamline_path_cells.emplace(f_cell->center()[0],
+                                              std::pair(f_cell, f_scalar_cell));
               }
           }
       }
@@ -350,9 +351,10 @@ namespace MPI
     double inlet_x = this->control_volume_boundaries[0];
     double outlet_x = this->control_volume_boundaries[1];
     auto is_left_to = [](double cell_x, double cv_x) { return cell_x <= cv_x; };
-    for (auto f_cell = fluid_solver.dof_handler.begin_active();
-         f_cell != fluid_solver.dof_handler.end();
-         ++f_cell)
+
+    auto f_cell = fluid_solver.dof_handler.begin_active();
+    auto f_scalar_cell = fluid_solver.scalar_dof_handler.begin_active();
+    for (; f_cell != fluid_solver.dof_handler.end(); ++f_cell, ++f_scalar_cell)
       {
         if (!f_cell->is_locally_owned())
           {
@@ -400,7 +402,6 @@ namespace MPI
                 std::fabs(f_cell->center()[1] - control_volume_boundaries[3]) <
                   f_cell->diameter())
               {
-                bernoulli_start_end.first.first = f_cell;
                 for (unsigned int face_n = 0;
                      face_n < GeometryInfo<dim>::faces_per_cell;
                      ++face_n)
@@ -413,9 +414,11 @@ namespace MPI
                             auto v1 = f_cell->face(face_n)->vertex(1);
                             double left = std::min({v0[0], v1[0]});
                             double right = std::max({v0[0], v1[0]});
-                            bernoulli_start_end.first.second =
+                            double fraction =
                               (right - control_volume_boundaries[0]) /
                               (right - left);
+                            bernoulli_start_end.first =
+                              std::make_tuple(f_cell, f_scalar_cell, fraction);
                           }
                       }
                   }
@@ -435,7 +438,6 @@ namespace MPI
                 std::fabs(f_cell->center()[1] - control_volume_boundaries[3]) <
                   f_cell->diameter())
               {
-                bernoulli_start_end.second.first = f_cell;
                 for (unsigned int face_n = 0;
                      face_n < GeometryInfo<dim>::faces_per_cell;
                      ++face_n)
@@ -448,9 +450,11 @@ namespace MPI
                             auto v1 = f_cell->face(face_n)->vertex(1);
                             double left = std::min({v0[0], v1[0]});
                             double right = std::max({v0[0], v1[0]});
-                            bernoulli_start_end.second.second =
+                            double fraction =
                               (control_volume_boundaries[1] - left) /
                               (right - left);
+                            bernoulli_start_end.second =
+                              std::make_tuple(f_cell, f_scalar_cell, fraction);
                           }
                       }
                   }
@@ -966,6 +970,7 @@ namespace MPI
     /*
      ONLY WORKS FOR HALF SPACE NOW!
     */
+    move_solid_mesh(true);
     double centerline_y = control_volume_boundaries[3];
     // Identify the separation point for contraction and jet regions
     double tol = 1e-4;
@@ -1014,6 +1019,17 @@ namespace MPI
       }
 
     // Compute the streamline path integral
+    // Need to copy a stress vector for vector query
+    std::vector<PETScWrappers::MPI::Vector> relevant_partition_Sxj(
+      dim,
+      PETScWrappers::MPI::Vector(fluid_solver.locally_owned_scalar_dofs,
+                                 fluid_solver.locally_relevant_scalar_dofs,
+                                 mpi_communicator));
+    for (unsigned d = 0; d < dim; ++d)
+      {
+        relevant_partition_Sxj[d] = fluid_solver.stress[0][d];
+      }
+
     const FEValuesExtractors::Vector velocities(0);
     const FEValuesExtractors::Scalar pressure(dim);
 
@@ -1021,19 +1037,43 @@ namespace MPI
                                      fluid_solver.face_quad_formula,
                                      update_values | update_quadrature_points |
                                        update_gradients | update_JxW_values);
+    FEFaceValues<dim> scalar_fe_face_values(
+      fluid_solver.scalar_fe,
+      fluid_solver.face_quad_formula,
+      update_values | update_quadrature_points | update_gradients |
+        update_JxW_values);
     std::vector<Tensor<1, dim>> present_vel(fe_face_values.n_quadrature_points);
-    std::vector<Tensor<2, dim>> vel_grad(fe_face_values.n_quadrature_points);
     std::vector<Tensor<1, dim>> previous_vel(
       fe_face_values.n_quadrature_points);
+    std::vector<double> present_pre(fe_face_values.n_quadrature_points);
+    std::vector<Tensor<1, dim>> pre_grad(fe_face_values.n_quadrature_points);
+    std::vector<std::vector<Tensor<1, dim>>> Sxj_grad(
+      dim,
+      std::vector<Tensor<1, dim>>(scalar_fe_face_values.n_quadrature_points));
 
     // Helper functions to compute integrals
     auto int_acceleration_head =
       [dt = time.get_delta_t(), &present_vel, &previous_vel](int q) {
         return (present_vel[q][0] - previous_vel[q][0]) / dt;
       };
-    auto int_friction_head = [&present_vel, &vel_grad](int q) {
-      (void)q;
-      return 0.0;
+    auto int_density_head =
+      [&present_pre, &pre_grad, rho = parameters.fluid_rho](int q) {
+        double atm = 1013250;
+        return present_pre[q] / rho / atm * pre_grad[q][0];
+      };
+    auto int_friction_head = [&Sxj_grad,
+                              &pre_grad,
+                              mu = parameters.viscosity,
+                              rho = parameters.fluid_rho](int q) {
+      double retval = 0.0;
+      // For 2d this is rho / mu * (Sxx_grad[q][0] + Sxy_grad[q][1])
+      for (unsigned d = 0; d < dim; ++d)
+        {
+          retval += rho / mu * Sxj_grad[d][q][d];
+        }
+      // Since Sxx includes pressure gradient we need to subract it
+      retval += rho / mu * pre_grad[q][0];
+      return retval;
     };
 
     auto integrate =
@@ -1047,12 +1087,15 @@ namespace MPI
       };
 
     // Declaration for Bernoulli quantities
+    double convection_contraction_end = 0.0;
+    double convection_jet_start = 0.0;
     double pressure_contraction_end = 0.0;
     double pressure_jet_start = 0.0;
 
     for (auto &cell_pairs : streamline_path_cells)
       {
-        auto &cell = cell_pairs.second;
+        auto &cell = cell_pairs.second.first;
+        auto &scalar_cell = cell_pairs.second.second;
         for (unsigned int face_n = 0;
              face_n < GeometryInfo<dim>::faces_per_cell;
              ++face_n)
@@ -1097,15 +1140,24 @@ namespace MPI
                       region | (vertex[0] > jet_start_point[0] ? in_jet : 0);
                   }
                 fe_face_values.reinit(cell, face_n);
+                scalar_fe_face_values.reinit(scalar_cell, face_n);
 
                 fe_face_values[velocities].get_function_values(
                   fluid_solver.present_solution, present_vel);
                 fe_face_values[velocities].get_function_values(
                   fluid_previous_solution, previous_vel);
-                fe_face_values[velocities].get_function_gradients(
-                  fluid_solver.present_solution, vel_grad);
+                fe_face_values[pressure].get_function_values(
+                  fluid_solver.present_solution, present_pre);
+                fe_face_values[pressure].get_function_gradients(
+                  fluid_solver.present_solution, pre_grad);
+                for (unsigned d = 0; d < dim; ++d)
+                  {
+                    scalar_fe_face_values.get_function_gradients(
+                      relevant_partition_Sxj[d], Sxj_grad[d]);
+                  }
 
                 double acceleration = 0.0;
+                double rate_density = 0.0;
                 double rate_friction = 0.0;
                 // Compute fractions for integrals
                 double contraction_region_fraction = 1.0;
@@ -1144,18 +1196,28 @@ namespace MPI
                   {
                     // Compute integral for unsteady acceleration
                     acceleration = integrate(int_acceleration_head);
+                    rate_density = integrate(int_density_head);
+                    rate_friction = integrate(int_friction_head);
                   }
                 // Integral for contracion region
                 if (region & in_contraction)
                   {
                     cv_values.bernoulli.acceleration_contraction +=
                       acceleration * contraction_region_fraction;
+                    cv_values.bernoulli.rate_density_contraction +=
+                      rate_density * contraction_region_fraction;
+                    cv_values.bernoulli.rate_friction_contraction +=
+                      rate_friction * contraction_region_fraction;
                   }
                 // Integral for jet region
                 if (region & in_jet)
                   {
                     cv_values.bernoulli.acceleration_jet +=
                       acceleration * jet_region_fraction;
+                    cv_values.bernoulli.rate_density_jet +=
+                      rate_density * jet_region_fraction;
+                    cv_values.bernoulli.rate_friction_jet +=
+                      rate_friction * jet_region_fraction;
                   }
                 // Probe data for contraction end point or jet start point
                 if (contraction_end || jet_start)
@@ -1171,12 +1233,19 @@ namespace MPI
                     Vector<double> value(dim + 1);
                     interpolator.point_value(fluid_solver.present_solution,
                                              value);
+                    double convection = 0.0;
+                    for (unsigned d = 0; d < dim; ++d)
+                      {
+                        convection += 0.5 * value[d] * value[d];
+                      }
                     if (contraction_end)
                       {
+                        convection_contraction_end = convection;
                         pressure_contraction_end = value[dim];
                       }
                     if (jet_start)
                       {
+                        convection_jet_start = convection;
                         pressure_jet_start = value[dim];
                       }
                   }
@@ -1184,15 +1253,20 @@ namespace MPI
           }
       }
     // Start point for contraction region and end point for jet region
+    double convection_contraction_start = 0.0;
+    double convection_jet_end = 0.0;
     double pressure_contraction_start = 0.0;
     double pressure_jet_end = 0.0;
     auto get_start_end_quantities =
-      [&](double &pressure,
+      [&](double &convection,
+          double &pressure_head,
           double &acc_int,
+          double &density_int,
+          double &friction_int,
           double x_coord,
-          std::pair<cell_iterator, double> &cell_pair) {
-        auto cell = cell_pair.first;
-        double fraction = cell_pair.second;
+          std::tuple<cell_iterator, cell_iterator, double> &cell_tuple) {
+        auto &[cell, scalar_cell, fraction] = cell_tuple;
+
         if (cell.state() == IteratorState::IteratorStates::valid &&
             cell->is_locally_owned())
           {
@@ -1204,7 +1278,13 @@ namespace MPI
               interpolator(fluid_solver.dof_handler, probe_point, {}, cell);
             Vector<double> value(dim + 1);
             interpolator.point_value(fluid_solver.present_solution, value);
-            pressure = value[dim];
+
+            convection = 0.0;
+            for (unsigned d = 0; d < dim; ++d)
+              {
+                convection += 0.5 * value[d] * value[d];
+              }
+            pressure_head = value[dim];
             // Compute integral
             for (unsigned int face_n = 0;
                  face_n < GeometryInfo<dim>::faces_per_cell;
@@ -1213,30 +1293,54 @@ namespace MPI
                 if (cell->at_boundary(face_n))
                   {
                     fe_face_values.reinit(cell, face_n);
+                    scalar_fe_face_values.reinit(scalar_cell, face_n);
+
                     fe_face_values[velocities].get_function_values(
                       fluid_solver.present_solution, present_vel);
                     fe_face_values[velocities].get_function_values(
                       fluid_previous_solution, previous_vel);
-                    fe_face_values[velocities].get_function_gradients(
-                      fluid_solver.present_solution, vel_grad);
+                    fe_face_values[pressure].get_function_values(
+                      fluid_solver.present_solution, present_pre);
+                    fe_face_values[pressure].get_function_gradients(
+                      fluid_solver.present_solution, pre_grad);
+                    for (unsigned d = 0; d < dim; ++d)
+                      {
+                        scalar_fe_face_values.get_function_gradients(
+                          relevant_partition_Sxj[d], Sxj_grad[d]);
+                      }
+
                     acc_int += integrate(int_acceleration_head) * fraction;
+                    density_int += integrate(int_density_head) * fraction;
+                    friction_int += integrate(int_friction_head) * fraction;
                   }
               }
           }
       };
-    get_start_end_quantities(pressure_contraction_start,
+    get_start_end_quantities(convection_contraction_start,
+                             pressure_contraction_start,
                              cv_values.bernoulli.acceleration_contraction,
+                             cv_values.bernoulli.rate_density_contraction,
+                             cv_values.bernoulli.rate_friction_contraction,
                              control_volume_boundaries[0],
                              bernoulli_start_end.first);
-    get_start_end_quantities(pressure_jet_end,
+    get_start_end_quantities(convection_jet_end,
+                             pressure_jet_end,
                              cv_values.bernoulli.acceleration_jet,
+                             cv_values.bernoulli.rate_density_jet,
+                             cv_values.bernoulli.rate_friction_jet,
                              control_volume_boundaries[1],
                              bernoulli_start_end.second);
 
+    cv_values.bernoulli.rate_convection_contraction =
+      convection_contraction_end - convection_contraction_start;
+    cv_values.bernoulli.rate_convection_jet =
+      convection_jet_end - convection_jet_start;
     cv_values.bernoulli.rate_pressure_grad_contraction =
       pressure_contraction_end - pressure_contraction_start;
     cv_values.bernoulli.rate_pressure_grad_jet =
       pressure_jet_end - pressure_jet_start;
+
+    move_solid_mesh(false);
   }
 
   template <int dim>

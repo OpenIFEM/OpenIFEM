@@ -82,12 +82,15 @@ namespace MPI
        A for contraction and B for jet region (local). Second arg is the
        fraction in the region for integral computation.
     */
-    std::pair<std::pair<cell_iterator, double>,
-              std::pair<cell_iterator, double>>
+    std::pair<std::tuple<cell_iterator, cell_iterator, double>,
+              std::tuple<cell_iterator, cell_iterator, double>>
       bernoulli_start_end;
-    // Streamline path for Bernoulli analysis. The key is the center x
-    // coordinate for sorting. Note: this is local
-    std::map<double, cell_iterator> streamline_path_cells;
+    /* Streamline path for Bernoulli analysis. The key is the center x
+       coordinate for sorting. Firt iterator is for vector DoF and second is for
+       scalar DoF handler. Note: this is local
+    */
+    std::map<double, std::pair<cell_iterator, cell_iterator>>
+      streamline_path_cells;
     CellDataStorage<
       typename parallel::distributed::Triangulation<dim>::active_cell_iterator,
       Tensor<1, dim>>
