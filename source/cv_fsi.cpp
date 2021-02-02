@@ -572,6 +572,8 @@ namespace MPI
     const FEValuesExtractors::Scalar pressure(dim);
 
     std::vector<Tensor<1, dim>> vel(GeometryInfo<dim - 1>::vertices_per_cell);
+    std::vector<Tensor<2, dim>> vel_grad(
+      GeometryInfo<dim - 1>::vertices_per_cell);
     std::vector<double> pre(GeometryInfo<dim - 1>::vertices_per_cell);
 
     MappingQGeneric<dim> mapping(parameters.fluid_velocity_degree);
@@ -587,6 +589,15 @@ namespace MPI
       return 0.5 * parameters.fluid_rho * vel[q][0] * vel[q].norm_square();
     };
     auto int_pressure_work = [&vel, &pre](int q) { return pre[q] * vel[q][0]; };
+    auto int_friction_work =
+      [&vel, &vel_grad, mu = parameters.viscosity](int q) {
+        double retval = 0.0;
+        for (unsigned d = 0; d < dim; ++d)
+          {
+            retval += mu * vel_grad[q][d][0] * vel[q][d];
+          }
+        return retval;
+      };
 
     auto compute_efflux_internal =
       [&](typename DoFHandler<dim>::active_cell_iterator f_cell) mutable {
@@ -595,6 +606,7 @@ namespace MPI
         double momentum_flux = 0.0;
         double KE_flux = 0.0;
         double rate_pressure_work = 0.0;
+        double rate_friction_work = 0.0;
         // We don't check localness here because they are local already
         auto cutter = surface_cutters.get_data(f_cell);
         FEValues<dim> dummy_fe_values(mapping,
@@ -614,6 +626,8 @@ namespace MPI
           fluid_solver.present_solution, vel);
         dummy_fe_values[pressure].get_function_values(
           fluid_solver.present_solution, pre);
+        dummy_fe_values[velocities].get_function_gradients(
+          fluid_solver.present_solution, vel_grad);
         // Integrate the fluxes on the cutter
         auto integrate = [&cutter, &vel, &pre, &cutter_fe_values](
                            const std::function<double(int)> &quant) {
@@ -629,11 +643,13 @@ namespace MPI
         momentum_flux += integrate(int_momentum);
         KE_flux += integrate(int_KE);
         rate_pressure_work += integrate(int_pressure_work);
+        rate_friction_work += integrate(int_friction_work);
         return std::make_tuple(volume_flow,
                                pressure_force,
                                momentum_flux,
                                KE_flux,
-                               rate_pressure_work);
+                               rate_pressure_work,
+                               rate_friction_work);
       };
     for (auto f_cell : this->inlet_cells)
       {
@@ -643,6 +659,7 @@ namespace MPI
         cv_values.momentum.inlet_flux += std::get<2>(increases);
         cv_values.energy.inlet_flux += std::get<3>(increases);
         cv_values.energy.inlet_pressure_work += std::get<4>(increases);
+        cv_values.energy.rate_friction_work -= std::get<5>(increases);
       }
     for (auto f_cell : this->outlet_cells)
       {
@@ -652,6 +669,7 @@ namespace MPI
         cv_values.momentum.outlet_flux += std::get<2>(increases);
         cv_values.energy.outlet_flux += std::get<3>(increases);
         cv_values.energy.outlet_pressure_work += std::get<4>(increases);
+        cv_values.energy.rate_friction_work += std::get<5>(increases);
       }
   }
 
@@ -1045,6 +1063,7 @@ namespace MPI
     std::vector<Tensor<1, dim>> present_vel(fe_face_values.n_quadrature_points);
     std::vector<Tensor<1, dim>> previous_vel(
       fe_face_values.n_quadrature_points);
+    std::vector<Tensor<2, dim>> vel_grad(fe_face_values.n_quadrature_points);
     std::vector<double> present_pre(fe_face_values.n_quadrature_points);
     std::vector<Tensor<1, dim>> pre_grad(fe_face_values.n_quadrature_points);
     std::vector<std::vector<Tensor<1, dim>>> Sxj_grad(
@@ -1075,6 +1094,15 @@ namespace MPI
       retval += rho / mu * pre_grad[q][0];
       return retval;
     };
+    auto int_friction_work =
+      [&present_vel, &vel_grad, mu = parameters.viscosity](int q) {
+        double retval = 0.0;
+        for (unsigned d = 0; d < dim; ++d)
+          {
+            retval += mu * vel_grad[q][d][1] * present_vel[q][d];
+          }
+        return retval;
+      };
 
     auto integrate =
       [&fe_face_values](const std::function<double(int)> &quant) {
@@ -1146,6 +1174,8 @@ namespace MPI
                   fluid_solver.present_solution, present_vel);
                 fe_face_values[velocities].get_function_values(
                   fluid_previous_solution, previous_vel);
+                fe_face_values[velocities].get_function_gradients(
+                  fluid_previous_solution, vel_grad);
                 fe_face_values[pressure].get_function_values(
                   fluid_solver.present_solution, present_pre);
                 fe_face_values[pressure].get_function_gradients(
@@ -1158,7 +1188,8 @@ namespace MPI
 
                 double acceleration = 0.0;
                 double rate_density = 0.0;
-                double rate_friction = 0.0;
+                double rate_friction_head = 0.0;
+                double rate_friction_work = 0.0;
                 // Compute fractions for integrals
                 double contraction_region_fraction = 1.0;
                 double jet_region_fraction = 1.0;
@@ -1197,7 +1228,10 @@ namespace MPI
                     // Compute integral for unsteady acceleration
                     acceleration = integrate(int_acceleration_head);
                     rate_density = integrate(int_density_head);
-                    rate_friction = integrate(int_friction_head);
+                    rate_friction_head = integrate(int_friction_head);
+                    rate_friction_work = integrate(int_friction_work);
+                    // Compute integral for friction work in energy equation
+                    cv_values.energy.rate_friction_work += rate_friction_work;
                   }
                 // Integral for contracion region
                 if (region & in_contraction)
@@ -1207,7 +1241,7 @@ namespace MPI
                     cv_values.bernoulli.rate_density_contraction +=
                       rate_density * contraction_region_fraction;
                     cv_values.bernoulli.rate_friction_contraction +=
-                      rate_friction * contraction_region_fraction;
+                      rate_friction_head * contraction_region_fraction;
                   }
                 // Integral for jet region
                 if (region & in_jet)
@@ -1217,7 +1251,7 @@ namespace MPI
                     cv_values.bernoulli.rate_density_jet +=
                       rate_density * jet_region_fraction;
                     cv_values.bernoulli.rate_friction_jet +=
-                      rate_friction * jet_region_fraction;
+                      rate_friction_head * jet_region_fraction;
                   }
                 // Probe data for contraction end point or jet start point
                 if (contraction_end || jet_start)
@@ -1262,7 +1296,8 @@ namespace MPI
           double &pressure_head,
           double &acc_int,
           double &density_int,
-          double &friction_int,
+          double &friction_head_int,
+          double &friction_work_int,
           double x_coord,
           std::tuple<cell_iterator, cell_iterator, double> &cell_tuple) {
         auto &[cell, scalar_cell, fraction] = cell_tuple;
@@ -1299,6 +1334,8 @@ namespace MPI
                       fluid_solver.present_solution, present_vel);
                     fe_face_values[velocities].get_function_values(
                       fluid_previous_solution, previous_vel);
+                    fe_face_values[velocities].get_function_gradients(
+                      fluid_previous_solution, vel_grad);
                     fe_face_values[pressure].get_function_values(
                       fluid_solver.present_solution, present_pre);
                     fe_face_values[pressure].get_function_gradients(
@@ -1311,7 +1348,10 @@ namespace MPI
 
                     acc_int += integrate(int_acceleration_head) * fraction;
                     density_int += integrate(int_density_head) * fraction;
-                    friction_int += integrate(int_friction_head) * fraction;
+                    friction_head_int +=
+                      integrate(int_friction_head) * fraction;
+                    friction_work_int +=
+                      integrate(int_friction_work) * fraction;
                   }
               }
           }
@@ -1321,6 +1361,7 @@ namespace MPI
                              cv_values.bernoulli.acceleration_contraction,
                              cv_values.bernoulli.rate_density_contraction,
                              cv_values.bernoulli.rate_friction_contraction,
+                             cv_values.energy.rate_friction_work,
                              control_volume_boundaries[0],
                              bernoulli_start_end.first);
     get_start_end_quantities(convection_jet_end,
@@ -1328,6 +1369,7 @@ namespace MPI
                              cv_values.bernoulli.acceleration_jet,
                              cv_values.bernoulli.rate_density_jet,
                              cv_values.bernoulli.rate_friction_jet,
+                             cv_values.energy.rate_friction_work,
                              control_volume_boundaries[1],
                              bernoulli_start_end.second);
 
