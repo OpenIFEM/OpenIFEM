@@ -721,16 +721,7 @@ namespace MPI
       return retval;
     };
     auto int_rate_dissipation = [&vel_grad, mu = parameters.viscosity](int q) {
-      double retval = 0.0;
-      for (unsigned i = 0; i < dim; ++i)
-        {
-          for (unsigned j = 0; j < dim; ++j)
-            {
-              retval += mu * (vel_grad[q][i][j] * vel_grad[q][i][j] +
-                              vel_grad[q][i][j] * vel_grad[q][j][i]);
-            }
-        }
-      return retval;
+      return mu * scalar_product(vel_grad[q], vel_grad[q]);
     };
     auto int_rate_compression = [&present_pre, &vel_grad](int q) {
       double retval = 0.0;
