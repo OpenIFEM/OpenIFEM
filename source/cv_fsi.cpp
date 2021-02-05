@@ -546,6 +546,8 @@ namespace MPI
                          << cv_values.energy.outlet_pressure_work << ","
                          << cv_values.energy.inlet_flux << ","
                          << cv_values.energy.outlet_flux << ","
+                         << cv_values.energy.convective_KE << ","
+                         << cv_values.energy.penetrating_KE << ","
                          << cv_values.energy.rate_kinetic_energy << ","
                          << cv_values.energy.rate_kinetic_energy_direct << ","
                          << cv_values.energy.pressure_convection << ","
@@ -713,6 +715,10 @@ namespace MPI
       return rho * scalar_product((present_vel[q] - previous_vel[q]) / dt,
                                   present_vel[q]);
     };
+    auto int_convective_kinetive_energy =
+      [&rho = parameters.fluid_rho, &present_vel, &vel_grad](int q) {
+        return rho * vel_grad[q] * present_vel[q] * present_vel[q];
+      };
     auto int_pressure_convection = [&present_vel, &pre_grad](int q) {
       double retval = 0.0;
       for (unsigned i = 0; i < dim; ++i)
@@ -769,6 +775,8 @@ namespace MPI
           integrate(int_present_kinetic_energy) * volume_fraction;
         cv_values.energy.rate_kinetic_energy_direct +=
           integrate(int_rate_kinetic_energy) * volume_fraction;
+        cv_values.energy.convective_KE +=
+          integrate(int_convective_kinetive_energy) * volume_fraction;
         cv_values.energy.pressure_convection +=
           integrate(int_pressure_convection) * volume_fraction;
         cv_values.energy.rate_dissipation +=
@@ -844,6 +852,7 @@ namespace MPI
     std::vector<std::vector<Tensor<1, dim>>> fsi_stress_rows_values(dim);
     std::vector<Tensor<1, dim>> fluid_velocity_values(n_f_q_points);
     std::vector<Tensor<1, dim>> solid_velocity_values(n_f_q_points);
+    std::vector<Tensor<1, dim>> relative_velocity_values(n_f_q_points);
     std::vector<double> fluid_pressure_values(n_f_q_points);
     for (unsigned int d = 0; d < dim; ++d)
       {
@@ -903,6 +912,13 @@ namespace MPI
                   localized_velocity, solid_velocity_values);
                 scalar_fe_face_values.get_function_values(
                   solid_solver.fluid_pressure, fluid_pressure_values);
+
+                for (unsigned q = 0; q < n_f_q_points; ++q)
+                  {
+                    relative_velocity_values[q] =
+                      fluid_velocity_values[q] - solid_velocity_values[q];
+                  }
+
                 for (unsigned int v = 0;
                      v < GeometryInfo<dim>::vertices_per_face;
                      ++v)
@@ -928,7 +944,8 @@ namespace MPI
                 // Friction work is the tangential component of the traction
                 // *times* surface fluid velocity
                 double drag_force, drag_work = 0.0, drag_work_from_solid = 0.0,
-                                   friction_force = 0.0, friction_work = 0.0;
+                                   friction_force = 0.0, friction_work = 0.0,
+                                   penetrating_KE = 0.0;
 
                 for (unsigned int q = 0; q < n_f_q_points; ++q)
                   {
@@ -950,6 +967,12 @@ namespace MPI
                         drag_work_from_solid +=
                           fluid_pressure_values[q] *
                           solid_velocity_values[q][j] *
+                          fe_face_values.normal_vector(q)[j] *
+                          fe_face_values.JxW(q);
+                        // Penetrating KE flux
+                        penetrating_KE +=
+                          fluid_velocity_values[q].norm_square() *
+                          relative_velocity_values[q][j] *
                           fe_face_values.normal_vector(q)[j] *
                           fe_face_values.JxW(q);
                         // Friction work: \int_S_{VF}{\tau_{ij} u_i n_j}dS
@@ -1419,6 +1442,8 @@ namespace MPI
                    << "Outlet pressure work,"
                    << "Inlet KE flux,"
                    << "Outlet KE flux,"
+                   << "Convective KE,"
+                   << "Penetrating KE,"
                    << "Rate KE,"
                    << "Rate KE direct,"
                    << "Pressure convection,"
@@ -1480,6 +1505,7 @@ namespace MPI
     reduce_internal(momentum.rate_momentum);
     reduce_internal(energy.previous_KE);
     reduce_internal(energy.present_KE);
+    reduce_internal(energy.convective_KE);
     reduce_internal(energy.rate_kinetic_energy_direct);
     reduce_internal(energy.pressure_convection);
     reduce_internal(energy.rate_dissipation);
@@ -1490,6 +1516,7 @@ namespace MPI
     // surface integrals;
     reduce_internal(momentum.VF_drag);
     reduce_internal(momentum.VF_friction);
+    reduce_internal(energy.penetrating_KE);
     reduce_internal(energy.rate_friction_work);
     reduce_internal(energy.rate_vf_work);
     reduce_internal(energy.rate_vf_work_from_solid);
@@ -1526,6 +1553,8 @@ namespace MPI
     energy.outlet_pressure_work = 0;
     energy.inlet_flux = 0;
     energy.outlet_flux = 0;
+    energy.convective_KE = 0;
+    energy.penetrating_KE = 0;
     energy.previous_KE = 0;
     energy.present_KE = 0;
     energy.pressure_convection = 0;

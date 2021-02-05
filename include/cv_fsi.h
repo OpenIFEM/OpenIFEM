@@ -153,6 +153,10 @@ namespace MPI
         // Defined as 0.5 * \int_S_{in/out}{\rho u1 u_i u_i}dS
         double inlet_flux;
         double outlet_flux;
+        // The integral convection term. \int_V{\rho u cdot \Nabla u \cdot u}dV
+        double convective_KE;
+        // The integral of KE flux through the solid.
+        double penetrating_KE;
         // Previous and present KE
         double previous_KE;
         double present_KE;
