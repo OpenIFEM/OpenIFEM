@@ -29,9 +29,10 @@ namespace
         cut_point[0] = x;
         for (unsigned d = 1; d < dim; ++d)
           {
-            if (std::abs(p1[d] - p2[d]) > std::abs(p1[d]) * 1e-10)
+            if (std::abs(p1[0] - p2[0]) > std::abs(p1[0]) * 1e-10)
               {
-                cut_point[d] = p1[d] + (x - p1[d]) / (p2[d] - p1[d]);
+                cut_point[d] =
+                  p1[d] + (p2[d] - p1[d]) * (x - p1[0]) / (p2[0] - p1[0]);
               }
             else
               {
@@ -956,7 +957,7 @@ namespace MPI
                           {
                             friction_work +=
                               fsi_stress[q][i][j] *
-                              solid_velocity_values[q][i] *
+                              fluid_velocity_values[q][i] *
                               fe_face_values.normal_vector(q)[j] *
                               fe_face_values.JxW(q);
                           }
