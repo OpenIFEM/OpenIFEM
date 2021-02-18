@@ -480,7 +480,23 @@ namespace Fluid
                               rho * grad_phi_u[j] * current_velocity_values[q] *
                                 phi_u[i] -
                               div_phi_u[i] * phi_p[j]) +
-                             rho * phi_u[i] * phi_u[j] / time.get_delta_t()) *
+                             rho * phi_u[i] * phi_u[j] / time.get_delta_t() +
+                             // Superimposed continuity equation
+                             parameters.fluid_rho / (cp_to_cv * atm) *
+                               phi_u[i] *
+                               ((phi_u[j] * (current_pressure_values[q] -
+                                             present_pressure_values[q]) +
+                                 current_velocity_values[q] * phi_p[j]) /
+                                  time.get_delta_t() +
+                                phi_u[j] * current_velocity_values[q] *
+                                  current_pressure_gradients[q] +
+                                current_velocity_values[q] * phi_u[j] *
+                                  current_pressure_gradients[q] +
+                                current_velocity_values[q] *
+                                  current_velocity_values[q] * grad_phi_p[j]) +
+                             rho * phi_u[i] *
+                               (phi_u[j] * current_velocity_divergence +
+                                current_velocity_values[q] * div_phi_u[j])) *
                             fe_values.JxW(q);
                           // PML attenuation
                           local_matrix(i, j) +=
@@ -519,6 +535,43 @@ namespace Fluid
                                grad_phi_u[i] * sigma_pml[q] * phi_u[j] +
                              tau_SUPG * rho * phi_u[j] * grad_phi_u[i] *
                                sigma_pml[q] * current_velocity_values[q] +
+                             // SUPG continuity superposition
+                             tau_SUPG *
+                               (parameters.fluid_rho / (cp_to_cv * atm) *
+                                  (((phi_u[j] *
+                                       grad_phi_u[i] * // Unsteady pressure
+                                       current_velocity_values[q] +
+                                     current_velocity_values[q] *
+                                       grad_phi_u[i] * phi_u[j]) *
+                                      (current_pressure_values[q] -
+                                       present_pressure_values[q]) +
+                                    current_velocity_values[q] * grad_phi_u[i] *
+                                      current_velocity_values[q] * phi_p[j]) /
+                                     time.get_delta_t() +
+                                   // convective pressure
+                                   ((phi_u[j] * grad_phi_u[i] *
+                                       current_velocity_values[q] +
+                                     current_velocity_values[q] *
+                                       grad_phi_u[i] * phi_u[j]) *
+                                      current_velocity_values[q] +
+                                    current_velocity_values[q] *
+                                      current_velocity_values[q] *
+                                      grad_phi_u[i] * phi_u[j]) *
+                                     current_pressure_gradients[q] +
+                                   current_velocity_values[q] * grad_phi_u[i] *
+                                     current_velocity_values[q] *
+                                     current_velocity_values[q] *
+                                     grad_phi_p[j]) +
+                                // Velocity divergence
+                                rho *
+                                  ((phi_u[j] * grad_phi_u[i] *
+                                      current_velocity_values[q] +
+                                    current_velocity_values[q] * grad_phi_u[i] *
+                                      phi_u[j]) *
+                                     current_velocity_divergence +
+                                   current_velocity_values[q] * grad_phi_u[i] *
+                                     current_velocity_values[q] *
+                                     div_phi_u[j])) +
                              // PSPG Convection
                              tau_PSPG * rho * grad_phi_p[i] *
                                (phi_u[j] * current_velocity_gradients[q]) +
@@ -532,6 +585,23 @@ namespace Fluid
                              // PSPG PML
                              tau_PSPG * rho * grad_phi_p[i] * sigma_pml[q] *
                                phi_u[j] +
+                             // PSPG continuity superposition
+                             tau_PSPG * grad_phi_p[i] *
+                               (parameters.fluid_rho / (cp_to_cv * atm) *
+                                  ((phi_u[j] * (current_pressure_values[q] -
+                                                present_pressure_values[q]) +
+                                    current_velocity_values[q] * phi_p[j]) /
+                                     time.get_delta_t() +
+                                   phi_u[j] * current_velocity_values[q] *
+                                     current_pressure_gradients[q] +
+                                   current_velocity_values[q] * phi_u[j] *
+                                     current_pressure_gradients[q] +
+                                   current_velocity_values[q] *
+                                     current_velocity_values[q] *
+                                     grad_phi_p[j]) +
+                                rho *
+                                  (phi_u[j] * current_velocity_divergence +
+                                   current_velocity_values[q] * div_phi_u[j])) +
                              // LSIC acceleration
                              tau_LSIC * rho * div_phi_u[i] * phi_p[j] /
                                time.get_delta_t() * (1 - ind) / atm +
@@ -598,7 +668,16 @@ namespace Fluid
                            (current_velocity_values[q] -
                             present_velocity_values[q]) *
                            phi_u[i] / time.get_delta_t() +
-                         (gravity + artificial_bf[q]) * phi_u[i] * rho) *
+                         (gravity + artificial_bf[q]) * phi_u[i] * rho +
+                         phi_u[i] * (parameters.fluid_rho / (cp_to_cv * atm) *
+                                       current_velocity_values[q] *
+                                       ((current_pressure_values[q] -
+                                         present_pressure_values[q]) /
+                                          time.get_delta_t() +
+                                        current_velocity_values[q] *
+                                          current_pressure_gradients[q]) +
+                                     rho * current_velocity_values[q] *
+                                       current_velocity_divergence)) *
                         fe_values.JxW(q);
                       local_rhs(i) +=
                         -(rho * sigma_pml[q] * current_velocity_values[q] *
@@ -633,7 +712,16 @@ namespace Fluid
                                       current_velocity_gradients[q]) +
                              current_pressure_gradients[q] -
                              rho * (gravity + artificial_bf[q]) +
-                             rho * sigma_pml[q] * current_velocity_values[q]) +
+                             rho * sigma_pml[q] * current_velocity_values[q] +
+                             current_velocity_values[q] * parameters.fluid_rho /
+                               (cp_to_cv * atm) *
+                               ((current_pressure_values[q] -
+                                 present_pressure_values[q]) /
+                                  time.get_delta_t() +
+                                current_velocity_values[q] *
+                                  current_pressure_gradients[q]) +
+                             rho * current_velocity_values[q] *
+                               current_velocity_divergence) +
                           (tau_PSPG * grad_phi_p[i]) *
                             (rho * ((current_velocity_values[q] -
                                      present_velocity_values[q]) /
@@ -642,7 +730,16 @@ namespace Fluid
                                       current_velocity_gradients[q]) +
                              current_pressure_gradients[q] -
                              rho * (gravity + artificial_bf[q]) +
-                             rho * sigma_pml[q] * current_velocity_values[q])) *
+                             rho * sigma_pml[q] * current_velocity_values[q] +
+                             current_velocity_values[q] * parameters.fluid_rho /
+                               (cp_to_cv * atm) *
+                               ((current_pressure_values[q] -
+                                 present_pressure_values[q]) /
+                                  time.get_delta_t() +
+                                current_velocity_values[q] *
+                                  current_pressure_gradients[q]) +
+                             rho * current_velocity_values[q] *
+                               current_velocity_divergence)) *
                         fe_values.JxW(q);
                       // Add LSIC rhs terms.
                       local_rhs(i) +=
