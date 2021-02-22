@@ -413,15 +413,6 @@ namespace MPI
                          "There should be only 2 groups of finite element!"));
                 if (i_group == 1)
                   continue; // skip the pressure dofs
-                bool inside = true;
-                for (unsigned int d = 0; d < dim; ++d)
-                  if (std::abs(unit_points[i][d]) < 1e-5)
-                    {
-                      inside = false;
-                      break;
-                    }
-                if (inside)
-                  continue; // skip the in-cell support point
                 // Same as fluid_solver.fe.system_to_base_index(i).first.second;
                 const unsigned int index =
                   fluid_solver.fe.system_to_component_index(i).first;
@@ -488,15 +479,19 @@ namespace MPI
                          "There should be only 2 groups of finite element!"));
                 if (i_group == 1)
                   continue; // skip the pressure dofs
-                bool inside = true;
+                int inside_dim_count = 0;
                 for (unsigned int d = 0; d < dim; ++d)
-                  if (std::abs(unit_points[i][d]) < 1e-5)
-                    {
-                      inside = false;
-                      break;
-                    }
-                if (inside)
-                  continue; // skip the in-cell support point
+                  {
+                    if (0 < std::abs(unit_points[i][d]) &&
+                        std::abs(unit_points[i][d]) < 1)
+                      {
+                        inside_dim_count++;
+                      }
+                  }
+                if (inside_dim_count == dim)
+                  {
+                    continue; // skip the in-cell support point
+                  }
                 // Same as fluid_solver.fe.system_to_base_index(i).first.second;
                 const unsigned int index =
                   fluid_solver.fe.system_to_component_index(i).first;
