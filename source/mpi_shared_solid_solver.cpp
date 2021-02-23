@@ -162,6 +162,10 @@ namespace Solid
           spacedim,
           PETScWrappers::MPI::Vector(locally_owned_scalar_dofs,
                                      mpi_communicator)));
+      
+    cellwise_sxx.reinit(triangulation.n_active_cells());
+    cellwise_sxy.reinit(triangulation.n_active_cells());
+    cellwise_syy.reinit(triangulation.n_active_cells());
     }
 
     // Solve linear system \f$Ax = b\f$ using CG solver.
@@ -283,6 +287,10 @@ namespace Solid
               data_out.add_data_vector(
                 scalar_dof_handler, localized_stress[2][2], "Szz");
             }
+    //cell strain and stress
+    data_out.add_data_vector (cellwise_sxx, "cell_sxx"); 
+    data_out.add_data_vector (cellwise_sxy, "cell_sxy"); 
+    data_out.add_data_vector (cellwise_syy, "cell_syy"); 
 
           data_out.build_patches();
 

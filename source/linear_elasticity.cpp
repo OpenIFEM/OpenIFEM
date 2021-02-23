@@ -372,8 +372,16 @@ namespace Solid
     auto cell = dof_handler.begin_active();
     auto scalar_cell = scalar_dof_handler.begin_active();
     std::vector<types::global_dof_index> dof_indices(scalar_fe.dofs_per_cell);
+
+    // containers for cell-wise stress output
+    cellwise_sxx.reinit(triangulation.n_active_cells());
+    cellwise_sxy.reinit(triangulation.n_active_cells());
+    cellwise_syy.reinit(triangulation.n_active_cells());
+
+
     for (; cell != dof_handler.end(); ++cell, ++scalar_cell)
       {
+        std::vector <double> ele_stress {0.0,0.0,0.0,0.0};
         scalar_cell->get_dof_indices(dof_indices);
         fe_values.reinit(cell);
         fe_values[displacements].get_function_gradients(
@@ -405,7 +413,17 @@ namespace Solid
                     quad_stress[i][j][q] = tmp_stress[i][j];
                   }
               }
+              ele_stress[0] += (0.25*quad_stress[0][0][q]);
+	            ele_stress[1] += (0.25*quad_stress[0][1][q]);
+	            ele_stress[2] += (0.25*quad_stress[1][0][q]);
+	            ele_stress[3] += (0.25*quad_stress[1][1][q]);
           }
+           
+         
+           cellwise_sxx[cell->active_cell_index()] = ele_stress[0];
+           cellwise_sxy[cell->active_cell_index()] = ele_stress[1];
+           cellwise_syy[cell->active_cell_index()] = ele_stress[3];
+
 
         for (unsigned int i = 0; i < dim; ++i)
           {
@@ -435,7 +453,9 @@ namespace Solid
               }
           }
       }
+
   }
+
 
   template class LinearElasticity<2>;
   template class LinearElasticity<3>;

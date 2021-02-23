@@ -111,6 +111,10 @@ namespace Solid
       std::vector<Vector<double>>(spacedim,
                                   Vector<double>(scalar_dof_handler.n_dofs())));
 
+    cellwise_sxx.reinit(triangulation.n_active_cells());
+    cellwise_sxy.reinit(triangulation.n_active_cells());
+    cellwise_syy.reinit(triangulation.n_active_cells());
+
     // Set up cell property, which contains the FSI traction required in FSI
     // simulation
     cell_property.initialize(triangulation.begin_active(),
@@ -189,6 +193,11 @@ namespace Solid
         data_out.add_data_vector(scalar_dof_handler, stress[1][2], "Syz");
         data_out.add_data_vector(scalar_dof_handler, stress[2][2], "Szz");
       }
+
+    //cell strain and stress
+    data_out.add_data_vector (cellwise_sxx, "cell_sxx"); 
+    data_out.add_data_vector (cellwise_sxy, "cell_sxy"); 
+    data_out.add_data_vector (cellwise_syy, "cell_syy"); 
 
     data_out.build_patches();
 

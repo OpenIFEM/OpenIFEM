@@ -67,6 +67,9 @@ namespace Solid
     using SolidSolver<dim>::previous_displacement;
     using SolidSolver<dim>::strain;
     using SolidSolver<dim>::stress;
+    using SolidSolver<dim>::cellwise_sxx;
+    using SolidSolver<dim>::cellwise_sxy;
+    using SolidSolver<dim>::cellwise_syy;
     using SolidSolver<dim>::time;
     using SolidSolver<dim>::timer;
     using SolidSolver<dim>::cell_property;

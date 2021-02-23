@@ -163,6 +163,8 @@ namespace Solid
      */
     mutable std::vector<std::vector<Vector<double>>> strain, stress;
 
+    mutable Vector <double> cellwise_sxx, cellwise_sxy,cellwise_syy;
+
     Utils::Time time;
     mutable TimerOutput timer;
 
