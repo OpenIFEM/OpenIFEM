@@ -17,6 +17,7 @@ namespace MPI
                      bool use_dirichlet_bc = false);
     void run_with_cv_analysis();
     void set_control_volume_boundary(const std::vector<double> &);
+    void set_output_solid_boundary(const bool);
 
     //! Destructor
     ~ControlVolumeFSI();
@@ -55,6 +56,7 @@ namespace MPI
 
     void collect_control_volume_cells();
     void collect_inlet_outlet_cells();
+    void collect_solid_boundary_vertices();
     void control_volume_analysis();
     void compute_relative_velocity();
     void get_separation_point();
@@ -62,6 +64,7 @@ namespace MPI
     void compute_volume_integral();
     void compute_interface_integral();
     void compute_bernoulli_terms();
+    void output_solid_boundary_vertices();
 
     PETScWrappers::MPI::BlockVector fluid_previous_solution;
 
@@ -91,6 +94,14 @@ namespace MPI
     */
     std::map<double, std::pair<cell_iterator, cell_iterator>>
       streamline_path_cells;
+
+    /* If this flag is set, the solid boundary nodes will be output every
+    timestep for POD analysis.
+    */
+    bool output_solid_boundary;
+    std::set<typename Triangulation<dim>::active_vertex_iterator>
+      solid_boundary_vertices;
+
     CellDataStorage<
       typename parallel::distributed::Triangulation<dim>::active_cell_iterator,
       Tensor<1, dim>>

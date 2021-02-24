@@ -143,7 +143,7 @@ namespace MPI
                                           Solid::MPI::SharedSolidSolver<dim> &s,
                                           const Parameters::AllParameters &p,
                                           bool use_dirichlet_bc)
-    : FSI<dim>(f, s, p, use_dirichlet_bc)
+    : FSI<dim>(f, s, p, use_dirichlet_bc), output_solid_boundary(false)
   {
   }
 
@@ -198,6 +198,10 @@ namespace MPI
     update_vertices_mask();
     collect_inlet_outlet_cells();
     collect_control_volume_cells();
+    if (this->output_solid_boundary)
+      {
+        collect_solid_boundary_vertices();
+      }
     cv_values.initialize_output(this->time, this->mpi_communicator);
 
     pcout << "Number of fluid active cells and dofs: ["
@@ -283,6 +287,12 @@ namespace MPI
     // Assign the boundaries
     this->control_volume_boundaries.assign(boundaries.begin(),
                                            boundaries.end());
+  }
+
+  template <int dim>
+  void ControlVolumeFSI<dim>::set_output_solid_boundary(const bool output)
+  {
+    this->output_solid_boundary = output;
   }
 
   template <int dim>
@@ -508,6 +518,36 @@ namespace MPI
   }
 
   template <int dim>
+  void ControlVolumeFSI<dim>::collect_solid_boundary_vertices()
+  {
+    if (Utilities::MPI::this_mpi_process(mpi_communicator) != 0)
+      {
+        return;
+      }
+    unsigned fixed_bc_flag = (1 << dim) - 1;
+
+    for (auto &face : solid_solver.triangulation.active_face_iterators())
+      {
+        if (face->at_boundary())
+          {
+            // Check if the boundary is fixed
+            auto bc = parameters.solid_dirichlet_bcs.find(face->boundary_id());
+            if (bc != parameters.solid_dirichlet_bcs.end() &&
+                bc->second == fixed_bc_flag)
+              {
+                // Skip those fixed vertices
+                continue;
+              }
+
+            for (unsigned v = 0; v < GeometryInfo<dim>::vertices_per_face; ++v)
+              {
+                solid_boundary_vertices.insert(face->vertex_iterator(v));
+              }
+          }
+      }
+  }
+
+  template <int dim>
   void ControlVolumeFSI<dim>::control_volume_analysis()
   {
     cv_values.reset();
@@ -557,6 +597,10 @@ namespace MPI
                          << cv_values.energy.rate_vf_work << ","
                          << cv_values.energy.rate_vf_work_from_solid
                          << std::endl;
+      }
+    if (output_solid_boundary)
+      {
+        output_solid_boundary_vertices();
       }
   }
 
@@ -1397,6 +1441,27 @@ namespace MPI
     cv_values.bernoulli.rate_pressure_grad_jet =
       pressure_jet_end - pressure_jet_start;
 
+    move_solid_mesh(false);
+  }
+
+  template <int dim>
+  void ControlVolumeFSI<dim>::output_solid_boundary_vertices()
+  {
+    move_solid_mesh(true);
+    if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+      {
+        fs::create_directory("solid_trace");
+        std::string filename("./solid_trace/BoundaryTrace-" +
+                             Utilities::int_to_string(time.get_timestep(), 6));
+        std::ofstream output_file(filename, std::ios::out);
+
+        for (const auto &v : solid_boundary_vertices)
+          {
+            output_file << v->index() << " " << v->vertex(0) << std::endl;
+          }
+
+        output_file.close();
+      }
     move_solid_mesh(false);
   }
 
