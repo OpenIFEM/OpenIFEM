@@ -58,6 +58,7 @@ private:                                                                       \
 
 #define MPISharedSolidSolverInheritanceMacro()                                 \
 private:                                                                       \
+  using SharedSolidSolver<dim>::cellwise_stress;                               \
   using SharedSolidSolver<dim>::triangulation;                                 \
   using SharedSolidSolver<dim>::parameters;                                    \
   using SharedSolidSolver<dim>::dof_handler;                                   \

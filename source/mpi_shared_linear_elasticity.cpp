@@ -446,19 +446,19 @@ namespace Solid
 
       Vector<double> localized_current_displacement(current_displacement);
 
-      // containers for cell-wise stress output
-      cellwise_sxx.reinit(triangulation.n_active_cells());
-      cellwise_sxy.reinit(triangulation.n_active_cells());
-      cellwise_syy.reinit(triangulation.n_active_cells());
+      for (unsigned int i = 0; i < cellwise_stress.size(); ++i)
+        {
+          cellwise_stress[i].reinit(triangulation.n_active_cells());
+        }
 
       for (; cell != dof_handler.end(); ++cell, ++scalar_cell)
         {
           if (cell->subdomain_id() == this_mpi_process)
             {
-              std::vector <double> ele_stress {0.0,0.0,0.0,0.0};
+              std::vector<double> tmp_cell_stress(6, 0.0);
               fe_values.reinit(cell);
               fe_values[displacements].get_function_gradients(
-              localized_current_displacement, current_displacement_gradients);
+                localized_current_displacement, current_displacement_gradients);
               int mat_id = cell->material_id();
               if (parameters.n_solid_parts == 1)
                 mat_id = 1;
@@ -486,15 +486,23 @@ namespace Solid
                           quad_stress[i][j][q] = tmp_stress[i][j];
                         }
                     }
-                    ele_stress[0] += (0.25*quad_stress[0][0][q]);
-	                  ele_stress[1] += (0.25*quad_stress[0][1][q]);
-	                  ele_stress[2] += (0.25*quad_stress[1][0][q]);
-	                  ele_stress[3] += (0.25*quad_stress[1][1][q]);
+                  tmp_cell_stress[0] += (0.25 * quad_stress[0][0][q]);
+                  tmp_cell_stress[1] += (0.25 * quad_stress[0][1][q]);
+                  tmp_cell_stress[2] += (0.25 * quad_stress[1][1][q]);
+
+                  if (dim == 3)
+                    {
+                      tmp_cell_stress[3] += (0.25 * quad_stress[0][2][q]);
+                      tmp_cell_stress[4] += (0.25 * quad_stress[1][2][q]);
+                      tmp_cell_stress[5] += (0.25 * quad_stress[2][2][q]);
+                    }
                 }
 
-                  cellwise_sxx[cell->active_cell_index()] = ele_stress[0];
-                  cellwise_sxy[cell->active_cell_index()] = ele_stress[1];
-                  cellwise_syy[cell->active_cell_index()] = ele_stress[3];
+              for (unsigned int i = 0; i < cellwise_stress.size(); ++i)
+                {
+                  cellwise_stress[i][cell->active_cell_index()] =
+                    tmp_cell_stress[i];
+                }
               for (unsigned int i = 0; i < dim; ++i)
                 {
                   for (unsigned int j = 0; j < dim; ++j)
