@@ -1050,7 +1050,7 @@ namespace MPI
     move_solid_mesh(true);
     double centerline_y = control_volume_boundaries[3];
     // Identify the separation point for contraction and jet regions
-    double tol = 1e-4;
+    double tol = 0.0045; // Use 2 layers in glottis for tolerance
     double highest_y = 0.0;
     // Get the highest y coordinate
     for (auto &s_vert : solid_solver.triangulation.get_vertices())
@@ -1134,6 +1134,14 @@ namespace MPI
       [dt = time.get_delta_t(), &present_vel, &previous_vel](int q) {
         return (present_vel[q][0] - previous_vel[q][0]) / dt;
       };
+    auto int_pressure_head =
+      [&pre_grad](int q) {
+        return pre_grad[q][0];
+      };
+    auto int_convection_head =
+      [&present_vel, &vel_grad](int q) {
+        return present_vel[q] * vel_grad[q][0];
+      };
     auto int_density_head =
       [&present_pre, &pre_grad, rho = parameters.fluid_rho](int q) {
         double atm = 1013250;
@@ -1172,12 +1180,6 @@ namespace MPI
           }
         return results;
       };
-
-    // Declaration for Bernoulli quantities
-    double convection_contraction_end = 0.0;
-    double convection_jet_start = 0.0;
-    double pressure_contraction_end = 0.0;
-    double pressure_jet_start = 0.0;
 
     for (auto &cell_pairs : streamline_path_cells)
       {
@@ -1245,6 +1247,8 @@ namespace MPI
                       relevant_partition_Sxj[d], Sxj_grad[d]);
                   }
 
+                double convection_head = 0.0;
+                double pressure_head = 0.0;
                 double acceleration = 0.0;
                 double rate_density = 0.0;
                 double rate_friction_head = 0.0;
@@ -1284,7 +1288,9 @@ namespace MPI
 
                 if (region != (not_in_contraction | not_in_jet))
                   {
-                    // Compute integral for unsteady acceleration
+                    // Compute integral for Bernoulli equation 
+                    convection_head = integrate(int_convection_head);
+                    pressure_head = integrate(int_pressure_head);
                     acceleration = integrate(int_acceleration_head);
                     rate_density = integrate(int_density_head);
                     rate_friction_head = integrate(int_friction_head);
@@ -1295,6 +1301,10 @@ namespace MPI
                 // Integral for contracion region
                 if (region & in_contraction)
                   {
+                    cv_values.bernoulli.rate_convection_contraction +=
+                      convection_head * contraction_region_fraction;
+                    cv_values.bernoulli.rate_pressure_grad_contraction +=
+                      pressure_head * contraction_region_fraction;
                     cv_values.bernoulli.acceleration_contraction +=
                       acceleration * contraction_region_fraction;
                     cv_values.bernoulli.rate_density_contraction +=
@@ -1305,6 +1315,10 @@ namespace MPI
                 // Integral for jet region
                 if (region & in_jet)
                   {
+                    cv_values.bernoulli.rate_convection_jet +=
+                      convection_head * jet_region_fraction;
+                    cv_values.bernoulli.rate_pressure_grad_jet +=
+                      pressure_head * jet_region_fraction;
                     cv_values.bernoulli.acceleration_jet +=
                       acceleration * jet_region_fraction;
                     cv_values.bernoulli.rate_density_jet +=
@@ -1312,73 +1326,23 @@ namespace MPI
                     cv_values.bernoulli.rate_friction_jet +=
                       rate_friction_head * jet_region_fraction;
                   }
-                // Probe data for contraction end point or jet start point
-                if (contraction_end || jet_start)
-                  {
-                    Point<dim> probe_point;
-                    probe_point[0] = contraction_end ? contraction_end_point[0]
-                                                     : jet_start_point[0];
-                    probe_point[1] = centerline_y - tol;
-                    Utils::GridInterpolator<dim,
-                                            PETScWrappers::MPI::BlockVector>
-                      interpolator(
-                        fluid_solver.dof_handler, probe_point, {}, cell);
-                    Vector<double> value(dim + 1);
-                    interpolator.point_value(fluid_solver.present_solution,
-                                             value);
-                    double convection = 0.0;
-                    for (unsigned d = 0; d < dim; ++d)
-                      {
-                        convection += 0.5 * value[d] * value[d];
-                      }
-                    if (contraction_end)
-                      {
-                        convection_contraction_end = convection;
-                        pressure_contraction_end = value[dim];
-                      }
-                    if (jet_start)
-                      {
-                        convection_jet_start = convection;
-                        pressure_jet_start = value[dim];
-                      }
-                  }
               }
           }
       }
     // Start point for contraction region and end point for jet region
-    double convection_contraction_start = 0.0;
-    double convection_jet_end = 0.0;
-    double pressure_contraction_start = 0.0;
-    double pressure_jet_end = 0.0;
     auto get_start_end_quantities =
-      [&](double &convection,
-          double &pressure_head,
+      [&](double &convection_head_int,
+          double &pressure_head_int,
           double &acc_int,
           double &density_int,
           double &friction_head_int,
           double &friction_work_int,
-          double x_coord,
           std::tuple<cell_iterator, cell_iterator, double> &cell_tuple) {
         auto &[cell, scalar_cell, fraction] = cell_tuple;
 
         if (cell.state() == IteratorState::IteratorStates::valid &&
             cell->is_locally_owned())
           {
-            // Probe point data;
-            Point<dim> probe_point;
-            probe_point[0] = x_coord;
-            probe_point[1] = centerline_y - tol;
-            Utils::GridInterpolator<dim, PETScWrappers::MPI::BlockVector>
-              interpolator(fluid_solver.dof_handler, probe_point, {}, cell);
-            Vector<double> value(dim + 1);
-            interpolator.point_value(fluid_solver.present_solution, value);
-
-            convection = 0.0;
-            for (unsigned d = 0; d < dim; ++d)
-              {
-                convection += 0.5 * value[d] * value[d];
-              }
-            pressure_head = value[dim];
             // Compute integral
             for (unsigned int face_n = 0;
                  face_n < GeometryInfo<dim>::faces_per_cell;
@@ -1405,6 +1369,8 @@ namespace MPI
                           relevant_partition_Sxj[d], Sxj_grad[d]);
                       }
 
+                    convection_head_int += integrate(int_convection_head) * fraction;
+                    pressure_head_int += integrate(int_pressure_head) * fraction;
                     acc_int += integrate(int_acceleration_head) * fraction;
                     density_int += integrate(int_density_head) * fraction;
                     friction_head_int +=
@@ -1415,31 +1381,20 @@ namespace MPI
               }
           }
       };
-    get_start_end_quantities(convection_contraction_start,
-                             pressure_contraction_start,
+    get_start_end_quantities(cv_values.bernoulli.rate_convection_contraction,
+                             cv_values.bernoulli.rate_pressure_grad_contraction,
                              cv_values.bernoulli.acceleration_contraction,
                              cv_values.bernoulli.rate_density_contraction,
                              cv_values.bernoulli.rate_friction_contraction,
                              cv_values.energy.rate_friction_work,
-                             control_volume_boundaries[0],
                              bernoulli_start_end.first);
-    get_start_end_quantities(convection_jet_end,
-                             pressure_jet_end,
+    get_start_end_quantities(cv_values.bernoulli.rate_convection_jet,
+                             cv_values.bernoulli.rate_pressure_grad_jet,
                              cv_values.bernoulli.acceleration_jet,
                              cv_values.bernoulli.rate_density_jet,
                              cv_values.bernoulli.rate_friction_jet,
                              cv_values.energy.rate_friction_work,
-                             control_volume_boundaries[1],
                              bernoulli_start_end.second);
-
-    cv_values.bernoulli.rate_convection_contraction =
-      convection_contraction_end - convection_contraction_start;
-    cv_values.bernoulli.rate_convection_jet =
-      convection_jet_end - convection_jet_start;
-    cv_values.bernoulli.rate_pressure_grad_contraction =
-      pressure_contraction_end - pressure_contraction_start;
-    cv_values.bernoulli.rate_pressure_grad_jet =
-      pressure_jet_end - pressure_jet_start;
 
     move_solid_mesh(false);
   }
