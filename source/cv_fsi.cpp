@@ -1050,7 +1050,8 @@ namespace MPI
     move_solid_mesh(true);
     double centerline_y = control_volume_boundaries[3];
     // Identify the separation point for contraction and jet regions
-    double tol = 0.0045; // Use 2 layers in glottis for tolerance
+    double gap_tolerance = 0.0045; // Use 2 layers in glottis for tolerance
+    Point<dim> highest_p;
     double highest_y = 0.0;
     // Get the highest y coordinate
     for (auto &s_vert : solid_solver.triangulation.get_vertices())
@@ -1059,13 +1060,14 @@ namespace MPI
             std::fabs(highest_y - centerline_y))
           {
             highest_y = s_vert[1];
+            highest_p = s_vert;
           }
       }
     // Collect the highest points and sort them from left to right
     std::vector<Point<dim>> highest_points;
     for (auto &s_vert : solid_solver.triangulation.get_vertices())
       {
-        if (std::fabs(s_vert[1] - highest_y) < tol)
+        if (std::fabs(s_vert[1] - highest_y) < gap_tolerance)
           {
             highest_points.emplace_back(s_vert);
           }
@@ -1075,36 +1077,33 @@ namespace MPI
               [](Point<dim> &a, Point<dim> &b) { return a[0] < b[0]; });
     Point<dim> contraction_end_point, jet_start_point;
     // Check if the contraction end point overlaps with jet start point
-    if (std::fabs(highest_y - centerline_y) < tol)
+    if (std::fabs(highest_y - centerline_y) < gap_tolerance)
       {
         // Left most for contraction end point and right most for jet start
         // point
         contraction_end_point = *(highest_points.begin());
         jet_start_point = *(highest_points.rbegin());
       }
-    else // They overlap, use the center for both
+    else // They overlap, use the highest point
       {
-        Point<dim> center_point;
-        for (unsigned d = 0; d < dim; ++d)
-          {
-            center_point[d] =
-              ((*highest_points.begin())[d] + (*highest_points.rbegin())[d]) /
-              2;
-          }
-        contraction_end_point = center_point;
-        jet_start_point = center_point;
+        contraction_end_point = highest_p;
+        jet_start_point = highest_p;
       }
 
     // Compute the streamline path integral
     // Need to copy a stress vector for vector query
-    std::vector<PETScWrappers::MPI::Vector> relevant_partition_Sxj(
-      dim,
+    // The order for stress grad is: Sxx, Sxy, (Sxz), Syy, (Syz, Szz)
+    std::vector<PETScWrappers::MPI::Vector> relevant_partition_stress(
+      (dim * dim + dim) / 2,
       PETScWrappers::MPI::Vector(fluid_solver.locally_owned_scalar_dofs,
                                  fluid_solver.locally_relevant_scalar_dofs,
                                  mpi_communicator));
-    for (unsigned d = 0; d < dim; ++d)
+    for (unsigned component = 0; component < relevant_partition_stress.size();
+         ++component)
       {
-        relevant_partition_Sxj[d] = fluid_solver.stress[0][d];
+        unsigned int first_index = component / dim;
+        relevant_partition_stress[component] =
+          fluid_solver.stress[first_index][component - first_index];
       }
 
     const FEValuesExtractors::Vector velocities(0);
@@ -1125,8 +1124,9 @@ namespace MPI
     std::vector<Tensor<2, dim>> vel_grad(fe_face_values.n_quadrature_points);
     std::vector<double> present_pre(fe_face_values.n_quadrature_points);
     std::vector<Tensor<1, dim>> pre_grad(fe_face_values.n_quadrature_points);
-    std::vector<std::vector<Tensor<1, dim>>> Sxj_grad(
-      dim,
+    // The order for stress grad is: Sxx, Sxy, (Sxz), Syy, (Syz, Szz)
+    std::vector<std::vector<Tensor<1, dim>>> stress_grad(
+      (dim * dim + dim) / 2,
       std::vector<Tensor<1, dim>>(scalar_fe_face_values.n_quadrature_points));
 
     // Helper functions to compute integrals
@@ -1134,31 +1134,40 @@ namespace MPI
       [dt = time.get_delta_t(), &present_vel, &previous_vel](int q) {
         return (present_vel[q][0] - previous_vel[q][0]) / dt;
       };
-    auto int_pressure_head =
-      [&pre_grad](int q) {
-        return pre_grad[q][0];
-      };
-    auto int_convection_head =
-      [&present_vel, &vel_grad](int q) {
-        return present_vel[q] * vel_grad[q][0];
-      };
-    auto int_density_head =
-      [&present_pre, &pre_grad, rho = parameters.fluid_rho](int q) {
-        double atm = 1013250;
-        return present_pre[q] / rho / atm * pre_grad[q][0];
-      };
-    auto int_friction_head = [&Sxj_grad,
+    auto int_pressure_head = [&pre_grad](int q) { return pre_grad[q][0]; };
+    auto int_convection_head = [&present_vel, &vel_grad](int q) {
+      return present_vel[q] * vel_grad[q][0];
+    };
+    auto int_density_head = [&present_pre,
+                             &pre_grad,
+                             rho = parameters.fluid_rho](int q) {
+      double atm = 1013250;
+      return present_pre[q] / rho / (atm + 2 * present_pre[q]) * pre_grad[q][0];
+    };
+    auto int_friction_head = [&stress_grad,
                               &pre_grad,
                               mu = parameters.viscosity,
                               rho = parameters.fluid_rho](int q) {
       double retval = 0.0;
-      // For 2d this is rho / mu * (Sxx_grad[q][0] + Sxy_grad[q][1])
+      // For 2d this is (Sxx_grad[q][0] + Sxy_grad[q][1] - Syy_grad[q][0]) / rho
+      // For 3d this is (Sxx_grad[q][0] + Sxy_grad[q][1] + Sxz_grad[q][2] -
+      // Syy_grad[q][0] - Szz_grad[q][0]) / rho
+      // for Sxx_grad[q][0] Sxy_grad[q][1] (or/and Sxz_grad[q][2])
       for (unsigned d = 0; d < dim; ++d)
         {
-          retval += rho / mu * Sxj_grad[d][q][d];
+          retval += stress_grad[d][q][d] / rho;
         }
-      // Since Sxx includes pressure gradient we need to subract it
-      retval += rho / mu * pre_grad[q][0];
+      // for Syy_grad[q][0]
+      retval -= stress_grad[dim][q][0] / rho;
+      // Since Sxx includes pressure gradient we need to subtract it
+      if (dim == 3)
+        {
+          // for Szz_grad[q][0] (if exists).
+          retval -= stress_grad[5][q][0] / rho;
+          // Only happens in 3d because in 2d Sxx_grad[q][0] and Syy_grad[q][0]
+          // cancel out
+          retval -= pre_grad[q][0] / rho;
+        }
       return retval;
     };
     auto int_friction_work =
@@ -1241,10 +1250,12 @@ namespace MPI
                   fluid_solver.present_solution, present_pre);
                 fe_face_values[pressure].get_function_gradients(
                   fluid_solver.present_solution, pre_grad);
-                for (unsigned d = 0; d < dim; ++d)
+                for (unsigned component = 0; component < stress_grad.size();
+                     ++component)
                   {
                     scalar_fe_face_values.get_function_gradients(
-                      relevant_partition_Sxj[d], Sxj_grad[d]);
+                      relevant_partition_stress[component],
+                      stress_grad[component]);
                   }
 
                 double convection_head = 0.0;
@@ -1288,7 +1299,7 @@ namespace MPI
 
                 if (region != (not_in_contraction | not_in_jet))
                   {
-                    // Compute integral for Bernoulli equation 
+                    // Compute integral for Bernoulli equation
                     convection_head = integrate(int_convection_head);
                     pressure_head = integrate(int_pressure_head);
                     acceleration = integrate(int_acceleration_head);
@@ -1363,14 +1374,18 @@ namespace MPI
                       fluid_solver.present_solution, present_pre);
                     fe_face_values[pressure].get_function_gradients(
                       fluid_solver.present_solution, pre_grad);
-                    for (unsigned d = 0; d < dim; ++d)
+                    for (unsigned component = 0; component < stress_grad.size();
+                         ++component)
                       {
                         scalar_fe_face_values.get_function_gradients(
-                          relevant_partition_Sxj[d], Sxj_grad[d]);
+                          relevant_partition_stress[component],
+                          stress_grad[component]);
                       }
 
-                    convection_head_int += integrate(int_convection_head) * fraction;
-                    pressure_head_int += integrate(int_pressure_head) * fraction;
+                    convection_head_int +=
+                      integrate(int_convection_head) * fraction;
+                    pressure_head_int +=
+                      integrate(int_pressure_head) * fraction;
                     acc_int += integrate(int_acceleration_head) * fraction;
                     density_int += integrate(int_density_head) * fraction;
                     friction_head_int +=
