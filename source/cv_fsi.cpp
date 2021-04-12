@@ -1109,32 +1109,46 @@ namespace MPI
     const FEValuesExtractors::Vector velocities(0);
     const FEValuesExtractors::Scalar pressure(dim);
 
-    FEFaceValues<dim> fe_face_values(fluid_solver.fe,
-                                     fluid_solver.face_quad_formula,
-                                     update_values | update_quadrature_points |
-                                       update_gradients | update_JxW_values);
-    FEFaceValues<dim> scalar_fe_face_values(
-      fluid_solver.scalar_fe,
-      fluid_solver.face_quad_formula,
-      update_values | update_quadrature_points | update_gradients |
-        update_JxW_values);
-    std::vector<Tensor<1, dim>> present_vel(fe_face_values.n_quadrature_points);
-    std::vector<Tensor<1, dim>> previous_vel(
-      fe_face_values.n_quadrature_points);
-    std::vector<Tensor<2, dim>> vel_grad(fe_face_values.n_quadrature_points);
-    std::vector<double> present_pre(fe_face_values.n_quadrature_points);
-    std::vector<Tensor<1, dim>> pre_grad(fe_face_values.n_quadrature_points);
+    FEValues<dim> fe_values(fluid_solver.fe,
+                            fluid_solver.volume_quad_formula,
+                            update_values | update_quadrature_points |
+                              update_gradients | update_JxW_values);
+    FEValues<dim> scalar_fe_values(fluid_solver.scalar_fe,
+                                   fluid_solver.volume_quad_formula,
+                                   update_values | update_quadrature_points |
+                                     update_gradients | update_JxW_values);
+    std::vector<Tensor<1, dim>> present_vel(fe_values.n_quadrature_points);
+    std::vector<Tensor<1, dim>> previous_vel(fe_values.n_quadrature_points);
+    std::vector<Tensor<2, dim>> vel_grad(fe_values.n_quadrature_points);
+    std::vector<double> present_pre(fe_values.n_quadrature_points);
+    std::vector<Tensor<1, dim>> pre_grad(fe_values.n_quadrature_points);
     // The order for stress grad is: Sxx, Sxy, (Sxz), Syy, (Syz, Szz)
     std::vector<std::vector<Tensor<1, dim>>> stress_grad(
       (dim * dim + dim) / 2,
-      std::vector<Tensor<1, dim>>(scalar_fe_face_values.n_quadrature_points));
+      std::vector<Tensor<1, dim>>(scalar_fe_values.n_quadrature_points));
 
     // Helper functions to compute integrals
+    auto get_area_fraction = [](cell_iterator cell) {
+      double cell_volume = cell->measure();
+      double cell_diamter = 0.0;
+      // Presume the cell is rectangular/hex
+      for (unsigned face = 0; face < GeometryInfo<dim>::faces_per_cell; ++face)
+        {
+          if (cell->at_boundary(face))
+            {
+              cell_diamter = cell->face(face)->measure();
+            }
+        }
+      return cell_diamter / cell_volume;
+    };
+
     auto int_acceleration_head =
       [dt = time.get_delta_t(), &present_vel, &previous_vel](int q) {
         return (present_vel[q][0] - previous_vel[q][0]) / dt;
       };
-    auto int_pressure_head = [&pre_grad](int q) { return pre_grad[q][0]; };
+    auto int_pressure_head = [&pre_grad, rho = parameters.fluid_rho](int q) {
+      return pre_grad[q][0] / rho;
+    };
     auto int_convection_head = [&present_vel, &vel_grad](int q) {
       return present_vel[q] * vel_grad[q][0];
     };
@@ -1180,164 +1194,130 @@ namespace MPI
         return retval;
       };
 
-    auto integrate =
-      [&fe_face_values](const std::function<double(int)> &quant) {
-        double results = 0;
-        for (unsigned q = 0; q < fe_face_values.n_quadrature_points; ++q)
-          {
-            results += quant(q) * fe_face_values.JxW(q);
-          }
-        return results;
-      };
+    auto integrate = [&fe_values](const std::function<double(int)> &quant) {
+      double results = 0;
+      for (unsigned q = 0; q < fe_values.n_quadrature_points; ++q)
+        {
+          results += quant(q) * fe_values.JxW(q);
+        }
+      return results;
+    };
 
     for (auto &cell_pairs : streamline_path_cells)
       {
         auto &cell = cell_pairs.second.first;
         auto &scalar_cell = cell_pairs.second.second;
-        for (unsigned int face_n = 0;
-             face_n < GeometryInfo<dim>::faces_per_cell;
-             ++face_n)
+        /* Check if the cell is in contraction or jet region (or
+        neither). Use bit flags:
+        For separated contraction end & jet start points
+            contraction end    jet start
+                  |              |
+        |------|------|------|------|------|
+          0101   0111   0110   1110   1010
+            5      7      6     14     10
+
+        For overlapped contraction end & jet start points
+            contraction end
+                  |
+        |------|------|------|
+          0101   1111   1010
+            5     15     10
+        */
+        int region = 0;
+        int in_contraction = 1;
+        int not_in_contraction = 2;
+        int not_in_jet = 4;
+        int in_jet = 8;
+
+        for (unsigned v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
           {
-            if (cell->at_boundary(face_n))
-              {
-                /* Check if the cell is in contraction or jet region (or
-                neither). Use bit flags:
-                For separated contraction end & jet start points
-                    contraction end    jet start
-                          |              |
-                |------|------|------|------|------|
-                  0101   0111   0110   1110   1010
-                    5      7      6     14     10
+            Point<dim> vertex = cell->vertex(v);
+            region =
+              region |
+              (vertex[0] <= contraction_end_point[0] ? in_contraction : 0);
+            region =
+              region |
+              (vertex[0] > contraction_end_point[0] ? not_in_contraction : 0);
+            region =
+              region | (vertex[0] <= jet_start_point[0] ? not_in_jet : 0);
+            region = region | (vertex[0] > jet_start_point[0] ? in_jet : 0);
+          }
+        fe_values.reinit(cell);
+        scalar_fe_values.reinit(scalar_cell);
 
-                For overlapped contraction end & jet start points
-                    contraction end
-                          |
-                |------|------|------|
-                  0101   1111   1010
-                    5     15     10
-                */
-                int region = 0;
-                int in_contraction = 1;
-                int not_in_contraction = 2;
-                int not_in_jet = 4;
-                int in_jet = 8;
+        fe_values[velocities].get_function_values(fluid_solver.present_solution,
+                                                  present_vel);
+        fe_values[velocities].get_function_values(fluid_previous_solution,
+                                                  previous_vel);
+        fe_values[velocities].get_function_gradients(fluid_previous_solution,
+                                                     vel_grad);
+        fe_values[pressure].get_function_values(fluid_solver.present_solution,
+                                                present_pre);
+        fe_values[pressure].get_function_gradients(
+          fluid_solver.present_solution, pre_grad);
+        for (unsigned component = 0; component < stress_grad.size();
+             ++component)
+          {
+            scalar_fe_values.get_function_gradients(
+              relevant_partition_stress[component], stress_grad[component]);
+          }
 
-                for (unsigned v = 0; v < GeometryInfo<dim>::vertices_per_face;
-                     ++v)
-                  {
-                    Point<dim> vertex = cell->face(face_n)->vertex(v);
-                    region = region | (vertex[0] <= contraction_end_point[0]
-                                         ? in_contraction
-                                         : 0);
-                    region = region | (vertex[0] > contraction_end_point[0]
-                                         ? not_in_contraction
-                                         : 0);
-                    region = region |
-                             (vertex[0] <= jet_start_point[0] ? not_in_jet : 0);
-                    region =
-                      region | (vertex[0] > jet_start_point[0] ? in_jet : 0);
-                  }
-                fe_face_values.reinit(cell, face_n);
-                scalar_fe_face_values.reinit(scalar_cell, face_n);
+        double convection_head = 0.0;
+        double pressure_head = 0.0;
+        double acceleration = 0.0;
+        double rate_density = 0.0;
+        double rate_friction_head = 0.0;
+        double rate_friction_work = 0.0;
+        // Don't account for those partially in contraction region or jet region
+        bool contraction_end =
+          (region & in_contraction) && (region & not_in_contraction);
+        bool jet_start = (region & in_jet) && (region & not_in_jet);
+        if (contraction_end || jet_start)
+          {
+            continue;
+          }
 
-                fe_face_values[velocities].get_function_values(
-                  fluid_solver.present_solution, present_vel);
-                fe_face_values[velocities].get_function_values(
-                  fluid_previous_solution, previous_vel);
-                fe_face_values[velocities].get_function_gradients(
-                  fluid_previous_solution, vel_grad);
-                fe_face_values[pressure].get_function_values(
-                  fluid_solver.present_solution, present_pre);
-                fe_face_values[pressure].get_function_gradients(
-                  fluid_solver.present_solution, pre_grad);
-                for (unsigned component = 0; component < stress_grad.size();
-                     ++component)
-                  {
-                    scalar_fe_face_values.get_function_gradients(
-                      relevant_partition_stress[component],
-                      stress_grad[component]);
-                  }
-
-                double convection_head = 0.0;
-                double pressure_head = 0.0;
-                double acceleration = 0.0;
-                double rate_density = 0.0;
-                double rate_friction_head = 0.0;
-                double rate_friction_work = 0.0;
-                // Compute fractions for integrals
-                double contraction_region_fraction = 1.0;
-                double jet_region_fraction = 1.0;
-                // Partially in contraction region or jet region
-                bool contraction_end =
-                  (region & in_contraction) && (region & not_in_contraction);
-                bool jet_start = (region & in_jet) && (region & not_in_jet);
-                if (contraction_end)
-                  {
-                    if (dim == 2)
-                      {
-                        auto v0 = cell->face(face_n)->vertex(0);
-                        auto v1 = cell->face(face_n)->vertex(1);
-                        double left = std::min({v0[0], v1[0]});
-                        double right = std::max({v0[0], v1[0]});
-                        contraction_region_fraction =
-                          (contraction_end_point[0] - left) / (right - left);
-                      }
-                  }
-                // Partially in jet region
-                if (jet_start)
-                  {
-                    if (dim == 2)
-                      {
-                        auto v0 = cell->face(face_n)->vertex(0);
-                        auto v1 = cell->face(face_n)->vertex(1);
-                        double left = std::min({v0[0], v1[0]});
-                        double right = std::max({v0[0], v1[0]});
-                        jet_region_fraction =
-                          (right - jet_start_point[0]) / (right - left);
-                      }
-                  }
-
-                if (region != (not_in_contraction | not_in_jet))
-                  {
-                    // Compute integral for Bernoulli equation
-                    convection_head = integrate(int_convection_head);
-                    pressure_head = integrate(int_pressure_head);
-                    acceleration = integrate(int_acceleration_head);
-                    rate_density = integrate(int_density_head);
-                    rate_friction_head = integrate(int_friction_head);
-                    rate_friction_work = integrate(int_friction_work);
-                    // Compute integral for friction work in energy equation
-                    cv_values.energy.rate_friction_work += rate_friction_work;
-                  }
-                // Integral for contracion region
-                if (region & in_contraction)
-                  {
-                    cv_values.bernoulli.rate_convection_contraction +=
-                      convection_head * contraction_region_fraction;
-                    cv_values.bernoulli.rate_pressure_grad_contraction +=
-                      pressure_head * contraction_region_fraction;
-                    cv_values.bernoulli.acceleration_contraction +=
-                      acceleration * contraction_region_fraction;
-                    cv_values.bernoulli.rate_density_contraction +=
-                      rate_density * contraction_region_fraction;
-                    cv_values.bernoulli.rate_friction_contraction +=
-                      rate_friction_head * contraction_region_fraction;
-                  }
-                // Integral for jet region
-                if (region & in_jet)
-                  {
-                    cv_values.bernoulli.rate_convection_jet +=
-                      convection_head * jet_region_fraction;
-                    cv_values.bernoulli.rate_pressure_grad_jet +=
-                      pressure_head * jet_region_fraction;
-                    cv_values.bernoulli.acceleration_jet +=
-                      acceleration * jet_region_fraction;
-                    cv_values.bernoulli.rate_density_jet +=
-                      rate_density * jet_region_fraction;
-                    cv_values.bernoulli.rate_friction_jet +=
-                      rate_friction_head * jet_region_fraction;
-                  }
-              }
+        // Integral for contracion region
+        double area_fraction = get_area_fraction(cell);
+        if (region != (not_in_contraction | not_in_jet))
+          {
+            // Compute integral for Bernoulli equation
+            convection_head = integrate(int_convection_head);
+            pressure_head = integrate(int_pressure_head);
+            acceleration = integrate(int_acceleration_head);
+            rate_density = integrate(int_density_head);
+            rate_friction_head = integrate(int_friction_head);
+            rate_friction_work = integrate(int_friction_work);
+            // Compute integral for friction work in energy equation
+            cv_values.energy.rate_friction_work +=
+              rate_friction_work * area_fraction;
+          }
+        if (region & in_contraction)
+          {
+            cv_values.bernoulli.rate_convection_contraction +=
+              convection_head * area_fraction;
+            cv_values.bernoulli.rate_pressure_grad_contraction +=
+              pressure_head * area_fraction;
+            cv_values.bernoulli.acceleration_contraction +=
+              acceleration * area_fraction;
+            cv_values.bernoulli.rate_density_contraction +=
+              rate_density * area_fraction;
+            cv_values.bernoulli.rate_friction_contraction +=
+              rate_friction_head * area_fraction;
+          }
+        // Integral for jet region
+        if (region & in_jet)
+          {
+            cv_values.bernoulli.rate_convection_jet +=
+              convection_head * area_fraction;
+            cv_values.bernoulli.rate_pressure_grad_jet +=
+              pressure_head * area_fraction;
+            cv_values.bernoulli.acceleration_jet +=
+              acceleration * area_fraction;
+            cv_values.bernoulli.rate_density_jet +=
+              rate_density * area_fraction;
+            cv_values.bernoulli.rate_friction_jet +=
+              rate_friction_head * area_fraction;
           }
       }
     // Start point for contraction region and end point for jet region
@@ -1355,45 +1335,35 @@ namespace MPI
             cell->is_locally_owned())
           {
             // Compute integral
-            for (unsigned int face_n = 0;
-                 face_n < GeometryInfo<dim>::faces_per_cell;
-                 ++face_n)
+
+            fe_values.reinit(cell);
+            scalar_fe_values.reinit(scalar_cell);
+
+            fe_values[velocities].get_function_values(
+              fluid_solver.present_solution, present_vel);
+            fe_values[velocities].get_function_values(fluid_previous_solution,
+                                                      previous_vel);
+            fe_values[velocities].get_function_gradients(
+              fluid_previous_solution, vel_grad);
+            fe_values[pressure].get_function_values(
+              fluid_solver.present_solution, present_pre);
+            fe_values[pressure].get_function_gradients(
+              fluid_solver.present_solution, pre_grad);
+            for (unsigned component = 0; component < stress_grad.size();
+                 ++component)
               {
-                if (cell->at_boundary(face_n))
-                  {
-                    fe_face_values.reinit(cell, face_n);
-                    scalar_fe_face_values.reinit(scalar_cell, face_n);
-
-                    fe_face_values[velocities].get_function_values(
-                      fluid_solver.present_solution, present_vel);
-                    fe_face_values[velocities].get_function_values(
-                      fluid_previous_solution, previous_vel);
-                    fe_face_values[velocities].get_function_gradients(
-                      fluid_previous_solution, vel_grad);
-                    fe_face_values[pressure].get_function_values(
-                      fluid_solver.present_solution, present_pre);
-                    fe_face_values[pressure].get_function_gradients(
-                      fluid_solver.present_solution, pre_grad);
-                    for (unsigned component = 0; component < stress_grad.size();
-                         ++component)
-                      {
-                        scalar_fe_face_values.get_function_gradients(
-                          relevant_partition_stress[component],
-                          stress_grad[component]);
-                      }
-
-                    convection_head_int +=
-                      integrate(int_convection_head) * fraction;
-                    pressure_head_int +=
-                      integrate(int_pressure_head) * fraction;
-                    acc_int += integrate(int_acceleration_head) * fraction;
-                    density_int += integrate(int_density_head) * fraction;
-                    friction_head_int +=
-                      integrate(int_friction_head) * fraction;
-                    friction_work_int +=
-                      integrate(int_friction_work) * fraction;
-                  }
+                scalar_fe_values.get_function_gradients(
+                  relevant_partition_stress[component], stress_grad[component]);
               }
+
+            double area_fraction = fraction * get_area_fraction(cell);
+            convection_head_int +=
+              integrate(int_convection_head) * area_fraction;
+            pressure_head_int += integrate(int_pressure_head) * area_fraction;
+            acc_int += integrate(int_acceleration_head) * area_fraction;
+            density_int += integrate(int_density_head) * area_fraction;
+            friction_head_int += integrate(int_friction_head) * area_fraction;
+            friction_work_int += integrate(int_friction_work) * area_fraction;
           }
       };
     get_start_end_quantities(cv_values.bernoulli.rate_convection_contraction,
