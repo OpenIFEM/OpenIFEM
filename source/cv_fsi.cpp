@@ -595,8 +595,9 @@ namespace MPI
                          << cv_values.energy.rate_compression_work << ","
                          << cv_values.energy.rate_friction_work << ","
                          << cv_values.energy.rate_vf_work << ","
-                         << cv_values.energy.rate_vf_work_from_solid
-                         << std::endl;
+                         << cv_values.energy.rate_vf_work_from_solid << ","
+                         << cv_values.bernoulli.contraction_end_x << ","
+                         << cv_values.bernoulli.jet_start_x << std::endl;
       }
     if (output_solid_boundary)
       {
@@ -1089,6 +1090,9 @@ namespace MPI
         contraction_end_point = highest_p;
         jet_start_point = highest_p;
       }
+    // Save the x coordinates for output
+    cv_values.bernoulli.contraction_end_x = contraction_end_point[0];
+    cv_values.bernoulli.jet_start_x = jet_start_point[0];
 
     // Compute the streamline path integral
     // Need to copy a stress vector for vector query
@@ -1456,7 +1460,9 @@ namespace MPI
                    << "Rate compression work,"
                    << "Rate friction work,"
                    << "Rate VF work,"
-                   << "Rate VF work from solid" << std::endl;
+                   << "Rate VF work from solid,"
+                   << "Contraction end xcoord,"
+                   << "Jet start xcoord" << std::endl;
           }
         else // Start from a checkpoint
           {
@@ -1547,6 +1553,8 @@ namespace MPI
     bernoulli.rate_density_jet = 0;
     bernoulli.rate_friction_contraction = 0;
     bernoulli.rate_friction_jet = 0;
+    bernoulli.contraction_end_x = 0;
+    bernoulli.jet_start_x = 0;
     // Momentum equation terms
     momentum.inlet_flux = 0;
     momentum.outlet_flux = 0;

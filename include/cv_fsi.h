@@ -142,6 +142,9 @@ namespace MPI
         double rate_density_jet;
         double rate_friction_contraction;
         double rate_friction_jet;
+        // Bernoulli separation points
+        double contraction_end_x;
+        double jet_start_x;
       };
       struct momentum_equation
       {
