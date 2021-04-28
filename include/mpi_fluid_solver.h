@@ -157,7 +157,7 @@ namespace Fluid
       /// Output in vtu format.
       void output_results(const unsigned int) const;
 
-      /// Update stress to output
+      /// Update the viscous stress to output
       virtual void update_stress();
 
       /// Save checkpoint for restart.
