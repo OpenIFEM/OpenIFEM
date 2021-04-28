@@ -507,15 +507,15 @@ namespace Fluid
         }
       data_out.add_data_vector(ind, "Indicator");
 
-      // stress
-      data_out.add_data_vector(scalar_dof_handler, tmp_stress[0][0], "Sxx");
-      data_out.add_data_vector(scalar_dof_handler, tmp_stress[0][1], "Sxy");
-      data_out.add_data_vector(scalar_dof_handler, tmp_stress[1][1], "Syy");
+      // viscous stress
+      data_out.add_data_vector(scalar_dof_handler, tmp_stress[0][0], "Txx");
+      data_out.add_data_vector(scalar_dof_handler, tmp_stress[0][1], "Txy");
+      data_out.add_data_vector(scalar_dof_handler, tmp_stress[1][1], "Tyy");
       if (dim == 3)
         {
-          data_out.add_data_vector(scalar_dof_handler, tmp_stress[0][2], "Sxz");
-          data_out.add_data_vector(scalar_dof_handler, tmp_stress[1][2], "Syz");
-          data_out.add_data_vector(scalar_dof_handler, tmp_stress[2][2], "Szz");
+          data_out.add_data_vector(scalar_dof_handler, tmp_stress[0][2], "Txz");
+          data_out.add_data_vector(scalar_dof_handler, tmp_stress[1][2], "Tyz");
+          data_out.add_data_vector(scalar_dof_handler, tmp_stress[2][2], "Tzz");
         }
 
       data_out.build_patches(parameters.fluid_pressure_degree);
@@ -701,9 +701,7 @@ namespace Fluid
                                 update_quadrature_points | update_JxW_values);
       const unsigned int n_q_points = volume_quad_formula.size();
       const FEValuesExtractors::Vector velocities(0);
-      const FEValuesExtractors::Scalar pressure(dim);
       std::vector<SymmetricTensor<2, dim>> sym_grad_v(n_q_points);
-      std::vector<double> p(n_q_points);
 
       auto cell = dof_handler.begin_active();
       auto scalar_cell = scalar_dof_handler.begin_active();
@@ -718,20 +716,17 @@ namespace Fluid
           // Fluid symmetric velocity gradient
           fe_values[velocities].get_function_symmetric_gradients(
             present_solution, sym_grad_v);
-          // Fluid pressure
-          fe_values[pressure].get_function_values(present_solution, p);
 
           // Loop over all quadrature points to set FSI forces.
           for (unsigned int q = 0; q < volume_quad_formula.size(); ++q)
             {
-              SymmetricTensor<2, dim> sigma =
-                -p[q] * Physics::Elasticity::StandardTensors<dim>::I +
+              SymmetricTensor<2, dim> tau =
                 2 * parameters.viscosity * sym_grad_v[q];
               for (unsigned int i = 0; i < dim; ++i)
                 {
                   for (unsigned int j = 0; j < dim; ++j)
                     {
-                      quad_stress[i][j][q] = sigma[i][j];
+                      quad_stress[i][j][q] = tau[i][j];
                     }
                 }
             }
