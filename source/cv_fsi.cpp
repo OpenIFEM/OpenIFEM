@@ -552,9 +552,9 @@ namespace MPI
   {
     cv_values.reset();
     compute_flux();
+    compute_bernoulli_terms();
     compute_volume_integral();
     compute_interface_integral();
-    compute_bernoulli_terms();
     get_separation_point();
     cv_values.reduce(this->mpi_communicator, time.get_delta_t());
     // Output results to file
@@ -563,6 +563,7 @@ namespace MPI
         cv_values.output << std::scientific << time.current() << ","
                          << cv_values.inlet_volume_flow << ","
                          << cv_values.outlet_volume_flow << ","
+                         << cv_values.gap_volume_flow << ","
                          << cv_values.inlet_pressure_force << ","
                          << cv_values.outlet_pressure_force << ","
                          << cv_values.VF_volume << ","
@@ -783,6 +784,7 @@ namespace MPI
         }
       return retval;
     };
+    auto int_x_velocity = [&present_vel](int q) { return present_vel[q][0]; };
 
     // The integrate function
     auto integrate = [&fe_values](const std::function<double(int)> &quant) {
@@ -828,6 +830,31 @@ namespace MPI
           integrate(int_rate_dissipation) * volume_fraction;
         cv_values.energy.rate_compression_work +=
           integrate(int_rate_compression) * volume_fraction;
+        // Compute the gap volume flow
+        bool has_left_vertex = false;
+        bool has_right_vertex = false;
+        // Assume the cell is rectangle
+        double x_distance = 0.0;
+        for (unsigned v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
+          {
+            if (f_cell->vertex(v)[0] <= this->solid_tip_x && !has_left_vertex)
+              {
+                has_left_vertex = true;
+                x_distance -= f_cell->vertex(v)[0];
+              }
+            if (f_cell->vertex(v)[0] > this->solid_tip_x && !has_right_vertex)
+              {
+                has_right_vertex = true;
+                x_distance += f_cell->vertex(v)[0];
+              }
+          }
+        if ((!has_left_vertex) || (!has_right_vertex))
+          {
+            // Only compute for cells at glottis (gap)
+            return;
+          }
+        // Now compute the volume flow
+        cv_values.gap_volume_flow += integrate(int_x_velocity) / x_distance;
       };
 
     for (auto sections : cv_f_cells)
@@ -1061,6 +1088,7 @@ namespace MPI
             std::fabs(highest_y - centerline_y))
           {
             highest_y = s_vert[1];
+            solid_tip_x = s_vert[0];
             highest_p = s_vert;
           }
       }
@@ -1429,6 +1457,7 @@ namespace MPI
             output << "Time,"
                    << "Inlet volume flow,"
                    << "Outlet volume flow,"
+                   << "Gap volume flow,"
                    << "Inlet pressure force,"
                    << "Outlet pressure force,"
                    << "VF volume,"
@@ -1503,6 +1532,7 @@ namespace MPI
     // fluxes
     reduce_internal(inlet_volume_flow);
     reduce_internal(outlet_volume_flow);
+    reduce_internal(gap_volume_flow);
     reduce_internal(inlet_pressure_force);
     reduce_internal(outlet_pressure_force);
     reduce_internal(momentum.inlet_flux);
@@ -1539,6 +1569,7 @@ namespace MPI
     // General terms
     inlet_volume_flow = 0;
     outlet_volume_flow = 0;
+    gap_volume_flow = 0;
     inlet_pressure_force = 0;
     outlet_pressure_force = 0;
     VF_volume = 0;

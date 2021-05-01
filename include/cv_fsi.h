@@ -112,6 +112,10 @@ namespace MPI
       surface_cutters;
     CVValues cv_values;
 
+    /* Quantities related to gap volume flow
+     */
+    double solid_tip_x;
+
     struct CVValues
     {
       // Initialize the output file
@@ -125,6 +129,7 @@ namespace MPI
       // Defined as \int_S_{in/out}{u_1}dS
       double inlet_volume_flow;
       double outlet_volume_flow;
+      double gap_volume_flow;
       // Defined as \int_S_{in/out}{p}dS
       double inlet_pressure_force;
       double outlet_pressure_force;
