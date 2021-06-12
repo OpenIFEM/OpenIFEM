@@ -582,25 +582,26 @@ namespace MPI
                                    vertices_mask);
                     interpolator.point_value(fluid_solver.present_solution,
                                              value);
-                    std::vector<Tensor<1, dim>> gradient(dim + 1,
-                                                         Tensor<1, dim>());
-                    interpolator.point_gradient(fluid_solver.present_solution,
-                                                gradient);
-                    // Compute stress
-                    SymmetricTensor<2, dim> sym_deformation;
-                    for (unsigned int i = 0; i < dim; ++i)
+                    Utils::GridInterpolator<dim, PETScWrappers::MPI::Vector>
+                      scalar_interpolator(fluid_solver.scalar_dof_handler,
+                                          s_cell->face(f)->vertex(v),
+                                          vertices_mask);
+                    SymmetricTensor<2, dim> viscous_stress;
+                    for (unsigned int i = 0; i < dim; i++)
                       {
-                        for (unsigned int j = 0; j < dim; ++j)
+                        for (unsigned int j = i; j < dim; j++)
                           {
-                            sym_deformation[i][j] =
-                              (gradient[i][j] + gradient[j][i]) / 2;
+                            Vector<double> stress_component(1);
+                            scalar_interpolator.point_value(
+                              fluid_solver.stress[i][j], stress_component);
+                            viscous_stress[i][j] = stress_component[0];
                           }
                       }
                     // \f$ \sigma = -p\bold{I} + \mu\nabla^S v\f$
                     SymmetricTensor<2, dim> stress =
                       -value[dim] *
                         Physics::Elasticity::StandardTensors<dim>::I +
-                      2 * parameters.viscosity * sym_deformation;
+                      viscous_stress;
                     // Assign the cell stress to local row vectors
                     for (unsigned int d1 = 0; d1 < dim; ++d1)
                       {
