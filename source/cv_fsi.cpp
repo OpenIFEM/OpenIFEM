@@ -324,8 +324,19 @@ namespace MPI
             cv_f_cells[center[0]].insert(
               std::pair<double, typename DoFHandler<dim>::active_cell_iterator>(
                 center[1], f_cell));
-            // Collect streamline path cells for Bernoulli analysis
-            // For now (enforeced symmetry), use upper boundary of CV
+            /* Collect streamline path cells for Bernoulli analysis. For now
+               (enforeced symmetry), use upper boundary of CV.
+               Change the condition for multiple layers volume integration.
+            Example (for 2 layers):
+            ----------------------------------------------------------------
+            if (f_cell->center()[1] - control_volume_boundaries[3] <
+            f_cell->diameter() * 2)
+            {
+              streamline_path_cells.emplace(f_cell->center()[0] * 100 +
+            f_cell->center()[1], ...)
+            }
+            ----------------------------------------------------------------
+             */
             if (f_cell->at_boundary() &&
                 std::fabs(f_cell->center()[1] - control_volume_boundaries[3]) <
                   f_cell->diameter())
@@ -555,7 +566,6 @@ namespace MPI
     compute_bernoulli_terms();
     compute_volume_integral();
     compute_interface_integral();
-    get_separation_point();
     cv_values.reduce(this->mpi_communicator, time.get_delta_t());
     // Output results to file
     if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
@@ -604,14 +614,6 @@ namespace MPI
       {
         output_solid_boundary_vertices();
       }
-  }
-
-  template <int dim>
-  void ControlVolumeFSI<dim>::get_separation_point()
-  {
-    // **IMPORTANT** this method only works for VF simulation with enforeced
-    // symmetry
-    // Get solid surface velocity
   }
 
   template <int dim>
@@ -1078,7 +1080,14 @@ namespace MPI
     move_solid_mesh(true);
     double centerline_y = control_volume_boundaries[3];
     // Identify the separation point for contraction and jet regions
-    double gap_tolerance = 0.0045; // Use 2 layers in glottis for tolerance
+    /*
+    ***********************IMPORTANT*********************
+    gap_tolerance is a HARD-CODED value designed for bernoulli analysis in VF
+    simulation. When the gap size exceeds this value, the contraction and jet
+    regions are considered separated. Change it if neccessary.
+    **********************************************
+    */
+    double gap_tolerance = 0.0045;
     Point<dim> highest_p;
     double highest_y = 0.0;
     // Get the highest y coordinate
@@ -1163,7 +1172,8 @@ namespace MPI
     auto get_area_fraction = [](cell_iterator cell) {
       double cell_volume = cell->measure();
       double cell_diamter = 0.0;
-      // Presume the cell is rectangular/hex
+      // Presume the cell is rectangular/hex, which is the case for VF
+      // simulation. Won't work for unstructured grid at the gap
       for (unsigned face = 0; face < GeometryInfo<dim>::faces_per_cell; ++face)
         {
           if (cell->at_boundary(face))

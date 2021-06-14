@@ -1,5 +1,5 @@
-#ifndef VF_SIM
-#define VF_SIM
+#ifndef CV_FSI
+#define CV_FSI
 
 #include "mpi_fsi.h"
 
@@ -58,8 +58,6 @@ namespace MPI
     void collect_inlet_outlet_cells();
     void collect_solid_boundary_vertices();
     void control_volume_analysis();
-    void compute_relative_velocity();
-    void get_separation_point();
     void compute_flux();
     void compute_volume_integral();
     void compute_interface_integral();
@@ -174,7 +172,7 @@ namespace MPI
         double outlet_flux;
         // The integral convection term. \int_V{\rho u cdot \Nabla u \cdot u}dV
         double convective_KE;
-        // The integral of KE flux through the solid.
+        // The integral of KE flux through the solid. (should be zero)
         double penetrating_KE;
         // Previous and present KE
         double previous_KE;
@@ -183,6 +181,7 @@ namespace MPI
         double pressure_convection;
         // Defined as 0.5 * \frac{d}{dt}\int_V{\rho u_i u_i}dV
         double rate_kinetic_energy;
+        // Defined as 0.5 * \frac\int_V{\rho \frac{d(u_i u_i)}{dt}}
         double rate_kinetic_energy_direct;
         // Defined as \int_V{\mu (u_{i,j}^2 + u_{i,j}u_{j,i})}dV
         double rate_dissipation;
