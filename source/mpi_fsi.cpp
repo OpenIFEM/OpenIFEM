@@ -559,6 +559,23 @@ namespace MPI
         solid_solver.fsi_stress_rows[d] = 0;
       }
 
+    /**
+     * A relevantly paritioned copy of nodal strain and stress obtained by
+     * taking the average of surrounding cell-averaged strains and stresses.
+     * They are used for stress interpolation.
+     */
+    std::vector<std::vector<PETScWrappers::MPI::Vector>>
+      relevant_partition_stress =
+        std::vector<std::vector<PETScWrappers::MPI::Vector>>(
+          dim,
+          std::vector<PETScWrappers::MPI::Vector>(
+            dim,
+            PETScWrappers::MPI::Vector(
+              fluid_solver.locally_owned_scalar_dofs,
+              fluid_solver.locally_relevant_scalar_dofs,
+              mpi_communicator)));
+    relevant_partition_stress = fluid_solver.stress;
+
     for (auto s_cell = solid_solver.dof_handler.begin_active();
          s_cell != solid_solver.dof_handler.end();
          ++s_cell)
@@ -582,19 +599,34 @@ namespace MPI
                                    vertices_mask);
                     interpolator.point_value(fluid_solver.present_solution,
                                              value);
-                    Utils::GridInterpolator<dim, PETScWrappers::MPI::Vector>
-                      scalar_interpolator(fluid_solver.scalar_dof_handler,
-                                          s_cell->face(f)->vertex(v),
-                                          vertices_mask);
+                    // Compute the viscous traction
                     SymmetricTensor<2, dim> viscous_stress;
-                    for (unsigned int i = 0; i < dim; i++)
+                    // Create the scalar interpolator for stresses based on the
+                    // existing interpolator
+                    auto f_cell = interpolator.get_cell();
+                    if (f_cell.state() == IteratorState::IteratorStates::valid)
                       {
-                        for (unsigned int j = i; j < dim; j++)
+                        TriaActiveIterator<
+                          DoFCellAccessor<DoFHandler<dim>, false>>
+                          scalar_f_cell(&fluid_solver.triangulation,
+                                        f_cell->level(),
+                                        f_cell->index(),
+                                        &fluid_solver.scalar_dof_handler);
+                        Utils::GridInterpolator<dim, PETScWrappers::MPI::Vector>
+                          scalar_interpolator(fluid_solver.scalar_dof_handler,
+                                              s_cell->face(f)->vertex(v),
+                                              vertices_mask,
+                                              scalar_f_cell);
+                        for (unsigned int i = 0; i < dim; i++)
                           {
-                            Vector<double> stress_component(1);
-                            scalar_interpolator.point_value(
-                              fluid_solver.stress[i][j], stress_component);
-                            viscous_stress[i][j] = stress_component[0];
+                            for (unsigned int j = i; j < dim; j++)
+                              {
+                                Vector<double> stress_component(1);
+                                scalar_interpolator.point_value(
+                                  relevant_partition_stress[i][j],
+                                  stress_component);
+                                viscous_stress[i][j] = stress_component[0];
+                              }
                           }
                       }
                     // \f$ \sigma = -p\bold{I} + \mu\nabla^S v\f$

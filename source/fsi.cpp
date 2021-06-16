@@ -349,8 +349,16 @@ void FSI<dim>::find_solid_bc()
               Utils::GridInterpolator<dim, BlockVector<double>> interpolator(
                 fluid_solver.dof_handler, q_point);
               interpolator.point_value(fluid_solver.present_solution, value);
+              // Create the scalar interpolator for stresses based on the
+              // existing interpolator
+              auto f_cell = interpolator.get_cell();
+              TriaActiveIterator<DoFCellAccessor<DoFHandler<dim>, false>>
+                scalar_f_cell(&fluid_solver.triangulation,
+                              f_cell->level(),
+                              f_cell->index(),
+                              &fluid_solver.scalar_dof_handler);
               Utils::GridInterpolator<dim, Vector<double>> scalar_interpolator(
-                fluid_solver.scalar_dof_handler, q_point);
+                fluid_solver.scalar_dof_handler, q_point, {}, scalar_f_cell);
               SymmetricTensor<2, dim> viscous_stress;
               for (unsigned int i = 0; i < dim; i++)
                 {
