@@ -159,18 +159,12 @@ namespace Utils
         cell_point.second = mapping.transform_real_to_unit_cell(cell, point);
         return;
       }
-    // This function throws an exception of GridTools::ExcPointNotFound if the
-    // point
-    // does not lie in any cell. In this case, we set the cell pointer to null.
-    try
+    // This function returns a null iterator, i.e., dof_handler.end(), if the
+    // point does not lie in any cell. In this case, we set cell_found to false.
+    cell_point = GridTools::find_active_cell_around_point(
+      mapping, dof_handler, point, mask);
+    if (cell_point.first.state() != IteratorState::IteratorStates::valid)
       {
-        cell_point = GridTools::find_active_cell_around_point(
-          mapping, dof_handler, point, mask);
-      }
-    catch (GridTools::ExcPointNotFound<dim> &e)
-      {
-        cell_point.first = dof_handler.end();
-        cell_point.second = point;
         cell_found = false;
       }
   }
@@ -591,6 +585,24 @@ namespace Utils
           }
       }
     tria.set_manifold(0, CylindricalManifold<3>(2));
+  }
+
+  double PETScVectorMax(const PETScWrappers::MPI::Vector &vec)
+  {
+    PetscReal max;
+    PetscInt p;
+    PetscErrorCode ierr = VecMax(vec, &p, &max);
+    AssertThrow(ierr == 0, ExcPETScError(ierr));
+    return static_cast<double>(max);
+  }
+
+  double PETScVectorMin(const PETScWrappers::MPI::Vector &vec)
+  {
+    PetscReal min;
+    PetscInt p;
+    PetscErrorCode ierr = VecMin(vec, &p, &min);
+    AssertThrow(ierr == 0, ExcPETScError(ierr));
+    return static_cast<double>(min);
   }
 
   template class GridCreator<2>;

@@ -51,8 +51,8 @@ namespace Fluid
     DoFRenumbering::component_wise(dof_handler, block_component);
 
     dofs_per_block.resize(2);
-    DoFTools::count_dofs_per_block(
-      dof_handler, dofs_per_block, block_component);
+    dofs_per_block =
+      DoFTools::count_dofs_per_fe_block(dof_handler, block_component);
     unsigned int dof_u = dofs_per_block[0];
     unsigned int dof_p = dofs_per_block[1];
 

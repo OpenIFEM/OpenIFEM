@@ -13,6 +13,8 @@
 #include <deal.II/lac/petsc_block_vector.h>
 #include <deal.II/numerics/vector_tools.h>
 
+#include <petscvec.h>
+
 #include <queue>
 #include <unordered_set>
 
@@ -189,6 +191,14 @@ namespace Utils
     const typename MeshType::active_cell_iterator hint;
     bool cell_found;
   };
+
+  /*! \brief Helper function to evaluate the maximum value of a PETSc vector.
+   */
+  double PETScVectorMax(const PETScWrappers::MPI::Vector &);
+
+  /*! \brief Helper function to evaluate the minimum value of a PETSc vector.
+   */
+  double PETScVectorMin(const PETScWrappers::MPI::Vector &);
 } // namespace Utils
 
 #endif

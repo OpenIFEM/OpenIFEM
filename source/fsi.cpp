@@ -352,7 +352,7 @@ void FSI<dim>::find_solid_bc()
               // Create the scalar interpolator for stresses based on the
               // existing interpolator
               auto f_cell = interpolator.get_cell();
-              TriaActiveIterator<DoFCellAccessor<DoFHandler<dim>, false>>
+              TriaActiveIterator<DoFCellAccessor<dim, dim, false>>
                 scalar_f_cell(&fluid_solver.triangulation,
                               f_cell->level(),
                               f_cell->index(),

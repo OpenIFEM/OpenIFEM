@@ -58,7 +58,7 @@ int main(int argc, char *argv[])
           // the peak of the Gaussian pulse (with dispersion).
           auto solution = flow.get_current_solution();
           auto v = solution.block(0);
-          double vmax = v.max();
+          double vmax = Utils::PETScVectorMax(v);
           double verror = std::abs(vmax - 5.91) / 5.91;
           AssertThrow(verror < 1e-3,
                       ExcMessage("Maximum velocity is incorrect!"));

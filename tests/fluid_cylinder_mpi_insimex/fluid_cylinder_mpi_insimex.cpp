@@ -87,8 +87,8 @@ int main(int argc, char *argv[])
           // Check the max values of velocity and pressure
           auto solution = flow.get_current_solution();
           auto v = solution.block(0), p = solution.block(1);
-          double vmax = v.max();
-          double pmax = p.max();
+          double vmax = Utils::PETScVectorMax(v);
+          double pmax = Utils::PETScVectorMax(p);
           double verror = std::abs(vmax - 0.374062) / 0.374062;
           double perror = std::abs(pmax - 46.5308) / 46.5308;
           AssertThrow(verror < 1e-3 && perror < 1e-3,

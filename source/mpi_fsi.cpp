@@ -606,8 +606,7 @@ namespace MPI
                     auto f_cell = interpolator.get_cell();
                     if (f_cell.state() == IteratorState::IteratorStates::valid)
                       {
-                        TriaActiveIterator<
-                          DoFCellAccessor<DoFHandler<dim>, false>>
+                        TriaActiveIterator<DoFCellAccessor<dim, dim, false>>
                           scalar_f_cell(&fluid_solver.triangulation,
                                         f_cell->level(),
                                         f_cell->index(),

@@ -9,7 +9,7 @@ namespace Fluid
       SchurComplementTpp(TimerOutput &timer2,
                          const std::vector<IndexSet> &owned_partitioning,
                          const PETScWrappers::MPI::BlockSparseMatrix &system,
-                         const PETScWrappers::PreconditionerBase &Pvvinv)
+                         const PETScWrappers::PreconditionBase &Pvvinv)
       : timer2(timer2), system_matrix(&system), Pvv_inverse(&Pvvinv)
     {
       dumb_vector.reinit(owned_partitioning,
@@ -108,8 +108,10 @@ namespace Fluid
       // Compute the diag vector rowsum(|Avv|)^(-1)
       Abs_A_matrix->vmult(RowSumAvv.block(0), IdentityVector.block(0));
       // Reverse the vector and store in ReverseRowSum
-      std::vector<double> cache_vector(ReverseRowSum.block(0).local_size());
-      std::vector<unsigned int> cache_rows(ReverseRowSum.block(0).local_size());
+      std::vector<double> cache_vector(
+        ReverseRowSum.block(0).locally_owned_size());
+      std::vector<unsigned int> cache_rows(
+        ReverseRowSum.block(0).locally_owned_size());
       for (auto r = ReverseRowSum.block(0).local_range().first;
            r < ReverseRowSum.block(0).local_range().second;
            ++r)
@@ -212,7 +214,8 @@ namespace Fluid
       sparsity_pattern.copy_from(dsp);
       SparsityTools::distribute_sparsity_pattern(
         dsp,
-        dof_handler.locally_owned_dofs_per_processor(),
+        Utilities::MPI::all_gather(mpi_communicator,
+                                   dof_handler.locally_owned_dofs()),
         mpi_communicator,
         locally_relevant_dofs);
 
