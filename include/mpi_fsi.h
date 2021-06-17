@@ -15,6 +15,8 @@ extern template class Solid::MPI::SharedSolidSolver<2>;
 extern template class Solid::MPI::SharedSolidSolver<3>;
 extern template class Utils::GridInterpolator<2, Vector<double>>;
 extern template class Utils::GridInterpolator<3, Vector<double>>;
+extern template class Utils::GridInterpolator<2, PETScWrappers::MPI::Vector>;
+extern template class Utils::GridInterpolator<3, PETScWrappers::MPI::Vector>;
 extern template class Utils::GridInterpolator<2,
                                               PETScWrappers::MPI::BlockVector>;
 extern template class Utils::GridInterpolator<3,

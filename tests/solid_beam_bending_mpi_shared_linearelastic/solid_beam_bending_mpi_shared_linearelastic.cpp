@@ -47,7 +47,7 @@ int main(int argc, char *argv[])
         {
           AssertThrow(false, ExcNotImplemented());
         }
-      double umin = u.min();
+      double umin = Utils::PETScVectorMin(u);
       double uerror = std::abs(umin + 0.1337) / 0.1337;
       AssertThrow(uerror < 1e-3,
                   ExcMessage("Minimum displacement is incorrect!"));

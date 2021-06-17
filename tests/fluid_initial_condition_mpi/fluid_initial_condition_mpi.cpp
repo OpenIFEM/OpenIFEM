@@ -54,7 +54,7 @@ int main(int argc, char *argv[])
           // Check the max values of pressure
           auto solution = flow.get_current_solution();
           auto p = solution.block(1);
-          double pmax = p.max();
+          double pmax = Utils::PETScVectorMax(p);
           double perror = std::abs(pmax - 1e4) / 1e4;
           AssertThrow(perror < 1e-8,
                       ExcMessage("Maximum pressure is incorrect!"));

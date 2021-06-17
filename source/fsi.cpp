@@ -344,26 +344,36 @@ void FSI<dim>::find_solid_bc()
               fe_face_values.reinit(s_cell, f);
               Point<dim> q_point = fe_face_values.quadrature_point(0);
               Tensor<1, dim> normal = fe_face_values.normal_vector(0);
+              // Get interpolated solution from the fluid
               Vector<double> value(dim + 1);
               Utils::GridInterpolator<dim, BlockVector<double>> interpolator(
                 fluid_solver.dof_handler, q_point);
               interpolator.point_value(fluid_solver.present_solution, value);
-              std::vector<Tensor<1, dim>> gradient(dim + 1, Tensor<1, dim>());
-              interpolator.point_gradient(fluid_solver.present_solution,
-                                          gradient);
-              SymmetricTensor<2, dim> sym_deformation;
-              for (unsigned int i = 0; i < dim; ++i)
+              // Create the scalar interpolator for stresses based on the
+              // existing interpolator
+              auto f_cell = interpolator.get_cell();
+              TriaActiveIterator<DoFCellAccessor<dim, dim, false>>
+                scalar_f_cell(&fluid_solver.triangulation,
+                              f_cell->level(),
+                              f_cell->index(),
+                              &fluid_solver.scalar_dof_handler);
+              Utils::GridInterpolator<dim, Vector<double>> scalar_interpolator(
+                fluid_solver.scalar_dof_handler, q_point, {}, scalar_f_cell);
+              SymmetricTensor<2, dim> viscous_stress;
+              for (unsigned int i = 0; i < dim; i++)
                 {
-                  for (unsigned int j = 0; j < dim; ++j)
+                  for (unsigned int j = i; j < dim; j++)
                     {
-                      sym_deformation[i][j] =
-                        (gradient[i][j] + gradient[j][i]) / 2;
+                      Vector<double> stress_component(1);
+                      scalar_interpolator.point_value(fluid_solver.stress[i][j],
+                                                      stress_component);
+                      viscous_stress[i][j] = stress_component[0];
                     }
                 }
               // \f$ \sigma = -p\bold{I} + \mu\nabla^S v\f$
               SymmetricTensor<2, dim> stress =
                 -value[dim] * Physics::Elasticity::StandardTensors<dim>::I +
-                2 * parameters.viscosity * sym_deformation;
+                viscous_stress;
               ptr[f]->fsi_traction = stress * normal;
             }
         }

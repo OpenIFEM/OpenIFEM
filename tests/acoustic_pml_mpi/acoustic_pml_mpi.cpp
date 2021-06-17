@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
           auto solution = flow.get_current_solution();
           // The wave is absorbed at last, so the solution should be zero.
           auto v = solution.block(0);
-          double vmax = v.max();
+          double vmax = Utils::PETScVectorMax(v);
           double verror = std::abs(vmax);
           AssertThrow(verror < 5e-2,
                       ExcMessage("Maximum velocity is incorrect!"));

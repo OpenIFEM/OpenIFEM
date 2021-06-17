@@ -1,8 +1,9 @@
 cmake_minimum_required(VERSION 2.8.12)
 
 SET(CMAKE_CXX_STANDARD 17)
+SET(DEAL_II_VERSION_REQUIRED 9.3.0)
 
-find_package(deal.II QUIET
+find_package(deal.II ${DEAL_II_VERSION_REQUIRED} QUIET
   HINTS ${deal.II_DIR} ${DEAL_II_DIR} ../ ../../ $ENV{DEAL_II_DIR}
   )
 if(NOT ${deal.II_FOUND})

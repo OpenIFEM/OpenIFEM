@@ -56,7 +56,8 @@ int main(int argc, char *argv[])
         {
           AssertThrow(false, ExcNotImplemented());
         }
-      double umin = u.min(), umax = u.max();
+      double umin = Utils::PETScVectorMin(u);
+      double umax = Utils::PETScVectorMax(u);
       double umin_expected = (params.dimension == 2 ? -0.0616287 : -0.0617214);
       double umax_expected = (params.dimension == 2 ? 0.00867069 : 0.00867507);
       double uerror = std::abs((umin - umin_expected) / umin_expected);
