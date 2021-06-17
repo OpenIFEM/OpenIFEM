@@ -14,7 +14,7 @@
 
 using namespace dealii;
 
-class PreconditionPilut : public PETScWrappers::PreconditionerBase
+class PreconditionPilut : public PETScWrappers::PreconditionBase
 {
 public:
   /**
@@ -74,7 +74,7 @@ private:
   AdditionalData additional_data;
 };
 
-class PreconditionEuclid : public PETScWrappers::PreconditionerBase
+class PreconditionEuclid : public PETScWrappers::PreconditionBase
 {
 public:
   /**

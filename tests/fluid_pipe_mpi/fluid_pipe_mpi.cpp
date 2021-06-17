@@ -49,7 +49,7 @@ int main(int argc, char *argv[])
           // parabolic,
           // vmax should equal 1.5 times inlet velocity.
           auto v = solution.block(0);
-          double vmax = v.max();
+          double vmax = Utils::PETScVectorMax(v);
           double verror = std::abs(vmax - 1.5) / 1.5;
           AssertThrow(verror < 1e-2,
                       ExcMessage("Maximum velocity is incorrect!"));

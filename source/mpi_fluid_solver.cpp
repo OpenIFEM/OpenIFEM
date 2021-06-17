@@ -115,8 +115,8 @@ namespace Fluid
       DoFRenumbering::component_wise(scalar_dof_handler);
 
       dofs_per_block.resize(2);
-      DoFTools::count_dofs_per_block(
-        dof_handler, dofs_per_block, block_component);
+      dofs_per_block =
+        DoFTools::count_dofs_per_fe_block(dof_handler, block_component);
       unsigned int dof_u = dofs_per_block[0];
       unsigned int dof_p = dofs_per_block[1];
 
@@ -294,7 +294,8 @@ namespace Fluid
       sparsity_pattern.copy_from(dsp);
       SparsityTools::distribute_sparsity_pattern(
         dsp,
-        dof_handler.locally_owned_dofs_per_processor(),
+        Utilities::MPI::all_gather(mpi_communicator,
+                                   dof_handler.locally_owned_dofs()),
         mpi_communicator,
         locally_relevant_dofs);
 
