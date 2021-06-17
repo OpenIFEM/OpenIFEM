@@ -499,7 +499,8 @@ namespace MPI
             // and the volume fraction should be 0 or 1.
             cutter[0]->tria.create_triangulation(
               cut_points, {cut_cell}, SubCellData());
-            cutter[0]->dof_handler.initialize(cutter[0]->tria, cutter[0]->fe);
+            cutter[0]->dof_handler.reinit(cutter[0]->tria);
+            cutter[0]->dof_handler.distribute_dofs(cutter[0]->fe);
 
             // Get quadrature points for the cutter
             const std::vector<Point<dim - 1>> &unit_cutter_quadrature_points =
