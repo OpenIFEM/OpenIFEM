@@ -58,7 +58,10 @@ int main(int argc, char *argv[])
         };
 
         if (component == 0 && std::abs(p[0]) < 1e-10)
-          return time_value(time) - time_value(time - dt);
+          {
+            double previous_value = time < 2 * dt ? 0.0 : time_value(time - dt);
+            return time_value(time) - previous_value;
+          }
 
         return 0.0;
       };

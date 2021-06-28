@@ -69,7 +69,9 @@ namespace MPI
 {
   template <int dim>
   class FSI;
-}
+  template <int dim>
+  class ControlVolumeFSI;
+} // namespace MPI
 
 namespace Solid
 {
@@ -84,6 +86,7 @@ namespace Solid
     public:
       //! FSI solver need access to the private members of this solver.
       friend ::MPI::FSI<spacedim>;
+      friend ::MPI::ControlVolumeFSI<spacedim>;
 
       SharedSolidSolver(Triangulation<dim, spacedim> &,
                         const Parameters::AllParameters &);
@@ -191,7 +194,18 @@ namespace Solid
       PETScWrappers::MPI::Vector previous_acceleration;
       PETScWrappers::MPI::Vector previous_velocity;
       PETScWrappers::MPI::Vector previous_displacement;
+
+      /**
+       * Arrays to store the fsi-related quantities. fsi_stress_rows has dim
+       * elements and each element is an array of n_dof elements, representing a
+       * row in the rank 2 stress tensor. The fsi stresses are used to evaluate
+       * tractions. fluid_velocity stores the fluid velocity and fluid_pressure
+       * stores the pressure at the FSI interface and will be used when
+       * computing the friction work and drag force.
+       */
       std::vector<Vector<double>> fsi_stress_rows;
+      Vector<double> fluid_velocity;
+      Vector<double> fluid_pressure;
 
       /**
        * Nodal strain and stress obtained by taking the average of surrounding

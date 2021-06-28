@@ -23,7 +23,8 @@ set(TARGET_SRC fluid_solver.cpp
                preconditioner_pilut.cpp
                scnsim.cpp
                solid_solver.cpp
-               utilities.cpp)
+               utilities.cpp
+               cv_fsi.cpp)
 
 # List all the header files here
 set(headers fluid_solver.h
@@ -53,7 +54,8 @@ set(headers fluid_solver.h
             preconditioner_pilut.h
             scnsim.h
             solid_solver.h
-            utilities.h)
+            utilities.h
+            cv_fsi.h)
 
 if(OPENIFEM_WITH_rkpm-rk4)
   list(APPEND TARGET_SRC "hypo_elasticity.cpp")

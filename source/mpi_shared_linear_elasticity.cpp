@@ -210,7 +210,6 @@ namespace Solid
                           fe_face_values.reinit(cell, face);
                           for (unsigned int d = 0; d < dim; ++d)
                             {
-
                               fe_face_values[displacements].get_function_values(
                                 fsi_stress_rows[d], fsi_stress_rows_values[d]);
                             }

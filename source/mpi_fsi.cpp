@@ -576,9 +576,10 @@ namespace MPI
               mpi_communicator)));
     relevant_partition_stress = fluid_solver.stress;
 
-    for (auto s_cell = solid_solver.dof_handler.begin_active();
+    for (auto s_cell = solid_solver.dof_handler.begin_active(),
+              scalar_s_cell = solid_solver.scalar_dof_handler.begin_active();
          s_cell != solid_solver.dof_handler.end();
-         ++s_cell)
+         ++s_cell, ++scalar_s_cell)
       {
         for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
           {
@@ -590,6 +591,8 @@ namespace MPI
                      ++v)
                   {
                     auto line = s_cell->face(f)->vertex_dof_index(v, 0);
+                    auto scalar_line =
+                      scalar_s_cell->face(f)->vertex_dof_index(v, 0);
                     // Get interpolated solution from the fluid
                     Vector<double> value(dim + 1);
                     Utils::GridInterpolator<dim,
@@ -638,11 +641,15 @@ namespace MPI
                       {
                         for (unsigned int d2 = 0; d2 < dim; ++d2)
                           {
+                            // fluid stress for traction computation
                             solid_solver.fsi_stress_rows[d1][line + d2] =
                               stress[d1][d2];
                           }
-                      }
-                    // End assigning local fluid stress values
+                        // fluid velocity for friction work computation
+                        solid_solver.fluid_velocity[line + d1] = value[d1];
+                      } // End assigning local fluid stress values
+                    // fluid pressure for drag computation
+                    solid_solver.fluid_pressure[scalar_line] = value[dim];
                   } // End looping support points
               }
           } // End looping cell faces
@@ -654,6 +661,12 @@ namespace MPI
                             solid_solver.mpi_communicator,
                             solid_solver.fsi_stress_rows[d]);
       }
+    Utilities::MPI::sum(solid_solver.fluid_velocity,
+                        solid_solver.mpi_communicator,
+                        solid_solver.fluid_velocity);
+    Utilities::MPI::sum(solid_solver.fluid_pressure,
+                        solid_solver.mpi_communicator,
+                        solid_solver.fluid_pressure);
     move_solid_mesh(false);
   }
 
