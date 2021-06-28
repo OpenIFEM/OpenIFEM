@@ -58,7 +58,7 @@ namespace
   // Compute the volume of the cut cell using Gauss theorem
   template <int dim>
   double compute_volume_fraction(
-    const typename DoFHandler<dim>::active_cell_iterator cell,
+    const typename DoFHandler<dim>::active_cell_iterator &cell,
     const std::vector<Point<dim>> &cut_points,
     std::string inlet_outlet)
   {
@@ -1265,6 +1265,12 @@ namespace MPI
         |------|------|------|
           0101   1111   1010
             5     15     10
+        A cell has the corresponding flag if at least one vertex satisifies the
+        condition. Therefore, the flag "in_conraction" and "not_in_contraction"
+        can co-exist and so do "in_jet" and "not_in_jet".
+        The flags seem redundant as partial cells are not accounted at all now,
+        but might be handy when we need to use more accurate region definition,
+        i.e., accounting the partial cells.
         */
         int region = 0;
         int in_contraction = 1;
