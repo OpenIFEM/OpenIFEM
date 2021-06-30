@@ -21,6 +21,7 @@ set(TARGET_SRC fluid_solver.cpp
                mpi_solid_solver.cpp
                parameters.cpp
                preconditioner_pilut.cpp
+               sable_wrapper.cpp
                scnsim.cpp
                solid_solver.cpp
                utilities.cpp
@@ -52,6 +53,7 @@ set(headers fluid_solver.h
             neoHookean.h
             parameters.h
             preconditioner_pilut.h
+            sable_wrapper.h
             scnsim.h
             solid_solver.h
             utilities.h
