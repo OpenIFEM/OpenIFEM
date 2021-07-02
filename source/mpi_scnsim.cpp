@@ -1,4 +1,5 @@
 #include "mpi_scnsim.h"
+#include "mpi_turbulence_model.h"
 
 namespace Fluid
 {
@@ -281,6 +282,10 @@ namespace Fluid
         {
           apply_initial_condition();
         }
+      if (turbulence_model)
+        {
+          turbulence_model->initialize_system();
+        }
     }
 
     template <int dim>
@@ -374,6 +379,12 @@ namespace Fluid
           std::vector<std::vector<Tensor<1, dim>>>(
             dim, std::vector<Tensor<1, dim>>(n_q_points)));
       std::vector<Tensor<1, dim>> current_stress_divergence(n_q_points);
+      /**
+       * Eddy viscosity for RANS equations. If a turbulence model is present,
+       * the eddy viscosity vector will be used in addition to laminar
+       * viscosity.
+       */
+      std::vector<double> eddy_viscosity(n_q_points);
 
       std::vector<double> div_phi_u(dofs_per_cell);
       std::vector<Tensor<1, dim>> phi_u(dofs_per_cell);
@@ -449,6 +460,12 @@ namespace Fluid
                   body_force->tensor_value_list(
                     fe_values.get_quadrature_points(), artificial_bf);
                 }
+              if (turbulence_model)
+                {
+                  scalar_fe_values[FEValuesExtractors::Scalar(0)]
+                    .get_function_values(turbulence_model->get_eddy_viscosity(),
+                                         eddy_viscosity);
+                }
 
               fe_values[velocities].get_function_values(fsi_acceleration,
                                                         fsi_acc_values);
@@ -460,7 +477,8 @@ namespace Fluid
                                        (1 - ind) +
                                      ind * parameters.solid_rho;
                   const double viscosity =
-                    (ind == 1 ? 1 : parameters.viscosity);
+                    (ind == 1 ? 1 : parameters.viscosity) +
+                    (eddy_viscosity[q] > 0.0 ? eddy_viscosity[q] : 0.0);
 
                   for (unsigned int k = 0; k < dofs_per_cell; ++k)
                     {
@@ -956,7 +974,13 @@ namespace Fluid
       // in the first time step only, and never be used again.
       // This corresponds to time-independent Dirichlet BCs.
       if (!success_load)
-        run_one_step(true);
+        {
+          run_one_step(true);
+          if (turbulence_model)
+            {
+              turbulence_model->run_one_step(true);
+            }
+        }
       while (time.end() - time.current() > 1e-12)
         {
           if (!hard_coded_boundary_values.empty())
@@ -971,7 +995,13 @@ namespace Fluid
               run_one_step(true);
             }
           else
-            run_one_step(false);
+            {
+              run_one_step(false);
+            }
+          if (turbulence_model)
+            {
+              turbulence_model->run_one_step(false);
+            }
         }
     }
     template class SCnsIM<2>;

@@ -1,4 +1,5 @@
 #include "mpi_fluid_solver.h"
+#include "mpi_turbulence_model.h"
 
 namespace Fluid
 {
@@ -47,6 +48,13 @@ namespace Fluid
           mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times),
         pvd_writer(time, "fluid.pvd")
     {
+    }
+
+    template <int dim>
+    void
+    FluidSolver<dim>::attach_turbulence_model(const std::string &model_name)
+    {
+      turbulence_model.reset(TurbulenceModel<dim>::create(*this, model_name));
     }
 
     template <int dim>
@@ -260,6 +268,10 @@ namespace Fluid
       }
       nonzero_constraints.close();
       zero_constraints.close();
+      if (turbulence_model)
+        {
+          turbulence_model->make_constraints();
+        }
     }
 
     template <int dim>
@@ -518,6 +530,14 @@ namespace Fluid
           data_out.add_data_vector(scalar_dof_handler, tmp_stress[0][2], "Txz");
           data_out.add_data_vector(scalar_dof_handler, tmp_stress[1][2], "Tyz");
           data_out.add_data_vector(scalar_dof_handler, tmp_stress[2][2], "Tzz");
+        }
+
+      // Eddy viscosity
+      if (turbulence_model)
+        {
+          data_out.add_data_vector(scalar_dof_handler,
+                                   turbulence_model->get_eddy_viscosity(),
+                                   "eddy_viscosity");
         }
 
       data_out.build_patches(parameters.fluid_pressure_degree);
