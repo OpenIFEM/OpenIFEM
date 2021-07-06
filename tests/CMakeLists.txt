@@ -21,6 +21,7 @@ set(mpi_tests acoustic_duct_wave_mpi
               acoustic_pml_mpi
               fluid_body_force_mpi
               fluid_cylinder_mpi
+              fluid_cylinder_mpi_scnsim
               fluid_cylinder_mpi_insimex
               fluid_initial_condition_mpi
               fluid_pipe_mpi
