@@ -305,6 +305,57 @@ namespace Fluid
     }
 
     template <int dim>
+    void SpalartAllmaras<dim>::save_checkpoint(
+      std::optional<parallel::distributed::
+                      SolutionTransfer<dim, PETScWrappers::MPI::Vector>>
+        &sol_trans)
+    {
+      sol_trans.emplace(*scalar_dof_handler);
+      sol_trans->prepare_for_serialization(present_solution);
+    }
+
+    template <int dim>
+    bool SpalartAllmaras<dim>::load_checkpoint()
+    {
+      // Suppose fluid solver already called make_constraints() and
+      // initialize_system()
+      parallel::distributed::SolutionTransfer<dim, PETScWrappers::MPI::Vector>
+        sol_trans(*scalar_dof_handler);
+      PETScWrappers::MPI::Vector tmp;
+      tmp.reinit(*locally_owned_scalar_dofs, mpi_communicator);
+      sol_trans.deserialize(tmp);
+      present_solution = tmp;
+      return true;
+    }
+
+    template <int dim>
+    void SpalartAllmaras<dim>::pre_refine_mesh(
+      std::optional<parallel::distributed::
+                      SolutionTransfer<dim, PETScWrappers::MPI::Vector>>
+        &sol_trans)
+    {
+      sol_trans.emplace(*scalar_dof_handler);
+      sol_trans->prepare_for_coarsening_and_refinement(present_solution);
+    }
+
+    template <int dim>
+    void SpalartAllmaras<dim>::post_refine_mesh(
+      std::optional<parallel::distributed::
+                      SolutionTransfer<dim, PETScWrappers::MPI::Vector>>
+        &sol_trans)
+    {
+      AssertThrow(
+        sol_trans.has_value(),
+        ExcMessage("Solution transfer for turbulence model is empty!"));
+      PETScWrappers::MPI::Vector tmp;
+      tmp.reinit(*locally_owned_scalar_dofs, mpi_communicator);
+      tmp = 0;
+      sol_trans->interpolate(tmp);
+      nonzero_constraints.distribute(tmp);
+      present_solution = tmp;
+    }
+
+    template <int dim>
     void SpalartAllmaras<dim>::assemble(const bool use_nonzero_constraints)
     {
       TimerOutput::Scope timer_section(timer, "Assemble system");

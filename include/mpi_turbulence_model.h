@@ -36,13 +36,43 @@ namespace Fluid
       virtual ~TurbulenceModel();
 
     protected:
+      /// Virtual method to be called in fluid solver time loop.
       virtual void run_one_step(bool) = 0;
 
+      /// Setup zero and nonzero constraints.
       virtual void make_constraints() = 0;
 
+      /// Initialize cell properties, this could vary with different models. For
+      /// example, nearest wall distance in S-A model.
       virtual void setup_cell_property() = 0;
 
+      /// Specify the sparsity pattern and reinit matrices and vectors based on
+      /// fluid dofs.
       virtual void initialize_system();
+
+      /// Save checkpoint is virtual because different models has different
+      /// variables to solve.
+      virtual void save_checkpoint(
+        std::optional<parallel::distributed::
+                        SolutionTransfer<dim, PETScWrappers::MPI::Vector>>
+          &) = 0;
+
+      /// Load checkpoint is virtual for the same reason as save checkpoint
+      virtual bool load_checkpoint() = 0;
+
+      /// Transfer the solution to the locally refined mesh. pre_refine_mesh
+      /// should be called before adapative refinement.
+      virtual void pre_refine_mesh(
+        std::optional<parallel::distributed::
+                        SolutionTransfer<dim, PETScWrappers::MPI::Vector>>
+          &) = 0;
+
+      /// Transfer the solution to the locally refined mesh. post_refine_mesh
+      /// should be called after adapative refinement.
+      virtual void post_refine_mesh(
+        std::optional<parallel::distributed::
+                        SolutionTransfer<dim, PETScWrappers::MPI::Vector>>
+          &) = 0;
 
       //! Pass eddy viscosity to the fluid solver
       const PETScWrappers::MPI::Vector &get_eddy_viscosity() noexcept;

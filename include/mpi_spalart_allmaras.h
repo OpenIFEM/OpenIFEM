@@ -37,6 +37,23 @@ namespace Fluid
 
       virtual void initialize_system() override;
 
+      virtual void save_checkpoint(
+        std::optional<parallel::distributed::
+                        SolutionTransfer<dim, PETScWrappers::MPI::Vector>> &)
+        override;
+
+      virtual bool load_checkpoint() override;
+
+      virtual void pre_refine_mesh(
+        std::optional<parallel::distributed::
+                        SolutionTransfer<dim, PETScWrappers::MPI::Vector>> &)
+        override;
+
+      virtual void post_refine_mesh(
+        std::optional<parallel::distributed::
+                        SolutionTransfer<dim, PETScWrappers::MPI::Vector>> &)
+        override;
+
       void assemble(bool);
 
       std::pair<unsigned, double> solve(const bool);

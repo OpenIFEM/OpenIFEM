@@ -975,14 +975,18 @@ namespace Fluid
       // This corresponds to time-independent Dirichlet BCs.
       if (!success_load)
         {
-          run_one_step(true);
           if (turbulence_model)
             {
               turbulence_model->run_one_step(true);
             }
+          run_one_step(true);
         }
       while (time.end() - time.current() > 1e-12)
         {
+          if (turbulence_model)
+            {
+              turbulence_model->run_one_step(false);
+            }
           if (!hard_coded_boundary_values.empty())
             {
               // Only for time dependent BCs!
@@ -997,10 +1001,6 @@ namespace Fluid
           else
             {
               run_one_step(false);
-            }
-          if (turbulence_model)
-            {
-              turbulence_model->run_one_step(false);
             }
         }
     }
