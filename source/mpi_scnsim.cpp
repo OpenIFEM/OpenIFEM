@@ -1,4 +1,5 @@
 #include "mpi_scnsim.h"
+#include "mpi_turbulence_model.h"
 
 namespace Fluid
 {
@@ -281,6 +282,10 @@ namespace Fluid
         {
           apply_initial_condition();
         }
+      if (turbulence_model)
+        {
+          turbulence_model->initialize_system();
+        }
     }
 
     template <int dim>
@@ -299,10 +304,31 @@ namespace Fluid
 
       system_rhs = 0;
 
+      /**
+       * Nodal strain and stress obtained by taking the average of surrounding
+       * cell-averaged strains and stresses. Their sizes are
+       * [dim, dim, scalar_dof_handler.n_dofs()], i.e., stress[i][j][k]
+       * denotes sigma_{ij} at vertex k.
+       */
+      std::vector<std::vector<PETScWrappers::MPI::Vector>>
+        relevant_partition_stress =
+          std::vector<std::vector<PETScWrappers::MPI::Vector>>(
+            dim,
+            std::vector<PETScWrappers::MPI::Vector>(
+              dim,
+              PETScWrappers::MPI::Vector(locally_owned_scalar_dofs,
+                                         locally_relevant_scalar_dofs,
+                                         mpi_communicator)));
+      relevant_partition_stress = stress;
+
       FEValues<dim> fe_values(fe,
                               volume_quad_formula,
                               update_values | update_quadrature_points |
                                 update_JxW_values | update_gradients);
+      FEValues<dim> scalar_fe_values(scalar_fe,
+                                     volume_quad_formula,
+                                     update_values | update_quadrature_points |
+                                       update_JxW_values | update_gradients);
       FEFaceValues<dim> fe_face_values(fe,
                                        face_quad_formula,
                                        update_values | update_normal_vectors |
@@ -341,6 +367,24 @@ namespace Fluid
       std::vector<double> sigma_pml(n_q_points);
       std::vector<Tensor<1, dim>> artificial_bf(n_q_points);
       std::vector<Tensor<1, dim>> fsi_acc_values(n_q_points);
+      /**
+       * Nodal stress gradients obtained by taking the average of surrounding
+       * cell-averaged stresses. Their sizes are
+       * [n_q_points, dim, dim, dim], i.e., stress[i][j][q][k]
+       * denotes k derivative of sigma_{ij} at qudrature point q.
+       */
+      std::vector<std::vector<std::vector<Tensor<1, dim>>>>
+        current_stress_gradients(
+          dim,
+          std::vector<std::vector<Tensor<1, dim>>>(
+            dim, std::vector<Tensor<1, dim>>(n_q_points)));
+      std::vector<Tensor<1, dim>> current_stress_divergence(n_q_points);
+      /**
+       * Eddy viscosity for RANS equations. If a turbulence model is present,
+       * the eddy viscosity vector will be used in addition to laminar
+       * viscosity.
+       */
+      std::vector<double> eddy_viscosity(n_q_points);
 
       std::vector<double> div_phi_u(dofs_per_cell);
       std::vector<Tensor<1, dim>> phi_u(dofs_per_cell);
@@ -363,8 +407,9 @@ namespace Fluid
             }
         }
 
-      for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
-           ++cell)
+      auto cell = dof_handler.begin_active();
+      auto scalar_cell = scalar_dof_handler.begin_active();
+      for (; cell != dof_handler.end(); ++cell, ++scalar_cell)
         {
           if (cell->is_locally_owned())
             {
@@ -372,6 +417,7 @@ namespace Fluid
               const int ind = p[0]->indicator;
 
               fe_values.reinit(cell);
+              scalar_fe_values.reinit(scalar_cell);
 
               local_matrix = 0;
               local_rhs = 0;
@@ -394,6 +440,16 @@ namespace Fluid
               fe_values[pressure].get_function_values(present_solution,
                                                       present_pressure_values);
 
+              for (unsigned i = 0; i < dim; ++i)
+                {
+                  for (unsigned j = 0; j < dim; ++j)
+                    {
+                      scalar_fe_values.get_function_gradients(
+                        relevant_partition_stress[i][j],
+                        current_stress_gradients[i][j]);
+                    }
+                }
+
               if (sigma_pml_field)
                 {
                   sigma_pml_field->double_value_list(
@@ -403,6 +459,12 @@ namespace Fluid
                 {
                   body_force->tensor_value_list(
                     fe_values.get_quadrature_points(), artificial_bf);
+                }
+              if (turbulence_model)
+                {
+                  scalar_fe_values[FEValuesExtractors::Scalar(0)]
+                    .get_function_values(turbulence_model->get_eddy_viscosity(),
+                                         eddy_viscosity);
                 }
 
               fe_values[velocities].get_function_values(fsi_acceleration,
@@ -415,7 +477,8 @@ namespace Fluid
                                        (1 - ind) +
                                      ind * parameters.solid_rho;
                   const double viscosity =
-                    (ind == 1 ? 1 : parameters.viscosity);
+                    (ind == 1 ? 1 : parameters.viscosity) +
+                    (eddy_viscosity[q] > 0.0 ? eddy_viscosity[q] : 0.0);
 
                   for (unsigned int k = 0; k < dofs_per_cell; ++k)
                     {
@@ -458,6 +521,18 @@ namespace Fluid
                   double localRe = v_norm * h / (2 * nu);
                   double z = localRe <= 3 ? (localRe / 3) : 1;
                   tau_LSIC = h / 2 * v_norm * z;
+
+                  // Compute the divergence of nodal stresses. This is used in
+                  // the stabilization terms.
+                  for (unsigned i = 0; i < dim; ++i)
+                    {
+                      current_stress_divergence[q][i] = 0.0;
+                      for (unsigned j = 0; j < dim; ++j)
+                        {
+                          current_stress_divergence[q][i] +=
+                            current_stress_gradients[i][j][q][j];
+                        }
+                    }
 
                   for (unsigned int i = 0; i < dofs_per_cell; ++i)
                     {
@@ -514,6 +589,9 @@ namespace Fluid
                                grad_phi_u[i] * grad_phi_p[j] +
                              tau_SUPG * phi_u[j] * grad_phi_u[i] *
                                current_pressure_gradients[q] -
+                             // SUPG stress
+                             tau_SUPG * phi_u[j] * grad_phi_u[i] *
+                               current_stress_divergence[q] -
                              // SUPG body force
                              tau_SUPG * phi_u[j] * grad_phi_u[i] * rho *
                                (gravity + artificial_bf[q]) +
@@ -635,6 +713,7 @@ namespace Fluid
                                     current_velocity_values[q] *
                                       current_velocity_gradients[q]) +
                              current_pressure_gradients[q] -
+                             current_stress_divergence[q] -
                              rho * (gravity + artificial_bf[q]) +
                              rho * sigma_pml[q] * current_velocity_values[q]) +
                           (tau_PSPG * grad_phi_p[i]) *
@@ -644,6 +723,7 @@ namespace Fluid
                                     current_velocity_values[q] *
                                       current_velocity_gradients[q]) +
                              current_pressure_gradients[q] -
+                             current_stress_divergence[q] -
                              rho * (gravity + artificial_bf[q]) +
                              rho * sigma_pml[q] * current_velocity_values[q])) *
                         fe_values.JxW(q);
@@ -894,9 +974,19 @@ namespace Fluid
       // in the first time step only, and never be used again.
       // This corresponds to time-independent Dirichlet BCs.
       if (!success_load)
-        run_one_step(true);
+        {
+          if (turbulence_model)
+            {
+              turbulence_model->run_one_step(true);
+            }
+          run_one_step(true);
+        }
       while (time.end() - time.current() > 1e-12)
         {
+          if (turbulence_model)
+            {
+              turbulence_model->run_one_step(false);
+            }
           if (!hard_coded_boundary_values.empty())
             {
               // Only for time dependent BCs!
@@ -909,7 +999,9 @@ namespace Fluid
               run_one_step(true);
             }
           else
-            run_one_step(false);
+            {
+              run_one_step(false);
+            }
         }
     }
     template class SCnsIM<2>;

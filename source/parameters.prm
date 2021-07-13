@@ -101,6 +101,17 @@ subsection Fluid Neumann BCs
   set Neumann boundary values = 10
 end
 
+subsection Spalart Allmaras BCs
+  # Number of boundaries with Spalart-Allmaras turbulence model BCs
+  set Number of S-A model BCs = 3
+
+  # Ids of the boundaries with Spalart-Allmaras turbulence model BCs
+  set S-A model boundary id = 0, 2, 3
+
+  # Boundary condition types to specify. 0 for walls and 1 for inflow condition
+  set S-A model boundary types = 1, 0, 0
+end
+
 # --------------------------------------------------------------------------------
 # Solid solver
 subsection Solid finite element system

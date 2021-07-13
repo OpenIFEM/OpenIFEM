@@ -4,6 +4,7 @@
 #define MPIFluidSolverInheritanceMacro()                                       \
 public:                                                                        \
   using FluidSolver<dim>::add_hard_coded_boundary_condition;                   \
+  using FluidSolver<dim>::attach_turbulence_model;                             \
   using FluidSolver<dim>::set_body_force;                                      \
   using FluidSolver<dim>::set_sigma_pml_field;                                 \
   using FluidSolver<dim>::set_initial_condition;                               \
@@ -51,6 +52,7 @@ private:                                                                       \
   using FluidSolver<dim>::timer;                                               \
   using FluidSolver<dim>::timer2;                                              \
   using FluidSolver<dim>::cell_property;                                       \
+  using FluidSolver<dim>::turbulence_model;                                    \
   using FluidSolver<dim>::hard_coded_boundary_values;                          \
   using FluidSolver<dim>::body_force;                                          \
   using FluidSolver<dim>::sigma_pml_field;                                     \
@@ -93,5 +95,38 @@ private:                                                                       \
   using SharedSolidSolver<dim>::locally_owned_scalar_dofs;                     \
   using SharedSolidSolver<dim>::locally_relevant_dofs;                         \
   using SharedSolidSolver<dim>::times_and_names
+
+#define MPITurbulenceModelInheritanceMacro()                                   \
+public:                                                                        \
+  using TurbulenceModel<dim>::reinit;                                          \
+                                                                               \
+private:                                                                       \
+  using TurbulenceModel<dim>::get_eddy_viscosity;                              \
+  using TurbulenceModel<dim>::connect_indicator_field;                         \
+                                                                               \
+  using TurbulenceModel<dim>::triangulation;                                   \
+  using TurbulenceModel<dim>::dof_handler;                                     \
+  using TurbulenceModel<dim>::scalar_dof_handler;                              \
+  using TurbulenceModel<dim>::fe;                                              \
+  using TurbulenceModel<dim>::scalar_fe;                                       \
+  using TurbulenceModel<dim>::volume_quad_formula;                             \
+  using TurbulenceModel<dim>::face_quad_formula;                               \
+  using TurbulenceModel<dim>::zero_constraints;                                \
+  using TurbulenceModel<dim>::nonzero_constraints;                             \
+  using TurbulenceModel<dim>::indicator_function;                              \
+  using TurbulenceModel<dim>::sparsity_pattern;                                \
+  using TurbulenceModel<dim>::system_matrix;                                   \
+  using TurbulenceModel<dim>::system_rhs;                                      \
+  using TurbulenceModel<dim>::fluid_present_solution;                          \
+  using TurbulenceModel<dim>::eddy_viscosity;                                  \
+  using TurbulenceModel<dim>::parameters;                                      \
+  using TurbulenceModel<dim>::mpi_communicator;                                \
+  using TurbulenceModel<dim>::pcout;                                           \
+  using TurbulenceModel<dim>::owned_partitioning;                              \
+  using TurbulenceModel<dim>::relevant_partitioning;                           \
+  using TurbulenceModel<dim>::locally_owned_scalar_dofs;                       \
+  using TurbulenceModel<dim>::locally_relevant_scalar_dofs;                    \
+  using TurbulenceModel<dim>::time;                                            \
+  using TurbulenceModel<dim>::timer
 
 #endif

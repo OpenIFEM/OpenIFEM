@@ -114,6 +114,12 @@ namespace MPI
      */
     void apply_contact_model(bool);
 
+    /*! \brief Collect the solid boundary vertices, except for those fixed
+     * boundaries. This can be used in computing nearest wall distance for some
+     * turbulence models.
+     */
+    void collect_solid_boundary_vertices();
+
     /// Mesh adaption.
     void refine_mesh(const unsigned int, const unsigned int);
 
@@ -135,6 +141,9 @@ namespace MPI
     // This vector collects the solid boundaries for computing thw winding
     // number.
     std::list<typename Triangulation<dim>::face_iterator> solid_boundaries;
+    // A collection of moving solid boundary vertices
+    std::set<typename Triangulation<dim>::active_vertex_iterator>
+      solid_boundary_vertices;
 
     // A mask that marks local fluid vertices for solid bc interpolation
     // searching.

@@ -80,6 +80,11 @@ namespace Fluid
 
   namespace MPI
   {
+    template <int dim>
+    class FluidSolverExtractor;
+    template <int dim>
+    class TurbulenceModel;
+
     /// Base class for all mpi fluid solvers.
     template <int dim>
     class FluidSolver
@@ -88,6 +93,7 @@ namespace Fluid
       //! FSI solver need access to the private members of this solver.
       friend ::MPI::FSI<dim>;
       friend ::MPI::ControlVolumeFSI<dim>;
+      friend FluidSolverExtractor<dim>;
 
       //! Constructor.
       FluidSolver(parallel::distributed::Triangulation<dim> &,
@@ -98,6 +104,13 @@ namespace Fluid
 
       //! Destructor
       ~FluidSolver();
+
+      // /*! \brief Add a RANS turbulence model to the fluid solver. The
+      // argument
+      //  * is a string that matches available turbulence models. Corresponding
+      //  * boundary conditions must be specified in the parameters input file.
+      //  */
+      void attach_turbulence_model(const std::string &);
 
       /*! \brief Setup the hard-coded boundary conditions. The first argument
        * stands for the boundary ID that the condition is applied to, and the
@@ -236,6 +249,8 @@ namespace Fluid
         typename parallel::distributed::Triangulation<dim>::cell_iterator,
         CellProperty>
         cell_property;
+
+      std::shared_ptr<TurbulenceModel<dim>> turbulence_model;
 
       /// Hard-coded boundary values, only used when told so in the input
       /// parameters.

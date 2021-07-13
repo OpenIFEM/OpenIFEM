@@ -194,14 +194,11 @@ namespace MPI
       }
 
     collect_solid_boundaries();
+    collect_solid_boundary_vertices();
     setup_cell_hints();
     update_vertices_mask();
     collect_inlet_outlet_cells();
     collect_control_volume_cells();
-    if (this->output_solid_boundary)
-      {
-        collect_solid_boundary_vertices();
-      }
     cv_values.initialize_output(this->time, this->mpi_communicator);
 
     pcout << "Number of fluid active cells and dofs: ["
@@ -525,36 +522,6 @@ namespace MPI
               }
             cutter[0]->interpolate_q.initialize(
               unit_cut_points, cutter[0]->quad_formula.get_weights());
-          }
-      }
-  }
-
-  template <int dim>
-  void ControlVolumeFSI<dim>::collect_solid_boundary_vertices()
-  {
-    if (Utilities::MPI::this_mpi_process(mpi_communicator) != 0)
-      {
-        return;
-      }
-    unsigned fixed_bc_flag = (1 << dim) - 1;
-
-    for (auto &face : solid_solver.triangulation.active_face_iterators())
-      {
-        if (face->at_boundary())
-          {
-            // Check if the boundary is fixed
-            auto bc = parameters.solid_dirichlet_bcs.find(face->boundary_id());
-            if (bc != parameters.solid_dirichlet_bcs.end() &&
-                bc->second == fixed_bc_flag)
-              {
-                // Skip those fixed vertices
-                continue;
-              }
-
-            for (unsigned v = 0; v < GeometryInfo<dim>::vertices_per_face; ++v)
-              {
-                solid_boundary_vertices.insert(face->vertex_iterator(v));
-              }
           }
       }
   }
