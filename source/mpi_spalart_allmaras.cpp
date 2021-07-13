@@ -12,6 +12,120 @@ namespace Fluid
     }
 
     template <int dim>
+    void SpalartAllmaras<dim>::update_moving_wall_distance(
+      const std::set<typename Triangulation<dim>::active_vertex_iterator>
+        &boundary_vertices)
+    {
+      TimerOutput::Scope timer_section(timer, "Update moving wall distance");
+
+      unsigned n_q_points{volume_quad_formula->size()};
+      FEValues<dim> scalar_fe_values(*scalar_fe,
+                                     *volume_quad_formula,
+                                     update_values | update_quadrature_points);
+      const std::vector<Point<dim>> &unit_points =
+        scalar_fe->get_unit_support_points();
+      MappingQGeneric<dim> mapping(parameters->fluid_velocity_degree);
+      Quadrature<dim> dummy_q(unit_points);
+      FEValues<dim> dummy_fe_values(
+        mapping, *scalar_fe, dummy_q, update_quadrature_points);
+      for (auto &f_cell : scalar_dof_handler->active_cell_iterators())
+        {
+          if (f_cell->is_locally_owned())
+            {
+              // Compute dists on support points
+              scalar_fe_values.reinit(f_cell);
+              dummy_fe_values.reinit(f_cell);
+
+              std::vector<double> dists(unit_points.size());
+              auto support_points = dummy_fe_values.get_quadrature_points();
+
+              const std::vector<std::shared_ptr<WallDistance>> p =
+                wall_distance.get_data(f_cell);
+              for (unsigned v = 0; v < unit_points.size(); ++v)
+                {
+                  double min_dist{std::numeric_limits<double>::max()};
+                  for (const auto &s_vert : boundary_vertices)
+                    {
+                      double current_dist =
+                        f_cell->vertex(v).distance(s_vert->vertex(0));
+                      min_dist = std::min(min_dist, current_dist);
+                    }
+                  dists[v] = min_dist;
+                }
+              // Interpolate dists onto quadrature points
+              for (unsigned q = 0; q < n_q_points; ++q)
+                {
+                  p[q]->moving_wall_distance.emplace(0.0);
+                  // Same as using FEValuesViews::Vector<dim,
+                  // spacedim>::get_values_from_local_dof_values()
+                  for (unsigned v = 0; v < unit_points.size(); ++v)
+                    {
+                      p[q]->moving_wall_distance.value() +=
+                        scalar_fe_values.shape_value(v, q) * dists[v];
+                    }
+                }
+            }
+        }
+    }
+
+    template <int dim>
+    void SpalartAllmaras<dim>::update_boundary_condition(bool first_step)
+    {
+      TimerOutput::Scope timer_section(timer, "Update boundary condition");
+
+      // Check if indicator function has value
+      AssertThrow(indicator_function.has_value(),
+                  ExcMessage("No available indicator function for SA model!"));
+      // Copy the zero constraints for non first step
+      if (!first_step)
+        {
+          nonzero_constraints.clear();
+          nonzero_constraints.copy_from(zero_constraints);
+        }
+      // Additional constraints
+      AffineConstraints<double> inner_zero(*locally_relevant_scalar_dofs);
+      AffineConstraints<double> inner_nonzero(*locally_relevant_scalar_dofs);
+
+      std::vector<types::global_dof_index> dof_indices(
+        scalar_fe->dofs_per_cell);
+      std::vector<bool> touched_dofs(scalar_dof_handler->n_dofs(), 0);
+      for (const auto &cell : scalar_dof_handler->active_cell_iterators())
+        {
+          // Ghost cells must be considered
+          if (cell->is_artificial())
+            {
+              continue;
+            }
+          // Get the indicator from indicator function
+          auto ind = (*indicator_function)(cell);
+          if (ind == 1)
+            {
+              cell->get_dof_indices(dof_indices);
+              for (const auto &line : dof_indices)
+                {
+                  if (touched_dofs[line])
+                    {
+                      continue;
+                    }
+                  inner_zero.add_line(line);
+                  inner_nonzero.add_line(line);
+                  touched_dofs[line] = true;
+                  inner_nonzero.set_inhomogeneity(line,
+                                                  -present_solution(line));
+                }
+            }
+        }
+      inner_zero.close();
+      inner_nonzero.close();
+      nonzero_constraints.merge(
+        inner_zero,
+        AffineConstraints<double>::MergeConflictBehavior::right_object_wins);
+      zero_constraints.merge(
+        inner_zero,
+        AffineConstraints<double>::MergeConflictBehavior::right_object_wins);
+    }
+
+    template <int dim>
     void SpalartAllmaras<dim>::run_one_step(bool apply_nonzero_constraints)
     {
       std::cout.precision(6);
@@ -249,7 +363,7 @@ namespace Fluid
                 wall_distance.get_data(cell);
               for (unsigned v = 0; v < unit_points.size(); ++v)
                 {
-                  double min_dist{0.0};
+                  double min_dist{std::numeric_limits<double>::max()};
                   for (unsigned i = 0; i < global_boundary_coord[0].size(); ++i)
                     {
                       double current_dist{0.0};
@@ -260,9 +374,7 @@ namespace Fluid
                                               2);
                         }
                       current_dist = sqrt(current_dist);
-                      min_dist = (i == 0 || current_dist < min_dist)
-                                   ? current_dist
-                                   : min_dist;
+                      min_dist = std::min(min_dist, current_dist);
                     }
                   dists[v] = min_dist;
                 }
@@ -351,7 +463,6 @@ namespace Fluid
       tmp.reinit(*locally_owned_scalar_dofs, mpi_communicator);
       tmp = 0;
       sol_trans->interpolate(tmp);
-      nonzero_constraints.distribute(tmp);
       present_solution = tmp;
     }
 

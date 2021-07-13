@@ -33,6 +33,7 @@ namespace MPI
     using FSI<dim>::move_solid_mesh;
     using FSI<dim>::find_solid_bc;
     using FSI<dim>::apply_contact_model;
+    using FSI<dim>::collect_solid_boundary_vertices;
     using FSI<dim>::update_solid_displacement;
     using FSI<dim>::find_fluid_bc;
     using FSI<dim>::refine_mesh;
@@ -45,6 +46,7 @@ namespace MPI
     using FSI<dim>::timer;
     using FSI<dim>::solid_box;
     using FSI<dim>::solid_boundaries;
+    using FSI<dim>::solid_boundary_vertices;
     using FSI<dim>::vertices_mask;
     using FSI<dim>::cell_hints;
     using FSI<dim>::use_dirichlet_bc;
@@ -56,7 +58,6 @@ namespace MPI
 
     void collect_control_volume_cells();
     void collect_inlet_outlet_cells();
-    void collect_solid_boundary_vertices();
     void control_volume_analysis();
     void compute_flux();
     void compute_volume_integral();
@@ -97,8 +98,6 @@ namespace MPI
     timestep for POD analysis.
     */
     bool output_solid_boundary;
-    std::set<typename Triangulation<dim>::active_vertex_iterator>
-      solid_boundary_vertices;
 
     CellDataStorage<
       typename parallel::distributed::Triangulation<dim>::active_cell_iterator,

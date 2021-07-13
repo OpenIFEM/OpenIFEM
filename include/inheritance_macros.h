@@ -102,6 +102,7 @@ public:                                                                        \
                                                                                \
 private:                                                                       \
   using TurbulenceModel<dim>::get_eddy_viscosity;                              \
+  using TurbulenceModel<dim>::connect_indicator_field;                         \
                                                                                \
   using TurbulenceModel<dim>::triangulation;                                   \
   using TurbulenceModel<dim>::dof_handler;                                     \
@@ -112,6 +113,7 @@ private:                                                                       \
   using TurbulenceModel<dim>::face_quad_formula;                               \
   using TurbulenceModel<dim>::zero_constraints;                                \
   using TurbulenceModel<dim>::nonzero_constraints;                             \
+  using TurbulenceModel<dim>::indicator_function;                              \
   using TurbulenceModel<dim>::sparsity_pattern;                                \
   using TurbulenceModel<dim>::system_matrix;                                   \
   using TurbulenceModel<dim>::system_rhs;                                      \

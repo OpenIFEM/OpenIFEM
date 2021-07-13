@@ -19,15 +19,7 @@ namespace Fluid
       MPITurbulenceModelInheritanceMacro();
 
     public:
-      //! Constructor
-      SpalartAllmaras() = delete;
-      SpalartAllmaras(const FluidSolver<dim> &);
-
-      //! Desctructor
-      ~SpalartAllmaras(){};
-
-    private:
-      struct WallDistance;
+      friend TurbulenceModelFactory<dim>;
 
       virtual void run_one_step(bool) override;
 
@@ -53,6 +45,22 @@ namespace Fluid
         std::optional<parallel::distributed::
                         SolutionTransfer<dim, PETScWrappers::MPI::Vector>> &)
         override;
+
+      //! Update the moving boundaries
+      void update_moving_wall_distance(
+        const std::set<typename Triangulation<dim>::active_vertex_iterator> &);
+
+      virtual void update_boundary_condition(bool) override;
+
+      //! Desctructor
+      ~SpalartAllmaras(){};
+
+    protected:
+      struct WallDistance;
+
+      //! Constructor
+      SpalartAllmaras() = delete;
+      SpalartAllmaras(const FluidSolver<dim> &);
 
       void assemble(bool);
 

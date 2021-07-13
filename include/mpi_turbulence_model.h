@@ -11,31 +11,44 @@ namespace Fluid
   {
     using namespace dealii;
 
+    /*! \brief Factory class for turbulence model. A turbulence model can only
+     * be created by factory method.
+     */
     template <int dim>
-    class SCnsIM;
+    class TurbulenceModelFactory
+    {
+      friend FluidSolver<dim>;
+      //! Factory creator
+      static TurbulenceModel<dim> *create(const FluidSolver<dim> &,
+                                          const std::string &);
+    };
 
+    /*! \brief Base class for all RANS turbulence models. The common idea of
+     * RANS turbulence models is to provide a eddy viscosity in addition to
+     * laminar viscosity in assembly. To use them, call
+     * Fluid::MPI::FluidSolver::attach_turbulence_model() before the run.
+     */
     template <int dim>
     class TurbulenceModel
     {
     public:
-      //! Fluid solver needs to copy information to a turbulence model
-      friend FluidSolver<dim>;
-      friend SCnsIM<dim>;
-
-      //! Constructor
-      TurbulenceModel() = delete;
-      TurbulenceModel(const FluidSolver<dim> &);
-
-      //! Factory creator
-      static TurbulenceModel<dim> *create(const FluidSolver<dim> &,
-                                          const std::string &);
+      friend TurbulenceModelFactory<dim>;
 
       void reinit(const FluidSolver<dim> &);
 
-      //! Desctructor
-      virtual ~TurbulenceModel();
+      //! Pass eddy viscosity to the fluid solver.
+      const PETScWrappers::MPI::Vector &get_eddy_viscosity() noexcept;
 
-    protected:
+      //! Connect FSI indicator field. In FSI simulation the turbulence model
+      //! needs to know which elements are artificial.
+      void connect_indicator_field(
+        const std::function<
+          int(const typename DoFHandler<dim>::active_cell_iterator &)>);
+
+      //! Update boundary condition for turbulence model. This is used in FSI
+      //! problems.
+      virtual void update_boundary_condition(bool){};
+
       /// Virtual method to be called in fluid solver time loop.
       virtual void run_one_step(bool) = 0;
 
@@ -44,7 +57,7 @@ namespace Fluid
 
       /// Initialize cell properties, this could vary with different models. For
       /// example, nearest wall distance in S-A model.
-      virtual void setup_cell_property() = 0;
+      virtual void setup_cell_property(){};
 
       /// Specify the sparsity pattern and reinit matrices and vectors based on
       /// fluid dofs.
@@ -74,8 +87,13 @@ namespace Fluid
                         SolutionTransfer<dim, PETScWrappers::MPI::Vector>>
           &) = 0;
 
-      //! Pass eddy viscosity to the fluid solver
-      const PETScWrappers::MPI::Vector &get_eddy_viscosity() noexcept;
+      //! Desctructor
+      virtual ~TurbulenceModel();
+
+    protected:
+      //! Constructor
+      TurbulenceModel() = delete;
+      TurbulenceModel(const FluidSolver<dim> &);
 
       //! Pointers for the triangulation and dof handlers stored in fluid solver
       SmartPointer<const parallel::distributed::Triangulation<dim>>
@@ -89,8 +107,14 @@ namespace Fluid
       std::shared_ptr<QGauss<dim>> volume_quad_formula;
       std::shared_ptr<QGauss<dim - 1>> face_quad_formula;
 
+      //! Constraints
       AffineConstraints<double> zero_constraints;
       AffineConstraints<double> nonzero_constraints;
+
+      //! Used in FSI. Function that returns the indicator
+      std::optional<std::function<int(
+        const typename DoFHandler<dim>::active_cell_iterator &)>>
+        indicator_function;
 
       //! Matrix and vector for the linear algebraic problem
       SparsityPattern sparsity_pattern;

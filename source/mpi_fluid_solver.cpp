@@ -54,7 +54,12 @@ namespace Fluid
     void
     FluidSolver<dim>::attach_turbulence_model(const std::string &model_name)
     {
-      turbulence_model.reset(TurbulenceModel<dim>::create(*this, model_name));
+      turbulence_model.reset(
+        TurbulenceModelFactory<dim>::create(*this, model_name));
+      turbulence_model->connect_indicator_field(
+        [this](const typename DoFHandler<dim>::active_cell_iterator &cell) {
+          return this->cell_property.get_data(cell)[0]->indicator;
+        });
     }
 
     template <int dim>
@@ -282,7 +287,8 @@ namespace Fluid
            cell != triangulation.end();
            ++cell)
         {
-          if (cell->is_locally_owned())
+          // Indicator is ghosted, as it will be used in constraints.
+          if (!cell->is_artificial())
             {
               cell_property.initialize(cell, 1);
               const std::vector<std::shared_ptr<CellProperty>> p =
@@ -465,7 +471,6 @@ namespace Fluid
       tmp.reinit(owned_partitioning, mpi_communicator);
       tmp = 0;
       trans.interpolate(tmp);
-      nonzero_constraints.distribute(tmp); // Is this line necessary?
       present_solution = tmp;
 
       // Transfer solution for turbulence model

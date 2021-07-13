@@ -10,20 +10,9 @@ namespace Fluid
     class SpalartAllmaras;
 
     template <int dim>
-    TurbulenceModel<dim>::TurbulenceModel(const FluidSolver<dim> &fluid_solver)
-      : mpi_communicator(MPI_COMM_WORLD),
-        pcout(std::cout,
-              Utilities::MPI::this_mpi_process(mpi_communicator) == 0),
-        timer(
-          mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times)
-    {
-      reinit(fluid_solver);
-    }
-
-    template <int dim>
     TurbulenceModel<dim> *
-    TurbulenceModel<dim>::create(const FluidSolver<dim> &fluid_solver,
-                                 const std::string &model_name)
+    TurbulenceModelFactory<dim>::create(const FluidSolver<dim> &fluid_solver,
+                                        const std::string &model_name)
     {
       if (model_name == "Spalart-Allmaras")
         {
@@ -34,6 +23,17 @@ namespace Fluid
           AssertThrow(false, ExcNotImplemented());
         }
       return nullptr;
+    }
+
+    template <int dim>
+    TurbulenceModel<dim>::TurbulenceModel(const FluidSolver<dim> &fluid_solver)
+      : mpi_communicator(MPI_COMM_WORLD),
+        pcout(std::cout,
+              Utilities::MPI::this_mpi_process(mpi_communicator) == 0),
+        timer(
+          mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times)
+    {
+      reinit(fluid_solver);
     }
 
     template <int dim>
@@ -84,10 +84,18 @@ namespace Fluid
     }
 
     template <int dim>
-    const PETScWrappers::MPI::Vector &
+    inline const PETScWrappers::MPI::Vector &
     TurbulenceModel<dim>::get_eddy_viscosity() noexcept
     {
       return eddy_viscosity;
+    }
+
+    template <int dim>
+    inline void TurbulenceModel<dim>::connect_indicator_field(
+      const std::function<
+        int(const typename DoFHandler<dim>::active_cell_iterator &)> ind_func)
+    {
+      indicator_function.emplace(ind_func);
     }
 
     template <int dim>
@@ -118,6 +126,9 @@ namespace Fluid
                             *locally_relevant_scalar_dofs,
                             mpi_communicator);
     }
+
+    template class TurbulenceModelFactory<2>;
+    template class TurbulenceModelFactory<3>;
 
     template class TurbulenceModel<2>;
     template class TurbulenceModel<3>;

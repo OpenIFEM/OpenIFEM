@@ -1,4 +1,5 @@
 #include "mpi_fsi.h"
+#include "mpi_spalart_allmaras.h"
 #include <iostream>
 
 namespace MPI
@@ -294,7 +295,8 @@ namespace MPI
          f_cell != fluid_solver.dof_handler.end();
          ++f_cell)
       {
-        if (!f_cell->is_locally_owned())
+        // Indicator is ghosted, as it will be used in constraints.
+        if (f_cell->is_artificial())
           {
             continue;
           }
@@ -541,6 +543,15 @@ namespace MPI
           inner_zero,
           AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
       }
+
+    // If the fluid solver has a turbulence model, update the cell data in the
+    // turbulence model
+    if (auto SA_model = dynamic_cast<Fluid::MPI::SpalartAllmaras<dim> *>(
+          fluid_solver.turbulence_model.get()))
+      {
+        SA_model->update_moving_wall_distance(solid_boundary_vertices);
+      }
+
     move_solid_mesh(false);
   }
 
@@ -773,6 +784,36 @@ namespace MPI
   }
 
   template <int dim>
+  void FSI<dim>::collect_solid_boundary_vertices()
+  {
+    if (Utilities::MPI::this_mpi_process(mpi_communicator) != 0)
+      {
+        return;
+      }
+    unsigned fixed_bc_flag = (1 << dim) - 1;
+
+    for (auto &face : solid_solver.triangulation.active_face_iterators())
+      {
+        if (face->at_boundary())
+          {
+            // Check if the boundary is fixed
+            auto bc = parameters.solid_dirichlet_bcs.find(face->boundary_id());
+            if (bc != parameters.solid_dirichlet_bcs.end() &&
+                bc->second == fixed_bc_flag)
+              {
+                // Skip those fixed vertices
+                continue;
+              }
+
+            for (unsigned v = 0; v < GeometryInfo<dim>::vertices_per_face; ++v)
+              {
+                solid_boundary_vertices.insert(face->vertex_iterator(v));
+              }
+          }
+      }
+  }
+
+  template <int dim>
   void FSI<dim>::refine_mesh(const unsigned int min_grid_level,
                              const unsigned int max_grid_level)
   {
@@ -801,7 +842,7 @@ namespace MPI
     for (auto f_cell : fluid_solver.dof_handler.active_cell_iterators())
       {
         auto center = f_cell->center();
-        double dist = 1000;
+        double dist{std::numeric_limits<double>::max()};
         for (auto point : solid_boundary_points)
           {
             dist = std::min(center.distance(point), dist);
@@ -838,6 +879,15 @@ namespace MPI
     solution_transfer.prepare_for_coarsening_and_refinement(
       fluid_solver.present_solution);
 
+    // Preparation for turbulence model
+    std::optional<
+      parallel::distributed::SolutionTransfer<dim, PETScWrappers::MPI::Vector>>
+      turbulence_trans;
+    if (fluid_solver.turbulence_model)
+      {
+        fluid_solver.turbulence_model->pre_refine_mesh(turbulence_trans);
+      }
+
     fluid_solver.triangulation.execute_coarsening_and_refinement();
 
     fluid_solver.setup_dofs();
@@ -849,9 +899,14 @@ namespace MPI
                   fluid_solver.mpi_communicator);
     buffer = 0;
     solution_transfer.interpolate(buffer);
-    fluid_solver.nonzero_constraints.distribute(buffer);
     fluid_solver.present_solution = buffer;
     update_vertices_mask();
+
+    // Transfer solution for turbulence model
+    if (fluid_solver.turbulence_model)
+      {
+        fluid_solver.turbulence_model->post_refine_mesh(turbulence_trans);
+      }
   }
 
   template <int dim>
@@ -888,6 +943,7 @@ namespace MPI
       }
 
     collect_solid_boundaries();
+    collect_solid_boundary_vertices();
     setup_cell_hints();
     update_vertices_mask();
 
@@ -933,9 +989,18 @@ namespace MPI
             fluid_solver.nonzero_constraints.copy_from(
               fluid_solver.zero_constraints);
           }
+        if (fluid_solver.turbulence_model)
+          {
+            fluid_solver.turbulence_model->update_boundary_condition(
+              first_step);
+          }
         find_fluid_bc();
         {
           TimerOutput::Scope timer_section(timer, "Run fluid solver");
+          if (fluid_solver.turbulence_model)
+            {
+              fluid_solver.turbulence_model->run_one_step(true);
+            }
           fluid_solver.run_one_step(true);
         }
         first_step = false;
