@@ -94,6 +94,7 @@ namespace Parameters
      * 1: inflow (fluid velocity / pressue inlet)
      */
     std::map<unsigned int, unsigned int> spalart_allmaras_model_bcs;
+    double spalart_allmaras_initial_condition_coefficient;
     static void declareParameters(ParameterHandler &);
     void parseParameters(ParameterHandler &);
   };

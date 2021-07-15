@@ -413,6 +413,12 @@ namespace Fluid
       // a completely distributed vector.
       newton_update.reinit(*locally_owned_scalar_dofs, mpi_communicator);
 
+      // Apply the initial condition
+      newton_update.add(
+        parameters->spalart_allmaras_initial_condition_coefficient *
+        parameters->viscosity / parameters->fluid_rho);
+      zero_constraints.distribute(newton_update);
+      present_solution = newton_update;
       setup_cell_property();
     }
 

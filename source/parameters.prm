@@ -101,7 +101,7 @@ subsection Fluid Neumann BCs
   set Neumann boundary values = 10
 end
 
-subsection Spalart Allmaras BCs
+subsection Spalart Allmaras model
   # Number of boundaries with Spalart-Allmaras turbulence model BCs
   set Number of S-A model BCs = 3
 
@@ -110,6 +110,9 @@ subsection Spalart Allmaras BCs
 
   # Boundary condition types to specify. 0 for walls and 1 for inflow condition
   set S-A model boundary types = 1, 0, 0
+
+  # Coefficient of the laminar viscosity for the initial condition of S-A model
+  set Initial condition coefficient = 0.0
 end
 
 # --------------------------------------------------------------------------------

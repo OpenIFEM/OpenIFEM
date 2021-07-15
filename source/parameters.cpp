@@ -280,7 +280,7 @@ namespace Parameters
 
   void SpalartAllmarasModel::declareParameters(ParameterHandler &prm)
   {
-    prm.enter_subsection("Spalart Allmaras BCs");
+    prm.enter_subsection("Spalart Allmaras model");
     {
       prm.declare_entry(
         "Number of S-A model BCs",
@@ -297,13 +297,18 @@ namespace Parameters
                         Patterns::List(dealii::Patterns::Integer(0, 1)),
                         "Boundary condition types to specify. 0 for walls and "
                         "1 for inflow condition");
+      prm.declare_entry("Initial condition coefficient",
+                        "0.0",
+                        Patterns::Double(0.0),
+                        "Coefficient of the laminar viscosity for the initial "
+                        "condition of S-A model");
     }
     prm.leave_subsection();
   }
 
   void SpalartAllmarasModel::parseParameters(ParameterHandler &prm)
   {
-    prm.enter_subsection("Spalart Allmaras BCs");
+    prm.enter_subsection("Spalart Allmaras model");
     {
       n_spalart_allmaras_model_bcs = prm.get_integer("Number of S-A model BCs");
       std::string raw_input = prm.get("S-A model boundary id");
@@ -326,6 +331,8 @@ namespace Parameters
         {
           spalart_allmaras_model_bcs[ids[i]] = values[i];
         }
+      spalart_allmaras_initial_condition_coefficient =
+        prm.get_double("Initial condition coefficient");
     }
     prm.leave_subsection();
   }
