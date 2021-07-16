@@ -379,11 +379,11 @@ namespace Fluid
         /*int num_nodes_per_block = 0;
         int num_elements_per_block = 0;
         int num_nodes_in_each_coordinate_direction = 0;
-        Max(num_nodes_per_block);
-        Max(num_elements_per_block);
         Max(num_nodes_in_each_coordinate_direction);
-        rec_velocity(num_nodes_per_block, num_nodes_in_each_coordinate_direction);
-        rec_stress(num_elements_per_block);*/
+        Max(num_elements_per_block);
+        Max(num_nodes_per_block);
+        rec_stress(num_elements_per_block);
+        rec_velocity(num_nodes_per_block, num_nodes_in_each_coordinate_direction);*/
         output_results(0);
         /*std::cout << "Recieved inital velocity from Sable" << std::endl;
         All(active);*/
@@ -394,11 +394,11 @@ namespace Fluid
     int num_nodes_per_block = 0;
     int num_elements_per_block = 0;
     int num_nodes_in_each_coordinate_direction = 0;
-    Max(num_nodes_per_block);
-    Max(num_elements_per_block);
     Max(num_nodes_in_each_coordinate_direction);
+    Max(num_elements_per_block);
+    Max(num_nodes_per_block);
+    rec_stress(num_elements_per_block);
     rec_velocity(num_nodes_per_block, num_nodes_in_each_coordinate_direction);
-    //rec_stress(num_elements_per_block);
     All(active);
     std::cout << std::string(96, '*') << std::endl
               << "Recieved velocity from Sable at time step = " << time.get_timestep()
@@ -464,13 +464,6 @@ namespace Fluid
   template <int dim>
   void SableWrap<dim>::rec_velocity(const int& sable_n_nodes, const int& sable_n_nodes_one_dir)
   {
-    for (unsigned int i = 0; i < dim; ++i)
-      {
-        for (unsigned int j = 0; j < dim; ++j)
-          {
-            stress[i][j] = 0.0;
-          }
-      }
     //Recieve solution
     int sable_sol_size = sable_n_nodes*dim ;
     int vel_size = triangulation.n_vertices()*dim;
@@ -506,9 +499,7 @@ namespace Fluid
     }
     
     assert(sable_solution.size()==vel_size);
-    //  ExcMessage(
-    //    "Solution size incorrect!"));        
-
+  
     //synchronize solution
     evaluation_point = present_solution;
 
@@ -534,11 +525,7 @@ namespace Fluid
           
           }
       }          
-    
-    for(unsigned i = 0;i < triangulation.n_vertices()*dim;i ++)
-    {  
-      evaluation_point[i]=sable_solution[i];
-    }
+
     //delete solution
     for(unsigned ict = 0;ict < cmapp.size();ict ++)
     {
@@ -550,13 +537,23 @@ namespace Fluid
   template <int dim>
   void SableWrap<dim>::rec_stress(const int& sable_n_elements)
   {
-    int sable_stress_size = sable_n_elements*dim*dim ;
+    //initialize stress vector
+    for (unsigned int i = 0; i < dim; ++i)
+      {
+        for (unsigned int j = 0; j < dim; ++j)
+          {
+            stress[i][j] = 0.0;
+          }
+      }
+
+    int sable_stress_size = sable_n_elements*dim*2 ;
+    int sable_stress_per_ele_size = dim*2;
     std::vector<int> cmapp = sable_ids;
     std::vector<int> cmapp_sizes;
     cmapp_sizes.push_back(sable_stress_size);
     
-    int stress_size = triangulation.n_quads()*dim*dim;
-    int stress_tensor_size= dim*dim;
+    int openifem_stress_size = triangulation.n_quads()*dim*dim;
+    int openifem_stress_per_ele_size= dim*dim;
     
     //create rec buffer
     double ** nv_rec_buffer = new double*[cmapp.size()];
@@ -582,14 +579,32 @@ namespace Fluid
       }
       else
       {  
-        int index= n*stress_tensor_size;
-        for(int i=0; i<stress_tensor_size; i++)
+        int index= n*sable_stress_per_ele_size;
+        for(int i=0; i<sable_stress_per_ele_size; i++)
         {
           sable_stress.push_back(nv_rec_buffer[0][index+i]);
         }
       }  
     }
-    assert(sable_stress.size()==stress_size);
+    assert(sable_stress.size()==triangulation.n_quads()*sable_stress_per_ele_size);
+    // Sable stress tensor in 2D: xx yy zz xy
+    // Sable stress tensor in 3D: xx yy zz xy yz xz
+    std::vector<double> openifem_stress(openifem_stress_size,0);
+    for(int i=0; i<triangulation.n_quads();i++)
+    {
+      for(int j=0;j<openifem_stress_per_ele_size;j++)
+      {
+        if(j==0)
+          openifem_stress[i*openifem_stress_per_ele_size+j]= sable_stress[i*sable_stress_per_ele_size+j];
+        else if(j==1)
+          openifem_stress[i*openifem_stress_per_ele_size+j]= sable_stress[i*sable_stress_per_ele_size+j+2];
+        else if(j==2)
+          openifem_stress[i*openifem_stress_per_ele_size+j]= sable_stress[i*sable_stress_per_ele_size+j+1];
+        else          
+          openifem_stress[i*openifem_stress_per_ele_size+j]= sable_stress[i*sable_stress_per_ele_size+j-2];
+      }
+    } 
+    
     //syncronize solution
     auto cell = dof_handler.begin_active();
     auto scalar_cell = scalar_dof_handler.begin_active();
@@ -598,15 +613,15 @@ namespace Fluid
     for (; cell != dof_handler.end(); ++cell, ++scalar_cell)
       {
         scalar_cell->get_dof_indices(dof_indices);
-        int index = cell->active_cell_index()*stress_tensor_size;
+        int index = cell->active_cell_index()*openifem_stress_per_ele_size;
         int count=0;
-        for (unsigned int i = 0; i < 1; ++i)
+        for (unsigned int i = 0; i < dim; ++i)
           {
-            for (unsigned int j = 0; j < 1; ++j)
+            for (unsigned int j = 0; j < dim; ++j)
               {
                 for (unsigned int k = 0; k < scalar_fe.dofs_per_cell; ++k)
                   {
-                    stress[i][j][dof_indices[k]] += sable_stress[index+count];
+                    stress[i][j][dof_indices[k]] += openifem_stress[index+count];
                     if (i == 0 && j == 0)
                       surrounding_cells[dof_indices[k]]++;
                   }
