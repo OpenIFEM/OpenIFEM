@@ -31,9 +31,13 @@ namespace Solid
       double gamma = 0.5 - alpha;
       double beta = pow((1 + alpha), 2) / 4;
 
-      system_matrix = 0;
-      stiffness_matrix = 0;
-      damping_matrix = 0;
+      if (is_initial)
+        {
+          mass_matrix = 0;
+          system_matrix = 0;
+          stiffness_matrix = 0;
+          damping_matrix = 0;
+        }
       system_rhs = 0;
 
       FEValues<dim> fe_values(fe,
@@ -57,6 +61,7 @@ namespace Solid
       const unsigned int n_f_q_points = face_quad_formula.size();
 
       FullMatrix<double> local_matrix(dofs_per_cell, dofs_per_cell);
+      FullMatrix<double> local_mass(dofs_per_cell, dofs_per_cell);
       FullMatrix<double> local_stiffness(dofs_per_cell, dofs_per_cell);
       FullMatrix<double> local_damping(dofs_per_cell, dofs_per_cell);
       Vector<double> local_rhs(dofs_per_cell);
@@ -97,6 +102,7 @@ namespace Solid
                 mat_id = 1;
               elasticity = material[mat_id - 1].get_elasticity();
               viscosity = material[mat_id - 1].get_viscosity();
+              local_mass = 0;
               local_matrix = 0;
               local_stiffness = 0;
               local_damping = 0;
@@ -117,15 +123,12 @@ namespace Solid
                   // Loop over the dofs again, to assemble
                   for (unsigned int i = 0; i < dofs_per_cell; ++i)
                     {
-                      for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                      if (is_initial)
                         {
-                          if (is_initial)
+                          for (unsigned int j = 0; j < dofs_per_cell; ++j)
                             {
-                              local_matrix[i][j] +=
+                              local_mass[i][j] +=
                                 rho * phi[i] * phi[j] * fe_values.JxW(q);
-                            }
-                          else
-                            {
                               local_matrix[i][j] +=
                                 (rho * phi[i] * phi[j] +
                                  symmetric_grad_phi[i] * viscosity *
@@ -267,22 +270,30 @@ namespace Solid
 
               // Now distribute local data to the system, and apply the
               // hanging node constraints at the same time.
-              constraints.distribute_local_to_global(local_matrix,
-                                                     local_rhs,
-                                                     local_dof_indices,
-                                                     system_matrix,
-                                                     system_rhs);
+              if (is_initial)
+                {
+                  constraints.distribute_local_to_global(
+                    local_matrix, local_dof_indices, system_matrix);
+                  constraints.distribute_local_to_global(
+                    local_mass, local_dof_indices, mass_matrix);
+                  constraints.distribute_local_to_global(
+                    local_stiffness, local_dof_indices, stiffness_matrix);
+                  constraints.distribute_local_to_global(
+                    local_damping, local_dof_indices, damping_matrix);
+                }
               constraints.distribute_local_to_global(
-                local_stiffness, local_dof_indices, stiffness_matrix);
-              constraints.distribute_local_to_global(
-                local_damping, local_dof_indices, damping_matrix);
+                local_rhs, local_dof_indices, system_rhs);
             }
         }
       // Synchronize with other processors.
-      system_matrix.compress(VectorOperation::add);
+      if (is_initial)
+        {
+          system_matrix.compress(VectorOperation::add);
+          mass_matrix.compress(VectorOperation::add);
+          stiffness_matrix.compress(VectorOperation::add);
+          damping_matrix.compress(VectorOperation::add);
+        }
       system_rhs.compress(VectorOperation::add);
-      stiffness_matrix.compress(VectorOperation::add);
-      damping_matrix.compress(VectorOperation::add);
     }
 
     template <int dim>
@@ -297,12 +308,11 @@ namespace Solid
 
       if (first_step)
         {
-          // Neet to compute the initial acceleration, \f$ Ma_n = F \f$,
-          // at this point set system_matrix to mass_matrix.
+          // Compute the mass matrix for the initial acceleration, \f$ Ma_n = F
+          // \f$ and the system matrices. This is only done once even in FSI
+          // mode.
           assemble_system(true);
-          this->solve(system_matrix, previous_acceleration, system_rhs);
-          // Update the system_matrix
-          assemble_system(false);
+          this->solve(mass_matrix, previous_acceleration, system_rhs);
           this->output_results(time.get_timestep());
         }
 
@@ -379,7 +389,7 @@ namespace Solid
           tmp1.reinit(locally_owned_dofs, mpi_communicator);
           tmp2.reinit(locally_owned_dofs, mpi_communicator);
           tmp3.reinit(locally_owned_dofs, mpi_communicator);
-          assemble_system(false);
+          assemble_system(true);
         }
 
       if (parameters.simulation_type == "Solid" && time.time_to_save())
