@@ -135,6 +135,9 @@ namespace Fluid
     /// The BlockSchurPreconditioner for the entire system.
     std::shared_ptr<BlockSchurPreconditioner> preconditioner;
 
+    ///Block vector to store nodal fsi forces
+    BlockVector<double> fsi_force;
+
     // Vector which stores Sable processor ids
     std::vector<int> sable_ids;
 
@@ -149,6 +152,11 @@ namespace Fluid
     bool All(bool my_b); 
 
     void Max(int &send_buffer);
+
+    // Send solution to Sable
+    void send_data(double ** send_buffer, const std::vector <int> & cmapp, const std::vector <int> & cmapp_sizes);
+
+    void send_fsi_force(const int& sable_n_nodes, const int& sable_n_nodes_one_dir);
 
     /*! \brief Block preconditioner for the system
      *

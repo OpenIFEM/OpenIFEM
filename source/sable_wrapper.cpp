@@ -138,6 +138,7 @@ namespace Fluid
     preconditioner.reset();
     newton_update.reinit(dofs_per_block);
     evaluation_point.reinit(dofs_per_block);
+    fsi_force.reinit(dofs_per_block);
   }
 
   template <int dim>
@@ -383,7 +384,8 @@ namespace Fluid
         Max(num_elements_per_block);
         Max(num_nodes_per_block);
         rec_stress(num_elements_per_block);
-        rec_velocity(num_nodes_per_block, num_nodes_in_each_coordinate_direction);*/
+        rec_velocity(num_nodes_per_block, num_nodes_in_each_coordinate_direction);
+        send_fsi_force(num_nodes_per_block, num_nodes_in_each_coordinate_direction);*/
         output_results(0);
         /*std::cout << "Recieved inital velocity from Sable" << std::endl;
         All(active);*/
@@ -399,6 +401,7 @@ namespace Fluid
     Max(num_nodes_per_block);
     rec_stress(num_elements_per_block);
     rec_velocity(num_nodes_per_block, num_nodes_in_each_coordinate_direction);
+    send_fsi_force(num_nodes_per_block, num_nodes_in_each_coordinate_direction);
     All(active);
     std::cout << std::string(96, '*') << std::endl
               << "Recieved velocity from Sable at time step = " << time.get_timestep()
@@ -458,6 +461,15 @@ namespace Fluid
     {
       MPI_Status stat;
       MPI_Wait(&(*hit), &stat);
+    }
+  }
+
+  template <int dim>
+  void SableWrap<dim>::send_data(double ** send_buffer, const std::vector <int> & cmapp, const std::vector <int> & cmapp_sizes)
+  {
+    for(unsigned ict = 0;ict < cmapp.size();ict ++)
+    {
+      MPI_Send(send_buffer[ict],cmapp_sizes[ict], MPI_DOUBLE, cmapp[ict],1, MPI_COMM_WORLD);
     }
   }
 
@@ -647,6 +659,78 @@ namespace Fluid
       delete [] nv_rec_buffer[ict];    
     }
     delete [] nv_rec_buffer;
+  }
+
+  template <int dim>
+  void SableWrap<dim>::send_fsi_force(const int& sable_n_nodes, const int& sable_n_nodes_one_dir)
+  {
+
+    int sable_force_size = sable_n_nodes*dim;
+    std::vector<int> cmapp = sable_ids;
+    std::vector<int> cmapp_sizes;
+    cmapp_sizes.push_back(sable_force_size);
+    
+    //Syncronize Sable and OpenIFEM solution
+    std::vector<double> sable_fsi_force(sable_force_size,0);
+    std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
+    for (auto cell = dof_handler.begin_active();
+         cell != dof_handler.end();
+         ++cell)
+      {
+        for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_cell; ++v)
+          {
+            if (!vertex_touched[cell->vertex_index(v)])
+              {
+                vertex_touched[cell->vertex_index(v)] = true;
+                for(unsigned int i=0; i<dim; i++)
+                {
+                  //Sable vertex indexing is same as deal.ii
+                  int sable_force_index = cell->vertex_index(v)*dim+i;
+                  int openifem_force_index = cell->vertex_dof_index(v,i);
+                  sable_fsi_force[sable_force_index]=fsi_force[openifem_force_index];
+                }
+              }
+          }
+      }
+
+    //create send buffer
+    double ** nv_send_buffer = new double*[cmapp.size()];
+    for(unsigned ict = 0;ict < cmapp.size();ict ++)
+    {
+      nv_send_buffer[ict] = new double[cmapp_sizes[ict]];
+      for(unsigned jct = 0;jct < cmapp_sizes[ict];jct ++)
+      {
+        nv_send_buffer[ict][jct]=0;
+      }
+    }
+    
+    //add zero nodal forces corresponding to ghost nodes
+    for(int n=sable_n_nodes_one_dir; n<sable_n_nodes-sable_n_nodes_one_dir;n++)
+    {
+      //skip border nodes
+      if((n % sable_n_nodes_one_dir==0) || ((n+1) % sable_n_nodes_one_dir==0))
+      {
+        continue;
+      }
+      else
+      {  
+        int index= n*dim;
+        for(int i=0; i<dim; i++)
+        {
+          nv_send_buffer[0][index+i]=sable_fsi_force[index+i];
+        }
+      }  
+    }
+
+    //send data
+    send_data(nv_send_buffer, cmapp,cmapp_sizes);                
+    
+    //delete solution
+    for(unsigned ict = 0;ict < cmapp.size();ict ++)
+    {
+      delete [] nv_send_buffer[ict];    
+    }
+    delete [] nv_send_buffer;
   }
 
   template<int dim>
