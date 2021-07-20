@@ -522,26 +522,14 @@ namespace Fluid
       data_out.build_patches(parameters.fluid_pressure_degree);
 
       std::string basename =
-        "fluid" + Utilities::int_to_string(output_index, 6) + "-";
+        "fluid_" + Utilities::int_to_string(output_index, 6);
 
-      std::string filename =
-        basename +
-        Utilities::int_to_string(triangulation.locally_owned_subdomain(), 4) +
-        ".vtu";
-
-      std::ofstream output(filename);
-      data_out.write_vtu(output);
+      data_out.write_vtu_with_pvtu_record(
+        "./", "fluid", output_index, mpi_communicator, 6, 0);
 
       if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
         {
-          for (unsigned int i = 0;
-               i < Utilities::MPI::n_mpi_processes(mpi_communicator);
-               ++i)
-            {
-              times_and_names.push_back(
-                {time.current(),
-                 basename + Utilities::int_to_string(i, 4) + ".vtu"});
-            }
+          times_and_names.push_back({time.current(), basename + ".pvtu"});
           std::ofstream pvd_output("fluid.pvd");
           DataOutBase::write_pvd_record(pvd_output, times_and_names);
         }
@@ -637,16 +625,8 @@ namespace Fluid
               Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
             {
               std::string basename =
-                "fluid" + Utilities::int_to_string(time.get_timestep(), 6) +
-                "-";
-              for (unsigned int j = 0;
-                   j < Utilities::MPI::n_mpi_processes(mpi_communicator);
-                   ++j)
-                {
-                  times_and_names.push_back(
-                    {time.current(),
-                     basename + Utilities::int_to_string(j, 4) + ".vtu"});
-                }
+                "fluid_" + Utilities::int_to_string(time.get_timestep(), 6);
+              times_and_names.push_back({time.current(), basename + ".pvtu"});
             }
           if (i == Utilities::string_to_int(checkpoint_file.stem()))
             break;
