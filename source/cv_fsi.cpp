@@ -1,4 +1,5 @@
 #include "cv_fsi.h"
+#include "mpi_spalart_allmaras.h"
 
 namespace
 {
@@ -243,9 +244,18 @@ namespace MPI
             fluid_solver.nonzero_constraints.copy_from(
               fluid_solver.zero_constraints);
           }
+        if (fluid_solver.turbulence_model)
+          {
+            fluid_solver.turbulence_model->update_boundary_condition(
+              first_step);
+          }
         find_fluid_bc();
         {
           TimerOutput::Scope timer_section(timer, "Run fluid solver");
+          if (fluid_solver.turbulence_model)
+            {
+              fluid_solver.turbulence_model->run_one_step(true);
+            }
           fluid_solver.run_one_step(true);
         }
         first_step = false;
@@ -594,6 +604,7 @@ namespace MPI
     std::vector<Tensor<2, dim>> vel_grad(
       GeometryInfo<dim - 1>::vertices_per_cell);
     std::vector<double> pre(GeometryInfo<dim - 1>::vertices_per_cell);
+    std::vector<double> eddy_vis(GeometryInfo<dim - 1>::vertices_per_cell);
 
     MappingQGeneric<dim> mapping(parameters.fluid_velocity_degree);
     MappingQGeneric<dim - 1, dim> cutter_mapping(1);
@@ -609,11 +620,11 @@ namespace MPI
     };
     auto int_pressure_work = [&vel, &pre](int q) { return pre[q] * vel[q][0]; };
     auto int_friction_work =
-      [&vel, &vel_grad, mu = parameters.viscosity](int q) {
+      [&vel, &vel_grad, &eddy_vis, mu = parameters.viscosity](int q) {
         double retval = 0.0;
         for (unsigned d = 0; d < dim; ++d)
           {
-            retval += mu * vel_grad[q][d][0] * vel[q][d];
+            retval += (mu + eddy_vis[q]) * vel_grad[q][d][0] * vel[q][d];
           }
         return retval;
       };
@@ -633,11 +644,22 @@ namespace MPI
                                       cutter[0]->interpolate_q,
                                       update_quadrature_points | update_values |
                                         update_gradients);
+        FEValues<dim> dummy_scalar_fe_values(mapping,
+                                             fluid_solver.scalar_fe,
+                                             cutter[0]->interpolate_q,
+                                             update_quadrature_points |
+                                               update_values);
         FEValues<dim - 1, dim> cutter_fe_values(cutter_mapping,
                                                 cutter[0]->fe,
                                                 cutter[0]->quad_formula,
                                                 update_JxW_values);
         dummy_fe_values.reinit(f_cell);
+        TriaActiveIterator<DoFCellAccessor<dim, dim, false>> scalar_f_cell(
+          &fluid_solver.triangulation,
+          f_cell->level(),
+          f_cell->index(),
+          &fluid_solver.scalar_dof_handler);
+        dummy_scalar_fe_values.reinit(scalar_f_cell);
         cutter_fe_values.reinit(cutter[0]->dof_handler.begin_active());
 
         // Get the solution values on the cutter points
@@ -647,6 +669,12 @@ namespace MPI
           fluid_solver.present_solution, pre);
         dummy_fe_values[velocities].get_function_gradients(
           fluid_solver.present_solution, vel_grad);
+
+        if (fluid_solver.turbulence_model)
+          {
+            dummy_scalar_fe_values.get_function_values(
+              fluid_solver.turbulence_model->get_eddy_viscosity(), eddy_vis);
+          }
         // Integrate the fluxes on the cutter
         auto integrate = [&cutter, &vel, &pre, &cutter_fe_values](
                            const std::function<double(int)> &quant) {
@@ -702,12 +730,15 @@ namespace MPI
                             fluid_solver.volume_quad_formula,
                             update_values | update_quadrature_points |
                               update_JxW_values | update_gradients);
+    FEValues<dim> scalar_fe_values(
+      fluid_solver.scalar_fe, fluid_solver.volume_quad_formula, update_values);
 
     std::vector<Tensor<1, dim>> present_vel(fe_values.n_quadrature_points);
     std::vector<double> present_pre(fe_values.n_quadrature_points);
     std::vector<Tensor<2, dim>> vel_grad(fe_values.n_quadrature_points);
     std::vector<Tensor<1, dim>> pre_grad(fe_values.n_quadrature_points);
     std::vector<Tensor<1, dim>> previous_vel(fe_values.n_quadrature_points);
+    std::vector<double> eddy_vis(fe_values.n_quadrature_points);
 
     // Quantities to be integrated
     auto int_rate_momentum = [&present_vel,
@@ -743,9 +774,10 @@ namespace MPI
         }
       return retval;
     };
-    auto int_rate_dissipation = [&vel_grad, mu = parameters.viscosity](int q) {
-      return mu * scalar_product(vel_grad[q], vel_grad[q]);
-    };
+    auto int_rate_dissipation =
+      [&vel_grad, &eddy_vis, mu = parameters.viscosity](int q) {
+        return (mu + eddy_vis[q]) * scalar_product(vel_grad[q], vel_grad[q]);
+      };
     auto int_rate_compression = [&present_pre, &vel_grad](int q) {
       double retval = 0.0;
       for (unsigned i = 0; i < dim; ++i)
@@ -771,6 +803,12 @@ namespace MPI
       [&](typename DoFHandler<dim>::active_cell_iterator f_cell,
           double volume_fraction = 1) mutable {
         fe_values.reinit(f_cell);
+        TriaActiveIterator<DoFCellAccessor<dim, dim, false>> scalar_f_cell(
+          &fluid_solver.triangulation,
+          f_cell->level(),
+          f_cell->index(),
+          &fluid_solver.scalar_dof_handler);
+        scalar_fe_values.reinit(scalar_f_cell);
 
         fe_values[velocities].get_function_values(fluid_solver.present_solution,
                                                   present_vel);
@@ -782,6 +820,12 @@ namespace MPI
                                                 present_pre);
         fe_values[pressure].get_function_gradients(
           fluid_solver.present_solution, pre_grad);
+
+        if (fluid_solver.turbulence_model)
+          {
+            scalar_fe_values.get_function_values(
+              fluid_solver.turbulence_model->get_eddy_viscosity(), eddy_vis);
+          }
 
         // Integrate the quantities on the cells
         cv_values.momentum.rate_momentum +=
@@ -1131,6 +1175,7 @@ namespace MPI
     std::vector<Tensor<2, dim>> vel_grad(fe_values.n_quadrature_points);
     std::vector<double> present_pre(fe_values.n_quadrature_points);
     std::vector<Tensor<1, dim>> pre_grad(fe_values.n_quadrature_points);
+    std::vector<double> eddy_vis(fe_values.n_quadrature_points);
     // The order for stress grad is: Sxx, Sxy, (Sxz), Syy, (Syz, Szz)
     std::vector<std::vector<Tensor<1, dim>>> stress_grad(
       (dim * dim + dim) / 2,
@@ -1169,7 +1214,7 @@ namespace MPI
       return present_pre[q] / rho / (atm + 2 * present_pre[q]) * pre_grad[q][0];
     };
     auto int_friction_head = [&stress_grad,
-                              &pre_grad,
+                              &eddy_vis,
                               mu = parameters.viscosity,
                               rho = parameters.fluid_rho](int q) {
       double retval = 0.0;
@@ -1179,27 +1224,25 @@ namespace MPI
       // for Sxx_grad[q][0] Sxy_grad[q][1] (or/and Sxz_grad[q][2])
       for (unsigned d = 0; d < dim; ++d)
         {
-          retval += stress_grad[d][q][d] / rho;
+          retval += stress_grad[d][q][d] / rho / mu * (mu + eddy_vis[q]);
         }
       // for Syy_grad[q][0]
-      retval -= stress_grad[dim][q][0] / rho;
+      retval -= stress_grad[dim][q][0] / rho / mu * (mu + eddy_vis[q]);
       // Since Sxx includes pressure gradient we need to subtract it
       if (dim == 3)
         {
           // for Szz_grad[q][0] (if exists).
-          retval -= stress_grad[5][q][0] / rho;
-          // Only happens in 3d because in 2d Sxx_grad[q][0] and Syy_grad[q][0]
-          // cancel out
-          retval -= pre_grad[q][0] / rho;
+          retval -= stress_grad[5][q][0] / rho / mu * (mu + eddy_vis[q]);
         }
       return retval;
     };
     auto int_friction_work =
-      [&present_vel, &vel_grad, mu = parameters.viscosity](int q) {
+      [&present_vel, &vel_grad, &eddy_vis, mu = parameters.viscosity](int q) {
         double retval = 0.0;
         for (unsigned d = 0; d < dim; ++d)
           {
-            retval += mu * vel_grad[q][d][1] * present_vel[q][d];
+            retval +=
+              (mu + eddy_vis[q]) * vel_grad[q][d][1] * present_vel[q][d];
           }
         return retval;
       };
@@ -1276,6 +1319,11 @@ namespace MPI
           {
             scalar_fe_values.get_function_gradients(
               relevant_partition_stress[component], stress_grad[component]);
+          }
+        if (fluid_solver.turbulence_model)
+          {
+            scalar_fe_values.get_function_values(
+              fluid_solver.turbulence_model->get_eddy_viscosity(), eddy_vis);
           }
 
         double convection_head = 0.0;
