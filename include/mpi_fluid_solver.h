@@ -225,12 +225,11 @@ namespace Fluid
       /// handy.
       IndexSet locally_relevant_dofs;
 
-      /// The vector to store vtu filenames that will be written into pvd file.
-      mutable std::vector<std::pair<double, std::string>> times_and_names;
-
       Utils::Time time;
       mutable TimerOutput timer;
       mutable TimerOutput timer2;
+
+      mutable Utils::PVDWriter pvd_writer;
 
       CellDataStorage<
         typename parallel::distributed::Triangulation<dim>::cell_iterator,
