@@ -377,7 +377,7 @@ namespace Fluid
     bool active =true;
     if (time.get_timestep() == 0)
       {
-        /*int num_nodes_per_block = 0;
+        int num_nodes_per_block = 0;
         int num_elements_per_block = 0;
         int num_nodes_in_each_coordinate_direction = 0;
         Max(num_nodes_in_each_coordinate_direction);
@@ -385,10 +385,10 @@ namespace Fluid
         Max(num_nodes_per_block);
         rec_stress(num_elements_per_block);
         rec_velocity(num_nodes_per_block, num_nodes_in_each_coordinate_direction);
-        send_fsi_force(num_nodes_per_block, num_nodes_in_each_coordinate_direction);*/
+        send_fsi_force(num_nodes_per_block, num_nodes_in_each_coordinate_direction);
         output_results(0);
-        /*std::cout << "Recieved inital velocity from Sable" << std::endl;
-        All(active);*/
+        std::cout << "Received inital solution from Sable" << std::endl;
+        //All(active);
       }
 
     time.increment();
@@ -404,16 +404,8 @@ namespace Fluid
     send_fsi_force(num_nodes_per_block, num_nodes_in_each_coordinate_direction);
     All(active);
     std::cout << std::string(96, '*') << std::endl
-              << "Recieved velocity from Sable at time step = " << time.get_timestep()
+              << "Received solution from Sable at time step = " << time.get_timestep()
               << ", at t = " << std::scientific << time.current() << std::endl;
-
-    // Update solution increment, which is used in FSI application.
-    solution_increment = evaluation_point;
-    solution_increment -= present_solution;
-    // Newton iteration converges, update time and solution
-    present_solution = evaluation_point;
-    // Update stress for output
-    //update_stress();
     // Output
     if (time.time_to_output())
       {
@@ -536,7 +528,11 @@ namespace Fluid
               }
           
           }
-      }          
+      }
+
+    solution_increment = evaluation_point;
+    solution_increment -= present_solution;
+    present_solution = evaluation_point;            
 
     //delete solution
     for(unsigned ict = 0;ict < cmapp.size();ict ++)
