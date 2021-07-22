@@ -157,6 +157,8 @@ namespace Fluid
 
     void Max(double &send_biffer);
 
+    bool is_comm_active=true;
+
     // Send solution to Sable
     void send_data(double ** send_buffer, const std::vector <int> & cmapp, const std::vector <int> & cmapp_sizes);
 

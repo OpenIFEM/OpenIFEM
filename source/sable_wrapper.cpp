@@ -374,7 +374,6 @@ namespace Fluid
     (void)assemble_system;
     std::cout.precision(6);
     std::cout.width(12);
-    bool active =true;
     if (time.get_timestep() == 0)
       {
         int num_nodes_per_block = 0;
@@ -402,7 +401,7 @@ namespace Fluid
     rec_stress(num_elements_per_block);
     rec_velocity(num_nodes_per_block, num_nodes_in_each_coordinate_direction);
     send_fsi_force(num_nodes_per_block, num_nodes_in_each_coordinate_direction);
-    All(active);
+    is_comm_active= All(is_comm_active);
     std::cout << std::string(96, '*') << std::endl
               << "Received solution from Sable at time step = " << time.get_timestep()
               << ", at t = " << std::scientific << time.current() << std::endl;
@@ -429,7 +428,7 @@ namespace Fluid
     // in the first time step only, and never be used again.
     // This corresponds to time-independent Dirichlet BCs.
     run_one_step(true);
-    while (time.end() - time.current() > 1e-12)
+    while (is_comm_active)
       {
         run_one_step(false);
       }
@@ -480,7 +479,7 @@ namespace Fluid
     }
     // recieve data
     rec_data(nv_rec_buffer, cmapp, cmapp_sizes, sable_sol_size);
-
+    
     //remove solution from ghost layers of Sable mesh
     std::vector<double> sable_solution;
     for(int n=sable_n_nodes_one_dir; n<sable_n_nodes-sable_n_nodes_one_dir;n++)
@@ -689,10 +688,10 @@ namespace Fluid
 
     //create send buffer
     double ** nv_send_buffer = new double*[cmapp.size()];
-    for(unsigned ict = 0;ict < cmapp.size();ict ++)
+    for(unsigned int ict = 0;ict < cmapp.size();ict ++)
     {
       nv_send_buffer[ict] = new double[cmapp_sizes[ict]];
-      for(unsigned jct = 0;jct < cmapp_sizes[ict];jct ++)
+      for(unsigned int jct = 0;jct < cmapp_sizes[ict];jct ++)
       {
         nv_send_buffer[ict][jct]=0;
       }
