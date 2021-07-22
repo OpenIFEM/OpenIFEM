@@ -389,8 +389,8 @@ namespace Fluid
         output_results(0);
         std::cout << "Received inital solution from Sable" << std::endl;
         //All(active);
-      }
-
+      }  
+    get_delta_t();
     time.increment();
     //Recieve no. of nodes and elements from Sable
     int num_nodes_per_block = 0;
@@ -407,10 +407,8 @@ namespace Fluid
               << "Received solution from Sable at time step = " << time.get_timestep()
               << ", at t = " << std::scientific << time.current() << std::endl;
     // Output
-    if (time.time_to_output())
-      {
-        output_results(time.get_timestep());
-      }
+    output_results(time.get_timestep());
+    
     if (parameters.simulation_type == "Fluid" && time.time_to_refine())
       {
         refine_mesh(1, 3);
@@ -739,10 +737,26 @@ namespace Fluid
   }
 
   template<int dim>
+  void SableWrap<dim>::get_delta_t()
+  {
+    double dt=0;
+    Max(dt);
+    time.set_delta_t(dt);
+  } 
+
+  template<int dim>
   void SableWrap<dim>::Max(int &send_buffer)
   {
     int temp;
     MPI_Allreduce(&send_buffer, &temp, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+    send_buffer=temp;
+  } 
+
+  template<int dim>
+  void SableWrap<dim>::Max(double &send_buffer)
+  {
+    double temp;
+    MPI_Allreduce(&send_buffer, &temp, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
     send_buffer=temp;
   } 
 

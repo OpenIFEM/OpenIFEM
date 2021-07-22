@@ -149,9 +149,13 @@ namespace Fluid
 
     void rec_stress(const int& sable_n_elements);
 
-    bool All(bool my_b); 
+    bool All(bool my_b);
+
+    void get_delta_t(); 
 
     void Max(int &send_buffer);
+
+    void Max(double &send_biffer);
 
     // Send solution to Sable
     void send_data(double ** send_buffer, const std::vector <int> & cmapp, const std::vector <int> & cmapp_sizes);
