@@ -44,7 +44,8 @@ namespace Fluid
         timer(
           mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times),
         timer2(
-          mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times)
+          mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times),
+        pvd_writer(time, "fluid.pvd")
     {
     }
 
@@ -521,17 +522,12 @@ namespace Fluid
 
       data_out.build_patches(parameters.fluid_pressure_degree);
 
-      std::string basename =
-        "fluid_" + Utilities::int_to_string(output_index, 6);
-
       data_out.write_vtu_with_pvtu_record(
         "./", "fluid", output_index, mpi_communicator, 6, 0);
 
       if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
         {
-          times_and_names.push_back({time.current(), basename + ".pvtu"});
-          std::ofstream pvd_output("fluid.pvd");
-          DataOutBase::write_pvd_record(pvd_output, times_and_names);
+          pvd_writer.write_current_timestep("fluid_", 6);
         }
     }
 
@@ -615,8 +611,7 @@ namespace Fluid
       tmp.reinit(owned_partitioning, mpi_communicator);
       sol_trans.deserialize(tmp);
       present_solution = tmp;
-      // Update the time and names to set the current time and write
-      // correct .pvd file.
+      // Set the current time and write correct .pvd file.
 
       for (int i = 0; i <= Utilities::string_to_int(checkpoint_file.stem());
            ++i)
@@ -624,9 +619,7 @@ namespace Fluid
           if ((time.current() == 0 || time.time_to_output()) &&
               Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
             {
-              std::string basename =
-                "fluid_" + Utilities::int_to_string(time.get_timestep(), 6);
-              times_and_names.push_back({time.current(), basename + ".pvtu"});
+              pvd_writer.write_current_timestep("fluid_", 6);
             }
           if (i == Utilities::string_to_int(checkpoint_file.stem()))
             break;

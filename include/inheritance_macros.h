@@ -46,10 +46,10 @@ private:                                                                       \
   using FluidSolver<dim>::locally_owned_scalar_dofs;                           \
   using FluidSolver<dim>::locally_relevant_dofs;                               \
   using FluidSolver<dim>::locally_relevant_scalar_dofs;                        \
-  using FluidSolver<dim>::times_and_names;                                     \
   using FluidSolver<dim>::time;                                                \
   using FluidSolver<dim>::timer;                                               \
   using FluidSolver<dim>::timer2;                                              \
+  using FluidSolver<dim>::pvd_writer;                                          \
   using FluidSolver<dim>::cell_property;                                       \
   using FluidSolver<dim>::hard_coded_boundary_values;                          \
   using FluidSolver<dim>::body_force;                                          \
@@ -89,9 +89,9 @@ private:                                                                       \
   using SharedSolidSolver<dim>::pcout;                                         \
   using SharedSolidSolver<dim>::time;                                          \
   using SharedSolidSolver<dim>::timer;                                         \
+  using SharedSolidSolver<dim>::pvd_writer;                                    \
   using SharedSolidSolver<dim>::locally_owned_dofs;                            \
   using SharedSolidSolver<dim>::locally_owned_scalar_dofs;                     \
-  using SharedSolidSolver<dim>::locally_relevant_dofs;                         \
-  using SharedSolidSolver<dim>::times_and_names
+  using SharedSolidSolver<dim>::locally_relevant_dofs
 
 #endif

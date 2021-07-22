@@ -28,7 +28,8 @@ namespace Solid
              parameters.refinement_interval,
              parameters.save_interval),
         timer(
-          mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times)
+          mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times),
+        pvd_writer(time, "solid.pvd")
     {
     }
 
@@ -291,17 +292,12 @@ namespace Solid
         });
       data_out.build_patches();
 
-      std::string basename =
-        "solid_" + Utilities::int_to_string(output_index, 6);
-
       data_out.write_vtu_with_pvtu_record(
         "./", "solid", output_index, mpi_communicator, 6, 0);
 
       if (this_mpi_process == 0)
         {
-          times_and_names.push_back({time.current(), basename + ".pvtu"});
-          std::ofstream pvd_output("solid.pvd");
-          DataOutBase::write_pvd_record(pvd_output, times_and_names);
+          pvd_writer.write_current_timestep("solid_", 6);
         }
     }
 
@@ -519,8 +515,7 @@ namespace Solid
       previous_displacement = current_displacement;
       previous_velocity = current_velocity;
       previous_acceleration = current_acceleration;
-      // Update the time and names to set the current time and write
-      // correct .pvd file.
+      // Set the current time and write correct .pvd file.
 
       for (int i = 0; i <= Utilities::string_to_int(checkpoint_file.stem());
            ++i)
@@ -528,11 +523,7 @@ namespace Solid
           if ((time.current() == 0 || time.time_to_output()) &&
               Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
             {
-              std::string basename =
-                "solid_" + Utilities::int_to_string(time.get_timestep(), 6);
-              std::string filename = basename + ".pvtu";
-
-              times_and_names.push_back({time.current(), filename});
+              pvd_writer.write_current_timestep("solid_", 6);
             }
           if (i == Utilities::string_to_int(checkpoint_file.stem()))
             break;
