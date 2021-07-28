@@ -141,6 +141,9 @@ namespace Fluid
     // Vector which stores Sable processor ids
     std::vector<int> sable_ids;
 
+    // No. of nodes/elements in Sable 
+    int sable_no_nodes, sable_no_ele, sable_no_nodes_one_dir;
+
     // Recieve solution from Sable
     void rec_data(double ** rec_buffer, const std::vector <int> & cmapp, const std::vector <int> & cmapp_sizes,
 	int data_size);
@@ -151,7 +154,7 @@ namespace Fluid
 
     bool All(bool my_b);
 
-    void get_delta_t(); 
+    void get_dt_sable(); 
 
     void Max(int &send_buffer);
 
@@ -163,6 +166,8 @@ namespace Fluid
     void send_data(double ** send_buffer, const std::vector <int> & cmapp, const std::vector <int> & cmapp_sizes);
 
     void send_fsi_force(const int& sable_n_nodes, const int& sable_n_nodes_one_dir);
+
+    void send_indicator(const int& sable_n_elements);
 
     /*! \brief Block preconditioner for the system
      *

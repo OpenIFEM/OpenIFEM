@@ -376,41 +376,40 @@ namespace Fluid
     std::cout.width(12);
     if (time.get_timestep() == 0)
       {
-        int num_nodes_per_block = 0;
-        int num_elements_per_block = 0;
-        int num_nodes_in_each_coordinate_direction = 0;
-        Max(num_nodes_in_each_coordinate_direction);
-        Max(num_elements_per_block);
-        Max(num_nodes_per_block);
-        rec_stress(num_elements_per_block);
-        rec_velocity(num_nodes_per_block, num_nodes_in_each_coordinate_direction);
-        send_fsi_force(num_nodes_per_block, num_nodes_in_each_coordinate_direction);
+        sable_no_nodes_one_dir=0;
+        sable_no_ele=0;
+        sable_no_nodes=0;
+        Max(sable_no_nodes_one_dir);
+        Max(sable_no_ele);
+        Max(sable_no_nodes);
+        rec_stress(sable_no_ele);
+        rec_velocity(sable_no_nodes, sable_no_nodes_one_dir);
         output_results(0);
         std::cout << "Received inital solution from Sable" << std::endl;
         //All(active);
-      }  
-    get_delta_t();
-    time.increment();
-    //Recieve no. of nodes and elements from Sable
-    int num_nodes_per_block = 0;
-    int num_elements_per_block = 0;
-    int num_nodes_in_each_coordinate_direction = 0;
-    Max(num_nodes_in_each_coordinate_direction);
-    Max(num_elements_per_block);
-    Max(num_nodes_per_block);
-    rec_stress(num_elements_per_block);
-    rec_velocity(num_nodes_per_block, num_nodes_in_each_coordinate_direction);
-    send_fsi_force(num_nodes_per_block, num_nodes_in_each_coordinate_direction);
-    is_comm_active= All(is_comm_active);
-    std::cout << std::string(96, '*') << std::endl
-              << "Received solution from Sable at time step = " << time.get_timestep()
-              << ", at t = " << std::scientific << time.current() << std::endl;
-    // Output
-    output_results(time.get_timestep());
-    
-    if (parameters.simulation_type == "Fluid" && time.time_to_refine())
-      {
-        refine_mesh(1, 3);
+      }
+    else
+      {  
+        if(parameters.simulation_type != "FSI" )
+        {  
+          send_fsi_force(sable_no_nodes, sable_no_nodes_one_dir);
+          send_indicator(sable_no_ele);
+        }  
+        //Recieve no. of nodes and elements from Sable
+        sable_no_nodes_one_dir=0;
+        sable_no_ele=0;
+        sable_no_nodes=0;
+        Max(sable_no_nodes_one_dir);
+        Max(sable_no_ele);
+        Max(sable_no_nodes);
+        rec_stress(sable_no_ele);
+        rec_velocity(sable_no_nodes, sable_no_nodes_one_dir);
+        is_comm_active= All(is_comm_active);
+        std::cout << std::string(96, '*') << std::endl
+                  << "Received solution from Sable at time step = " << time.get_timestep()
+                  << ", at t = " << std::scientific << time.current() << std::endl;
+        // Output
+        output_results(time.get_timestep());
       }
   }
 
@@ -427,9 +426,11 @@ namespace Fluid
     // which means nonzero_constraints will be applied at the first iteration
     // in the first time step only, and never be used again.
     // This corresponds to time-independent Dirichlet BCs.
-    run_one_step(true);
     while (is_comm_active)
       {
+        if(time.current()==0)
+          run_one_step(true);
+        get_dt_sable();
         run_one_step(false);
       }
   }
@@ -726,6 +727,64 @@ namespace Fluid
     delete [] nv_send_buffer;
   }
 
+  template <int dim>
+  void SableWrap<dim>::send_indicator(const int& sable_n_elements)
+  {
+
+    int sable_indicator_field_size = sable_n_elements;
+    std::vector<int> cmapp = sable_ids;
+    std::vector<int> cmapp_sizes;
+    cmapp_sizes.push_back(sable_indicator_field_size);
+
+    //create vector of indicator field
+    std::vector<double> indicator_field(triangulation.n_quads(),0);
+    for (auto cell = dof_handler.begin_active();
+         cell != dof_handler.end();
+         ++cell)
+      {
+        auto ptr = cell_property.get_data(cell);
+        indicator_field[cell->active_cell_index()]= ptr[0]->indicator;
+      }  
+
+    int sable_ele_in_one_dir= int(sqrt(sable_n_elements));
+    std::vector<double> sable_indicator_field(sable_indicator_field_size,0);
+    int count =0;
+    for(int n=sable_ele_in_one_dir; n<sable_n_elements-sable_ele_in_one_dir;n++)
+    {
+      //skip border nodes
+      if((n % sable_ele_in_one_dir==0) || ((n+1) % sable_ele_in_one_dir==0))
+      {
+        continue;
+      }
+      else
+      {  
+        sable_indicator_field[n]=indicator_field[count];
+        count++;
+      }  
+    }
+    
+    //create send buffer
+    double ** nv_send_buffer = new double*[cmapp.size()];
+    for(unsigned int ict = 0;ict < cmapp.size();ict ++)
+    {
+      nv_send_buffer[ict] = new double[cmapp_sizes[ict]];
+      for(unsigned int jct = 0;jct < cmapp_sizes[ict];jct ++)
+      {
+        nv_send_buffer[ict][jct]=sable_indicator_field[jct];
+      }
+    }
+    
+    //send data
+    send_data(nv_send_buffer, cmapp,cmapp_sizes);                
+    
+    //delete solution
+    for(unsigned ict = 0;ict < cmapp.size();ict ++)
+    {
+      delete [] nv_send_buffer[ict];    
+    }
+    delete [] nv_send_buffer;
+  }
+
   template<int dim>
   bool SableWrap<dim>::All(bool my_b) 
   {
@@ -736,11 +795,12 @@ namespace Fluid
   }
 
   template<int dim>
-  void SableWrap<dim>::get_delta_t()
+  void SableWrap<dim>::get_dt_sable()
   {
     double dt=0;
     Max(dt);
     time.set_delta_t(dt);
+    time.increment();
   } 
 
   template<int dim>
