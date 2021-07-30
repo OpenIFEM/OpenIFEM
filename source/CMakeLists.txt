@@ -19,6 +19,7 @@ set(TARGET_SRC fluid_solver.cpp
                mpi_shared_linear_elasticity.cpp
                mpi_shared_solid_solver.cpp
                mpi_solid_solver.cpp
+               openifem_sable_fsi.cpp
                parameters.cpp
                preconditioner_pilut.cpp
                sable_wrapper.cpp
@@ -51,6 +52,7 @@ set(headers fluid_solver.h
             mpi_shared_solid_solver.h
             mpi_solid_solver.h
             neoHookean.h
+            openifem_sable_fsi.cpp
             parameters.h
             preconditioner_pilut.h
             sable_wrapper.h

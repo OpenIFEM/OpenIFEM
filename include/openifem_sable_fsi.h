@@ -1,11 +1,11 @@
-#ifndef FSI_H
-#define FSI_H
+#ifndef OpenIFEM_Sable_FSI_H
+#define OpenIFEM_Sable_FSI_H
 
 #include <deal.II/base/table_indices.h>
 #include <deal.II/physics/elasticity/standard_tensors.h>
 
-#include "fluid_solver.h"
-#include "solid_solver.h"
+#include "sable_wrapper.h"
+#include "fsi.h"
 #include "utilities.h"
 
 using namespace dealii;
@@ -22,23 +22,31 @@ extern template class Utils::SPHInterpolator<2, Vector<double>>;
 extern template class Utils::SPHInterpolator<3, Vector<double>>;
 
 template <int dim>
-class FSI
+class OpenIFEM_Sable_FSI : public FSI<dim> 
 {
 public:
-  FSI(Fluid::FluidSolver<dim> &,
+  OpenIFEM_Sable_FSI(Fluid::SableWrap<dim> &,
       Solid::SolidSolver<dim> &,
       const Parameters::AllParameters &,
       bool use_dirichlet_bc = false);
-  void run();
-  ~FSI();
+  virtual void run();
+  ~OpenIFEM_Sable_FSI();
 
-protected:
-  /// Define a smallest rectangle (or hex in 3d) that contains the solid.
-  void update_solid_box();
-
-  /// Check if a point is inside a mesh.
-  bool point_in_solid(const DoFHandler<dim> &, const Point<dim> &);
-
+private:
+    using FSI<dim>::update_solid_box;
+    using FSI<dim>::point_in_solid;
+    using FSI<dim>::move_solid_mesh;
+    using FSI<dim>::find_solid_bc;
+    using FSI<dim>::update_solid_displacement;
+    using FSI<dim>::refine_mesh;
+    using FSI<dim>::fluid_solver;
+    using FSI<dim>::solid_solver;
+    using FSI<dim>::parameters;
+    using FSI<dim>::time;
+    using FSI<dim>::timer;
+    using FSI<dim>::solid_box;
+    using FSI<dim>::use_dirichlet_bc;
+  
   /*! \brief Update the indicator field of the fluid solver.
    *
    *  Although the indicator field is defined at quadrature points in order to
@@ -47,25 +55,7 @@ protected:
    *  all of the vertices are in solid mesh (because later on Dirichlet BCs
    *  obtained from the solid will be applied).
    */
-  void update_indicator();
-
-  /// Move solid triangulation either forward or backward using displacements,
-  void move_solid_mesh(bool);
-
-  /*! \brief Compute the fluid traction on solid boundaries.
-   *
-   *  The implementation is straight-forward: loop over the faces on the
-   *  solid Neumann boundary, find the quadrature points and normals,
-   *  then interpolate the fluid pressure and symmetric gradient of velocity at
-   *  those points, based on which the fluid traction is calculated.
-   */
-  void find_solid_bc();
-
-  /*! \brief Interpolate the fluid velocity to solid vertices.
-   *
-   *  This is IFEM, not mIFEM.
-   */
-  void update_solid_displacement();
+   void update_indicator();
 
   /*! \brief Compute the Dirichlet BCs on the artificial fluid using solid
    * velocity,
@@ -84,20 +74,7 @@ protected:
    */
   void find_fluid_bc();
 
-  /// Mesh adaption.
-  void refine_mesh(const unsigned int, const unsigned int);
-
-  Fluid::FluidSolver<dim> &fluid_solver;
-  Solid::SolidSolver<dim> &solid_solver;
-  Parameters::AllParameters parameters;
-  Utils::Time time;
-  mutable TimerOutput timer;
-
-  // This vector represents the smallest box that contains the solid.
-  // The point stored is in the order of:
-  // (x_min, x_max, y_min, y_max, z_min, z_max)
-  Vector<double> solid_box;
-  bool use_dirichlet_bc;
+  Fluid::SableWrap<dim> &sable_solver;
 };
 
 #endif

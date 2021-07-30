@@ -54,6 +54,8 @@
 
 template <int>
 class FSI;
+template <int>
+class OpenIFEM_Sable_FSI;
 
 namespace Fluid
 {
@@ -66,7 +68,7 @@ namespace Fluid
   public:
     //! FSI solver need access to the private members of this solver.
     friend FSI<dim>;
-
+    friend OpenIFEM_Sable_FSI<dim>;
     //! Constructor
     FluidSolver(Triangulation<dim> &,
                 const Parameters::AllParameters &,

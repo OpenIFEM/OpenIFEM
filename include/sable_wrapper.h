@@ -6,6 +6,8 @@
 
 template <int>
 class FSI;
+template <int>
+class OpenIFEM_Sable_FSI;
 
 namespace Fluid
 {
@@ -40,7 +42,7 @@ namespace Fluid
   {
   public:
     friend FSI<dim>;
-
+    friend OpenIFEM_Sable_FSI<dim>;
     SableWrap(Triangulation<dim> &,
           const Parameters::AllParameters &,
           std::vector<int> &,

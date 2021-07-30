@@ -50,6 +50,8 @@
 
 template <int>
 class FSI;
+template <int>
+class OpenIFEM_Sable_FSI;
 
 namespace Solid
 {
@@ -61,7 +63,7 @@ namespace Solid
   {
   public:
     friend FSI<spacedim>;
-
+    friend OpenIFEM_Sable_FSI<spacedim>;
     SolidSolver(Triangulation<dim, spacedim> &,
                 const Parameters::AllParameters &);
     ~SolidSolver();
