@@ -138,7 +138,7 @@ namespace Fluid
     preconditioner.reset();
     newton_update.reinit(dofs_per_block);
     evaluation_point.reinit(dofs_per_block);
-    fsi_force.reinit(dofs_per_block);
+    fsi_acceleration.reinit(dofs_per_block);
   }
 
   template <int dim>
@@ -188,6 +188,7 @@ namespace Fluid
     std::vector<Tensor<2, dim>> current_velocity_gradients(n_q_points);
     std::vector<double> current_pressure_values(n_q_points);
     std::vector<Tensor<1, dim>> present_velocity_values(n_q_points);
+    std::vector<Tensor<1, dim>> fsi_acc_values(n_q_points);
 
     std::vector<double> div_phi_u(dofs_per_cell);
     std::vector<Tensor<1, dim>> phi_u(dofs_per_cell);
@@ -219,6 +220,9 @@ namespace Fluid
         fe_values[velocities].get_function_values(present_solution,
                                                   present_velocity_values);
 
+        fe_values[velocities].get_function_values(fsi_acceleration,
+                                                  fsi_acc_values);
+
         // Assemble the system matrix and mass matrix simultaneouly.
         // The mass matrix only uses the (0, 0) and (1, 1) blocks.
         //
@@ -234,7 +238,7 @@ namespace Fluid
 
             for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
-                for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                /*for (unsigned int j = 0; j < dofs_per_cell; ++j)
                   {
                     // Let the linearized diffusion, continuity and Grad-Div
                     // term be written as
@@ -276,12 +280,12 @@ namespace Fluid
                    (current_velocity_values[q] - present_velocity_values[q]) *
                      phi_u[i] / time.get_delta_t() * rho +
                    gravity * phi_u[i] * rho) *
-                  fe_values.JxW(q);
+                  fe_values.JxW(q);*/
                 if (ind == 1)
                   {
                     local_rhs(i) +=
                       (scalar_product(grad_phi_u[i], p[0]->fsi_stress) +
-                       p[0]->fsi_acceleration * phi_u[i]) *
+                       fsi_acc_values[q] * phi_u[i]) *
                       fe_values.JxW(q);
                   }
               }
@@ -389,7 +393,10 @@ namespace Fluid
         //All(active);
       }
     else
-      {  
+      { 
+        unsigned int outer_iteration = 0; 
+        assemble(apply_nonzero_constraints && outer_iteration == 0);
+        
         if(parameters.simulation_type != "FSI" )
         {  
           send_fsi_force(sable_no_nodes, sable_no_nodes_one_dir);
@@ -418,7 +425,7 @@ namespace Fluid
   {
     triangulation.refine_global(parameters.global_refinements[0]);
     setup_dofs();
-    make_constraints();
+    //make_constraints();
     initialize_system();
 
     // Time loop.
@@ -681,7 +688,7 @@ namespace Fluid
                   //Sable vertex indexing is same as deal.ii
                   int sable_force_index = cell->vertex_index(v)*dim+i;
                   int openifem_force_index = cell->vertex_dof_index(v,i);
-                  sable_fsi_force[sable_force_index]=fsi_force[openifem_force_index];
+                  sable_fsi_force[sable_force_index]=system_rhs[openifem_force_index];
                 }
               }
           }

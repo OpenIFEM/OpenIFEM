@@ -200,7 +200,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
         }
     }
   tmp_fsi_acceleration.compress(VectorOperation::insert);
-  sable_solver.fsi_force = tmp_fsi_acceleration;
+  sable_solver.fsi_acceleration = tmp_fsi_acceleration;
   if (use_dirichlet_bc)
     {
       
