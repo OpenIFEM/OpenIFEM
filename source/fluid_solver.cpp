@@ -282,6 +282,16 @@ namespace Fluid
                              solution_names,
                              DataOut<dim>::type_dof_data,
                              data_component_interpretation);
+    // velocity
+    Vector<double> fsi_force;
+    fsi_force.reinit(dofs_per_block[0]);
+    for(unsigned int i=0; i<dofs_per_block[0];i++)
+      fsi_force[i]=system_rhs[i];
+    solution_names = std::vector<std::string>(dim, "FSI_force");
+    data_out.add_data_vector(dof_handler,
+                             fsi_force,
+                             solution_names,
+                             data_component_interpretation);
 
     // Indicator
     Vector<float> ind(triangulation.n_active_cells());
