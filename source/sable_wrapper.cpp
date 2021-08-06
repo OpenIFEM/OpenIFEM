@@ -393,10 +393,7 @@ namespace Fluid
         //All(active);
       }
     else
-      { 
-        unsigned int outer_iteration = 0; 
-        assemble(apply_nonzero_constraints && outer_iteration == 0);
-        
+      {   
         if(parameters.simulation_type != "FSI" )
         {  
           send_fsi_force(sable_no_nodes, sable_no_nodes_one_dir);
@@ -665,14 +662,16 @@ namespace Fluid
   template <int dim>
   void SableWrap<dim>::send_fsi_force(const int& sable_n_nodes, const int& sable_n_nodes_one_dir)
   {
+    unsigned int outer_iteration = 0; 
+    assemble(true && outer_iteration == 0);
 
     int sable_force_size = sable_n_nodes*dim;
     std::vector<int> cmapp = sable_ids;
     std::vector<int> cmapp_sizes;
     cmapp_sizes.push_back(sable_force_size);
-    
+
     //Syncronize Sable and OpenIFEM solution
-    std::vector<double> sable_fsi_force(sable_force_size,0);
+    std::vector<double> sable_fsi_force(triangulation.n_vertices()*dim,0);
     std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
     for (auto cell = dof_handler.begin_active();
          cell != dof_handler.end();
@@ -706,6 +705,7 @@ namespace Fluid
     }
     
     //add zero nodal forces corresponding to ghost nodes
+    int node_count=0;
     for(int n=sable_n_nodes_one_dir; n<sable_n_nodes-sable_n_nodes_one_dir;n++)
     {
       //skip border nodes
@@ -718,8 +718,9 @@ namespace Fluid
         int index= n*dim;
         for(int i=0; i<dim; i++)
         {
-          nv_send_buffer[0][index+i]=sable_fsi_force[index+i];
+          nv_send_buffer[0][index+i]=sable_fsi_force[node_count*dim +i];
         }
+        node_count++;
       }  
     }
 
