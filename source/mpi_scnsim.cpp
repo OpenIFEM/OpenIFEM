@@ -497,7 +497,7 @@ namespace Fluid
                   // the length scale h is the length of the element in the
                   // direction
                   // of convection
-                  double h = 0;
+                  double h = 0.0;
                   for (unsigned int a = 0;
                        a < dofs_per_cell / fe.dofs_per_vertex;
                        ++a)

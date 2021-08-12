@@ -186,6 +186,8 @@ namespace MPI
         double rate_dissipation;
         // Defined as \int_V{p u_{i,i}}dV
         double rate_compression_work;
+        // Numerical stabilization effects
+        double rate_stabilization;
         // Defined as \int_S_{VF}{\tau_{ij} u_i n_j}dS
         double rate_friction_work;
         // Defined as \int_S{p u_i n_i}dS
