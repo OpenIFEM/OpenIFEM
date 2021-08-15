@@ -102,7 +102,68 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
   std::vector<types::global_dof_index> dof_indices(
     sable_solver.fe.dofs_per_cell);
   std::vector<unsigned int> dof_touched(sable_solver.dof_handler.n_dofs(), 0);
+  
+  const std::vector<Point<dim>> &scalar_unit_points =
+    sable_solver.scalar_fe.get_unit_support_points();
+  Quadrature<dim> scalar_dummy_q(scalar_unit_points);
+  FEValues<dim> scalar_fe_values(sable_solver.scalar_fe,
+                            scalar_dummy_q,
+                            update_values | update_quadrature_points |
+                              update_JxW_values | update_gradients);
+  std::vector<types::global_dof_index> scalar_dof_indices(
+    sable_solver.scalar_fe.dofs_per_cell);
+  std::vector<unsigned int> scalar_dof_touched(sable_solver.scalar_dof_handler.n_dofs(), 0);
+  std::vector<double> f_stress_component(scalar_unit_points.size());  
+  std::vector<std::vector<double>> f_cell_stress = std::vector<std::vector<double>>(sable_solver.fsi_stress.size(),std::vector<double>(scalar_unit_points.size()));
 
+  for (auto scalar_cell = sable_solver.scalar_dof_handler.begin_active(); scalar_cell != sable_solver.scalar_dof_handler.end();
+       ++scalar_cell)
+  {
+    auto ptr = sable_solver.cell_property.get_data(scalar_cell);
+    if (ptr[0]->indicator == 0)
+      continue;
+    scalar_cell->get_dof_indices(scalar_dof_indices);
+    scalar_fe_values.reinit(scalar_cell);
+
+    int stress_index=0;
+    // get fluid stress at support points
+    for (unsigned int i = 0; i < dim; i++)
+    {
+      for (unsigned int j = i; j < dim; j++)
+        {
+          scalar_fe_values.get_function_values(sable_solver.stress[i][j], f_stress_component);
+          f_cell_stress[stress_index]= f_stress_component;
+          stress_index++;
+        }
+    }
+
+    for (unsigned int i = 0; i < scalar_unit_points.size(); ++i)
+    {
+      // Skip the already-set dofs.
+      if (scalar_dof_touched[scalar_dof_indices[i]] != 0)
+        continue;
+      auto scalar_support_points = scalar_fe_values.get_quadrature_points();
+      scalar_dof_touched[scalar_dof_indices[i]] = 1;
+      if (!point_in_solid(solid_solver.scalar_dof_handler,
+                          scalar_support_points[i]))
+        continue;
+      Utils::GridInterpolator<dim, Vector<double>> scalar_interpolator(
+                solid_solver.scalar_dof_handler, scalar_support_points[i]);
+      stress_index=0;
+      for (unsigned int j = 0; j < dim; j++)
+      {
+        for (unsigned int k = j; k < dim; k++)
+        {
+          Vector<double> s_stress_component(1);
+          scalar_interpolator.point_value(fluid_solver.stress[j][k],
+                                                      s_stress_component);
+          sable_solver.fsi_stress[stress_index][scalar_dof_indices[i]]= f_cell_stress[stress_index][i] - s_stress_component[0];
+          stress_index++;
+        }
+      }
+    }  
+  }  
+  
   for (auto f_cell = sable_solver.dof_handler.begin_active();
        f_cell != sable_solver.dof_handler.end();
        ++f_cell)

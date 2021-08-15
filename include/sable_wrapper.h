@@ -137,8 +137,11 @@ namespace Fluid
     /// The BlockSchurPreconditioner for the entire system.
     std::shared_ptr<BlockSchurPreconditioner> preconditioner;
 
-    ///Block vector to store nodal fsi forces
+    ///Block vector to store nodal fsi acceleration
     BlockVector<double> fsi_acceleration;
+
+    //Vector to store nodal fsi stress
+    std::vector<Vector<double>> fsi_stress;
 
     // Vector which stores Sable processor ids
     std::vector<int> sable_ids;
