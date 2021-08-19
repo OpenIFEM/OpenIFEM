@@ -162,6 +162,12 @@ namespace Solid
                              current_velocity,
                              solution_names,
                              data_component_interpretation);
+    // acceleration
+    solution_names = std::vector<std::string>(spacedim, "acceleration");
+    data_out.add_data_vector(dof_handler,
+                             current_acceleration,
+                             solution_names,
+                             data_component_interpretation);
 
     // material ID
     Vector<float> mat(triangulation.n_active_cells());
