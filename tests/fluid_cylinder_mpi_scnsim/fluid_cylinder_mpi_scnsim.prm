@@ -18,13 +18,13 @@ subsection Simulation
   set Global refinements = 3, 0
 
   # The end time of the simulation in second
-  set End time = 1e-2
+  set End time = 8
 
   # The time step in second
   set Time step size = 1e-2
-
+ 
   # The output interval in second
-  set Output interval = 1e-2
+  set Output interval = 0.4
 
   # Mesh refinement interval in second
   set Refinement interval = 100
@@ -48,10 +48,10 @@ end
 
 subsection Fluid material properties
   # The dynamic viscosity
-  set Dynamic viscosity = 1.8e-4
+  set Dynamic viscosity = 1.0e-3
 
   # Fluid density
-  set Fluid density = 1.3e-3
+  set Fluid density = 1
 end
 
 subsection Fluid solver control
@@ -71,6 +71,7 @@ subsection Fluid Dirichlet BCs
   # will still be used so that the hard-coded values BCs applies to the
   # target boundaries and directions only.
   set Use hard-coded boundary values = 1
+
 
   # Number of boundaries with Dirichlet BCs
   set Number of Dirichlet BCs = 4
