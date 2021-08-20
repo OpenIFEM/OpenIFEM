@@ -59,8 +59,8 @@ int main(int argc, char *argv[])
             time < 2 * dt)
           {
             // For a parabolic velocity profile, Uavg = 2/3 * Umax in
-            // 2D, and 4/9 * Umax in 3D. If nu = 1.8e-4, D = 1.3e-3, then Re
-            // = 7.22 * Uavg
+            // 2D, and 4/9 * Umax in 3D. If nu = 1.0e-3, D = 0.1, then Re
+            // = 100* Uavg
             double Uavg = 0.01;
             double Umax = 9 * Uavg / 4;
             double value = 4 * Umax * p[1] * (0.41 - p[1]) / (0.41 * 0.41);
