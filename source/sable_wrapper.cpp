@@ -784,7 +784,8 @@ namespace Fluid
          ++cell)
       {
         auto ptr = cell_property.get_data(cell);
-        indicator_field[cell->active_cell_index()]= ptr[0]->indicator;
+        //multiply indicator value by solid density
+        indicator_field[cell->active_cell_index()]= ptr[0]->indicator*parameters.solid_rho;
       }  
 
     int sable_ele_in_one_dir= int(sqrt(sable_n_elements));
