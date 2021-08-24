@@ -169,6 +169,8 @@ namespace MPI
         // Defined as 0.5 * \int_S_{in/out}{\rho u1 u_i u_i}dS
         double inlet_flux;
         double outlet_flux;
+        // Turbulent energy efflux
+        double rate_turbulence_efflux;
         // The integral convection term. \int_V{\rho u cdot \Nabla u \cdot u}dV
         double convective_KE;
         // The integral of KE flux through the solid. (should be zero)
@@ -188,6 +190,8 @@ namespace MPI
         double rate_compression_work;
         // Numerical stabilization effects
         double rate_stabilization;
+        // Turbulent momentum transfer
+        double rate_turbulence;
         // Defined as \int_S_{VF}{\tau_{ij} u_i n_j}dS
         double rate_friction_work;
         // Defined as \int_S{p u_i n_i}dS

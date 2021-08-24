@@ -575,6 +575,7 @@ namespace MPI
                          << cv_values.energy.outlet_pressure_work << ","
                          << cv_values.energy.inlet_flux << ","
                          << cv_values.energy.outlet_flux << ","
+                         << cv_values.energy.rate_turbulence_efflux << ","
                          << cv_values.energy.convective_KE << ","
                          << cv_values.energy.penetrating_KE << ","
                          << cv_values.energy.rate_kinetic_energy << ","
@@ -583,6 +584,7 @@ namespace MPI
                          << cv_values.energy.rate_dissipation << ","
                          << cv_values.energy.rate_compression_work << ","
                          << cv_values.energy.rate_stabilization << ","
+                         << cv_values.energy.rate_turbulence << ","
                          << cv_values.energy.rate_friction_work << ","
                          << cv_values.energy.rate_vf_work << ","
                          << cv_values.energy.rate_vf_work_from_solid << ","
@@ -620,12 +622,20 @@ namespace MPI
       return 0.5 * parameters.fluid_rho * vel[q][0] * vel[q].norm_square();
     };
     auto int_pressure_work = [&vel, &pre](int q) { return pre[q] * vel[q][0]; };
+    auto int_turbulence_efflux = [&vel, &vel_grad, &eddy_vis](int q) {
+      double retval = 0.0;
+      for (unsigned d = 0; d < dim; ++d)
+        {
+          retval += eddy_vis[q] * vel_grad[q][d][0] * vel[q][d];
+        }
+      return retval;
+    };
     auto int_friction_work =
-      [&vel, &vel_grad, &eddy_vis, mu = parameters.viscosity](int q) {
+      [&vel, &vel_grad, mu = parameters.viscosity](int q) {
         double retval = 0.0;
         for (unsigned d = 0; d < dim; ++d)
           {
-            retval += (mu + eddy_vis[q]) * vel_grad[q][d][0] * vel[q][d];
+            retval += mu * vel_grad[q][d][0] * vel[q][d];
           }
         return retval;
       };
@@ -638,6 +648,7 @@ namespace MPI
         double KE_flux = 0.0;
         double rate_pressure_work = 0.0;
         double rate_friction_work = 0.0;
+        double rate_turbulence_efflux = 0.0;
         // We don't check localness here because they are local already
         auto cutter = surface_cutters.get_data(f_cell);
         FEValues<dim> dummy_fe_values(mapping,
@@ -692,12 +703,14 @@ namespace MPI
         KE_flux += integrate(int_KE);
         rate_pressure_work += integrate(int_pressure_work);
         rate_friction_work += integrate(int_friction_work);
+        rate_turbulence_efflux += integrate(int_turbulence_efflux);
         return std::make_tuple(volume_flow,
                                pressure_force,
                                momentum_flux,
                                KE_flux,
                                rate_pressure_work,
-                               rate_friction_work);
+                               rate_friction_work,
+                               rate_turbulence_efflux);
       };
     for (auto f_cell : this->inlet_cells)
       {
@@ -708,6 +721,7 @@ namespace MPI
         cv_values.energy.inlet_flux += std::get<3>(increases);
         cv_values.energy.inlet_pressure_work += std::get<4>(increases);
         cv_values.energy.rate_friction_work -= std::get<5>(increases);
+        cv_values.energy.rate_turbulence_efflux -= std::get<6>(increases);
       }
     for (auto f_cell : this->outlet_cells)
       {
@@ -718,6 +732,7 @@ namespace MPI
         cv_values.energy.outlet_flux += std::get<3>(increases);
         cv_values.energy.outlet_pressure_work += std::get<4>(increases);
         cv_values.energy.rate_friction_work += std::get<5>(increases);
+        cv_values.energy.rate_turbulence_efflux += std::get<6>(increases);
       }
   }
 
@@ -803,7 +818,7 @@ namespace MPI
     };
     auto int_rate_dissipation =
       [&vel_grad, &eddy_vis, mu = parameters.viscosity](int q) {
-        return (mu + eddy_vis[q]) * scalar_product(vel_grad[q], vel_grad[q]);
+        return mu * scalar_product(vel_grad[q], vel_grad[q]);
       };
     auto int_rate_compression = [&present_pre, &vel_grad](int q) {
       double retval = 0.0;
@@ -862,6 +877,9 @@ namespace MPI
                 cp_to_cv * (atm + present_pre[q]) * vel_div +
                 present_vel[q] * pre_grad[q]) /
                atm;
+    };
+    auto int_rate_turbulence = [&vel_grad, &eddy_vis](int q) {
+      return eddy_vis[q] * scalar_product(vel_grad[q], vel_grad[q]);
     };
 
     auto int_x_velocity = [&present_vel](int q) { return present_vel[q][0]; };
@@ -949,6 +967,8 @@ namespace MPI
           integrate(int_rate_compression) * volume_fraction;
         cv_values.energy.rate_stabilization +=
           integrate(int_rate_stabilization) * volume_fraction;
+        cv_values.energy.rate_turbulence +=
+          integrate(int_rate_turbulence) * volume_fraction;
         // Compute the gap volume flow
         bool has_left_vertex = false;
         bool has_right_vertex = false;
@@ -1617,6 +1637,7 @@ namespace MPI
                    << "Outlet pressure work,"
                    << "Inlet KE flux,"
                    << "Outlet KE flux,"
+                   << "Rate turbulence efflux,"
                    << "Convective KE,"
                    << "Penetrating KE,"
                    << "Rate KE,"
@@ -1625,6 +1646,7 @@ namespace MPI
                    << "Rate dissipation,"
                    << "Rate compression work,"
                    << "Rate stabilization,"
+                   << "Rate turbulence work,"
                    << "Rate friction work,"
                    << "Rate VF work,"
                    << "Rate VF work from solid,"
@@ -1679,6 +1701,7 @@ namespace MPI
     reduce_internal(energy.outlet_pressure_work);
     reduce_internal(energy.inlet_flux);
     reduce_internal(energy.outlet_flux);
+    reduce_internal(energy.rate_turbulence_efflux);
     // volume integrals
     reduce_internal(VF_volume);
     reduce_internal(momentum.rate_momentum);
@@ -1690,6 +1713,7 @@ namespace MPI
     reduce_internal(energy.rate_dissipation);
     reduce_internal(energy.rate_compression_work);
     reduce_internal(energy.rate_stabilization);
+    reduce_internal(energy.rate_turbulence);
     // KE rate from volume integral
     energy.rate_kinetic_energy =
       (energy.present_KE - energy.previous_KE) / delta_t;
@@ -1736,6 +1760,7 @@ namespace MPI
     energy.outlet_pressure_work = 0.0;
     energy.inlet_flux = 0.0;
     energy.outlet_flux = 0.0;
+    energy.rate_turbulence_efflux = 0.0;
     energy.convective_KE = 0.0;
     energy.penetrating_KE = 0.0;
     energy.previous_KE = 0.0;
@@ -1746,6 +1771,7 @@ namespace MPI
     energy.rate_dissipation = 0.0;
     energy.rate_compression_work = 0.0;
     energy.rate_stabilization = 0.0;
+    energy.rate_turbulence = 0.0;
     energy.rate_friction_work = 0.0;
     energy.rate_vf_work = 0.0;
     energy.rate_vf_work_from_solid = 0.0;
