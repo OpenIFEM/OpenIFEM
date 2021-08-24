@@ -758,6 +758,7 @@ namespace MPI
     std::vector<Tensor<2, dim>> vel_grad(fe_values.n_quadrature_points);
     std::vector<Tensor<1, dim>> pre_grad(fe_values.n_quadrature_points);
     std::vector<Tensor<1, dim>> previous_vel(fe_values.n_quadrature_points);
+    std::vector<double> previous_pre(fe_values.n_quadrature_points);
     std::vector<double> eddy_vis(fe_values.n_quadrature_points);
 
     std::vector<std::vector<std::vector<Tensor<1, dim>>>> stress_grad(
@@ -816,10 +817,13 @@ namespace MPI
     auto int_rate_stabilization = [&,
                                    rho = parameters.fluid_rho,
                                    mu = parameters.viscosity](int q) {
+      double vel_div = trace(vel_grad[q]);
       double nu = (mu + eddy_vis[q]) / rho;
       double v_norm = present_vel[q].norm();
       double tau_SUPG{0.0};
       double h{0.0};
+      // Modify the stress
+      vel_div *= (mu + eddy_vis[q]) / mu;
       for (unsigned int a = 0;
            a < fluid_solver.fe.dofs_per_cell / fluid_solver.fe.dofs_per_vertex;
            ++a)
@@ -844,10 +848,20 @@ namespace MPI
         {
           tau_SUPG = time.get_delta_t() / 2;
         };
+      double localRe = v_norm * h / (2 * nu);
+      double z = localRe <= 3 ? (localRe / 3) : 1;
+      double tau_LSIC = h / 2 * v_norm * z;
+      constexpr double cp_to_cv{1.4};
+      constexpr double atm{1013250.0};
       return tau_SUPG * present_vel[q] * vel_grad[q] *
-             (rho * ((present_vel[q] - previous_vel[q]) / time.get_delta_t() +
-                     present_vel[q] * vel_grad[q]) +
-              pre_grad[q] - stress_div[q]);
+               (rho * ((present_vel[q] - previous_vel[q]) / time.get_delta_t() +
+                       present_vel[q] * vel_grad[q]) +
+                pre_grad[q] - stress_div[q]) +
+             (tau_LSIC * rho * vel_div) *
+               ((present_pre[q] - previous_pre[q]) / time.get_delta_t() +
+                cp_to_cv * (atm + present_pre[q]) * vel_div +
+                present_vel[q] * pre_grad[q]) /
+               atm;
     };
 
     auto int_x_velocity = [&present_vel](int q) { return present_vel[q][0]; };
@@ -882,6 +896,8 @@ namespace MPI
           fluid_solver.present_solution, vel_grad);
         fe_values[pressure].get_function_values(fluid_solver.present_solution,
                                                 present_pre);
+        fe_values[pressure].get_function_values(fluid_previous_solution,
+                                                previous_pre);
         fe_values[pressure].get_function_gradients(
           fluid_solver.present_solution, pre_grad);
 

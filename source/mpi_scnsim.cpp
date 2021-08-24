@@ -532,6 +532,9 @@ namespace Fluid
                           current_stress_divergence[q][i] +=
                             current_stress_gradients[i][j][q][j];
                         }
+                      // Modify the stress
+                      current_stress_divergence[q][i] *=
+                        viscosity / parameters.viscosity;
                     }
 
                   for (unsigned int i = 0; i < dofs_per_cell; ++i)
