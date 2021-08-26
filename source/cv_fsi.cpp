@@ -837,8 +837,6 @@ namespace MPI
       double v_norm = present_vel[q].norm();
       double tau_SUPG{0.0};
       double h{0.0};
-      // Modify the stress
-      vel_div *= (mu + eddy_vis[q]) / mu;
       for (unsigned int a = 0;
            a < fluid_solver.fe.dofs_per_cell / fluid_solver.fe.dofs_per_vertex;
            ++a)
@@ -928,6 +926,12 @@ namespace MPI
               }
           }
 
+        if (fluid_solver.turbulence_model)
+          {
+            scalar_fe_values.get_function_values(
+              fluid_solver.turbulence_model->get_eddy_viscosity(), eddy_vis);
+          }
+
         // Compute the divergence of nodal stresses. This is used in
         // the stabilization terms.
         for (unsigned q = 0; q < fe_values.n_quadrature_points; ++q)
@@ -939,13 +943,9 @@ namespace MPI
                   {
                     stress_div[q][i] += stress_grad[i][j][q][j];
                   }
+                stress_div[q][i] *=
+                  (parameters.viscosity + eddy_vis[q]) / parameters.viscosity;
               }
-          }
-
-        if (fluid_solver.turbulence_model)
-          {
-            scalar_fe_values.get_function_values(
-              fluid_solver.turbulence_model->get_eddy_viscosity(), eddy_vis);
           }
 
         // Integrate the quantities on the cells
