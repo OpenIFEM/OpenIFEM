@@ -193,6 +193,9 @@ namespace Fluid
     present_solution.reinit(dofs_per_block);
     solution_increment.reinit(dofs_per_block);
     system_rhs.reinit(dofs_per_block);
+    fsi_force.reinit(dofs_per_block);
+    fsi_force_acceleration_part.reinit(dofs_per_block);
+    fsi_force_stress_part.reinit(dofs_per_block);
 
     // Compute the sparsity pattern for mass schur in advance.
     // It should be the same as \f$BB^T\f$.
@@ -282,14 +285,34 @@ namespace Fluid
                              solution_names,
                              DataOut<dim>::type_dof_data,
                              data_component_interpretation);
-    // velocity
-    Vector<double> fsi_force;
-    fsi_force.reinit(dofs_per_block[0]);
+    // fsi force
+    Vector<double> fsi_force_output;
+    fsi_force_output.reinit(dofs_per_block[0]);
     for(unsigned int i=0; i<dofs_per_block[0];i++)
-      fsi_force[i]=system_rhs[i];
-    solution_names = std::vector<std::string>(dim, "FSI_force");
+      fsi_force_output[i]=fsi_force[i];
+    solution_names = std::vector<std::string>(dim, "fsi_force");
     data_out.add_data_vector(dof_handler,
                              fsi_force,
+                             solution_names,
+                             data_component_interpretation);
+
+    Vector<double> fsi_acceleration_output;
+    fsi_acceleration_output.reinit(dofs_per_block[0]);
+    for(unsigned int i=0; i<dofs_per_block[0];i++)
+      fsi_acceleration_output[i]=fsi_force_acceleration_part[i];
+    solution_names = std::vector<std::string>(dim, "fsi_acceleration");
+    data_out.add_data_vector(dof_handler,
+                             fsi_acceleration_output,
+                             solution_names,
+                             data_component_interpretation);
+
+    Vector<double> fsi_stress_output;
+    fsi_stress_output.reinit(dofs_per_block[0]);
+    for(unsigned int i=0; i<dofs_per_block[0];i++)
+      fsi_stress_output[i]=fsi_force_stress_part[i];
+    solution_names = std::vector<std::string>(dim, "fsi_stress");
+    data_out.add_data_vector(dof_handler,
+                             fsi_stress_output,
                              solution_names,
                              data_component_interpretation);
 

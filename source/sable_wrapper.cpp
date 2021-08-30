@@ -157,6 +157,9 @@ namespace Fluid
     system_matrix = 0;
     mass_matrix = 0;
     system_rhs = 0;
+    fsi_force =0;
+    fsi_force_acceleration_part =0;
+    fsi_force_stress_part=0;
 
     FEValues<dim> fe_values(fe,
                             volume_quad_formula,
@@ -187,6 +190,8 @@ namespace Fluid
     FullMatrix<double> local_matrix(dofs_per_cell, dofs_per_cell);
     FullMatrix<double> local_mass_matrix(dofs_per_cell, dofs_per_cell);
     Vector<double> local_rhs(dofs_per_cell);
+    Vector<double> local_rhs_acceleration_part(dofs_per_cell);
+    Vector<double> local_rhs_stress_part(dofs_per_cell);
 
     std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
@@ -217,6 +222,8 @@ namespace Fluid
         local_matrix = 0;
         local_mass_matrix = 0;
         local_rhs = 0;
+        local_rhs_acceleration_part=0;
+        local_rhs_stress_part=0;
 
         if(ind==1)
         {  
@@ -320,55 +327,24 @@ namespace Fluid
                       (scalar_product(grad_phi_u[i], fsi_stress_tensor) +
                        fsi_acc_values[q] * phi_u[i]) *
                       fe_values.JxW(q);
-                  }
-              }
-          }
-
-        // Impose pressure boundary here if specified, loop over faces on the
-        // cell
-        // and apply pressure boundary conditions:
-        // \f$\int_{\Gamma_n} -p\bold{n}d\Gamma\f$
-        if (parameters.n_fluid_neumann_bcs != 0)
-          {
-            for (unsigned int face_n = 0;
-                 face_n < GeometryInfo<dim>::faces_per_cell;
-                 ++face_n)
-              {
-                if (cell->at_boundary(face_n) &&
-                    parameters.fluid_neumann_bcs.find(
-                      cell->face(face_n)->boundary_id()) !=
-                      parameters.fluid_neumann_bcs.end())
-                  {
-                    fe_face_values.reinit(cell, face_n);
-                    unsigned int p_bc_id = cell->face(face_n)->boundary_id();
-                    double boundary_values_p =
-                      parameters.fluid_neumann_bcs[p_bc_id];
-                    for (unsigned int q = 0; q < n_face_q_points; ++q)
-                      {
-                        for (unsigned int i = 0; i < dofs_per_cell; ++i)
-                          {
-                            local_rhs(i) +=
-                              -(fe_face_values[velocities].value(i, q) *
-                                fe_face_values.normal_vector(q) *
-                                boundary_values_p * fe_face_values.JxW(q));
-                          }
-                      }
+                    local_rhs_acceleration_part(i) +=
+                       (fsi_acc_values[q] * phi_u[i]) *
+                      fe_values.JxW(q);  
+                    local_rhs_stress_part(i) +=
+                      (scalar_product(grad_phi_u[i], fsi_stress_tensor)) *
+                      fe_values.JxW(q);  
                   }
               }
           }
 
         cell->get_dof_indices(local_dof_indices);
-
-        const AffineConstraints<double> &constraints_used =
-          use_nonzero_constraints ? nonzero_constraints : zero_constraints;
-        constraints_used.distribute_local_to_global(local_matrix,
-                                                    local_rhs,
-                                                    local_dof_indices,
-                                                    system_matrix,
-                                                    system_rhs,
-                                                    true);
-        constraints_used.distribute_local_to_global(
-          local_mass_matrix, local_dof_indices, mass_matrix);
+        for(int i=0; i<dofs_per_cell; i++)
+        {
+          system_rhs[local_dof_indices[i]] += local_rhs(i);
+          fsi_force[local_dof_indices[i]] += local_rhs(i);
+          fsi_force_acceleration_part[local_dof_indices[i]] += local_rhs_acceleration_part(i);
+          fsi_force_stress_part[local_dof_indices[i]] += local_rhs_stress_part(i);
+        }
       }
   }
 
@@ -720,7 +696,7 @@ namespace Fluid
                   //Sable vertex indexing is same as deal.ii
                   int sable_force_index = cell->vertex_index(v)*dim+i;
                   int openifem_force_index = cell->vertex_dof_index(v,i);
-                  sable_fsi_force[sable_force_index]=system_rhs[openifem_force_index];
+                  sable_fsi_force[sable_force_index]=fsi_force[openifem_force_index];
                 }
               }
           }

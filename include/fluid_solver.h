@@ -138,6 +138,10 @@ namespace Fluid
     BlockVector<double> present_solution;
     BlockVector<double> solution_increment;
     BlockVector<double> system_rhs;
+    // Assembled FSI force sent to Sable
+    BlockVector<double> fsi_force;
+    BlockVector<double> fsi_force_acceleration_part;
+    BlockVector<double> fsi_force_stress_part;
 
     /**
      * Nodal strain and stress obtained by taking the average of surrounding

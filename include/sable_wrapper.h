@@ -87,6 +87,10 @@ namespace Fluid
     using FluidSolver<dim>::cell_property;
     using FluidSolver<dim>::boundary_values;
     using FluidSolver<dim>::stress;
+    using FluidSolver<dim>::fsi_force;
+    using FluidSolver<dim>::fsi_force_acceleration_part;
+    using FluidSolver<dim>::fsi_force_stress_part;
+
 
     /// Specify the sparsity pattern and reinit matrices and vectors based on
     /// the dofs and constraints.

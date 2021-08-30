@@ -91,6 +91,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
   std::vector<double> p(unit_points.size());
   std::vector<Tensor<2, dim>> grad_v(unit_points.size());
   std::vector<Tensor<1, dim>> v(unit_points.size());
+  std::vector<Tensor<1, dim>> dv(unit_points.size());
  
   MappingQGeneric<dim> mapping(parameters.fluid_velocity_degree);
   Quadrature<dim> dummy_q(unit_points);
@@ -188,6 +189,9 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
           // Fluid velocity at support points
           dummy_fe_values[velocities].get_function_values(
             sable_solver.present_solution, v);
+          // Fluid velocity increment at support points
+          dummy_fe_values[velocities].get_function_values(
+            sable_solver.solution_increment, dv);
           // Fluid velocity gradient at support points
           dummy_fe_values[velocities].get_function_gradients(
             sable_solver.present_solution, grad_v);
@@ -247,6 +251,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
               // Fluid total acceleration at support points
               Tensor<1, dim> fluid_acc =
                 (vs - v[i]) / time.get_delta_t() + grad_v[i] * v[i];
+                //(dv[i]-v[i]) / time.get_delta_t() + grad_v[i] * v[i];
               auto line = dof_indices[i];
               // Note that we are setting the value of the constraint to the
               // velocity delta!
