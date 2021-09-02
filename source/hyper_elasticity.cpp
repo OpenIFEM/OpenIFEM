@@ -178,10 +178,10 @@ namespace Solid
 
     update_strain_and_stress();
 
-    //if (time.time_to_output())
-    //  {
+    if((int(time.get_timestep()) % int(parameters.output_interval))==0)
+      {
         this->output_results(time.get_timestep());
-    //  }
+      }
   }
 
   template <int dim>

@@ -251,7 +251,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
               // Fluid total acceleration at support points
               Tensor<1, dim> fluid_acc =
                 (vs - v[i]) / time.get_delta_t() + grad_v[i] * v[i];
-                //(dv[i]-v[i]) / time.get_delta_t() + grad_v[i] * v[i];
+                //(dv[i]) / time.get_delta_t() + grad_v[i] * v[i];
               auto line = dof_indices[i];
               // Note that we are setting the value of the constraint to the
               // velocity delta!

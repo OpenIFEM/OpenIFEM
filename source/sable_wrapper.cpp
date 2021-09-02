@@ -422,7 +422,10 @@ namespace Fluid
                   << "Received solution from Sable at time step = " << time.get_timestep()
                   << ", at t = " << std::scientific << time.current() << std::endl;
         // Output
-        output_results(time.get_timestep());
+        if((int(time.get_timestep()) % int(parameters.output_interval))==0)
+          {         
+            output_results(time.get_timestep());
+          }  
       }
   }
 
