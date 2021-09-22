@@ -118,7 +118,7 @@ namespace Fluid
       inner_zero.close();
       inner_nonzero.close();
       nonzero_constraints.merge(
-        inner_zero,
+        inner_nonzero,
         AffineConstraints<double>::MergeConflictBehavior::right_object_wins);
       zero_constraints.merge(
         inner_zero,
