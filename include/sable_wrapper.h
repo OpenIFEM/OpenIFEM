@@ -147,6 +147,9 @@ namespace Fluid
     //Vector to store nodal fsi stress
     std::vector<Vector<double>> fsi_stress;
 
+    //Vector to store Dirichlet bc values for artificial fluid
+    BlockVector<double> fsi_velocity;
+
     // Vector which stores Sable processor ids
     std::vector<int> sable_ids;
 
@@ -173,10 +176,10 @@ namespace Fluid
 
     // Send solution to Sable
     void send_data(double ** send_buffer, const std::vector <int> & cmapp, const std::vector <int> & cmapp_sizes);
-
+  
     void send_fsi_force(const int& sable_n_nodes, const int& sable_n_nodes_one_dir);
 
-    void send_indicator(const int& sable_n_elements);
+    void send_indicator(const int& sable_n_elements, const int& sable_n_nodes, const int& sable_n_nodes_one_dir);
 
     /*! \brief Block preconditioner for the system
      *

@@ -68,6 +68,8 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
   //inner_zero.reinit(fluid_solver.locally_relevant_dofs);
   BlockVector<double> tmp_fsi_acceleration;
   tmp_fsi_acceleration.reinit(sable_solver.dofs_per_block);
+  BlockVector<double> tmp_fsi_velocity;
+  tmp_fsi_velocity.reinit(sable_solver.dofs_per_block);
 
   Vector<double> localized_solid_velocity(solid_solver.current_velocity);
   Vector<double> localized_solid_acceleration(
@@ -257,6 +259,9 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
               // velocity delta!
               tmp_fsi_acceleration(line) =
                 parameters.solid_rho*(fluid_acc[index] - solid_acc[index]);
+              tmp_fsi_velocity(line) =
+                vs[index];  
+
             }
         }
       // Dirichlet BCs
@@ -267,6 +272,8 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
     }
   tmp_fsi_acceleration.compress(VectorOperation::insert);
   sable_solver.fsi_acceleration = tmp_fsi_acceleration;
+  tmp_fsi_velocity.compress(VectorOperation::insert);
+  sable_solver.fsi_velocity = tmp_fsi_velocity;
   if (use_dirichlet_bc)
     {
       
@@ -318,7 +325,7 @@ void OpenIFEM_Sable_FSI<dim>::run()
       update_indicator();
       find_fluid_bc();
       sable_solver.send_fsi_force(sable_solver.sable_no_nodes, sable_solver.sable_no_nodes_one_dir);
-      sable_solver.send_indicator(sable_solver.sable_no_ele);
+      sable_solver.send_indicator(sable_solver.sable_no_ele, sable_solver.sable_no_nodes, sable_solver.sable_no_nodes_one_dir);
       //send_indicator_field
       sable_solver.run_one_step(false);
       first_step=false;

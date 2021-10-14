@@ -139,6 +139,7 @@ namespace Fluid
     newton_update.reinit(dofs_per_block);
     evaluation_point.reinit(dofs_per_block);
     fsi_acceleration.reinit(dofs_per_block);
+    fsi_velocity.reinit(dofs_per_block);
     int stress_vec_size = dim + dim*(dim-1)*0.5;
     fsi_stress = std::vector<Vector<double>>(stress_vec_size, Vector<double>(scalar_dof_handler.n_dofs()));
   }
@@ -406,7 +407,7 @@ namespace Fluid
         if(parameters.simulation_type != "FSI" )
         {  
           send_fsi_force(sable_no_nodes, sable_no_nodes_one_dir);
-          send_indicator(sable_no_ele);
+          send_indicator(sable_no_ele, sable_no_nodes, sable_no_nodes_one_dir);
         }  
         //Recieve no. of nodes and elements from Sable
         sable_no_nodes_one_dir=0;
@@ -684,6 +685,7 @@ namespace Fluid
 
     //Syncronize Sable and OpenIFEM solution
     std::vector<double> sable_fsi_force(triangulation.n_vertices()*dim,0);
+    std::vector<double> sable_fsi_velocity(triangulation.n_vertices()*dim,0);
     std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
     for (auto cell = dof_handler.begin_active();
          cell != dof_handler.end();
@@ -700,19 +702,23 @@ namespace Fluid
                   int sable_force_index = cell->vertex_index(v)*dim+i;
                   int openifem_force_index = cell->vertex_dof_index(v,i);
                   sable_fsi_force[sable_force_index]=fsi_force[openifem_force_index];
+                  sable_fsi_velocity[sable_force_index]=fsi_velocity[openifem_force_index];
                 }
               }
           }
       }
 
     //create send buffer
-    double ** nv_send_buffer = new double*[cmapp.size()];
+    double ** nv_send_buffer_force = new double*[cmapp.size()];
+    double ** nv_send_buffer_vel = new double*[cmapp.size()];
     for(unsigned int ict = 0;ict < cmapp.size();ict ++)
     {
-      nv_send_buffer[ict] = new double[cmapp_sizes[ict]];
+      nv_send_buffer_force[ict] = new double[cmapp_sizes[ict]];
+      nv_send_buffer_vel[ict] = new double[cmapp_sizes[ict]];
       for(unsigned int jct = 0;jct < cmapp_sizes[ict];jct ++)
       {
-        nv_send_buffer[ict][jct]=0;
+        nv_send_buffer_force[ict][jct]=0;
+        nv_send_buffer_vel[ict][jct]=0;
       }
     }
     
@@ -730,34 +736,44 @@ namespace Fluid
         int index= n*dim;
         for(int i=0; i<dim; i++)
         {
-          nv_send_buffer[0][index+i]=sable_fsi_force[node_count*dim +i];
+          nv_send_buffer_force[0][index+i]=sable_fsi_force[node_count*dim +i];
+          nv_send_buffer_vel[0][index+i]=sable_fsi_velocity[node_count*dim +i];
         }
         node_count++;
       }  
     }
 
-    //send data
-    send_data(nv_send_buffer, cmapp,cmapp_sizes);                
+    //send fsi force
+    send_data(nv_send_buffer_force, cmapp,cmapp_sizes); 
+    //send Dirichlet bc values for the artificial fluid
+    send_data(nv_send_buffer_vel, cmapp,cmapp_sizes);                
     
     //delete solution
     for(unsigned ict = 0;ict < cmapp.size();ict ++)
     {
-      delete [] nv_send_buffer[ict];    
+      delete [] nv_send_buffer_force[ict]; 
+      delete [] nv_send_buffer_vel[ict];    
     }
-    delete [] nv_send_buffer;
+    delete [] nv_send_buffer_force;
+    delete [] nv_send_buffer_vel;
   }
 
   template <int dim>
-  void SableWrap<dim>::send_indicator(const int& sable_n_elements)
+  void SableWrap<dim>::send_indicator(const int& sable_n_elements, const int& sable_n_nodes, const int& sable_n_nodes_one_dir)
   {
 
     int sable_indicator_field_size = sable_n_elements;
     std::vector<int> cmapp = sable_ids;
-    std::vector<int> cmapp_sizes;
-    cmapp_sizes.push_back(sable_indicator_field_size);
+    std::vector<int> cmapp_sizes_element;
+    cmapp_sizes_element.push_back(sable_indicator_field_size);
+    std::vector<int> cmapp_sizes_nodal;
+    cmapp_sizes_nodal.push_back(sable_n_nodes);
 
     //create vector of indicator field
     std::vector<double> indicator_field(triangulation.n_quads(),0);
+    std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
+    //create vector of nodal indicator flags
+    std::vector<double> nodal_indicator_field(triangulation.n_vertices(),0);
     for (auto cell = dof_handler.begin_active();
          cell != dof_handler.end();
          ++cell)
@@ -765,6 +781,17 @@ namespace Fluid
         auto ptr = cell_property.get_data(cell);
         //multiply indicator value by solid density
         indicator_field[cell->active_cell_index()]= ptr[0]->indicator*parameters.solid_rho;
+        if(ptr[0]->indicator==1)
+        {  
+          for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_cell; ++v)
+            {
+              if (!vertex_touched[cell->vertex_index(v)])
+                {
+                  vertex_touched[cell->vertex_index(v)] = true;
+                  nodal_indicator_field[cell->vertex_index(v)]=1.0;
+                }
+            }
+        }        
       }  
 
     int sable_ele_in_one_dir= int(sqrt(sable_n_elements));
@@ -788,15 +815,48 @@ namespace Fluid
     double ** nv_send_buffer = new double*[cmapp.size()];
     for(unsigned int ict = 0;ict < cmapp.size();ict ++)
     {
-      nv_send_buffer[ict] = new double[cmapp_sizes[ict]];
-      for(unsigned int jct = 0;jct < cmapp_sizes[ict];jct ++)
+      nv_send_buffer[ict] = new double[cmapp_sizes_element[ict]];
+      for(unsigned int jct = 0;jct < cmapp_sizes_element[ict];jct ++)
       {
         nv_send_buffer[ict][jct]=sable_indicator_field[jct];
       }
     }
     
+    //send indicator field
+    send_data(nv_send_buffer, cmapp, cmapp_sizes_element); 
+    for(unsigned ict = 0;ict < cmapp.size();ict ++)
+    {
+      delete [] nv_send_buffer[ict];    
+    }
+    //create send buffer
+    nv_send_buffer= new double*[cmapp.size()];
+    for(unsigned int ict = 0;ict < cmapp.size();ict ++)
+    {
+      nv_send_buffer[ict] = new double[cmapp_sizes_nodal[ict]];
+      for(unsigned int jct = 0;jct < cmapp_sizes_nodal[ict];jct ++)
+      {
+        nv_send_buffer[ict][jct]=0;
+      }
+    }
+    
+    //add zero nodal indicator corresponding to ghost nodes
+    int node_count=0;
+    for(int n=sable_n_nodes_one_dir; n<sable_n_nodes-sable_n_nodes_one_dir;n++)
+    {
+      //skip border nodes
+      if((n % sable_n_nodes_one_dir==0) || ((n+1) % sable_n_nodes_one_dir==0))
+      {
+        continue;
+      }
+      else
+      {  
+        nv_send_buffer[0][n]=nodal_indicator_field[node_count];
+        node_count++;
+      }  
+    }
+
     //send data
-    send_data(nv_send_buffer, cmapp,cmapp_sizes);                
+    send_data(nv_send_buffer, cmapp, cmapp_sizes_nodal);                
     
     //delete solution
     for(unsigned ict = 0;ict < cmapp.size();ict ++)
@@ -804,6 +864,7 @@ namespace Fluid
       delete [] nv_send_buffer[ict];    
     }
     delete [] nv_send_buffer;
+  
   }
 
   template<int dim>
