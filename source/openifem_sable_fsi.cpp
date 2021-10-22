@@ -284,8 +284,8 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
 template <int dim>
 void OpenIFEM_Sable_FSI<dim>::run()
 {
-  
-  sable_solver.triangulation.refine_global(parameters.global_refinements[0]);
+  // global refinement in sable solver is not possible as it would change the order of nodes 
+  solid_solver.triangulation.refine_global(parameters.global_refinements[1]);
   sable_solver.setup_dofs();
   sable_solver.make_constraints();
   sable_solver.initialize_system();
