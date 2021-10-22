@@ -48,7 +48,8 @@ namespace Fluid
 
       //! Update the moving boundaries
       void update_moving_wall_distance(
-        const std::set<typename Triangulation<dim>::active_vertex_iterator> &);
+        const std::set<typename Triangulation<dim>::active_vertex_iterator> &,
+        const std::list<typename Triangulation<dim>::face_iterator> &);
 
       virtual void update_boundary_condition(bool) override;
 
@@ -96,6 +97,8 @@ namespace Fluid
         // The minimum distance to an FSI interface. This value is computed
         // every time step. It may (FSI) or may not (CFD) present.
         std::optional<double> moving_wall_distance;
+        // Non-dimensionalized wall distance y+ used to enforce wall function.
+        double y_plus;
       };
     };
   } // namespace MPI

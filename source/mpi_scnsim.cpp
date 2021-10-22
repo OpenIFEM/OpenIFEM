@@ -196,9 +196,6 @@ namespace Fluid
                         const Parameters::AllParameters &parameters)
       : FluidSolver<dim>(tria, parameters)
     {
-      AssertThrow(parameters.fluid_velocity_degree ==
-                    parameters.fluid_pressure_degree,
-                  ExcMessage("Velocity degree must the same as pressure!"));
     }
 
     template <int dim>

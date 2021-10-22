@@ -14,29 +14,37 @@ namespace Fluid
     template <int dim>
     void SpalartAllmaras<dim>::update_moving_wall_distance(
       const std::set<typename Triangulation<dim>::active_vertex_iterator>
-        &boundary_vertices)
+        &boundary_vertices,
+      const std::list<typename Triangulation<dim>::face_iterator>
+        &boundary_faces)
     {
       TimerOutput::Scope timer_section(timer, "Update moving wall distance");
 
-      unsigned n_q_points{volume_quad_formula->size()};
-      FEValues<dim> scalar_fe_values(*scalar_fe,
-                                     *volume_quad_formula,
-                                     update_values | update_quadrature_points);
       const std::vector<Point<dim>> &unit_points =
         scalar_fe->get_unit_support_points();
       MappingQGeneric<dim> mapping(parameters->fluid_velocity_degree);
       Quadrature<dim> dummy_q(unit_points);
       FEValues<dim> dummy_fe_values(
         mapping, *scalar_fe, dummy_q, update_quadrature_points);
+      // A pre-defined lambada that computes the dot product
+      auto dot_product =
+        [](Point<dim> p, Point<dim> p1, Point<dim> p2) -> double {
+        // Note p is the point of angle, p1 and p2 are the point on the 2 edges
+        double retval{0.0};
+        for (unsigned d = 0; d < dim; ++d)
+          {
+            retval += (p[d] - p1[d]) * (p[d] - p2[d]);
+          }
+        return retval;
+      };
+      // Loop over fluid cells
       for (auto &f_cell : scalar_dof_handler->active_cell_iterators())
         {
-          if (f_cell->is_locally_owned())
+          if (!f_cell->is_artificial())
             {
               // Compute dists on support points
-              scalar_fe_values.reinit(f_cell);
               dummy_fe_values.reinit(f_cell);
 
-              std::vector<double> dists(unit_points.size());
               auto support_points = dummy_fe_values.get_quadrature_points();
 
               const std::vector<std::shared_ptr<WallDistance>> p =
@@ -44,25 +52,34 @@ namespace Fluid
               for (unsigned v = 0; v < unit_points.size(); ++v)
                 {
                   double min_dist{std::numeric_limits<double>::max()};
+                  const auto &v0 = f_cell->vertex(v);
+                  // Check edge distance first
+                  if (dim == 2)
+                    {
+                      for (const auto &s_face : boundary_faces)
+                        {
+                          const auto &v1 = s_face->vertex(0);
+                          const auto &v2 = s_face->vertex(1);
+                          // Check if the point is in the edge distance region
+                          double v1_product{dot_product(v1, v0, v2)};
+                          if (v1_product > 0 && dot_product(v2, v0, v1) > 0)
+                            {
+                              // Compute edge distance
+                              double current_dist{v0.distance(
+                                v1 + v1_product /
+                                       (s_face->measure() * s_face->measure()) *
+                                       (v2 - v1))};
+                              min_dist = std::min(min_dist, current_dist);
+                            }
+                        }
+                    }
+                  // In the vertex distance region
                   for (const auto &s_vert : boundary_vertices)
                     {
-                      double current_dist =
-                        f_cell->vertex(v).distance(s_vert->vertex(0));
+                      double current_dist = v0.distance(s_vert->vertex(0));
                       min_dist = std::min(min_dist, current_dist);
                     }
-                  dists[v] = min_dist;
-                }
-              // Interpolate dists onto quadrature points
-              for (unsigned q = 0; q < n_q_points; ++q)
-                {
-                  p[q]->moving_wall_distance.emplace(0.0);
-                  // Same as using FEValuesViews::Vector<dim,
-                  // spacedim>::get_values_from_local_dof_values()
-                  for (unsigned v = 0; v < unit_points.size(); ++v)
-                    {
-                      p[q]->moving_wall_distance.value() +=
-                        scalar_fe_values.shape_value(v, q) * dists[v];
-                    }
+                  p[v]->moving_wall_distance.emplace(min_dist);
                 }
             }
         }
@@ -256,21 +273,24 @@ namespace Fluid
     {
       pcout << "   Setting up cell property for turbulence model..."
             << std::endl;
-      unsigned n_q_points{volume_quad_formula->size()};
+      auto n_unit_points{scalar_fe->get_unit_support_points().size()};
       for (auto &cell : triangulation->active_cell_iterators())
         {
-          if (cell->is_locally_owned())
+          if (!cell->is_artificial())
             {
-              wall_distance.initialize(cell, n_q_points);
+              wall_distance.initialize(cell, n_unit_points);
               const std::vector<std::shared_ptr<WallDistance>> p =
                 wall_distance.get_data(cell);
-              for (unsigned int q = 0; q < n_q_points; ++q)
+              for (unsigned int v = 0; v < n_unit_points; ++v)
                 {
-                  p[q]->fixed_wall_distance = 0.0;
+                  p[v]->fixed_wall_distance = 0.0;
                   // The moving wall distance is initialized as empty. If
                   // it's not updated, i.e., for a pure fluid simulation, it
                   // will not be considered.
-                  p[q]->moving_wall_distance = {};
+                  p[v]->moving_wall_distance = {};
+                  // y+ is the non-dimensionzalied wall distance used in wall
+                  // function
+                  p[v]->y_plus = 201.0;
                 }
             }
         }
@@ -350,13 +370,12 @@ namespace Fluid
       // Compute minimal distance
       for (auto &cell : scalar_dof_handler->active_cell_iterators())
         {
-          if (cell->is_locally_owned())
+          if (!cell->is_artificial())
             {
               // Compute dists on support points
               scalar_fe_values.reinit(cell);
               dummy_fe_values.reinit(cell);
 
-              std::vector<double> dists(unit_points.size());
               auto support_points = dummy_fe_values.get_quadrature_points();
 
               const std::vector<std::shared_ptr<WallDistance>> p =
@@ -376,19 +395,7 @@ namespace Fluid
                       current_dist = sqrt(current_dist);
                       min_dist = std::min(min_dist, current_dist);
                     }
-                  dists[v] = min_dist;
-                }
-              // Interpolate dists onto quadrature points
-              for (unsigned q = 0; q < n_q_points; ++q)
-                {
-                  p[q]->fixed_wall_distance = 0.0;
-                  // Same as using FEValuesViews::Vector<dim,
-                  // spacedim>::get_values_from_local_dof_values()
-                  for (unsigned v = 0; v < unit_points.size(); ++v)
-                    {
-                      p[q]->fixed_wall_distance +=
-                        scalar_fe_values.shape_value(v, q) * dists[v];
-                    }
+                  p[v]->fixed_wall_distance = min_dist;
                 }
             }
         }
@@ -517,6 +524,9 @@ namespace Fluid
       const double laminar_viscosity = parameters->viscosity;
       const double laminar_nu = laminar_viscosity / parameters->fluid_rho;
 
+      // A vector to store nodal values of nearest wall distance d.
+      std::vector<double> nodal_d(scalar_fe->get_unit_support_points().size());
+
       // For the linearized system, we create temporary storage for present
       // velocity and gradient, current eddy viscosity and gradient. In
       // practice, they are all obtained through their shape functions at
@@ -560,16 +570,26 @@ namespace Fluid
               scalar_fe_values[viscosity].get_function_gradients(
                 evaluation_point, current_nu_gradients);
 
+              // Wall distance. Take the smaller value between fixed and
+              // moving wall distance
+              std::fill_n(nodal_d.begin(), nodal_d.size(), 0.0);
+              for (unsigned v = 0; v < nodal_d.size(); ++v)
+                {
+                  nodal_d[v] = (p[v]->moving_wall_distance.value_or(
+                                  p[v]->fixed_wall_distance + 1.0) <
+                                p[v]->fixed_wall_distance)
+                                 ? p[v]->moving_wall_distance.value()
+                                 : p[v]->fixed_wall_distance;
+                }
+
               for (unsigned int q = 0; q < n_q_points; ++q)
                 {
-                  // Wall distance. Take the smaller value between fixed and
-                  // moving wall distance
-                  const double d = (p[q]->moving_wall_distance.value_or(
-                                      p[q]->fixed_wall_distance + 1.0) <
-                                    p[q]->fixed_wall_distance)
-                                     ? p[q]->moving_wall_distance.value()
-                                     : p[q]->fixed_wall_distance;
-
+                  // Compute nearest wall distance
+                  double d{0.0};
+                  for (unsigned v = 0; v < nodal_d.size(); ++v)
+                    {
+                      d += scalar_fe_values.shape_value(v, q) * nodal_d[v];
+                    }
                   // Evaluate chi (viscosity ratio) and the f coefficients (chi
                   // dependent)
                   const double chi = present_nu_values[q] / laminar_nu;

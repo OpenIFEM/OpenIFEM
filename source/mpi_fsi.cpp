@@ -549,7 +549,8 @@ namespace MPI
     if (auto SA_model = dynamic_cast<Fluid::MPI::SpalartAllmaras<dim> *>(
           fluid_solver.turbulence_model.get()))
       {
-        SA_model->update_moving_wall_distance(solid_boundary_vertices);
+        SA_model->update_moving_wall_distance(solid_boundary_vertices,
+                                              solid_boundaries);
       }
 
     move_solid_mesh(false);
@@ -786,10 +787,6 @@ namespace MPI
   template <int dim>
   void FSI<dim>::collect_solid_boundary_vertices()
   {
-    if (Utilities::MPI::this_mpi_process(mpi_communicator) != 0)
-      {
-        return;
-      }
     unsigned fixed_bc_flag = (1 << dim) - 1;
 
     for (auto &face : solid_solver.triangulation.active_face_iterators())
