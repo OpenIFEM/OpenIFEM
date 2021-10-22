@@ -113,7 +113,7 @@ subsection Solid material properties
   set Solid type = NeoHookean
 
   # Solid density, used by all solid solvers
-  set Solid density = 1
+  set Solid density = 8.9
 
   # E and nu are only used by linearElasticMaterial
   set Young's modulus = 2.5
@@ -121,7 +121,7 @@ subsection Solid material properties
   set Poisson's ratio = 0.25
 
   # A list of parameters used by hyperelasticMaterial
-  set Hyperelastic parameters = 0.5e3, 1.67e3
+  set Hyperelastic parameters = 0.5e10, 1.67e11
 end
 
 subsection Solid solver control

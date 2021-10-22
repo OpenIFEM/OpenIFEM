@@ -130,18 +130,20 @@ int main(int argc, char *argv[])
   double Lf = 20.0;
   // Lagrangian solid domain length 
   double Ls = 5.0;
-  //grid size
-  double h = 0.2;
+  // Eulerian grid size
+  double hf = 0.2;
+  // Lagrangian grid size
+  double hs = 0.5;
   if (params.dimension == 2)
     {
       // Create mesh for Eulerian solid
       Triangulation<2> eul_tria;
           dealii::GridGenerator::subdivided_hyper_rectangle(
             eul_tria,
-            {static_cast<unsigned int>(Lf / h),
-             static_cast<unsigned int>(Lf / h)},
-            Point<2>(-5, -5),
-            Point<2>(-5 + Lf, -5 + Lf),
+            {static_cast<unsigned int>(Lf / hf),
+             static_cast<unsigned int>(Lf / hf)},
+            Point<2>(-5, 0),
+            Point<2>(-5 + Lf, 0 + Lf),
             true);
       // Create Eulerian solid object with Sable wrapper
       Fluid::SableWrap<2> fluid(eul_tria, params, sable_ids);
@@ -149,10 +151,10 @@ int main(int argc, char *argv[])
       Triangulation<2> lag_tria;
       dealii::GridGenerator::subdivided_hyper_rectangle(
             lag_tria,
-            {static_cast<unsigned int>(Ls/h),
-             static_cast<unsigned int>(Ls/h)},
-            Point<2>(2.5, 10),
-            Point<2>(2.5 + Ls, 10 + Ls),
+            {static_cast<unsigned int>(Ls / hs),
+             static_cast<unsigned int>(Ls / hs)},
+            Point<2>(2.4-0.01, 10-0.01),
+            Point<2>(2.4+0.01 + Ls, 10+0.01 + Ls),
             true);
       // Create Lagrangian solid object with hyper elastic material 
       Solid::HyperElasticity<2> solid(lag_tria, params);
