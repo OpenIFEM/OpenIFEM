@@ -125,7 +125,7 @@ namespace Solid
   {
     TimerOutput::Scope timer_section(timer, "Solve linear system");
 
-    SolverControl solver_control(A.m(), 1e-6 * b.l2_norm());
+    SolverControl solver_control(A.m()*100, 1e-12 * b.l2_norm());
     SolverCG<> cg(solver_control);
 
     PreconditionSSOR<> preconditioner;
