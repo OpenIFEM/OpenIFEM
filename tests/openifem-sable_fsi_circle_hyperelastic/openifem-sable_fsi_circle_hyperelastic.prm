@@ -121,7 +121,7 @@ subsection Solid material properties
   set Poisson's ratio = 0.25
 
   # A list of parameters used by hyperelasticMaterial
-  set Hyperelastic parameters = 0.5e10, 1.67e11
+  set Hyperelastic parameters = 4.85e11, 1.35e12
 end
 
 subsection Solid solver control
@@ -129,13 +129,13 @@ subsection Solid solver control
   set Damping = 0.0
 
   # Number of Newton-Raphson iterations allowed, used by hyperelastic solver only
-  set Max Newton iterations = 10
+  set Max Newton iterations = 100
 
   # Displacement error tolerance (relative to the first iteration at each timestep)
-  set Displacement tolerance  = 1.0e-6
+  set Displacement tolerance  = 1.0e-12
 
   # Force residual tolerance (relative to the first iteration at each timestep)
-  set Force tolerance  = 1.0e-6
+  set Force tolerance  = 1.0e-12
 end
 
 # Only homogeneous Dirichlet BC is supported, i.e., the prescribed value is always 0.
