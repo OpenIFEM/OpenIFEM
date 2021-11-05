@@ -361,6 +361,73 @@ namespace Solid
           quad_point_history.get_data(cell);
         Assert(lqph.size() == n_q_points, ExcInternalError());
 
+        // assemble mass matrix
+        for (unsigned int q = 0; q < n_q_points; ++q)
+          {   
+            for (unsigned int k = 0; k < dofs_per_cell; ++k)
+              {
+                phi[q][k] = fe_values[displacement].value(k, q);
+              }
+
+            const double rho = lqph[q]->get_density();
+            const double dt = time.get_delta_t();
+            const double JxW = fe_values.JxW(q);
+
+            for (unsigned int i = 0; i < dofs_per_cell; ++i)
+              {
+                for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                  {
+                    if(initial_step)
+                    {
+                      local_mass(i, j) += rho * phi[q][i] * phi[q][j] * JxW;
+                    }
+                    else
+                    {
+                      local_matrix(i, j) += (rho * phi[q][i] * phi[q][j]) /(beta * dt * dt)*JxW ;
+                    }  
+                  }
+              }
+          }
+
+        // create lumped mass matrix
+        for (unsigned int i = 0; i < dofs_per_cell; ++i)
+          {
+            double sum=0;
+            for (unsigned int j = 0; j < dofs_per_cell; ++j)
+              {
+                if(initial_step)
+                  sum=sum+local_mass(i,j);
+                else
+                  sum=sum+local_matrix(i,j);
+              }
+            for (unsigned int j = 0; j < dofs_per_cell; ++j)
+              {
+                if(initial_step)
+                {  
+                  if(i==j)
+                  { 
+                    local_mass(i,j)=sum; 
+                  }  
+                  else
+                  {
+                    local_mass(i,j)=0;
+                  }
+                }
+                else
+                {
+                  if(i==j)
+                  { 
+                    local_matrix(i,j)=sum; 
+                  }  
+                  else
+                  {
+                    local_matrix(i,j)=0;
+                  }
+
+                }   
+              }  
+          }
+
         for (unsigned int q = 0; q < n_q_points; ++q)
           {
             const Tensor<2, dim> F_inv = lqph[q]->get_F_inv();
@@ -383,17 +450,13 @@ namespace Solid
                   fe.system_to_component_index(i).first;
                 for (unsigned int j = 0; j <= i; ++j)
                   {
-                    if (initial_step)
-                      {
-                        local_mass(i, j) += rho * phi[q][i] * phi[q][j] * JxW;
-                      }
-                    else
+                    
+                    if(!initial_step)
                       {
                         const unsigned int component_j =
                           fe.system_to_component_index(j).first;
                         local_matrix(i, j) +=
-                          (phi[q][i] * phi[q][j] * rho / (beta * dt * dt) +
-                           sym_grad_phi[q][i] * Jc * sym_grad_phi[q][j]) *
+                          (sym_grad_phi[q][i] * Jc * sym_grad_phi[q][j]) *
                           JxW;
                         if (component_i == component_j)
                           {

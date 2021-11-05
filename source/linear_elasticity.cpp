@@ -103,18 +103,10 @@ namespace Solid
                   {
                     for (unsigned int j = 0; j < dofs_per_cell; ++j)
                       {
-                        if (is_initial)
+                        local_matrix[i][j] +=
+                          rho * phi[i] * phi[j] * fe_values.JxW(q);
+                        if(!is_initial)
                           {
-                            local_matrix[i][j] +=
-                              rho * phi[i] * phi[j] * fe_values.JxW(q);
-                          }
-                        else
-                          {
-                            local_matrix[i][j] +=
-                              (rho * phi[i] * phi[j] +
-                               symmetric_grad_phi[i] * elasticity *
-                                 symmetric_grad_phi[j] * beta * dt * dt) *
-                              fe_values.JxW(q);
                             local_stiffness[i][j] +=
                               symmetric_grad_phi[i] * elasticity *
                               symmetric_grad_phi[j] * fe_values.JxW(q);
@@ -208,6 +200,30 @@ namespace Solid
               }
           }
 
+        // create lumped mass matrix
+        if(assemble_matrix)
+          {
+            for (unsigned int i = 0; i < dofs_per_cell; ++i)
+            {
+              double sum=0;
+              for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                {
+                 sum=sum+local_matrix[i][j]; 
+                }
+              for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                {
+                  if(i==j)
+                  { 
+                    local_matrix[i][j]=sum; 
+                  }  
+                  else
+                  {
+                    local_matrix[i][j]=0;
+                  } 
+                }                    
+            }
+          }  
+
         if (assemble_matrix)
           {
             // Now distribute local data to the system, and apply the
@@ -258,6 +274,7 @@ namespace Solid
         this->solve(system_matrix, previous_acceleration, system_rhs);
         // Update the system_matrix
         assemble_system(false);
+        system_matrix.add(time.get_delta_t()*time.get_delta_t()*beta, stiffness_matrix);
         this->output_results(time.get_timestep());
       }
 
