@@ -126,24 +126,50 @@ int main(int argc, char *argv[])
     }
   // Create mesh  
   Parameters::AllParameters params(infile);
+
+  // Recieve Eulerian grid information from SABLE
+  // NOTE: The code works for square grid only
+  // receive coordinates for the lower left corner
+  // initialize coordinates to a large -ve value
+  double x = -1e10;
+  double y = -1e10;
+  double temp_x = x;
+  double temp_y = y;
+  MPI_Allreduce(&x, &temp_x, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+  MPI_Allreduce(&y, &temp_y, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+  x=temp_x;
+  y=temp_y;
+  // recieve grid size
+  double dx=0;
+  double temp_dx=0;
+  MPI_Allreduce(&dx, &temp_dx, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+  dx=temp_dx;
+  // receive no. of cells
+  int nx=0;
+  int temp_nx=0;
+  MPI_Allreduce(&nx, &temp_nx, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+  nx=temp_nx;
+
   // Eulerian solid domain length
-  double Lf = 20.0;
+  //double Lf = 20.0;
   // Lagrangian solid domain length 
   double Ls = 5.0;
   // Eulerian grid size
-  double hf = 0.2;
+  //double hf = 0.2;
   // Lagrangian grid size
   double hs = 0.5;
   if (params.dimension == 2)
     {
       // Create mesh for Eulerian solid
+      Point<2> lower_corner(x,y);
+      Point<2> upper_corner(x+ dx*nx, y+ dx*nx);
       Triangulation<2> eul_tria;
           dealii::GridGenerator::subdivided_hyper_rectangle(
             eul_tria,
-            {static_cast<unsigned int>(Lf / hf),
-             static_cast<unsigned int>(Lf / hf)},
-            Point<2>(-5, 0),
-            Point<2>(-5 + Lf, 0 + Lf),
+            {static_cast<unsigned int>(nx),
+             static_cast<unsigned int>(nx)},
+            lower_corner,
+            upper_corner,
             true);
       // Create Eulerian solid object with Sable wrapper
       Fluid::SableWrap<2> fluid(eul_tria, params, sable_ids);
