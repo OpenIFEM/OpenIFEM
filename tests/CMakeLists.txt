@@ -10,10 +10,10 @@ set(serial_tests acoustic_duct_wave
                  fsi_cavity
                  fsi_gravity
                  fsi_leaflet
-                 openifem-sable_fsi_test
-                 openifem-sable_fsi_circle_hyperelastic
-                 openifem-sable_fsi_circle_linearelastic
-                 openifem-sable_fsi_hollow_circle_hyperelastic
+                 openifem-sable_hollow_circle_hyperelastic
+                 openifem-sable_circle_hyperelastic
+                 openifem-sable_circle_linearelastic                
+                 openifem-sable_square_hyperelastic
                  sable_wrapper_test
                  solid_beam_bending_linearelastic
                  solid_beam_bending_NeoHookean
