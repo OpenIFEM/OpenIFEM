@@ -23,6 +23,7 @@ namespace Parameters
     double refinement_interval;
     double save_interval;
     std::vector<double> gravity;
+    std::vector<double> initial_velocity;
     static void declareParameters(ParameterHandler &);
     void parseParameters(ParameterHandler &);
   };

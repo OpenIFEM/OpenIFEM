@@ -31,6 +31,9 @@ subsection Simulation
 
   # Body force which applies to both fluid and solid (acceleration)
   set Gravity = 10.0, 0.0
+
+  # Initial velocity which only applies to solid
+  set Initial velocity = 0.0, 0.0
 end
 
 # --------------------------------------------------------------------------------
