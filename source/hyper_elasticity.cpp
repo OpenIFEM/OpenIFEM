@@ -66,6 +66,7 @@ namespace Solid
       {
         // Solve for the initial acceleration
         assemble_system(true);
+        calculate_KE();
         this->solve(mass_matrix, previous_acceleration, system_rhs);
         this->output_results(time.get_timestep());
       }
@@ -181,6 +182,7 @@ namespace Solid
     if((int(time.get_timestep()) % int(parameters.output_interval))==0)
       {
         this->output_results(time.get_timestep());
+        calculate_KE();
       }
   }
 
@@ -574,6 +576,35 @@ namespace Solid
       }
 
     timer.leave_subsection();
+  }
+
+  template <int dim>
+  void HyperElasticity<dim>::calculate_KE()
+  {
+    static Vector<double> nodal_mass(dof_handler.n_dofs());
+    Vector<double> ke(dof_handler.n_dofs());
+    if(time.current()==0.0)
+    {
+      for(unsigned int i=0; i<dof_handler.n_dofs();i++)
+      {
+        nodal_mass[i]=mass_matrix.el(i,i);
+        ke[i]=0.5*current_velocity[i]*current_velocity[i]*nodal_mass[i];
+      }  
+      std::ofstream myfile;
+      myfile.open ("KE_solid.txt");
+      myfile << "Time (s)" << "\t" << "Solid Kinetic Energy" << "\n";
+      myfile << time.current() << "\t\t" << ke.l1_norm()<< "\n";
+      myfile.close();
+    }
+    else
+    {
+      for(unsigned int i=0; i<dof_handler.n_dofs();i++)
+        ke[i]=0.5*current_velocity[i]*current_velocity[i]*nodal_mass[i];
+      std::ofstream myfile;
+      myfile.open ("KE_solid.txt", std::ios_base::app);
+      myfile << time.current() << "\t\t" << ke.l1_norm()<< "\n";
+      myfile.close();
+    }
   }
 
   template <int dim>

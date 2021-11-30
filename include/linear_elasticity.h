@@ -99,6 +99,11 @@ namespace Solid
      */
     void run_one_step(bool);
 
+    /**
+     * function to calculate total KE of the solid
+     */ 
+    void calculate_KE();
+
     std::vector<LinearElasticMaterial<dim>> material;
   };
 } // namespace Solid

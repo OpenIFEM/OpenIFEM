@@ -151,6 +151,11 @@ namespace Solid
     void run_one_step(bool);
 
     /**
+     * function to calculate total KE of the solid
+     */ 
+    void calculate_KE();
+
+    /**
      * We store a PointHistory structure at every quadrature point,
      * so that kinematics information like F as well as material properties
      * can be cached.
