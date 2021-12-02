@@ -181,6 +181,13 @@ namespace Fluid
 
     void send_indicator(const int& sable_n_elements, const int& sable_n_nodes, const int& sable_n_nodes_one_dir);
 
+    // Function which finds out ghost nodes and cells ids in Sable mesh
+    void find_ghost_nodes();
+     
+    // Vectors to store non ghost nodes and cells ids 
+    std::vector<int> non_ghost_cells;
+    std::vector<int> non_ghost_nodes;
+
     /*! \brief Block preconditioner for the system
      *
      * A right block preconditioner is defined here:

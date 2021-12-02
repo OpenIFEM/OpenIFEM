@@ -396,6 +396,9 @@ namespace Fluid
         Max(sable_no_nodes_one_dir);
         Max(sable_no_ele);
         Max(sable_no_nodes);
+
+        find_ghost_nodes();
+
         rec_stress(sable_no_ele);
         rec_velocity(sable_no_nodes, sable_no_nodes_one_dir);
         output_results(0);
@@ -481,6 +484,58 @@ namespace Fluid
   }
 
   template <int dim>
+  void SableWrap<dim>::find_ghost_nodes()
+  {
+      
+    int node_z = int(sable_no_nodes/(sable_no_nodes_one_dir * sable_no_nodes_one_dir));
+    int node_z_begin = 0;
+    int node_z_end = node_z;
+
+    int sable_no_el_one_dir = int (pow(sable_no_ele, (1.0/dim)));
+    int ele_z = int(sable_no_ele/(sable_no_el_one_dir * sable_no_el_one_dir));
+    int ele_z_begin = 0;
+    int ele_z_end = ele_z;
+
+    if(dim == 3)
+    {
+      node_z_begin = 1;
+      node_z_end = node_z -1;
+
+      ele_z_begin = 1;
+      ele_z_end = ele_z-1;
+    }
+
+    for(int l= node_z_begin; l<node_z_end; l++)
+    {
+      int cornder_node_id= l*sable_no_nodes_one_dir*sable_no_nodes_one_dir + sable_no_nodes_one_dir+1;
+      for(int i=0; i<sable_no_nodes_one_dir-2; i++)
+      {
+        for(int j=0; j<sable_no_nodes_one_dir-2; j++)
+        {
+          int n = cornder_node_id + j + i*(sable_no_nodes_one_dir);
+          non_ghost_nodes.push_back(n);
+        }
+      }
+    }
+
+    for(int l=ele_z_begin; l<ele_z_end; l++)
+    {
+      int cornder_el_id= l*sable_no_el_one_dir*sable_no_el_one_dir + sable_no_el_one_dir+1;
+      for(int i=0; i<sable_no_el_one_dir-2; i++)
+      {
+        for(int j=0; j<sable_no_el_one_dir-2; j++)
+        {
+          int n = cornder_el_id + j + i*(sable_no_el_one_dir);
+          non_ghost_cells.push_back(n);
+        }
+      }
+    }
+
+    assert(non_ghost_nodes.size()== triangulation.n_vertices());
+    assert(non_ghost_cells.size()== triangulation.n_quads());
+  }
+
+  template <int dim>
   void SableWrap<dim>::rec_velocity(const int& sable_n_nodes, const int& sable_n_nodes_one_dir)
   {
     //Recieve solution
@@ -500,21 +555,14 @@ namespace Fluid
     
     //remove solution from ghost layers of Sable mesh
     std::vector<double> sable_solution;
-    for(int n=sable_n_nodes_one_dir; n<sable_n_nodes-sable_n_nodes_one_dir;n++)
+    for(unsigned int n=0; n<triangulation.n_vertices(); n++)
     {
-      //skip border nodes
-      if((n % sable_n_nodes_one_dir==0) || ((n+1) % sable_n_nodes_one_dir==0))
+      int non_ghost_node_id = non_ghost_nodes[n];
+      int index = non_ghost_node_id*dim;
+      for(unsigned int i=0; i<dim; i++)
       {
-        continue;
+        sable_solution.push_back(nv_rec_buffer[0][index+i]);
       }
-      else
-      {  
-        int index= n*dim;
-        for(int i=0; i<dim; i++)
-        {
-          sable_solution.push_back(nv_rec_buffer[0][index+i]);
-        }
-      }  
     }
     
     assert(sable_solution.size()==vel_size);
@@ -528,7 +576,7 @@ namespace Fluid
          cell != dof_handler.end();
          ++cell)
       {
-        for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_cell; ++v)
+        for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
           {
             if (!vertex_touched[cell->vertex_index(v)])
               {
@@ -575,8 +623,13 @@ namespace Fluid
     std::vector<int> cmapp_sizes;
     cmapp_sizes.push_back(sable_stress_size);
     
-    int openifem_stress_size = triangulation.n_quads()*dim*dim;
-    int openifem_stress_per_ele_size= dim*dim;
+    int openifem_stress_per_ele_size;
+    if(dim ==2)
+      openifem_stress_per_ele_size = 3;
+    else
+      openifem_stress_per_ele_size = 6;
+
+    int openifem_stress_size = triangulation.n_quads()*openifem_stress_per_ele_size;
     
     //create rec buffer
     double ** nv_rec_buffer = new double*[cmapp.size()];
@@ -589,44 +642,39 @@ namespace Fluid
 
     //remove solution from ghost layers of Sable mesh
     std::vector<double> sable_stress;
-    //IMPORTANT NOTE//
-    //This works for square grid//
-    int sable_ele_in_one_dir= int(sqrt(sable_n_elements));
-
-    for(int n=sable_ele_in_one_dir; n<sable_n_elements-sable_ele_in_one_dir;n++)
+    
+    for(unsigned int n=0; n<triangulation.n_quads(); n++)
     {
-      //skip border nodes
-      if((n % sable_ele_in_one_dir==0) || ((n+1) % sable_ele_in_one_dir==0))
+      int non_ghost_cell_id = non_ghost_cells[n];
+      int index = non_ghost_cell_id*sable_stress_per_ele_size;
+      for(unsigned int i=0; i< sable_stress_per_ele_size; i++)
       {
-        continue;
+        sable_stress.push_back(nv_rec_buffer[0][index+i]);
       }
-      else
-      {  
-        int index= n*sable_stress_per_ele_size;
-        for(int i=0; i<sable_stress_per_ele_size; i++)
-        {
-          sable_stress.push_back(nv_rec_buffer[0][index+i]);
-        }
-      }  
     }
+
     assert(sable_stress.size()==triangulation.n_quads()*sable_stress_per_ele_size);
+    
+    std::vector<double> openifem_stress(openifem_stress_size,0);
+
     // Sable stress tensor in 2D: xx yy zz xy
     // Sable stress tensor in 3D: xx yy zz xy yz xz
-    std::vector<double> openifem_stress(openifem_stress_size,0);
+    std::vector<int> stress_sequence;
+    // create stress sequence according to dimension
+    if(dim==2)
+      stress_sequence = {0, 3, 1};
+    else
+      stress_sequence = {0, 3, 1, 5, 4, 2};
+
     for(int i=0; i<triangulation.n_quads();i++)
-    {
-      for(int j=0;j<openifem_stress_per_ele_size;j++)
       {
-        if(j==0)
-          openifem_stress[i*openifem_stress_per_ele_size+j]= sable_stress[i*sable_stress_per_ele_size+j];
-        else if(j==1)
-          openifem_stress[i*openifem_stress_per_ele_size+j]= sable_stress[i*sable_stress_per_ele_size+j+2];
-        else if(j==2)
-          openifem_stress[i*openifem_stress_per_ele_size+j]= sable_stress[i*sable_stress_per_ele_size+j+1];
-        else          
-          openifem_stress[i*openifem_stress_per_ele_size+j]= sable_stress[i*sable_stress_per_ele_size+j-2];
-      }
-    } 
+        int count =0; 
+        for(auto j : stress_sequence)
+        {
+          openifem_stress[i*openifem_stress_per_ele_size+count]= sable_stress[i*sable_stress_per_ele_size+j];
+          count = count +1;
+        }
+      }  
     
     //syncronize solution
     auto cell = dof_handler.begin_active();
@@ -640,7 +688,7 @@ namespace Fluid
         int count=0;
         for (unsigned int i = 0; i < dim; ++i)
           {
-            for (unsigned int j = 0; j < dim; ++j)
+            for (unsigned int j = 0; j <= i; ++j)
               {
                 for (unsigned int k = 0; k < scalar_fe.dofs_per_cell; ++k)
                   {
@@ -655,15 +703,26 @@ namespace Fluid
 
     for (unsigned int i = 0; i < dim; ++i)
       {
-        for (unsigned int j = 0; j < dim; ++j)
+        for (unsigned int j = 0; j <= i; ++j)
           {
             for (unsigned int k = 0; k < scalar_dof_handler.n_dofs(); ++k)
               {
                 stress[i][j][k] /= surrounding_cells[k];
               }
           }
-      }  
-    
+      }
+
+     for (unsigned int i = 0; i < dim; ++i)
+      {
+        for (unsigned int j = 0; j <=i; ++j)
+          {
+            for (unsigned int k = 0; k < scalar_dof_handler.n_dofs(); ++k)
+              {
+                stress[j][i][k] = stress[i][j][k];
+              }
+          }
+      } 
+
     //delete buffer
     for(unsigned ict = 0;ict < cmapp.size();ict ++)
     {
@@ -691,7 +750,7 @@ namespace Fluid
          cell != dof_handler.end();
          ++cell)
       {
-        for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_cell; ++v)
+        for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
           {
             if (!vertex_touched[cell->vertex_index(v)])
               {
@@ -783,7 +842,7 @@ namespace Fluid
         indicator_field[cell->active_cell_index()]= ptr[0]->indicator*parameters.solid_rho;
         if(ptr[0]->indicator==1)
         {  
-          for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_cell; ++v)
+          for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
             {
               if (!vertex_touched[cell->vertex_index(v)])
                 {
