@@ -113,6 +113,13 @@ subsection Spalart Allmaras model
 
   # Coefficient of the laminar viscosity for the initial condition of S-A model
   set Initial condition coefficient = 0.0
+
+  # The effective distance of wall function at the moving (FSI) walls
+  set Wall function effective distance = 1.0
+
+  # The distance away from the moving (FSI) walls where velocities are sampled
+  # to compute shear velocity
+  set Wall function image distance = 0.01
 end
 
 # --------------------------------------------------------------------------------

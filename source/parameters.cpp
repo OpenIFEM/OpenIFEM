@@ -302,6 +302,16 @@ namespace Parameters
                         Patterns::Double(0.0),
                         "Coefficient of the laminar viscosity for the initial "
                         "condition of S-A model");
+      prm.declare_entry(
+        "Wall function effective distance",
+        "0.0",
+        Patterns::Double(0.0),
+        "The effective distance of wall function at the moving (FSI) walls");
+      prm.declare_entry("Wall function image distance",
+                        "0.0",
+                        Patterns::Double(0.0),
+                        "The distance away from the moving (FSI) walls where "
+                        "velocities are sampled to compute shear velocity");
     }
     prm.leave_subsection();
   }
@@ -333,6 +343,10 @@ namespace Parameters
         }
       spalart_allmaras_initial_condition_coefficient =
         prm.get_double("Initial condition coefficient");
+      spalart_allmaras_wall_function_distance =
+        prm.get_double("Wall function effective distance");
+      spalart_allmaras_image_distance =
+        prm.get_double("Wall function image distance");
     }
     prm.leave_subsection();
   }

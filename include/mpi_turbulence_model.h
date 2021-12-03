@@ -49,6 +49,9 @@ namespace Fluid
       //! problems.
       virtual void update_boundary_condition(bool){};
 
+      //! Given the wall velocity and distance. Return the shear velocity
+      virtual double get_shear_velocity(double, double) = 0;
+
       /// Virtual method to be called in fluid solver time loop.
       virtual void run_one_step(bool) = 0;
 

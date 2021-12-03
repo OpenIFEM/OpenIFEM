@@ -50,6 +50,13 @@ namespace MPI
     ~FSI();
 
   protected:
+    using SolidVerticesStorage = std::map<
+      typename Triangulation<dim>::active_vertex_iterator,
+      std::pair<
+        std::list<std::pair<typename Triangulation<dim>::active_cell_iterator,
+                            unsigned int>>,
+        int>>;
+
     /// Collect all the boundary lines in solid triangulation.
     void collect_solid_boundaries();
 
@@ -140,10 +147,15 @@ namespace MPI
 
     // This vector collects the solid boundaries for computing thw winding
     // number.
-    std::list<typename Triangulation<dim>::face_iterator> solid_boundaries;
-    // A collection of moving solid boundary vertices
-    std::set<typename Triangulation<dim>::active_vertex_iterator>
-      solid_boundary_vertices;
+    std::list<std::pair<typename Triangulation<dim>::active_cell_iterator,
+                        unsigned int>>
+      solid_boundaries;
+    // A collection of moving solid boundary vertices and their adjacent free
+    // boundary lines. Also stores their corresponding indices for shear
+    // velocity values in shear_velocities
+    SolidVerticesStorage solid_boundary_vertices;
+    // For wall function
+    Vector<double> shear_velocities;
 
     // A mask that marks local fluid vertices for solid bc interpolation
     // searching.

@@ -18,6 +18,14 @@ namespace Fluid
     {
       MPITurbulenceModelInheritanceMacro();
 
+      // Same as in MPI::FSI<dim>
+      using SolidVerticesStorage = std::map<
+        typename Triangulation<dim>::active_vertex_iterator,
+        std::pair<
+          std::list<std::pair<typename Triangulation<dim>::active_cell_iterator,
+                              unsigned int>>,
+          int>>;
+
     public:
       friend TurbulenceModelFactory<dim>;
 
@@ -48,10 +56,15 @@ namespace Fluid
 
       //! Update the moving boundaries
       void update_moving_wall_distance(
-        const std::set<typename Triangulation<dim>::active_vertex_iterator> &,
-        const std::list<typename Triangulation<dim>::face_iterator> &);
+        const SolidVerticesStorage &,
+        const std::list<
+          std::pair<typename Triangulation<dim>::active_cell_iterator,
+                    unsigned int>> &,
+        const Vector<double> &);
 
       virtual void update_boundary_condition(bool) override;
+
+      virtual double get_shear_velocity(double, double) override;
 
       //! Desctructor
       ~SpalartAllmaras(){};

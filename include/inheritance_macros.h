@@ -99,11 +99,10 @@ private:                                                                       \
 #define MPITurbulenceModelInheritanceMacro()                                   \
 public:                                                                        \
   using TurbulenceModel<dim>::reinit;                                          \
-                                                                               \
-private:                                                                       \
   using TurbulenceModel<dim>::get_eddy_viscosity;                              \
   using TurbulenceModel<dim>::connect_indicator_field;                         \
                                                                                \
+private:                                                                       \
   using TurbulenceModel<dim>::triangulation;                                   \
   using TurbulenceModel<dim>::dof_handler;                                     \
   using TurbulenceModel<dim>::scalar_dof_handler;                              \

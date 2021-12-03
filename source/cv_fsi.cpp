@@ -1361,16 +1361,6 @@ namespace MPI
         }
       return retval;
     };
-    auto int_friction_work =
-      [&present_vel, &vel_grad, &eddy_vis, mu = parameters.viscosity](int q) {
-        double retval = 0.0;
-        for (unsigned d = 0; d < dim; ++d)
-          {
-            retval +=
-              (mu + eddy_vis[q]) * vel_grad[q][d][1] * present_vel[q][d];
-          }
-        return retval;
-      };
 
     auto integrate = [&fe_values](const std::function<double(int)> &quant) {
       double results = 0;
@@ -1456,7 +1446,6 @@ namespace MPI
         double acceleration = 0.0;
         double rate_density = 0.0;
         double rate_friction_head = 0.0;
-        double rate_friction_work = 0.0;
         // Don't account for those partially in contraction region or jet region
         bool contraction_end =
           (region & in_contraction) && (region & not_in_contraction);
@@ -1476,10 +1465,6 @@ namespace MPI
             acceleration = integrate(int_acceleration_head);
             rate_density = integrate(int_density_head);
             rate_friction_head = integrate(int_friction_head);
-            rate_friction_work = integrate(int_friction_work);
-            // Compute integral for friction work in energy equation
-            cv_values.energy.rate_friction_work +=
-              rate_friction_work * area_fraction;
           }
         if (region & in_contraction)
           {
@@ -1516,7 +1501,6 @@ namespace MPI
           double &acc_int,
           double &density_int,
           double &friction_head_int,
-          double &friction_work_int,
           std::tuple<cell_iterator, cell_iterator, double> &cell_tuple) {
         auto &[cell, scalar_cell, fraction] = cell_tuple;
 
@@ -1552,7 +1536,6 @@ namespace MPI
             acc_int += integrate(int_acceleration_head) * area_fraction;
             density_int += integrate(int_density_head) * area_fraction;
             friction_head_int += integrate(int_friction_head) * area_fraction;
-            friction_work_int += integrate(int_friction_work) * area_fraction;
           }
       };
     get_start_end_quantities(cv_values.bernoulli.rate_convection_contraction,
@@ -1560,14 +1543,12 @@ namespace MPI
                              cv_values.bernoulli.acceleration_contraction,
                              cv_values.bernoulli.rate_density_contraction,
                              cv_values.bernoulli.rate_friction_contraction,
-                             cv_values.energy.rate_friction_work,
                              bernoulli_start_end.first);
     get_start_end_quantities(cv_values.bernoulli.rate_convection_jet,
                              cv_values.bernoulli.rate_pressure_grad_jet,
                              cv_values.bernoulli.acceleration_jet,
                              cv_values.bernoulli.rate_density_jet,
                              cv_values.bernoulli.rate_friction_jet,
-                             cv_values.energy.rate_friction_work,
                              bernoulli_start_end.second);
 
     move_solid_mesh(false);
@@ -1584,8 +1565,9 @@ namespace MPI
                              Utilities::int_to_string(time.get_timestep(), 6));
         std::ofstream output_file(filename, std::ios::out);
 
-        for (const auto &v : solid_boundary_vertices)
+        for (const auto &pairs : solid_boundary_vertices)
           {
+            auto &v = pairs.first;
             output_file << v->index() << " " << v->vertex(0) << std::endl;
           }
 

@@ -1,6 +1,8 @@
 #include "mpi_spalart_allmaras.h"
 #include "preconditioner_pilut.h"
 
+#include <sstream>
+
 namespace Fluid
 {
   namespace MPI
@@ -13,10 +15,11 @@ namespace Fluid
 
     template <int dim>
     void SpalartAllmaras<dim>::update_moving_wall_distance(
-      const std::set<typename Triangulation<dim>::active_vertex_iterator>
-        &boundary_vertices,
-      const std::list<typename Triangulation<dim>::face_iterator>
-        &boundary_faces)
+      const SolidVerticesStorage &boundary_vertices,
+      const std::list<
+        std::pair<typename Triangulation<dim>::active_cell_iterator,
+                  unsigned int>> &boundary_faces,
+      const Vector<double> &shear_velocities)
     {
       TimerOutput::Scope timer_section(timer, "Update moving wall distance");
 
@@ -37,6 +40,21 @@ namespace Fluid
           }
         return retval;
       };
+
+      // Get stress tensor from given vertex iterator
+      auto get_shear_velocity =
+        [&boundary_vertices, &shear_velocities](
+          typename Triangulation<dim>::vertex_iterator vertex) {
+          int this_index{boundary_vertices.find(vertex)->second.second};
+          return shear_velocities[this_index];
+        };
+
+      auto compute_y_plus = [&](const double shear_velocity,
+                                const double dist) {
+        return dist * shear_velocity /
+               (parameters->viscosity / parameters->fluid_rho);
+      };
+
       // Loop over fluid cells
       for (auto &f_cell : scalar_dof_handler->active_cell_iterators())
         {
@@ -56,8 +74,9 @@ namespace Fluid
                   // Check edge distance first
                   if (dim == 2)
                     {
-                      for (const auto &s_face : boundary_faces)
+                      for (const auto &[cell, f] : boundary_faces)
                         {
+                          auto s_face = cell->face(f);
                           const auto &v1 = s_face->vertex(0);
                           const auto &v2 = s_face->vertex(1);
                           // Check if the point is in the edge distance region
@@ -65,19 +84,41 @@ namespace Fluid
                           if (v1_product > 0 && dot_product(v2, v0, v1) > 0)
                             {
                               // Compute edge distance
+                              double intersection_ratio{
+                                v1_product /
+                                (s_face->measure() * s_face->measure())};
                               double current_dist{v0.distance(
-                                v1 + v1_product /
-                                       (s_face->measure() * s_face->measure()) *
-                                       (v2 - v1))};
-                              min_dist = std::min(min_dist, current_dist);
+                                v1 + intersection_ratio * (v2 - v1))};
+                              if (current_dist < min_dist)
+                                {
+                                  double shear_velocity_v1 = get_shear_velocity(
+                                    s_face->vertex_iterator(0));
+                                  double shear_velocity_v2 = get_shear_velocity(
+                                    s_face->vertex_iterator(1));
+                                  auto intersection_shear_velocity =
+                                    shear_velocity_v1 +
+                                    (shear_velocity_v2 - shear_velocity_v1) *
+                                      intersection_ratio;
+                                  min_dist = current_dist;
+                                  // Update y_plus
+                                  p[v]->y_plus = compute_y_plus(
+                                    intersection_shear_velocity, min_dist);
+                                }
                             }
                         }
                     }
                   // In the vertex distance region
-                  for (const auto &s_vert : boundary_vertices)
+                  for (const auto &[s_vert, face_and_indices] :
+                       boundary_vertices)
                     {
                       double current_dist = v0.distance(s_vert->vertex(0));
-                      min_dist = std::min(min_dist, current_dist);
+                      if (current_dist < min_dist)
+                        {
+                          min_dist = current_dist;
+                          // Update y_plus
+                          p[v]->y_plus = compute_y_plus(
+                            get_shear_velocity(s_vert), min_dist);
+                        }
                     }
                   p[v]->moving_wall_distance.emplace(min_dist);
                 }
@@ -106,6 +147,12 @@ namespace Fluid
       std::vector<types::global_dof_index> dof_indices(
         scalar_fe->dofs_per_cell);
       std::vector<bool> touched_dofs(scalar_dof_handler->n_dofs(), 0);
+
+      const std::vector<Point<dim>> &unit_points =
+        scalar_fe->get_unit_support_points();
+
+      // von Karman constan for wall function
+      constexpr double kappa{0.41};
       for (const auto &cell : scalar_dof_handler->active_cell_iterators())
         {
           // Ghost cells must be considered
@@ -130,6 +177,31 @@ namespace Fluid
                   inner_nonzero.set_inhomogeneity(line,
                                                   -present_solution(line));
                 }
+              continue;
+            }
+          // Get y plus
+          auto p = wall_distance.get_data(cell);
+          for (unsigned v = 0; v < unit_points.size(); ++v)
+            {
+              cell->get_dof_indices(dof_indices);
+              if (p[v]->moving_wall_distance.value_or(2.0) <
+                    parameters->spalart_allmaras_wall_function_distance &&
+                  p[v]->y_plus < 200.0)
+                {
+                  auto line = dof_indices[v];
+                  if (touched_dofs[line])
+                    {
+                      continue;
+                    }
+                  inner_zero.add_line(line);
+                  inner_nonzero.add_line(line);
+                  touched_dofs[line] = true;
+                  inner_nonzero.set_inhomogeneity(line,
+                                                  kappa * p[v]->y_plus *
+                                                      parameters->viscosity /
+                                                      parameters->fluid_rho -
+                                                    present_solution(line));
+                }
             }
         }
       inner_zero.close();
@@ -140,6 +212,71 @@ namespace Fluid
       zero_constraints.merge(
         inner_zero,
         AffineConstraints<double>::MergeConflictBehavior::right_object_wins);
+    }
+
+    template <int dim>
+    double SpalartAllmaras<dim>::get_shear_velocity(double vel,
+                                                    double init_guess)
+    {
+      // Usually not belong to this process or out of bound
+      if (std::fabs(vel) < 1e-10)
+        {
+          return 0.0;
+        }
+      // Kinematic viscosity
+      const double nu{parameters->viscosity / parameters->fluid_rho};
+      // Image distance
+      const double dist{parameters->spalart_allmaras_image_distance};
+      // If it's in viscous sublayer (y+ < 5, u+ = y+)
+      if (vel * dist / nu < std::sqrt(5.0))
+        {
+          return vel / std::sqrt(vel * dist / nu);
+        }
+      // Threshold for initial guess
+      init_guess = std::max(init_guess, 5.0 * nu / dist);
+      // Constants for the analytical wall velocity profile
+      constexpr double B{5.03339088}, a1{8.14822158}, a2{-6.92870938},
+        b1{7.46008761}, b2{7.46814579}, c1{2.54967735}, c2{1.33016516},
+        c3{3.59945911}, c4{3.63975319};
+      // Avoid using std::pow().
+      auto squared = [](double a) constexpr { return a * a; };
+      // Analytical wall velocity profile
+      auto u_plus =
+        [ B, a1, a2, b1, b2, c1, c2, c3, c4, squared ](double yp) constexpr
+      {
+        return B + c1 * std::log(squared(yp + a1) + squared(b1)) -
+               c2 * std::log(squared(yp + a2) + squared(b2)) -
+               c3 * std::atan2(b1, yp + a1) - c4 * std::atan2(b2, yp + a2);
+      };
+
+      // Derivative of u+ in repect to y+
+      constexpr double kappa{0.41}, c_nu1_cubed{7.1 * 7.1 * 7.1},
+        kappa_cubed{kappa * kappa * kappa};
+      auto dup_dyp = [ kappa_cubed, c_nu1_cubed ](double yp) constexpr
+      {
+        return (kappa_cubed * yp * yp * yp) /
+               (c_nu1_cubed + kappa_cubed * yp * yp * yp);
+      };
+
+      // Newton iteration
+      constexpr int max_iter{30};
+      constexpr double tol{1e-2};
+      // Shear velocity
+      double ut{init_guess};
+      for (int i = 0; i < max_iter; ++i)
+        {
+          double yp = ut * dist / nu;
+          double up = u_plus(yp);
+          double ut_next =
+            ut - (ut * up - vel) / (up + ut * dist / nu * dup_dyp(yp));
+          if (std::abs(ut_next - ut) < tol * std::abs(ut))
+            {
+              ut = ut_next;
+              break;
+            }
+          ut = ut_next;
+        }
+      return ut;
     }
 
     template <int dim>
@@ -522,7 +659,6 @@ namespace Fluid
 
       // The laminar dynamic viscosity (mu) and laminar kinematic viscosity (nu)
       const double laminar_viscosity = parameters->viscosity;
-      const double laminar_nu = laminar_viscosity / parameters->fluid_rho;
 
       // A vector to store nodal values of nearest wall distance d.
       std::vector<double> nodal_d(scalar_fe->get_unit_support_points().size());
@@ -580,6 +716,16 @@ namespace Fluid
                                 p[v]->fixed_wall_distance)
                                  ? p[v]->moving_wall_distance.value()
                                  : p[v]->fixed_wall_distance;
+                }
+              double laminar_nu;
+              if (indicator_function.has_value() &&
+                  (*indicator_function)(cell) == 1)
+                {
+                  laminar_nu = 1 / parameters->fluid_rho;
+                }
+              else
+                {
+                  laminar_nu = laminar_viscosity / parameters->fluid_rho;
                 }
 
               for (unsigned int q = 0; q < n_q_points; ++q)
@@ -724,9 +870,7 @@ namespace Fluid
       SolverControl solver_control(scalar_dof_handler->n_dofs() * 2,
                                    1e-8 * system_rhs.l2_norm());
 
-      // PETScWrappers::PreconditionNone preconditioner;
       PreconditionEuclid preconditioner;
-      // PETScWrappers::PreconditionNone preconditioner;
       preconditioner.initialize(system_matrix);
       // Because PETScWrappers::SolverGMRES requires preconditioner derived
       // from PETScWrappers::PreconditionBase, we use dealii SolverFGMRES.
