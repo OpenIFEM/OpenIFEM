@@ -782,24 +782,15 @@ namespace Fluid
     }
     
     //add zero nodal forces corresponding to ghost nodes
-    int node_count=0;
-    for(int n=sable_n_nodes_one_dir; n<sable_n_nodes-sable_n_nodes_one_dir;n++)
+    for(unsigned int n=0; n<triangulation.n_vertices(); n++)
     {
-      //skip border nodes
-      if((n % sable_n_nodes_one_dir==0) || ((n+1) % sable_n_nodes_one_dir==0))
+      int non_ghost_node_id = non_ghost_nodes[n];
+      int index = non_ghost_node_id*dim;
+      for(unsigned int i=0; i<dim; i++)
       {
-        continue;
+        nv_send_buffer_force[0][index+i]=sable_fsi_force[n*dim +i];
+        nv_send_buffer_vel[0][index+i]=sable_fsi_velocity[n*dim +i];
       }
-      else
-      {  
-        int index= n*dim;
-        for(int i=0; i<dim; i++)
-        {
-          nv_send_buffer_force[0][index+i]=sable_fsi_force[node_count*dim +i];
-          nv_send_buffer_vel[0][index+i]=sable_fsi_velocity[node_count*dim +i];
-        }
-        node_count++;
-      }  
     }
 
     //send fsi force
@@ -853,21 +844,12 @@ namespace Fluid
         }        
       }  
 
-    int sable_ele_in_one_dir= int(sqrt(sable_n_elements));
     std::vector<double> sable_indicator_field(sable_indicator_field_size,0);
-    int count =0;
-    for(int n=sable_ele_in_one_dir; n<sable_n_elements-sable_ele_in_one_dir;n++)
+
+    for(unsigned int n=0; n<triangulation.n_quads(); n++)
     {
-      //skip border nodes
-      if((n % sable_ele_in_one_dir==0) || ((n+1) % sable_ele_in_one_dir==0))
-      {
-        continue;
-      }
-      else
-      {  
-        sable_indicator_field[n]=indicator_field[count];
-        count++;
-      }  
+      int non_ghost_cell_id = non_ghost_cells[n];
+      sable_indicator_field[non_ghost_cell_id]= indicator_field[n];
     }
     
     //create send buffer
@@ -899,19 +881,10 @@ namespace Fluid
     }
     
     //add zero nodal indicator corresponding to ghost nodes
-    int node_count=0;
-    for(int n=sable_n_nodes_one_dir; n<sable_n_nodes-sable_n_nodes_one_dir;n++)
+    for(unsigned int n=0; n<triangulation.n_vertices(); n++)
     {
-      //skip border nodes
-      if((n % sable_n_nodes_one_dir==0) || ((n+1) % sable_n_nodes_one_dir==0))
-      {
-        continue;
-      }
-      else
-      {  
-        nv_send_buffer[0][n]=nodal_indicator_field[node_count];
-        node_count++;
-      }  
+      int non_ghost_node_id = non_ghost_nodes[n];
+      nv_send_buffer[0][non_ghost_node_id]= nodal_indicator_field[n];
     }
 
     //send data
