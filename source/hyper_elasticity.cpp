@@ -179,10 +179,11 @@ namespace Solid
 
     update_strain_and_stress();
 
+    calculate_KE();
+
     if((int(time.get_timestep()) % int(parameters.output_interval))==0)
       {
         this->output_results(time.get_timestep());
-        calculate_KE();
       }
   }
 
@@ -592,8 +593,8 @@ namespace Solid
       }  
       std::ofstream myfile;
       myfile.open ("KE_solid.txt");
-      myfile << "Time (s)" << "\t" << "Solid Kinetic Energy" << "\n";
-      myfile << time.current() << "\t\t" << ke.l1_norm()<< "\n";
+      myfile << "Time" << "\t" << "Solid KE" << "\n";
+      myfile << time.current() << "\t" << ke.l1_norm()<< "\n";
       myfile.close();
     }
     else
@@ -602,7 +603,7 @@ namespace Solid
         ke[i]=0.5*current_velocity[i]*current_velocity[i]*nodal_mass[i];
       std::ofstream myfile;
       myfile.open ("KE_solid.txt", std::ios_base::app);
-      myfile << time.current() << "\t\t" << ke.l1_norm()<< "\n";
+      myfile << time.current() << "\t" << ke.l1_norm()<< "\n";
       myfile.close();
     }
   }
