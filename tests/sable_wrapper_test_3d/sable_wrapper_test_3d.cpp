@@ -152,12 +152,12 @@ int main(int argc, char *argv[])
   MPI_Allreduce(&n, &temp_n, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
   n=temp_n;
 
-  if (params.dimension == 2)
+  if (params.dimension == 3)
     {
       // Create mesh for Eulerian solid
-      Point<2> lower_corner(x,y,z);
-      Point<2> upper_corner(x+ h*n, y+ h*n, z+h*n);
-      Triangulation<2> eul_tria;
+      Point<3> lower_corner(x,y,z);
+      Point<3> upper_corner(x+ h*n, y+ h*n, z+h*n);
+      Triangulation<3> eul_tria;
           dealii::GridGenerator::subdivided_hyper_rectangle(
             eul_tria,
             {static_cast<unsigned int>(n),
@@ -167,7 +167,7 @@ int main(int argc, char *argv[])
             upper_corner,
             true);
       // Create Eulerian solid object with Sable wrapper
-      Fluid::SableWrap<2> fluid(eul_tria, params, sable_ids);
+      Fluid::SableWrap<3> fluid(eul_tria, params, sable_ids);
       fluid.run();
      
     }
