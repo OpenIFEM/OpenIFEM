@@ -185,7 +185,7 @@ namespace Solid
                   }
                 else if (parameters.simulation_type == "FSI")
                   {
-                    traction = p[face]->fsi_traction;
+                    traction = p[face]->fsi_traction[q];
                   }
 
                 for (unsigned int j = 0; j < dofs_per_cell; ++j)
