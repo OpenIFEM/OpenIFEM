@@ -491,7 +491,12 @@ namespace Fluid
     int node_z_begin = 0;
     int node_z_end = node_z;
 
-    int sable_no_el_one_dir = int (pow(sable_no_ele, (1.0/dim)));
+    int sable_no_el_one_dir;
+    if(dim == 2)
+      sable_no_el_one_dir = int (std::sqrt(sable_no_ele));
+    else
+      sable_no_el_one_dir = int (std::cbrt(sable_no_ele));
+
     int ele_z = int(sable_no_ele/(sable_no_el_one_dir * sable_no_el_one_dir));
     int ele_z_begin = 0;
     int ele_z_end = ele_z;
@@ -532,7 +537,7 @@ namespace Fluid
     }
 
     assert(non_ghost_nodes.size()== triangulation.n_vertices());
-    assert(non_ghost_cells.size()== triangulation.n_quads());
+    assert(non_ghost_cells.size()== triangulation.n_cells());
   }
 
   template <int dim>
@@ -629,7 +634,7 @@ namespace Fluid
     else
       openifem_stress_per_ele_size = 6;
 
-    int openifem_stress_size = triangulation.n_quads()*openifem_stress_per_ele_size;
+    int openifem_stress_size = triangulation.n_cells()*openifem_stress_per_ele_size;
     
     //create rec buffer
     double ** nv_rec_buffer = new double*[cmapp.size()];
@@ -643,7 +648,7 @@ namespace Fluid
     //remove solution from ghost layers of Sable mesh
     std::vector<double> sable_stress;
     
-    for(unsigned int n=0; n<triangulation.n_quads(); n++)
+    for(unsigned int n=0; n<triangulation.n_cells(); n++)
     {
       int non_ghost_cell_id = non_ghost_cells[n];
       int index = non_ghost_cell_id*sable_stress_per_ele_size;
@@ -653,7 +658,7 @@ namespace Fluid
       }
     }
 
-    assert(sable_stress.size()==triangulation.n_quads()*sable_stress_per_ele_size);
+    assert(sable_stress.size()==triangulation.n_cells()*sable_stress_per_ele_size);
     
     std::vector<double> openifem_stress(openifem_stress_size,0);
 
@@ -666,7 +671,7 @@ namespace Fluid
     else
       stress_sequence = {0, 3, 1, 5, 4, 2};
 
-    for(int i=0; i<triangulation.n_quads();i++)
+    for(int i=0; i<triangulation.n_cells();i++)
       {
         int count =0; 
         for(auto j : stress_sequence)
@@ -820,7 +825,7 @@ namespace Fluid
     cmapp_sizes_nodal.push_back(sable_n_nodes);
 
     //create vector of indicator field
-    std::vector<double> indicator_field(triangulation.n_quads(),0);
+    std::vector<double> indicator_field(triangulation.n_cells(),0);
     std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
     //create vector of nodal indicator flags
     std::vector<double> nodal_indicator_field(triangulation.n_vertices(),0);
@@ -846,7 +851,7 @@ namespace Fluid
 
     std::vector<double> sable_indicator_field(sable_indicator_field_size,0);
 
-    for(unsigned int n=0; n<triangulation.n_quads(); n++)
+    for(unsigned int n=0; n<triangulation.n_cells(); n++)
     {
       int non_ghost_cell_id = non_ghost_cells[n];
       sable_indicator_field[non_ghost_cell_id]= indicator_field[n];
