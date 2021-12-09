@@ -70,7 +70,7 @@ namespace Fluid
               for (unsigned v = 0; v < unit_points.size(); ++v)
                 {
                   double min_dist{std::numeric_limits<double>::max()};
-                  const auto &v0 = f_cell->vertex(v);
+                  const auto &v0 = dummy_fe_values.get_quadrature_points()[v];
                   // Check edge distance first
                   if (dim == 2)
                     {
