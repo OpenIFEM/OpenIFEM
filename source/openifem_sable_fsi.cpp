@@ -31,11 +31,11 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
 {
   TimerOutput::Scope timer_section(timer, "Update indicator");
   move_solid_mesh(true);
-  for (auto f_cell = fluid_solver.dof_handler.begin_active();
-       f_cell != fluid_solver.dof_handler.end();
+  for (auto f_cell = sable_solver.dof_handler.begin_active();
+       f_cell != sable_solver.dof_handler.end();
        ++f_cell)
     {
-      auto p = fluid_solver.cell_property.get_data(f_cell);
+      auto p = sable_solver.cell_property.get_data(f_cell);
       int inside_count = 0;
       for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
         {
@@ -158,7 +158,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
         for (unsigned int k = j; k < dim; k++)
         {
           Vector<double> s_stress_component(1);
-          scalar_interpolator.point_value(fluid_solver.stress[j][k],
+          scalar_interpolator.point_value(sable_solver.stress[j][k],
                                                       s_stress_component);
           sable_solver.fsi_stress[stress_index][scalar_dof_indices[i]]= f_cell_stress[stress_index][i] - s_stress_component[0];
           stress_index++;
@@ -293,8 +293,8 @@ void OpenIFEM_Sable_FSI<dim>::run()
   solid_solver.initialize_system();
 
   std::cout << "Number of fluid active cells and dofs: ["
-            << fluid_solver.triangulation.n_active_cells() << ", "
-            << fluid_solver.dof_handler.n_dofs() << "]" << std::endl
+            << sable_solver.triangulation.n_active_cells() << ", "
+            << sable_solver.dof_handler.n_dofs() << "]" << std::endl
             << "Number of solid active cells and dofs: ["
             << solid_solver.triangulation.n_active_cells() << ", "
             << solid_solver.dof_handler.n_dofs() << "]" << std::endl;
