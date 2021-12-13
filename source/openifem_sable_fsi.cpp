@@ -30,23 +30,53 @@ template <int dim>
 void OpenIFEM_Sable_FSI<dim>::update_indicator()
 {
   TimerOutput::Scope timer_section(timer, "Update indicator");
+  
+  cell_partially_inside_solid.clear();
+  cell_nodes_inside_solid.clear();
+  cell_nodes_inside_solid.clear();
+  for(unsigned int i=0; i<sable_solver.triangulation.n_active_cells();i++)
+    cell_partially_inside_solid.push_back(false);
+
+  // set condition for the indicator field
+  // cell is aritifical if nodes_inside_solid > min_nodes_inside
+  int min_nodes_inside;
+  if(dim == 2)
+    min_nodes_inside = 1;
+  else
+    min_nodes_inside = 3;
+
   move_solid_mesh(true);
+  int cell_count =0;
   for (auto f_cell = sable_solver.dof_handler.begin_active();
        f_cell != sable_solver.dof_handler.end();
        ++f_cell)
     {
       auto p = sable_solver.cell_property.get_data(f_cell);
       int inside_count = 0;
+      std::vector<int> inside_nodes;
+      std::vector<int> outside_nodes;
       for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
         {
-          if (!point_in_solid(solid_solver.dof_handler, f_cell->vertex(v)))
+          if (point_in_solid(solid_solver.dof_handler, f_cell->vertex(v)))
             {
-              break;
+              ++inside_count;
+              inside_nodes.push_back(v);
             }
-          ++inside_count;
+          else
+            outside_nodes.push_back(v);
         }
       p[0]->indicator =
-        (inside_count == GeometryInfo<dim>::vertices_per_cell ? 1 : 0);
+        (inside_count >  min_nodes_inside ? 1 : 0);
+
+      // cell is partially inside the solid  
+      if((inside_count > min_nodes_inside) && (inside_count < GeometryInfo<dim>::vertices_per_cell))
+      {
+        cell_partially_inside_solid[cell_count]=true;
+        //store local node ids which are inside and outside the solid
+        cell_nodes_inside_solid.insert({cell_count, inside_nodes});
+        cell_nodes_outside_solid.insert({cell_count, outside_nodes});
+      }
+      cell_count += 1;  
     }
   move_solid_mesh(false);
 }
@@ -274,6 +304,46 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
   sable_solver.fsi_acceleration = tmp_fsi_acceleration;
   tmp_fsi_velocity.compress(VectorOperation::insert);
   sable_solver.fsi_velocity = tmp_fsi_velocity;
+
+  // distribute solution to the nodes which are outside solid and belongs to cell which is partially inside the solid
+  int cell_count=0;
+  std::vector<int> vertex_visited(sable_solver.triangulation.n_vertices(),0); 
+  for (auto f_cell = sable_solver.dof_handler.begin_active();
+       f_cell != sable_solver.dof_handler.end();
+       ++f_cell)
+    {
+      if(cell_partially_inside_solid[cell_count])
+      {
+        // get average solution from the nodes which are inside the solid  
+        std::vector<double> solution_vec(dim, 0);
+        std::vector<int> nodes_inside = cell_nodes_inside_solid[cell_count];
+        for(unsigned int i=0; i< nodes_inside.size(); i++)
+        {
+          for(unsigned int j=0; j< dim; j++)
+          {
+            int vertex_dof_index = f_cell->vertex_dof_index(nodes_inside[i],j);
+            solution_vec[j] += sable_solver.fsi_velocity[vertex_dof_index]/nodes_inside.size(); 
+          }  
+        }
+
+        // distribute solution to the nodes which are outside the solid
+        std::vector<int> nodes_outside = cell_nodes_outside_solid[cell_count];
+        for(unsigned int i=0; i< nodes_outside.size(); i++)
+        {
+          int vertex_index = f_cell->vertex_index(nodes_outside[i]);
+          vertex_visited[vertex_index] += 1;
+          for(unsigned int j=0; j< dim; j++)
+          {
+            int vertex_dof_index = f_cell->vertex_dof_index(nodes_outside[i],j);
+            sable_solver.fsi_velocity[vertex_dof_index] *= (vertex_visited[vertex_index]-1);
+            sable_solver.fsi_velocity[vertex_dof_index] += solution_vec[j];
+            // average the solution if the corresponding node is visited more than once
+            sable_solver.fsi_velocity[vertex_dof_index] /= vertex_visited[vertex_index];
+          }  
+        }
+      }
+      cell_count += 1;
+    } 
   if (use_dirichlet_bc)
     {
       

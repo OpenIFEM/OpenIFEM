@@ -74,6 +74,17 @@ private:
    */
   void find_fluid_bc();
 
+  /* value is set to true if the cell is partially inside solid
+     value is false if the cell is completely inside or outside solid
+  */
+  std::vector<bool> cell_partially_inside_solid;
+
+  /*map key: id of the cell which is partially inside the solid
+    map objects: vectors store local node ids which are inside and outside the solid
+  */
+  std::map<int, std::vector<int>> cell_nodes_inside_solid;
+  std::map<int, std::vector<int>> cell_nodes_outside_solid;
+
   Fluid::SableWrap<dim> &sable_solver;
 };
 
