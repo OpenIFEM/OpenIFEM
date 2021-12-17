@@ -39,11 +39,13 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
 
   // set condition for the indicator field
   // cell is aritifical if nodes_inside_solid > min_nodes_inside
-  int min_nodes_inside;
-  if(dim == 2)
-    min_nodes_inside = 1;
-  else
-    min_nodes_inside = 3;
+  unsigned int min_nodes_inside = GeometryInfo<dim>::vertices_per_cell -1;
+  if(parameters.indicator_field_condition == "CompletelyInsideSolid")
+  {
+    min_nodes_inside =  GeometryInfo<dim>::vertices_per_cell -1;
+  }
+  else if(parameters.indicator_field_condition == "PartiallyInsideSolid")
+    min_nodes_inside = (dim == 2 ? 1 : 3);
 
   move_solid_mesh(true);
   int cell_count =0;
@@ -52,7 +54,7 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
        ++f_cell)
     {
       auto p = sable_solver.cell_property.get_data(f_cell);
-      int inside_count = 0;
+      unsigned int inside_count = 0;
       std::vector<int> inside_nodes;
       std::vector<int> outside_nodes;
       for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)

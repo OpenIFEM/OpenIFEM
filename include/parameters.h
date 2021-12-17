@@ -24,6 +24,7 @@ namespace Parameters
     double save_interval;
     std::vector<double> gravity;
     std::vector<double> initial_velocity;
+    std::string indicator_field_condition;
     static void declareParameters(ParameterHandler &);
     void parseParameters(ParameterHandler &);
   };

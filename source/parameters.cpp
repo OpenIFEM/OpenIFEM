@@ -39,6 +39,10 @@ namespace Parameters
         "",
         Patterns::List(dealii::Patterns::Double()),
         "Initial velocity that only applies to solid");
+      prm.declare_entry("Indicator field condition",
+                        "CompletelyInsideSolid",
+                        Patterns::Selection("CompletelyInsideSolid|PartiallyInsideSolid"),
+                        "Set condition for calculating indicator field");
     }
     prm.leave_subsection();
   }
@@ -70,6 +74,7 @@ namespace Parameters
       initial_velocity = Utilities::string_to_double(parsed_input);
       AssertThrow(static_cast<int>(initial_velocity.size()) == dimension,
                   ExcMessage("Inconsistent dimension of initial velocity!"));
+      indicator_field_condition = prm.get("Indicator field condition");
     }
     prm.leave_subsection();
   }
