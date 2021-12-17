@@ -23,8 +23,8 @@ subsection Simulation
   # The time step in second
   set Time step size = 5e-3
 
-  # The output interval in second
-  set Output interval = 5e-3
+  # The output interval frequency
+  set Output interval = 1
 
   # Mesh refinement interval in second
   set Refinement interval = 5e2
