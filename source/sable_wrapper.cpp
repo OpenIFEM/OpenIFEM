@@ -214,7 +214,7 @@ namespace Fluid
          ++cell, ++scalar_cell)
       {
         auto p = cell_property.get_data(cell);
-        const int ind = p[0]->indicator;
+        const double ind = p[0]->indicator;
         const double rho = parameters.fluid_rho;
 
         fe_values.reinit(cell);
@@ -226,7 +226,7 @@ namespace Fluid
         local_rhs_acceleration_part=0;
         local_rhs_stress_part=0;
 
-        if(ind==1)
+        if(ind !=0)
         {  
           fe_values[velocities].get_function_values(evaluation_point,
                                                     current_velocity_values);
@@ -264,7 +264,7 @@ namespace Fluid
                 phi_p[k] = fe_values[pressure].value(k, q);
               }
 
-            if(ind==1)
+            if(ind != 0)
             {
               int stress_index=0;
               for (unsigned int k = 0; k < dim; k++)
@@ -322,18 +322,18 @@ namespace Fluid
                      phi_u[i] / time.get_delta_t() * rho +
                    gravity * phi_u[i] * rho) *
                   fe_values.JxW(q);*/
-                if (ind == 1)
+                if (ind != 0)
                   {
                     local_rhs(i) +=
                       (scalar_product(grad_phi_u[i], fsi_stress_tensor) +
                        fsi_acc_values[q] * phi_u[i]) *
-                      fe_values.JxW(q);
+                      fe_values.JxW(q)*ind;
                     local_rhs_acceleration_part(i) +=
                        (fsi_acc_values[q] * phi_u[i]) *
-                      fe_values.JxW(q);  
+                      fe_values.JxW(q)*ind;  
                     local_rhs_stress_part(i) +=
                       (scalar_product(grad_phi_u[i], fsi_stress_tensor)) *
-                      fe_values.JxW(q);  
+                      fe_values.JxW(q)*ind;  
                   }
               }
           }
@@ -836,7 +836,7 @@ namespace Fluid
         auto ptr = cell_property.get_data(cell);
         //multiply indicator value by solid density
         indicator_field[cell->active_cell_index()]= ptr[0]->indicator*parameters.solid_rho;
-        if(ptr[0]->indicator==1)
+        if(ptr[0]->indicator != 0)
         {  
           for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
             {

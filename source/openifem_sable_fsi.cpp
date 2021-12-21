@@ -73,6 +73,8 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
       // cell is partially inside the solid  
       if((inside_count > min_nodes_inside) && (inside_count < GeometryInfo<dim>::vertices_per_cell))
       {
+        //modify indicator for partially convered cells
+        p[0]->indicator = double(inside_count) / double(GeometryInfo<dim>::vertices_per_cell);
         cell_partially_inside_solid[cell_count]=true;
         //store local node ids which are inside and outside the solid
         cell_nodes_inside_solid.insert({cell_count, inside_nodes});
