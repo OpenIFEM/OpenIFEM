@@ -45,7 +45,7 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
     min_nodes_inside =  GeometryInfo<dim>::vertices_per_cell -1;
   }
   else if(parameters.indicator_field_condition == "PartiallyInsideSolid")
-    min_nodes_inside = (dim == 2 ? 1 : 3);
+    min_nodes_inside = 0;
 
   move_solid_mesh(true);
   int cell_count =0;
