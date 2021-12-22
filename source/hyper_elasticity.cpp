@@ -181,7 +181,7 @@ namespace Solid
 
     calculate_KE();
 
-    if(time.time_to_output()==0)
+    if(time.time_to_output())
       {
         this->output_results(time.get_timestep());
       }
