@@ -101,6 +101,7 @@ namespace Solid
     previous_acceleration.reinit(dof_handler.n_dofs());
     previous_velocity.reinit(dof_handler.n_dofs());
     previous_displacement.reinit(dof_handler.n_dofs());
+    nodal_mass.reinit(dof_handler.n_dofs());
 
     // Add initial velocity
     if(time.current()==0.0)
@@ -160,6 +161,48 @@ namespace Solid
     constraints.distribute(x);
 
     return {solver_control.last_step(), solver_control.last_value()};
+  }
+
+  template <int dim, int spacedim>
+  void SolidSolver<dim, spacedim>::calculate_KE()
+  {
+    double ke=0;
+    std::ofstream myfile;
+    if(time.current()==0.0)
+    {
+      
+      myfile.open ("KE_solid.txt");
+      myfile << "Time" << "\t" << "Solid KE" << "\n";
+    }
+    else
+    {
+      myfile.open ("KE_solid.txt", std::ios_base::app);
+    }
+
+    FEValues<dim, spacedim> fe_values(fe,
+                            volume_quad_formula,
+                            update_values | update_quadrature_points);
+    std::vector<unsigned int> dof_touched(dof_handler.n_dofs(), 0);
+    std::vector<types::global_dof_index> dof_indices(fe.dofs_per_cell);
+
+    for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+         ++cell)
+      {
+        fe_values.reinit(cell);
+        cell->get_dof_indices(dof_indices);
+        for (unsigned int i = 0; i < fe.dofs_per_cell; ++i)
+        {
+          auto index = dof_indices[i];
+          if(! dof_touched[index])
+          {
+            dof_touched[index] = 1;
+            ke += 0.5*current_velocity[index]*current_velocity[index]*nodal_mass[index];
+          }
+
+        }  
+      }  
+    myfile << time.current() << "\t" << ke << "\n";
+    myfile.close();  
   }
 
   template <int dim, int spacedim>

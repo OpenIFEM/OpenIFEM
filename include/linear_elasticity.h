@@ -70,6 +70,8 @@ namespace Solid
     using SolidSolver<dim>::time;
     using SolidSolver<dim>::timer;
     using SolidSolver<dim>::cell_property;
+    using SolidSolver<dim>::nodal_mass;
+    using SolidSolver<dim>::calculate_KE;
 
     /**
      * Assembles lhs and rhs. At time step 0, the lhs is the mass matrix;
@@ -98,11 +100,6 @@ namespace Solid
      * Run one time step.
      */
     void run_one_step(bool);
-
-    /**
-     * function to calculate total KE of the solid
-     */ 
-    void calculate_KE();
 
     std::vector<LinearElasticMaterial<dim>> material;
   };

@@ -271,6 +271,11 @@ namespace Solid
         // Neet to compute the initial acceleration, \f$ Ma_n = F \f$,
         // at this point set system_matrix to mass_matrix.
         assemble_system(true);
+        // Save nodal mass in a vector
+        for(unsigned int i=0; i<dof_handler.n_dofs();i++)
+        {
+          nodal_mass[i]=system_matrix.el(i,i);
+        }
         calculate_KE();
         this->solve(system_matrix, previous_acceleration, system_rhs);
         // Update the system_matrix
@@ -339,38 +344,6 @@ namespace Solid
         this->refine_mesh(1, 4);
         assemble_system(false);
       }
-  }
-
-  template <int dim>
-  void LinearElasticity<dim>::calculate_KE()
-  {
-    static Vector<double> nodal_mass(dof_handler.n_dofs());
-    Vector<double> ke(dof_handler.n_dofs());
-    if(time.current()==0.0)
-    {
-      
-      for(unsigned int i=0; i<dof_handler.n_dofs();i++)
-      {
-        nodal_mass[i]=system_matrix.el(i,i);
-        ke[i]=0.5*current_velocity[i]*current_velocity[i]*nodal_mass[i];
-      }
-      std::ofstream myfile;
-      myfile.open ("KE_solid.txt");
-      myfile << "Time" << "\t" << "Solid KE" << "\n";
-      myfile << time.current() << "\t" << ke.l1_norm()<< "\n";
-      myfile.close();
-    }
-    else
-    {
-      for(unsigned int i=0; i<dof_handler.n_dofs();i++)
-      {
-        ke[i]=0.5*current_velocity[i]*current_velocity[i]*nodal_mass[i];
-      }
-      std::ofstream myfile;
-      myfile.open ("KE_solid.txt", std::ios_base::app);
-      myfile << time.current() << "\t" << ke.l1_norm()<< "\n";
-      myfile.close();
-    }
   }
 
   template <int dim>
