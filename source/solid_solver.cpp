@@ -167,16 +167,36 @@ namespace Solid
   void SolidSolver<dim, spacedim>::calculate_KE()
   {
     double ke=0;
-    std::ofstream myfile;
+    std::vector<double> solid_momentum(dim,0);
+    std::ofstream file_ke;
+    std::ofstream file_momx;
+    std::ofstream file_momy;
+    std::ofstream file_momz;
+
     if(time.current()==0.0)
-    {
-      
-      myfile.open ("KE_solid.txt");
-      myfile << "Time" << "\t" << "Solid KE" << "\n";
+    {      
+      file_ke.open ("solid_KE.txt");
+      file_ke << "Time" << "\t" << "Solid KE" << "\n";
+
+      file_momx.open ("solid_mom_x.txt");
+      file_momx << "Time" << "\t" << "Solid Mom X" << "\n";
+
+      file_momy.open ("solid_mom_y.txt");
+      file_momy << "Time" << "\t" << "Solid Mom Y" << "\n";
+
+      if(dim == 3)
+      {
+        file_momz.open ("solid_mom_z.txt");
+        file_momz << "Time" << "\t" << "Solid Mom Z" << "\n";
+      }
     }
     else
     {
-      myfile.open ("KE_solid.txt", std::ios_base::app);
+      file_ke.open ("solid_KE.txt", std::ios_base::app);
+      file_momx.open ("solid_mom_x.txt", std::ios_base::app);
+      file_momy.open ("solid_mom_y.txt", std::ios_base::app);
+      if(dim ==3)
+        file_momz.open ("solid_mom_z.txt", std::ios_base::app);
     }
 
     FEValues<dim, spacedim> fe_values(fe,
@@ -197,12 +217,26 @@ namespace Solid
           {
             dof_touched[index] = 1;
             ke += 0.5*current_velocity[index]*current_velocity[index]*nodal_mass[index];
+            auto component = fe.system_to_component_index(i).first;
+            solid_momentum[component] += current_velocity[index]*nodal_mass[index];
           }
 
         }  
       }  
-    myfile << time.current() << "\t" << ke << "\n";
-    myfile.close();  
+    file_ke << time.current() << "\t" << ke << "\n";
+    file_ke.close();
+
+    file_momx << time.current() << "\t" << solid_momentum[0] << "\n";
+    file_momx.close();
+
+    file_momy << time.current() << "\t" << solid_momentum[1] << "\n";
+    file_momy.close();  
+
+    if(dim == 3)
+    {
+      file_momz << time.current() << "\t" << solid_momentum[2] << "\n";
+      file_momz.close();
+    }
   }
 
   template <int dim, int spacedim>
