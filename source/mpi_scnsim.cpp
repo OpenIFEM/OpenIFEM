@@ -348,12 +348,6 @@ namespace Fluid
       std::vector<double> phi_p(dofs_per_cell);
       std::vector<Tensor<1, dim>> grad_phi_p(dofs_per_cell);
 
-      // The parameters that is used in isentropic continuity equation:
-      // heat capacity ratio and atmospheric pressure.
-      //const double cp_to_cv = 0.0;
-      //const double atm = 1013250;
-      //const double kappa_s = 1e4;
-
       // Zero out sigma field and body force if their fields are not specified
       if (sigma_pml_field == nullptr)
         {
@@ -369,7 +363,7 @@ namespace Fluid
           if (cell->is_locally_owned())
             {
               auto p = cell_property.get_data(cell);
-              const int ind = 0 ; //p[0]->indicator;
+              const int ind = 0 ; 
 
               fe_values.reinit(cell);
 
