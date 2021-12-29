@@ -222,10 +222,10 @@ namespace Solid
       ConditionalOStream pcout;
       Utils::Time time;
       mutable TimerOutput timer;
+      mutable Utils::PVDWriter pvd_writer;
       IndexSet locally_owned_dofs;
       IndexSet locally_owned_scalar_dofs;
       IndexSet locally_relevant_dofs;
-      mutable std::vector<std::pair<double, std::string>> times_and_names;
 
       /**
        * The fluid traction in FSI simulation, which should be set by the FSI.

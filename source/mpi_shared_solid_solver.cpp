@@ -28,7 +28,8 @@ namespace Solid
              parameters.refinement_interval,
              parameters.save_interval),
         timer(
-          mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times)
+          mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times),
+        pvd_writer(time, "solid.pvd")
     {
     }
 
@@ -216,89 +217,87 @@ namespace Solid
               localized_stress[i][j] = stress[i][j];
             }
         }
+      std::vector<std::string> solution_names(spacedim, "displacements");
+      std::vector<DataComponentInterpretation::DataComponentInterpretation>
+        data_component_interpretation(
+          spacedim, DataComponentInterpretation::component_is_part_of_vector);
+      DataOut<dim, DoFHandler<dim, spacedim>> data_out;
+      data_out.attach_dof_handler(dof_handler);
+
+      // displacements
+      data_out.add_data_vector(
+        displacement,
+        solution_names,
+        DataOut<dim, DoFHandler<dim, spacedim>>::type_dof_data,
+        data_component_interpretation);
+
+      // velocity
+      solution_names = std::vector<std::string>(spacedim, "velocities");
+      data_out.add_data_vector(
+        velocity,
+        solution_names,
+        DataOut<dim, DoFHandler<dim, spacedim>>::type_dof_data,
+        data_component_interpretation);
+
+      std::vector<unsigned int> subdomain_int(triangulation.n_active_cells());
+      GridTools::get_subdomain_association(triangulation, subdomain_int);
+      Vector<float> subdomain(subdomain_int.begin(), subdomain_int.end());
+      data_out.add_data_vector(subdomain, "subdomain");
+
+      // material ID
+      Vector<float> mat(triangulation.n_active_cells());
+      for (auto cell = triangulation.begin_active();
+           cell != triangulation.end();
+           ++cell)
+        {
+          if (cell->subdomain_id() == this_mpi_process)
+            {
+              mat[cell->active_cell_index()] = cell->material_id();
+            }
+        }
+      data_out.add_data_vector(mat, "material_id");
+
+      data_out.add_data_vector(
+        scalar_dof_handler, localized_strain[0][0], "Exx");
+      data_out.add_data_vector(
+        scalar_dof_handler, localized_strain[0][1], "Exy");
+      data_out.add_data_vector(
+        scalar_dof_handler, localized_strain[1][1], "Eyy");
+      data_out.add_data_vector(
+        scalar_dof_handler, localized_stress[0][0], "Sxx");
+      data_out.add_data_vector(
+        scalar_dof_handler, localized_stress[0][1], "Sxy");
+      data_out.add_data_vector(
+        scalar_dof_handler, localized_stress[1][1], "Syy");
+      if (spacedim == 3)
+        {
+          data_out.add_data_vector(
+            scalar_dof_handler, localized_strain[0][2], "Exz");
+          data_out.add_data_vector(
+            scalar_dof_handler, localized_strain[1][2], "Eyz");
+          data_out.add_data_vector(
+            scalar_dof_handler, localized_strain[2][2], "Ezz");
+          data_out.add_data_vector(
+            scalar_dof_handler, localized_stress[0][2], "Sxz");
+          data_out.add_data_vector(
+            scalar_dof_handler, localized_stress[1][2], "Syz");
+          data_out.add_data_vector(
+            scalar_dof_handler, localized_stress[2][2], "Szz");
+        }
+
+      data_out.set_cell_selection(
+        [this](const typename Triangulation<dim>::cell_iterator &cell) {
+          return (cell->is_active() &&
+                  cell->subdomain_id() == this_mpi_process);
+        });
+      data_out.build_patches();
+
+      data_out.write_vtu_with_pvtu_record(
+        "./", "solid", output_index, mpi_communicator, 6, 0);
+
       if (this_mpi_process == 0)
         {
-          std::vector<std::string> solution_names(spacedim, "displacements");
-          std::vector<DataComponentInterpretation::DataComponentInterpretation>
-            data_component_interpretation(
-              spacedim,
-              DataComponentInterpretation::component_is_part_of_vector);
-          DataOut<dim, DoFHandler<dim, spacedim>> data_out;
-          data_out.attach_dof_handler(dof_handler);
-
-          // displacements
-          data_out.add_data_vector(
-            displacement,
-            solution_names,
-            DataOut<dim, DoFHandler<dim, spacedim>>::type_dof_data,
-            data_component_interpretation);
-
-          // velocity
-          solution_names = std::vector<std::string>(spacedim, "velocities");
-          data_out.add_data_vector(
-            velocity,
-            solution_names,
-            DataOut<dim, DoFHandler<dim, spacedim>>::type_dof_data,
-            data_component_interpretation);
-
-          std::vector<unsigned int> subdomain_int(
-            triangulation.n_active_cells());
-          GridTools::get_subdomain_association(triangulation, subdomain_int);
-          Vector<float> subdomain(subdomain_int.begin(), subdomain_int.end());
-          data_out.add_data_vector(subdomain, "subdomain");
-
-          // material ID
-          Vector<float> mat(triangulation.n_active_cells());
-          int i = 0;
-          for (auto cell = triangulation.begin_active();
-               cell != triangulation.end();
-               ++cell)
-            {
-              mat[i++] = cell->material_id();
-            }
-          data_out.add_data_vector(mat, "material_id");
-
-          data_out.add_data_vector(
-            scalar_dof_handler, localized_strain[0][0], "Exx");
-          data_out.add_data_vector(
-            scalar_dof_handler, localized_strain[0][1], "Exy");
-          data_out.add_data_vector(
-            scalar_dof_handler, localized_strain[1][1], "Eyy");
-          data_out.add_data_vector(
-            scalar_dof_handler, localized_stress[0][0], "Sxx");
-          data_out.add_data_vector(
-            scalar_dof_handler, localized_stress[0][1], "Sxy");
-          data_out.add_data_vector(
-            scalar_dof_handler, localized_stress[1][1], "Syy");
-          if (spacedim == 3)
-            {
-              data_out.add_data_vector(
-                scalar_dof_handler, localized_strain[0][2], "Exz");
-              data_out.add_data_vector(
-                scalar_dof_handler, localized_strain[1][2], "Eyz");
-              data_out.add_data_vector(
-                scalar_dof_handler, localized_strain[2][2], "Ezz");
-              data_out.add_data_vector(
-                scalar_dof_handler, localized_stress[0][2], "Sxz");
-              data_out.add_data_vector(
-                scalar_dof_handler, localized_stress[1][2], "Syz");
-              data_out.add_data_vector(
-                scalar_dof_handler, localized_stress[2][2], "Szz");
-            }
-
-          data_out.build_patches();
-
-          std::string basename =
-            "solid-" + Utilities::int_to_string(output_index, 6);
-
-          std::string filename = basename + ".vtu";
-
-          std::ofstream output(filename);
-          data_out.write_vtu(output);
-
-          times_and_names.push_back({time.current(), filename});
-          std::ofstream pvd_output("solid.pvd");
-          DataOutBase::write_pvd_record(pvd_output, times_and_names);
+          pvd_writer.write_current_timestep("solid_", 6);
         }
     }
 
@@ -516,8 +515,7 @@ namespace Solid
       previous_displacement = current_displacement;
       previous_velocity = current_velocity;
       previous_acceleration = current_acceleration;
-      // Update the time and names to set the current time and write
-      // correct .pvd file.
+      // Set the current time and write correct .pvd file.
 
       for (int i = 0; i <= Utilities::string_to_int(checkpoint_file.stem());
            ++i)
@@ -525,11 +523,7 @@ namespace Solid
           if ((time.current() == 0 || time.time_to_output()) &&
               Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
             {
-              std::string basename =
-                "solid-" + Utilities::int_to_string(time.get_timestep(), 6);
-              std::string filename = basename + ".vtu";
-
-              times_and_names.push_back({time.current(), filename});
+              pvd_writer.write_current_timestep("solid_", 6);
             }
           if (i == Utilities::string_to_int(checkpoint_file.stem()))
             break;

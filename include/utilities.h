@@ -15,6 +15,7 @@
 
 #include <petscvec.h>
 
+#include <fstream>
 #include <queue>
 #include <unordered_set>
 
@@ -59,6 +60,27 @@ namespace Utils
     const double output_interval;
     const double refinement_interval;
     const double save_interval;
+  };
+
+  /// This class manages the .pvd file the wraps up the results output.
+  class PVDWriter
+  {
+  public:
+    /// Constructor
+    PVDWriter(const Time &, const std::string &);
+    /// Adds a new line in the .pvd file for the current timestep.
+    void write_current_timestep(const std::string &, unsigned);
+    /// Destructor
+    ~PVDWriter() { doc.close(); }
+
+  private:
+    /// Default constructor is deleted.
+    PVDWriter() = delete;
+    /// Write the header for the .pvd file.
+    void write_header();
+    const Time *time;
+    std::fstream doc;
+    std::streampos write_pos;
   };
 
   /*! \brief A helper class to generate triangulations and specify boundary ids.
