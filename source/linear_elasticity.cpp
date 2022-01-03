@@ -25,9 +25,6 @@ namespace Solid
   {
     TimerOutput::Scope timer_section(timer, "Assemble system");
 
-    double gamma = 0.5 + parameters.damping;
-    double beta = gamma / 2;
-
     if (assemble_matrix)
       {
         system_matrix = 0;
@@ -48,8 +45,6 @@ namespace Solid
 
     SymmetricTensor<4, dim> elasticity;
     const double rho = material[0].get_density();
-    const double dt = time.get_delta_t();
-
     const unsigned int dofs_per_cell = fe.dofs_per_cell;
     const unsigned int n_q_points = volume_quad_formula.size();
     const unsigned int n_f_q_points = face_quad_formula.size();

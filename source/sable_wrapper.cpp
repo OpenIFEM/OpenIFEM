@@ -149,8 +149,6 @@ namespace Fluid
   {
     TimerOutput::Scope timer_section(timer, "Assemble system");
 
-    const double viscosity = parameters.viscosity;
-    const double gamma = parameters.grad_div;
     Tensor<1, dim> gravity;
     for (unsigned int i = 0; i < dim; ++i)
       gravity[i] = parameters.gravity[i];
@@ -180,8 +178,7 @@ namespace Fluid
     const unsigned int u_dofs = fe.base_element(0).dofs_per_cell;
     const unsigned int p_dofs = fe.base_element(1).dofs_per_cell;
     const unsigned int n_q_points = volume_quad_formula.size();
-    const unsigned int n_face_q_points = face_quad_formula.size();
-
+    
     AssertThrow(u_dofs * dim + p_dofs == dofs_per_cell,
                 ExcMessage("Wrong partitioning of dofs!"));
 
@@ -215,8 +212,7 @@ namespace Fluid
       {
         auto p = cell_property.get_data(cell);
         const double ind = p[0]->indicator;
-        const double rho = parameters.fluid_rho;
-
+      
         fe_values.reinit(cell);
         scalar_fe_values.reinit(scalar_cell);
 
@@ -339,7 +335,7 @@ namespace Fluid
           }
 
         cell->get_dof_indices(local_dof_indices);
-        for(int i=0; i<dofs_per_cell; i++)
+        for(unsigned int i=0; i<dofs_per_cell; i++)
         {
           system_rhs[local_dof_indices[i]] += local_rhs(i);
           fsi_force[local_dof_indices[i]] += local_rhs(i);
@@ -400,7 +396,7 @@ namespace Fluid
         find_ghost_nodes();
 
         rec_stress(sable_no_ele);
-        rec_velocity(sable_no_nodes, sable_no_nodes_one_dir);
+        rec_velocity(sable_no_nodes);
         output_results(0);
         std::cout << "Received inital solution from Sable" << std::endl;
         //All(active);
@@ -409,8 +405,8 @@ namespace Fluid
       {   
         if(parameters.simulation_type != "FSI" )
         {  
-          send_fsi_force(sable_no_nodes, sable_no_nodes_one_dir);
-          send_indicator(sable_no_ele, sable_no_nodes, sable_no_nodes_one_dir);
+          send_fsi_force(sable_no_nodes);
+          send_indicator(sable_no_ele, sable_no_nodes);
         }  
         //Recieve no. of nodes and elements from Sable
         sable_no_nodes_one_dir=0;
@@ -420,7 +416,7 @@ namespace Fluid
         Max(sable_no_ele);
         Max(sable_no_nodes);
         rec_stress(sable_no_ele);
-        rec_velocity(sable_no_nodes, sable_no_nodes_one_dir);
+        rec_velocity(sable_no_nodes);
         is_comm_active= All(is_comm_active);
         std::cout << std::string(96, '*') << std::endl
                   << "Received solution from Sable at time step = " << time.get_timestep()
@@ -541,11 +537,11 @@ namespace Fluid
   }
 
   template <int dim>
-  void SableWrap<dim>::rec_velocity(const int& sable_n_nodes, const int& sable_n_nodes_one_dir)
+  void SableWrap<dim>::rec_velocity(const int& sable_n_nodes)
   {
     //Recieve solution
     int sable_sol_size = sable_n_nodes*dim ;
-    int vel_size = triangulation.n_vertices()*dim;
+    unsigned int vel_size = triangulation.n_vertices()*dim;
     std::vector<int> cmapp = sable_ids;
     std::vector<int> cmapp_sizes;
     cmapp_sizes.push_back(sable_sol_size);
@@ -652,7 +648,7 @@ namespace Fluid
     {
       int non_ghost_cell_id = non_ghost_cells[n];
       int index = non_ghost_cell_id*sable_stress_per_ele_size;
-      for(unsigned int i=0; i< sable_stress_per_ele_size; i++)
+      for(int i=0; i< sable_stress_per_ele_size; i++)
       {
         sable_stress.push_back(nv_rec_buffer[0][index+i]);
       }
@@ -671,7 +667,7 @@ namespace Fluid
     else
       stress_sequence = {0, 3, 1, 5, 4, 2};
 
-    for(int i=0; i<triangulation.n_cells();i++)
+    for(unsigned int i=0; i<triangulation.n_cells();i++)
       {
         int count =0; 
         for(auto j : stress_sequence)
@@ -737,7 +733,7 @@ namespace Fluid
   }
 
   template <int dim>
-  void SableWrap<dim>::send_fsi_force(const int& sable_n_nodes, const int& sable_n_nodes_one_dir)
+  void SableWrap<dim>::send_fsi_force(const int& sable_n_nodes)
   {
     unsigned int outer_iteration = 0; 
     assemble(true && outer_iteration == 0);
@@ -779,7 +775,7 @@ namespace Fluid
     {
       nv_send_buffer_force[ict] = new double[cmapp_sizes[ict]];
       nv_send_buffer_vel[ict] = new double[cmapp_sizes[ict]];
-      for(unsigned int jct = 0;jct < cmapp_sizes[ict];jct ++)
+      for(int jct = 0;jct < cmapp_sizes[ict];jct ++)
       {
         nv_send_buffer_force[ict][jct]=0;
         nv_send_buffer_vel[ict][jct]=0;
@@ -814,7 +810,7 @@ namespace Fluid
   }
 
   template <int dim>
-  void SableWrap<dim>::send_indicator(const int& sable_n_elements, const int& sable_n_nodes, const int& sable_n_nodes_one_dir)
+  void SableWrap<dim>::send_indicator(const int& sable_n_elements, const int& sable_n_nodes)
   {
 
     int sable_indicator_field_size = sable_n_elements;
@@ -862,7 +858,7 @@ namespace Fluid
     for(unsigned int ict = 0;ict < cmapp.size();ict ++)
     {
       nv_send_buffer[ict] = new double[cmapp_sizes_element[ict]];
-      for(unsigned int jct = 0;jct < cmapp_sizes_element[ict];jct ++)
+      for(int jct = 0;jct < cmapp_sizes_element[ict];jct ++)
       {
         nv_send_buffer[ict][jct]=sable_indicator_field[jct];
       }
@@ -879,7 +875,7 @@ namespace Fluid
     for(unsigned int ict = 0;ict < cmapp.size();ict ++)
     {
       nv_send_buffer[ict] = new double[cmapp_sizes_nodal[ict]];
-      for(unsigned int jct = 0;jct < cmapp_sizes_nodal[ict];jct ++)
+      for(int jct = 0;jct < cmapp_sizes_nodal[ict];jct ++)
       {
         nv_send_buffer[ict][jct]=0;
       }

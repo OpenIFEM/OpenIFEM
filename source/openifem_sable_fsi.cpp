@@ -398,8 +398,8 @@ void OpenIFEM_Sable_FSI<dim>::run()
       update_solid_box();
       update_indicator();
       find_fluid_bc();
-      sable_solver.send_fsi_force(sable_solver.sable_no_nodes, sable_solver.sable_no_nodes_one_dir);
-      sable_solver.send_indicator(sable_solver.sable_no_ele, sable_solver.sable_no_nodes, sable_solver.sable_no_nodes_one_dir);
+      sable_solver.send_fsi_force(sable_solver.sable_no_nodes);
+      sable_solver.send_indicator(sable_solver.sable_no_ele, sable_solver.sable_no_nodes);
       //send_indicator_field
       sable_solver.run_one_step(false);
       first_step=false;

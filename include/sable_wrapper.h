@@ -160,7 +160,7 @@ namespace Fluid
     void rec_data(double ** rec_buffer, const std::vector <int> & cmapp, const std::vector <int> & cmapp_sizes,
 	int data_size);
     
-    void rec_velocity(const int& sable_n_nodes, const int& sable_n_nodes_one_dir);
+    void rec_velocity(const int& sable_n_nodes);
 
     void rec_stress(const int& sable_n_elements);
 
@@ -177,9 +177,9 @@ namespace Fluid
     // Send solution to Sable
     void send_data(double ** send_buffer, const std::vector <int> & cmapp, const std::vector <int> & cmapp_sizes);
   
-    void send_fsi_force(const int& sable_n_nodes, const int& sable_n_nodes_one_dir);
+    void send_fsi_force(const int& sable_n_nodes);
 
-    void send_indicator(const int& sable_n_elements, const int& sable_n_nodes, const int& sable_n_nodes_one_dir);
+    void send_indicator(const int& sable_n_elements, const int& sable_n_nodes);
 
     // Function which finds out ghost nodes and cells ids in Sable mesh
     void find_ghost_nodes();
