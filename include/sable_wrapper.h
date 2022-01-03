@@ -96,18 +96,9 @@ namespace Fluid
     /// the dofs and constraints.
     void initialize_system() override;
 
-    /*! \brief Assemble the system matrix, mass mass matrix, and the RHS.
-     *
-     *  Since backward Euler method is used, the linear system must be
-     * reassembled
-     *  at every Newton iteration. The Dirichlet BCs are applied at the same
-     * time
-     *  as the cell matrix and rhs are distributed to the global matrix and rhs,
-     *  which is optimal according to the deal.II documentation.
-     *  The boolean argument is used to determine whether nonzero constraints
-     *  or zero constraints should be used.
+    /*! assemble interaction force. Integrate force calculaed in find_fluid_bc() in openifem_sable_fsi.cpp over the Eulerian grid cells.
      */
-    void assemble(const bool use_nonzero_constraints);
+    void assemble_force();
 
     /*! \brief Solve the linear system using FGMRES solver plus block
      * preconditioner.

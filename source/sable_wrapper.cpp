@@ -145,9 +145,9 @@ namespace Fluid
   }
 
   template <int dim>
-  void SableWrap<dim>::assemble(const bool use_nonzero_constraints)
+  void SableWrap<dim>::assemble_force()
   {
-    TimerOutput::Scope timer_section(timer, "Assemble system");
+    TimerOutput::Scope timer_section(timer, "Assemble force");
 
     Tensor<1, dim> gravity;
     for (unsigned int i = 0; i < dim; ++i)
@@ -275,49 +275,6 @@ namespace Fluid
 
             for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
-                /*for (unsigned int j = 0; j < dofs_per_cell; ++j)
-                  {
-                    // Let the linearized diffusion, continuity and Grad-Div
-                    // term be written as
-                    // the bilinear operator: \f$A = a((\delta{u},
-                    // \delta{p}), (\delta{v}, \delta{q}))\f$,
-                    // the linearized convection term be: \f$C =
-                    // c(u;\delta{u}, \delta{v})\f$,
-                    // and the linearized inertial term be:
-                    // \f$M = m(\delta{u}, \delta{v})$, then LHS is: $(A +
-                    // C) + M/{\Delta{t}}\f$
-                    local_matrix(i, j) +=
-                      (viscosity *
-                         scalar_product(grad_phi_u[j], grad_phi_u[i]) +
-                       current_velocity_gradients[q] * phi_u[j] * phi_u[i] *
-                         rho +
-                       grad_phi_u[j] * current_velocity_values[q] * phi_u[i] *
-                         rho -
-                       div_phi_u[i] * phi_p[j] - phi_p[i] * div_phi_u[j] +
-                       gamma * div_phi_u[j] * div_phi_u[i] * rho +
-                       phi_u[i] * phi_u[j] / time.get_delta_t() * rho) *
-                      fe_values.JxW(q);
-                    local_mass_matrix(i, j) +=
-                      (phi_u[i] * phi_u[j] + phi_p[i] * phi_p[j]) *
-                      fe_values.JxW(q);
-                  }
-
-                // RHS is \f$-(A_{current} + C_{current}) -
-                // M_{present-current}/\Delta{t}\f$.
-                double current_velocity_divergence =
-                  trace(current_velocity_gradients[q]);
-                local_rhs(i) +=
-                  ((-viscosity * scalar_product(current_velocity_gradients[q],
-                                                grad_phi_u[i]) -
-                    current_velocity_gradients[q] * current_velocity_values[q] *
-                      phi_u[i] * rho +
-                    current_pressure_values[q] * div_phi_u[i] +
-                    current_velocity_divergence * phi_p[i] -
-                    gamma * current_velocity_divergence * div_phi_u[i] * rho) -
-                   (current_velocity_values[q] - present_velocity_values[q]) *
-                     phi_u[i] / time.get_delta_t() * rho +
-                   gravity * phi_u[i] * rho) *
-                  fe_values.JxW(q);*/
                 if (ind != 0)
                   {
                     local_rhs(i) +=
@@ -735,8 +692,7 @@ namespace Fluid
   template <int dim>
   void SableWrap<dim>::send_fsi_force(const int& sable_n_nodes)
   {
-    unsigned int outer_iteration = 0; 
-    assemble(true && outer_iteration == 0);
+    assemble_force();
 
     int sable_force_size = sable_n_nodes*dim;
     std::vector<int> cmapp = sable_ids;
