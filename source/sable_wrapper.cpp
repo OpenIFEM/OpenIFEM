@@ -2,120 +2,7 @@
 
 namespace Fluid
 {
-  /**
-   * The initialization of the direct solver is expensive as it allocates
-   * a lot of memory. The preconditioner is going to be applied several
-   * times before it is re-initialized. Therefore initializing the direct
-   * solver in the constructor saves time. However, it is pointless to do
-   * this to iterative solvers.
-   */
-  template <int dim>
-  SableWrap<dim>::BlockSchurPreconditioner::BlockSchurPreconditioner(
-    TimerOutput &timer,
-    double gamma,
-    double viscosity,
-    double rho,
-    double dt,
-    const BlockSparseMatrix<double> &system,
-    const BlockSparseMatrix<double> &mass,
-    SparseMatrix<double> &schur)
-    : timer(timer),
-      gamma(gamma),
-      viscosity(viscosity),
-      rho(rho),
-      dt(dt),
-      system_matrix(&system),
-      mass_matrix(&mass),
-      mass_schur(&schur)
-  {
-    {
-      // Factoring A is also part of the direct solver.
-      TimerOutput::Scope timer_section(timer, "UMFPACK for A_inv");
-      A_inverse.initialize(system_matrix->block(0, 0));
-    }
-    {
-      TimerOutput::Scope timer_section(timer, "CG for Sm");
-      Vector<double> tmp1(mass_matrix->block(0, 0).m()), tmp2(tmp1);
-      tmp1 = 1;
-      tmp2 = 0;
-      // Jacobi preconditioner of matrix A is by definition inverse diag(A),
-      // this is exactly what we want to compute.
-      // Note that the mass matrix and mass schur do not include the density.
-      mass_matrix->block(0, 0).precondition_Jacobi(tmp2, tmp1);
-      // The sparsity pattern has already been set correctly, so explicitly
-      // tell mmult not to rebuild the sparsity pattern.
-      system_matrix->block(1, 0).mmult(
-        *mass_schur, system_matrix->block(0, 1), tmp2, false);
-    }
-  }
-
-  /**
-   * The vmult operation strictly follows the definition of
-   * BlockSchurPreconditioner. Conceptually it computes \f$u = P^{-1}v\f$.
-   */
-  template <int dim>
-  void SableWrap<dim>::BlockSchurPreconditioner::vmult(
-    BlockVector<double> &dst, const BlockVector<double> &src) const
-  {
-    // First, buffer the velocity block of src vector (\f$v_0\f$).
-    Vector<double> utmp(src.block(0));
-    Vector<double> tmp(src.block(1).size());
-    tmp = 0;
-    // This block computes \f$u_1 = \tilde{S}^{-1} v_1\f$.
-    {
-      TimerOutput::Scope timer_section(timer, "CG for Mp");
-
-      // CG solver used for \f$M_p^{-1}\f$ and \f$S_m^{-1}\f$.
-      SolverControl solver_control(
-        src.block(1).size(), std::max(1e-6 * src.block(1).l2_norm(), 1e-10));
-      SolverCG<> cg_mp(solver_control);
-
-      // \f$-(\mu + \gamma\rho)M_p^{-1}v_1\f$
-      SparseILU<double> Mp_preconditioner;
-      Mp_preconditioner.initialize(mass_matrix->block(1, 1));
-      cg_mp.solve(
-        mass_matrix->block(1, 1), tmp, src.block(1), Mp_preconditioner);
-      tmp *= -(viscosity + gamma * rho);
-    }
-
-    {
-      TimerOutput::Scope timer_section(timer, "CG for Sm");
-      SolverControl solver_control(
-        src.block(1).size(), std::max(1e-6 * src.block(1).l2_norm(), 1e-10));
-      // FIXME: There is a mysterious bug here. After refine_mesh is called,
-      // the initialization of Sm_preconditioner will complain about zero
-      // entries on the diagonal which causes division by 0. Same thing happens
-      // to the block Jacobi preconditioner of the parallel solver.
-      // However, 1. if we do not use a preconditioner here, the
-      // code runs fine, suggesting that mass_schur is correct; 2. if we do not
-      // call refine_mesh, the code also runs fine. So the question is, why
-      // would refine_mesh generate diagonal zeros?
-      //
-      // \f$-\frac{1}{dt}S_m^{-1}v_1\f$
-      PreconditionIdentity Sm_preconditioner;
-      Sm_preconditioner.initialize(*mass_schur);
-      SolverCG<> cg_sm(solver_control);
-      cg_sm.solve(*mass_schur, dst.block(1), src.block(1), Sm_preconditioner);
-      dst.block(1) *= -rho / dt;
-
-      // Adding up these two, we get \f$\tilde{S}^{-1}v_1\f$.
-      dst.block(1) += tmp;
-    }
-
-    // This block computes \f$v_0 - B^T\tilde{S}^{-1}v_1\f$ based on \f$u_1\f$.
-    {
-      system_matrix->block(0, 1).vmult(utmp, dst.block(1));
-      utmp *= -1.0;
-      utmp += src.block(0);
-    }
-
-    // Finally, compute the product of \f$\tilde{A}^{-1}\f$ and utmp with
-    // the direct solver.
-    {
-      TimerOutput::Scope timer_section(timer, "UMFPACK for A_inv");
-      A_inverse.vmult(dst.block(0), utmp);
-    }
-  }
+  
 
   template <int dim>
   SableWrap<dim>::SableWrap(Triangulation<dim> &tria,
@@ -135,9 +22,6 @@ namespace Fluid
   void SableWrap<dim>::initialize_system()
   {
     FluidSolver<dim>::initialize_system();
-    preconditioner.reset();
-    newton_update.reinit(dofs_per_block);
-    evaluation_point.reinit(dofs_per_block);
     fsi_acceleration.reinit(dofs_per_block);
     fsi_velocity.reinit(dofs_per_block);
     int stress_vec_size = dim + dim*(dim-1)*0.5;
@@ -153,8 +37,6 @@ namespace Fluid
     for (unsigned int i = 0; i < dim; ++i)
       gravity[i] = parameters.gravity[i];
 
-    system_matrix = 0;
-    mass_matrix = 0;
     system_rhs = 0;
     fsi_force =0;
     fsi_force_acceleration_part =0;
@@ -185,8 +67,6 @@ namespace Fluid
     const FEValuesExtractors::Vector velocities(0);
     const FEValuesExtractors::Scalar pressure(dim);
 
-    FullMatrix<double> local_matrix(dofs_per_cell, dofs_per_cell);
-    FullMatrix<double> local_mass_matrix(dofs_per_cell, dofs_per_cell);
     Vector<double> local_rhs(dofs_per_cell);
     Vector<double> local_rhs_acceleration_part(dofs_per_cell);
     Vector<double> local_rhs_stress_part(dofs_per_cell);
@@ -216,21 +96,19 @@ namespace Fluid
         fe_values.reinit(cell);
         scalar_fe_values.reinit(scalar_cell);
 
-        local_matrix = 0;
-        local_mass_matrix = 0;
         local_rhs = 0;
         local_rhs_acceleration_part=0;
         local_rhs_stress_part=0;
 
         if(ind !=0)
         {  
-          fe_values[velocities].get_function_values(evaluation_point,
+          fe_values[velocities].get_function_values(present_solution,
                                                     current_velocity_values);
 
           fe_values[velocities].get_function_gradients(
-            evaluation_point, current_velocity_gradients);
+            present_solution, current_velocity_gradients);
 
-          fe_values[pressure].get_function_values(evaluation_point,
+          fe_values[pressure].get_function_values(present_solution,
                                                   current_pressure_values);
 
           fe_values[velocities].get_function_values(present_solution,
@@ -246,9 +124,6 @@ namespace Fluid
           }
         }  
         
-        // Assemble the system matrix and mass matrix simultaneouly.
-        // The mass matrix only uses the (0, 0) and (1, 1) blocks.
-        //
         for (unsigned int q = 0; q < n_q_points; ++q)
           {
             SymmetricTensor<2, dim> fsi_stress_tensor;
@@ -303,42 +178,12 @@ namespace Fluid
   }
 
   template <int dim>
-  std::pair<unsigned int, double>
-  SableWrap<dim>::solve(const bool use_nonzero_constraints)
-  {
-    TimerOutput::Scope timer_section(timer, "Solve linear system");
-
-    preconditioner.reset(new BlockSchurPreconditioner(timer,
-                                                      parameters.grad_div,
-                                                      parameters.viscosity,
-                                                      parameters.fluid_rho,
-                                                      time.get_delta_t(),
-                                                      system_matrix,
-                                                      mass_matrix,
-                                                      mass_schur));
-
-    // NOTE: SolverFGMRES only applies the preconditioner from the right,
-    // as opposed to SolverGMRES which allows both left and right
-    // preconditoners.
-    SolverControl solver_control(
-      system_matrix.m(), std::max(1e-8 * system_rhs.l2_norm(), 1e-10), true);
-    GrowingVectorMemory<BlockVector<double>> vector_memory;
-    SolverFGMRES<BlockVector<double>> gmres(solver_control, vector_memory);
-
-    gmres.solve(system_matrix, newton_update, system_rhs, *preconditioner);
-
-    const AffineConstraints<double> &constraints_used =
-      use_nonzero_constraints ? nonzero_constraints : zero_constraints;
-    constraints_used.distribute(newton_update);
-
-    return {solver_control.last_step(), solver_control.last_value()};
-  }
-
-  template <int dim>
   void SableWrap<dim>::run_one_step(bool apply_nonzero_constraints,
                                 bool assemble_system)
   {
+    (void) apply_nonzero_constraints;
     (void)assemble_system;
+
     std::cout.precision(6);
     std::cout.width(12);
     if (time.get_timestep() == 0)
@@ -391,20 +236,14 @@ namespace Fluid
   {
     triangulation.refine_global(parameters.global_refinements[0]);
     setup_dofs();
-    //make_constraints();
     initialize_system();
 
-    // Time loop.
-    // use_nonzero_constraints is set to true only at the first time step,
-    // which means nonzero_constraints will be applied at the first iteration
-    // in the first time step only, and never be used again.
-    // This corresponds to time-independent Dirichlet BCs.
     while (is_comm_active)
       {
         if(time.current()==0)
-          run_one_step(true);
+          run_one_step();
         get_dt_sable();
-        run_one_step(false);
+        run_one_step();
       }
   }
 
@@ -526,7 +365,7 @@ namespace Fluid
     assert(sable_solution.size()==vel_size);
   
     //synchronize solution
-    evaluation_point = present_solution;
+    present_solution.reinit(dofs_per_block);
 
     //Syncronize Sable and OpenIFEM solution
     std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
@@ -544,16 +383,12 @@ namespace Fluid
                   //Sable vertex indexing is same as deal.ii
                   int sable_sol_index = cell->vertex_index(v)*dim+i;
                   int openifem_sol_index = cell->vertex_dof_index(v,i);
-                  evaluation_point[openifem_sol_index]=sable_solution[sable_sol_index];
+                  present_solution[openifem_sol_index]=sable_solution[sable_sol_index];
                 }
               }
           
           }
       }
-
-    solution_increment = evaluation_point;
-    solution_increment -= present_solution;
-    present_solution = evaluation_point;            
 
     //delete solution
     for(unsigned ict = 0;ict < cmapp.size();ict ++)

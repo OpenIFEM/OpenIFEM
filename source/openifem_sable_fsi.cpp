@@ -385,7 +385,7 @@ void OpenIFEM_Sable_FSI<dim>::run()
       //send initial solution
       if(time.current()==0)
       {
-        sable_solver.run_one_step(true);
+        sable_solver.run_one_step();
       }  
       //get dt from Sable
       sable_solver.get_dt_sable();
@@ -401,7 +401,7 @@ void OpenIFEM_Sable_FSI<dim>::run()
       sable_solver.send_fsi_force(sable_solver.sable_no_nodes);
       sable_solver.send_indicator(sable_solver.sable_no_ele, sable_solver.sable_no_nodes);
       //send_indicator_field
-      sable_solver.run_one_step(false);
+      sable_solver.run_one_step();
       first_step=false;
     }
 }
