@@ -5,7 +5,7 @@ namespace Utils
 {
   bool Time::time_to_output() const
   {
-    //auto delta = static_cast<unsigned int>(output_interval / delta_t);
+    // auto delta = static_cast<unsigned int>(output_interval / delta_t);
     return (std::fmod(timestep, output_interval) == 0);
   }
 

@@ -34,15 +34,15 @@ namespace Parameters
         "",
         Patterns::List(dealii::Patterns::Double()),
         "Gravity acceleration that applies to both fluid and solid");
+      prm.declare_entry("Initial velocity",
+                        "",
+                        Patterns::List(dealii::Patterns::Double()),
+                        "Initial velocity that only applies to solid");
       prm.declare_entry(
-        "Initial velocity",
-        "",
-        Patterns::List(dealii::Patterns::Double()),
-        "Initial velocity that only applies to solid");
-      prm.declare_entry("Indicator field condition",
-                        "CompletelyInsideSolid",
-                        Patterns::Selection("CompletelyInsideSolid|PartiallyInsideSolid"),
-                        "Set condition for calculating indicator field");
+        "Indicator field condition",
+        "CompletelyInsideSolid",
+        Patterns::Selection("CompletelyInsideSolid|PartiallyInsideSolid"),
+        "Set condition for calculating indicator field");
     }
     prm.leave_subsection();
   }

@@ -100,7 +100,7 @@ namespace Solid
                       {
                         local_matrix[i][j] +=
                           rho * phi[i] * phi[j] * fe_values.JxW(q);
-                        if(!is_initial)
+                        if (!is_initial)
                           {
                             local_stiffness[i][j] +=
                               symmetric_grad_phi[i] * elasticity *
@@ -196,28 +196,28 @@ namespace Solid
           }
 
         // create lumped mass matrix
-        if(assemble_matrix)
+        if (assemble_matrix)
           {
             for (unsigned int i = 0; i < dofs_per_cell; ++i)
-            {
-              double sum=0;
-              for (unsigned int j = 0; j < dofs_per_cell; ++j)
-                {
-                 sum=sum+local_matrix[i][j]; 
-                }
-              for (unsigned int j = 0; j < dofs_per_cell; ++j)
-                {
-                  if(i==j)
-                  { 
-                    local_matrix[i][j]=sum; 
-                  }  
-                  else
+              {
+                double sum = 0;
+                for (unsigned int j = 0; j < dofs_per_cell; ++j)
                   {
-                    local_matrix[i][j]=0;
-                  } 
-                }                    
-            }
-          }  
+                    sum = sum + local_matrix[i][j];
+                  }
+                for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                  {
+                    if (i == j)
+                      {
+                        local_matrix[i][j] = sum;
+                      }
+                    else
+                      {
+                        local_matrix[i][j] = 0;
+                      }
+                  }
+              }
+          }
 
         if (assemble_matrix)
           {
@@ -267,15 +267,16 @@ namespace Solid
         // at this point set system_matrix to mass_matrix.
         assemble_system(true);
         // Save nodal mass in a vector
-        for(unsigned int i=0; i<dof_handler.n_dofs();i++)
-        {
-          nodal_mass[i]=system_matrix.el(i,i);
-        }
+        for (unsigned int i = 0; i < dof_handler.n_dofs(); i++)
+          {
+            nodal_mass[i] = system_matrix.el(i, i);
+          }
         calculate_KE();
         this->solve(system_matrix, previous_acceleration, system_rhs);
         // Update the system_matrix
         assemble_system(false);
-        system_matrix.add(time.get_delta_t()*time.get_delta_t()*beta, stiffness_matrix);
+        system_matrix.add(time.get_delta_t() * time.get_delta_t() * beta,
+                          stiffness_matrix);
         this->output_results(time.get_timestep());
       }
 
@@ -329,7 +330,7 @@ namespace Solid
 
     calculate_KE();
 
-    if(time.time_to_output())
+    if (time.time_to_output())
       {
         this->output_results(time.get_timestep());
       }

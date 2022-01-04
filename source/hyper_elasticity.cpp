@@ -67,10 +67,10 @@ namespace Solid
         // Solve for the initial acceleration
         assemble_system(true);
         // Save nodal mass in a vector
-        for(unsigned int i=0; i<dof_handler.n_dofs();i++)
-        {
-          nodal_mass[i]=mass_matrix.el(i,i);
-        }
+        for (unsigned int i = 0; i < dof_handler.n_dofs(); i++)
+          {
+            nodal_mass[i] = mass_matrix.el(i, i);
+          }
         calculate_KE();
         this->solve(mass_matrix, previous_acceleration, system_rhs);
         this->output_results(time.get_timestep());
@@ -186,7 +186,7 @@ namespace Solid
 
     calculate_KE();
 
-    if(time.time_to_output())
+    if (time.time_to_output())
       {
         this->output_results(time.get_timestep());
       }
@@ -371,7 +371,7 @@ namespace Solid
 
         // assemble mass matrix
         for (unsigned int q = 0; q < n_q_points; ++q)
-          {   
+          {
             for (unsigned int k = 0; k < dofs_per_cell; ++k)
               {
                 phi[q][k] = fe_values[displacement].value(k, q);
@@ -385,14 +385,15 @@ namespace Solid
               {
                 for (unsigned int j = 0; j < dofs_per_cell; ++j)
                   {
-                    if(initial_step)
-                    {
-                      local_mass(i, j) += rho * phi[q][i] * phi[q][j] * JxW;
-                    }
+                    if (initial_step)
+                      {
+                        local_mass(i, j) += rho * phi[q][i] * phi[q][j] * JxW;
+                      }
                     else
-                    {
-                      local_matrix(i, j) += (rho * phi[q][i] * phi[q][j]) /(beta * dt * dt)*JxW ;
-                    }  
+                      {
+                        local_matrix(i, j) += (rho * phi[q][i] * phi[q][j]) /
+                                              (beta * dt * dt) * JxW;
+                      }
                   }
               }
           }
@@ -400,40 +401,39 @@ namespace Solid
         // create lumped mass matrix
         for (unsigned int i = 0; i < dofs_per_cell; ++i)
           {
-            double sum=0;
+            double sum = 0;
             for (unsigned int j = 0; j < dofs_per_cell; ++j)
               {
-                if(initial_step)
-                  sum=sum+local_mass(i,j);
+                if (initial_step)
+                  sum = sum + local_mass(i, j);
                 else
-                  sum=sum+local_matrix(i,j);
+                  sum = sum + local_matrix(i, j);
               }
             for (unsigned int j = 0; j < dofs_per_cell; ++j)
               {
-                if(initial_step)
-                {  
-                  if(i==j)
-                  { 
-                    local_mass(i,j)=sum; 
-                  }  
-                  else
+                if (initial_step)
                   {
-                    local_mass(i,j)=0;
+                    if (i == j)
+                      {
+                        local_mass(i, j) = sum;
+                      }
+                    else
+                      {
+                        local_mass(i, j) = 0;
+                      }
                   }
-                }
                 else
-                {
-                  if(i==j)
-                  { 
-                    local_matrix(i,j)=sum; 
-                  }  
-                  else
                   {
-                    local_matrix(i,j)=0;
+                    if (i == j)
+                      {
+                        local_matrix(i, j) = sum;
+                      }
+                    else
+                      {
+                        local_matrix(i, j) = 0;
+                      }
                   }
-
-                }   
-              }  
+              }
           }
 
         for (unsigned int q = 0; q < n_q_points; ++q)
@@ -458,14 +458,13 @@ namespace Solid
                   fe.system_to_component_index(i).first;
                 for (unsigned int j = 0; j <= i; ++j)
                   {
-                    
-                    if(!initial_step)
+
+                    if (!initial_step)
                       {
                         const unsigned int component_j =
                           fe.system_to_component_index(j).first;
                         local_matrix(i, j) +=
-                          (sym_grad_phi[q][i] * Jc * sym_grad_phi[q][j]) *
-                          JxW;
+                          (sym_grad_phi[q][i] * Jc * sym_grad_phi[q][j]) * JxW;
                         if (component_i == component_j)
                           {
                             local_matrix(i, j) +=
@@ -583,7 +582,7 @@ namespace Solid
 
     timer.leave_subsection();
   }
-  
+
   template <int dim>
   void HyperElasticity<dim>::update_strain_and_stress()
   {

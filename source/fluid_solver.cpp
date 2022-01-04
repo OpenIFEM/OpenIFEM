@@ -288,18 +288,16 @@ namespace Fluid
     // fsi force
     Vector<double> fsi_force_output;
     fsi_force_output.reinit(dofs_per_block[0]);
-    for(unsigned int i=0; i<dofs_per_block[0];i++)
-      fsi_force_output[i]=fsi_force[i];
+    for (unsigned int i = 0; i < dofs_per_block[0]; i++)
+      fsi_force_output[i] = fsi_force[i];
     solution_names = std::vector<std::string>(dim, "fsi_force");
-    data_out.add_data_vector(dof_handler,
-                             fsi_force,
-                             solution_names,
-                             data_component_interpretation);
+    data_out.add_data_vector(
+      dof_handler, fsi_force, solution_names, data_component_interpretation);
 
     Vector<double> fsi_acceleration_output;
     fsi_acceleration_output.reinit(dofs_per_block[0]);
-    for(unsigned int i=0; i<dofs_per_block[0];i++)
-      fsi_acceleration_output[i]=fsi_force_acceleration_part[i];
+    for (unsigned int i = 0; i < dofs_per_block[0]; i++)
+      fsi_acceleration_output[i] = fsi_force_acceleration_part[i];
     solution_names = std::vector<std::string>(dim, "fsi_acceleration");
     data_out.add_data_vector(dof_handler,
                              fsi_acceleration_output,
@@ -308,8 +306,8 @@ namespace Fluid
 
     Vector<double> fsi_stress_output;
     fsi_stress_output.reinit(dofs_per_block[0]);
-    for(unsigned int i=0; i<dofs_per_block[0];i++)
-      fsi_stress_output[i]=fsi_force_stress_part[i];
+    for (unsigned int i = 0; i < dofs_per_block[0]; i++)
+      fsi_stress_output[i] = fsi_force_stress_part[i];
     solution_names = std::vector<std::string>(dim, "fsi_stress");
     data_out.add_data_vector(dof_handler,
                              fsi_stress_output,

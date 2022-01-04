@@ -157,13 +157,14 @@ namespace Solid
     Vector<double> previous_velocity;
     Vector<double> previous_displacement;
     /**
-     * Vector stores nodal mass which is used for calculation of toal solid KE and momentum
+     * Vector stores nodal mass which is used for calculation of toal solid KE
+     * and momentum
      */
     Vector<double> nodal_mass;
 
     /**
      * function to calculate total KE of the solid
-     */ 
+     */
     void calculate_KE();
 
     /**

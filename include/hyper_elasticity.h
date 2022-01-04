@@ -151,7 +151,7 @@ namespace Solid
 
     /// Run one time step.
     void run_one_step(bool);
-    
+
     /**
      * We store a PointHistory structure at every quadrature point,
      * so that kinematics information like F as well as material properties

@@ -2,15 +2,13 @@
 
 namespace Fluid
 {
-  
 
   template <int dim>
   SableWrap<dim>::SableWrap(Triangulation<dim> &tria,
-                    const Parameters::AllParameters &parameters,
-                    std::vector<int> &sable_ids,
-                    std::shared_ptr<Function<dim>> bc)
-    : FluidSolver<dim>(tria, parameters, bc),
-      sable_ids(sable_ids)
+                            const Parameters::AllParameters &parameters,
+                            std::vector<int> &sable_ids,
+                            std::shared_ptr<Function<dim>> bc)
+    : FluidSolver<dim>(tria, parameters, bc), sable_ids(sable_ids)
   {
     Assert(
       parameters.fluid_velocity_degree - parameters.fluid_pressure_degree == 1,
@@ -24,8 +22,9 @@ namespace Fluid
     FluidSolver<dim>::initialize_system();
     fsi_acceleration.reinit(dofs_per_block);
     fsi_velocity.reinit(dofs_per_block);
-    int stress_vec_size = dim + dim*(dim-1)*0.5;
-    fsi_stress = std::vector<Vector<double>>(stress_vec_size, Vector<double>(scalar_dof_handler.n_dofs()));
+    int stress_vec_size = dim + dim * (dim - 1) * 0.5;
+    fsi_stress = std::vector<Vector<double>>(
+      stress_vec_size, Vector<double>(scalar_dof_handler.n_dofs()));
   }
 
   template <int dim>
@@ -38,18 +37,18 @@ namespace Fluid
       gravity[i] = parameters.gravity[i];
 
     system_rhs = 0;
-    fsi_force =0;
-    fsi_force_acceleration_part =0;
-    fsi_force_stress_part=0;
+    fsi_force = 0;
+    fsi_force_acceleration_part = 0;
+    fsi_force_stress_part = 0;
 
     FEValues<dim> fe_values(fe,
                             volume_quad_formula,
                             update_values | update_quadrature_points |
                               update_JxW_values | update_gradients);
     FEValues<dim> scalar_fe_values(scalar_fe,
-                            volume_quad_formula,
-                            update_values | update_quadrature_points |
-                              update_JxW_values | update_gradients);
+                                   volume_quad_formula,
+                                   update_values | update_quadrature_points |
+                                     update_JxW_values | update_gradients);
     FEFaceValues<dim> fe_face_values(fe,
                                      face_quad_formula,
                                      update_values | update_normal_vectors |
@@ -60,7 +59,7 @@ namespace Fluid
     const unsigned int u_dofs = fe.base_element(0).dofs_per_cell;
     const unsigned int p_dofs = fe.base_element(1).dofs_per_cell;
     const unsigned int n_q_points = volume_quad_formula.size();
-    
+
     AssertThrow(u_dofs * dim + p_dofs == dofs_per_cell,
                 ExcMessage("Wrong partitioning of dofs!"));
 
@@ -79,51 +78,55 @@ namespace Fluid
     std::vector<Tensor<1, dim>> present_velocity_values(n_q_points);
     std::vector<Tensor<1, dim>> fsi_acc_values(n_q_points);
     std::vector<double> fsi_stress_value(n_q_points);
-    std::vector<std::vector<double>> fsi_cell_stress = std::vector<std::vector<double>>(fsi_stress.size(),std::vector<double>(n_q_points));
+    std::vector<std::vector<double>> fsi_cell_stress =
+      std::vector<std::vector<double>>(fsi_stress.size(),
+                                       std::vector<double>(n_q_points));
 
     std::vector<double> div_phi_u(dofs_per_cell);
     std::vector<Tensor<1, dim>> phi_u(dofs_per_cell);
     std::vector<Tensor<2, dim>> grad_phi_u(dofs_per_cell);
     std::vector<double> phi_p(dofs_per_cell);
 
-    auto scalar_cell= scalar_dof_handler.begin_active();
-    for (auto cell = dof_handler.begin_active(); scalar_cell != scalar_dof_handler.end(), cell != dof_handler.end();
+    auto scalar_cell = scalar_dof_handler.begin_active();
+    for (auto cell = dof_handler.begin_active();
+         scalar_cell != scalar_dof_handler.end(), cell != dof_handler.end();
          ++cell, ++scalar_cell)
       {
         auto p = cell_property.get_data(cell);
         const double ind = p[0]->indicator;
-      
+
         fe_values.reinit(cell);
         scalar_fe_values.reinit(scalar_cell);
 
         local_rhs = 0;
-        local_rhs_acceleration_part=0;
-        local_rhs_stress_part=0;
+        local_rhs_acceleration_part = 0;
+        local_rhs_stress_part = 0;
 
-        if(ind !=0)
-        {  
-          fe_values[velocities].get_function_values(present_solution,
-                                                    current_velocity_values);
-
-          fe_values[velocities].get_function_gradients(
-            present_solution, current_velocity_gradients);
-
-          fe_values[pressure].get_function_values(present_solution,
-                                                  current_pressure_values);
-
-          fe_values[velocities].get_function_values(present_solution,
-                                                    present_velocity_values);
-
-          fe_values[velocities].get_function_values(fsi_acceleration,
-                                                    fsi_acc_values);
-
-          for(unsigned int i=0; i<fsi_stress.size();i++)
+        if (ind != 0)
           {
-            scalar_fe_values.get_function_values(fsi_stress[i], fsi_stress_value);
-            fsi_cell_stress[i] = fsi_stress_value;
+            fe_values[velocities].get_function_values(present_solution,
+                                                      current_velocity_values);
+
+            fe_values[velocities].get_function_gradients(
+              present_solution, current_velocity_gradients);
+
+            fe_values[pressure].get_function_values(present_solution,
+                                                    current_pressure_values);
+
+            fe_values[velocities].get_function_values(present_solution,
+                                                      present_velocity_values);
+
+            fe_values[velocities].get_function_values(fsi_acceleration,
+                                                      fsi_acc_values);
+
+            for (unsigned int i = 0; i < fsi_stress.size(); i++)
+              {
+                scalar_fe_values.get_function_values(fsi_stress[i],
+                                                     fsi_stress_value);
+                fsi_cell_stress[i] = fsi_stress_value;
+              }
           }
-        }  
-        
+
         for (unsigned int q = 0; q < n_q_points; ++q)
           {
             SymmetricTensor<2, dim> fsi_stress_tensor;
@@ -135,18 +138,19 @@ namespace Fluid
                 phi_p[k] = fe_values[pressure].value(k, q);
               }
 
-            if(ind != 0)
-            {
-              int stress_index=0;
-              for (unsigned int k = 0; k < dim; k++)
+            if (ind != 0)
               {
-                for (unsigned int m = k; m < dim; m++)
-                {
-                  fsi_stress_tensor[k][m] = fsi_cell_stress[stress_index][q];
-                  stress_index++;
-                }
+                int stress_index = 0;
+                for (unsigned int k = 0; k < dim; k++)
+                  {
+                    for (unsigned int m = k; m < dim; m++)
+                      {
+                        fsi_stress_tensor[k][m] =
+                          fsi_cell_stress[stress_index][q];
+                        stress_index++;
+                      }
+                  }
               }
-            } 
 
             for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
@@ -155,42 +159,43 @@ namespace Fluid
                     local_rhs(i) +=
                       (scalar_product(grad_phi_u[i], fsi_stress_tensor) +
                        fsi_acc_values[q] * phi_u[i]) *
-                      fe_values.JxW(q)*ind;
+                      fe_values.JxW(q) * ind;
                     local_rhs_acceleration_part(i) +=
-                       (fsi_acc_values[q] * phi_u[i]) *
-                      fe_values.JxW(q)*ind;  
+                      (fsi_acc_values[q] * phi_u[i]) * fe_values.JxW(q) * ind;
                     local_rhs_stress_part(i) +=
                       (scalar_product(grad_phi_u[i], fsi_stress_tensor)) *
-                      fe_values.JxW(q)*ind;  
+                      fe_values.JxW(q) * ind;
                   }
               }
           }
 
         cell->get_dof_indices(local_dof_indices);
-        for(unsigned int i=0; i<dofs_per_cell; i++)
-        {
-          system_rhs[local_dof_indices[i]] += local_rhs(i);
-          fsi_force[local_dof_indices[i]] += local_rhs(i);
-          fsi_force_acceleration_part[local_dof_indices[i]] += local_rhs_acceleration_part(i);
-          fsi_force_stress_part[local_dof_indices[i]] += local_rhs_stress_part(i);
-        }
+        for (unsigned int i = 0; i < dofs_per_cell; i++)
+          {
+            system_rhs[local_dof_indices[i]] += local_rhs(i);
+            fsi_force[local_dof_indices[i]] += local_rhs(i);
+            fsi_force_acceleration_part[local_dof_indices[i]] +=
+              local_rhs_acceleration_part(i);
+            fsi_force_stress_part[local_dof_indices[i]] +=
+              local_rhs_stress_part(i);
+          }
       }
   }
 
   template <int dim>
   void SableWrap<dim>::run_one_step(bool apply_nonzero_constraints,
-                                bool assemble_system)
+                                    bool assemble_system)
   {
-    (void) apply_nonzero_constraints;
+    (void)apply_nonzero_constraints;
     (void)assemble_system;
 
     std::cout.precision(6);
     std::cout.width(12);
     if (time.get_timestep() == 0)
       {
-        sable_no_nodes_one_dir=0;
-        sable_no_ele=0;
-        sable_no_nodes=0;
+        sable_no_nodes_one_dir = 0;
+        sable_no_ele = 0;
+        sable_no_nodes = 0;
         Max(sable_no_nodes_one_dir);
         Max(sable_no_ele);
         Max(sable_no_nodes);
@@ -201,33 +206,34 @@ namespace Fluid
         rec_velocity(sable_no_nodes);
         output_results(0);
         std::cout << "Received inital solution from Sable" << std::endl;
-        //All(active);
+        // All(active);
       }
     else
-      {   
-        if(parameters.simulation_type != "FSI" )
-        {  
-          send_fsi_force(sable_no_nodes);
-          send_indicator(sable_no_ele, sable_no_nodes);
-        }  
-        //Recieve no. of nodes and elements from Sable
-        sable_no_nodes_one_dir=0;
-        sable_no_ele=0;
-        sable_no_nodes=0;
+      {
+        if (parameters.simulation_type != "FSI")
+          {
+            send_fsi_force(sable_no_nodes);
+            send_indicator(sable_no_ele, sable_no_nodes);
+          }
+        // Recieve no. of nodes and elements from Sable
+        sable_no_nodes_one_dir = 0;
+        sable_no_ele = 0;
+        sable_no_nodes = 0;
         Max(sable_no_nodes_one_dir);
         Max(sable_no_ele);
         Max(sable_no_nodes);
         rec_stress(sable_no_ele);
         rec_velocity(sable_no_nodes);
-        is_comm_active= All(is_comm_active);
+        is_comm_active = All(is_comm_active);
         std::cout << std::string(96, '*') << std::endl
-                  << "Received solution from Sable at time step = " << time.get_timestep()
-                  << ", at t = " << std::scientific << time.current() << std::endl;
+                  << "Received solution from Sable at time step = "
+                  << time.get_timestep() << ", at t = " << std::scientific
+                  << time.current() << std::endl;
         // Output
-        if((int(time.get_timestep()) % int(parameters.output_interval))==0)
-          {         
+        if ((int(time.get_timestep()) % int(parameters.output_interval)) == 0)
+          {
             output_results(time.get_timestep());
-          }  
+          }
       }
   }
 
@@ -240,7 +246,7 @@ namespace Fluid
 
     while (is_comm_active)
       {
-        if(time.current()==0)
+        if (time.current() == 0)
           run_one_step();
         get_dt_sable();
         run_one_step();
@@ -248,129 +254,147 @@ namespace Fluid
   }
 
   template <int dim>
-  void SableWrap<dim>::rec_data(double ** rec_buffer, const std::vector <int> & cmapp, const std::vector <int> & cmapp_sizes,
-  int data_size)
+  void SableWrap<dim>::rec_data(double **rec_buffer,
+                                const std::vector<int> &cmapp,
+                                const std::vector<int> &cmapp_sizes,
+                                int data_size)
   {
     std::vector<MPI_Request> handles;
-    for(unsigned ict = 0;ict < cmapp.size();ict ++)
-    {
-      MPI_Request req;
-      MPI_Irecv(rec_buffer[ict],cmapp_sizes[ict], MPI_DOUBLE, cmapp[ict],1, MPI_COMM_WORLD, &req);
-      handles.push_back(req);
-    }
+    for (unsigned ict = 0; ict < cmapp.size(); ict++)
+      {
+        MPI_Request req;
+        MPI_Irecv(rec_buffer[ict],
+                  cmapp_sizes[ict],
+                  MPI_DOUBLE,
+                  cmapp[ict],
+                  1,
+                  MPI_COMM_WORLD,
+                  &req);
+        handles.push_back(req);
+      }
     std::vector<MPI_Request>::iterator hit;
-    for(hit = handles.begin();hit != handles.end();hit ++)
-    {
-      MPI_Status stat;
-      MPI_Wait(&(*hit), &stat);
-    }
+    for (hit = handles.begin(); hit != handles.end(); hit++)
+      {
+        MPI_Status stat;
+        MPI_Wait(&(*hit), &stat);
+      }
   }
 
   template <int dim>
-  void SableWrap<dim>::send_data(double ** send_buffer, const std::vector <int> & cmapp, const std::vector <int> & cmapp_sizes)
+  void SableWrap<dim>::send_data(double **send_buffer,
+                                 const std::vector<int> &cmapp,
+                                 const std::vector<int> &cmapp_sizes)
   {
-    for(unsigned ict = 0;ict < cmapp.size();ict ++)
-    {
-      MPI_Send(send_buffer[ict],cmapp_sizes[ict], MPI_DOUBLE, cmapp[ict],1, MPI_COMM_WORLD);
-    }
+    for (unsigned ict = 0; ict < cmapp.size(); ict++)
+      {
+        MPI_Send(send_buffer[ict],
+                 cmapp_sizes[ict],
+                 MPI_DOUBLE,
+                 cmapp[ict],
+                 1,
+                 MPI_COMM_WORLD);
+      }
   }
 
   template <int dim>
   void SableWrap<dim>::find_ghost_nodes()
   {
-      
-    int node_z = int(sable_no_nodes/(sable_no_nodes_one_dir * sable_no_nodes_one_dir));
+
+    int node_z =
+      int(sable_no_nodes / (sable_no_nodes_one_dir * sable_no_nodes_one_dir));
     int node_z_begin = 0;
     int node_z_end = node_z;
 
     int sable_no_el_one_dir;
-    if(dim == 2)
-      sable_no_el_one_dir = int (std::sqrt(sable_no_ele));
+    if (dim == 2)
+      sable_no_el_one_dir = int(std::sqrt(sable_no_ele));
     else
-      sable_no_el_one_dir = int (std::cbrt(sable_no_ele));
+      sable_no_el_one_dir = int(std::cbrt(sable_no_ele));
 
-    int ele_z = int(sable_no_ele/(sable_no_el_one_dir * sable_no_el_one_dir));
+    int ele_z = int(sable_no_ele / (sable_no_el_one_dir * sable_no_el_one_dir));
     int ele_z_begin = 0;
     int ele_z_end = ele_z;
 
-    if(dim == 3)
-    {
-      node_z_begin = 1;
-      node_z_end = node_z -1;
-
-      ele_z_begin = 1;
-      ele_z_end = ele_z-1;
-    }
-
-    for(int l= node_z_begin; l<node_z_end; l++)
-    {
-      int cornder_node_id= l*sable_no_nodes_one_dir*sable_no_nodes_one_dir + sable_no_nodes_one_dir+1;
-      for(int i=0; i<sable_no_nodes_one_dir-2; i++)
+    if (dim == 3)
       {
-        for(int j=0; j<sable_no_nodes_one_dir-2; j++)
-        {
-          int n = cornder_node_id + j + i*(sable_no_nodes_one_dir);
-          non_ghost_nodes.push_back(n);
-        }
-      }
-    }
+        node_z_begin = 1;
+        node_z_end = node_z - 1;
 
-    for(int l=ele_z_begin; l<ele_z_end; l++)
-    {
-      int cornder_el_id= l*sable_no_el_one_dir*sable_no_el_one_dir + sable_no_el_one_dir+1;
-      for(int i=0; i<sable_no_el_one_dir-2; i++)
+        ele_z_begin = 1;
+        ele_z_end = ele_z - 1;
+      }
+
+    for (int l = node_z_begin; l < node_z_end; l++)
       {
-        for(int j=0; j<sable_no_el_one_dir-2; j++)
-        {
-          int n = cornder_el_id + j + i*(sable_no_el_one_dir);
-          non_ghost_cells.push_back(n);
-        }
+        int cornder_node_id =
+          l * sable_no_nodes_one_dir * sable_no_nodes_one_dir +
+          sable_no_nodes_one_dir + 1;
+        for (int i = 0; i < sable_no_nodes_one_dir - 2; i++)
+          {
+            for (int j = 0; j < sable_no_nodes_one_dir - 2; j++)
+              {
+                int n = cornder_node_id + j + i * (sable_no_nodes_one_dir);
+                non_ghost_nodes.push_back(n);
+              }
+          }
       }
-    }
 
-    assert(non_ghost_nodes.size()== triangulation.n_vertices());
-    assert(non_ghost_cells.size()== triangulation.n_cells());
+    for (int l = ele_z_begin; l < ele_z_end; l++)
+      {
+        int cornder_el_id = l * sable_no_el_one_dir * sable_no_el_one_dir +
+                            sable_no_el_one_dir + 1;
+        for (int i = 0; i < sable_no_el_one_dir - 2; i++)
+          {
+            for (int j = 0; j < sable_no_el_one_dir - 2; j++)
+              {
+                int n = cornder_el_id + j + i * (sable_no_el_one_dir);
+                non_ghost_cells.push_back(n);
+              }
+          }
+      }
+
+    assert(non_ghost_nodes.size() == triangulation.n_vertices());
+    assert(non_ghost_cells.size() == triangulation.n_cells());
   }
 
   template <int dim>
-  void SableWrap<dim>::rec_velocity(const int& sable_n_nodes)
+  void SableWrap<dim>::rec_velocity(const int &sable_n_nodes)
   {
-    //Recieve solution
-    int sable_sol_size = sable_n_nodes*dim ;
-    unsigned int vel_size = triangulation.n_vertices()*dim;
+    // Recieve solution
+    int sable_sol_size = sable_n_nodes * dim;
+    unsigned int vel_size = triangulation.n_vertices() * dim;
     std::vector<int> cmapp = sable_ids;
     std::vector<int> cmapp_sizes;
     cmapp_sizes.push_back(sable_sol_size);
-    //create rec buffer
-    double ** nv_rec_buffer = new double*[cmapp.size()];
-    for(unsigned ict = 0;ict < cmapp.size();ict ++)
-    {
-      nv_rec_buffer[ict] = new double[cmapp_sizes[ict]];
-    }
+    // create rec buffer
+    double **nv_rec_buffer = new double *[cmapp.size()];
+    for (unsigned ict = 0; ict < cmapp.size(); ict++)
+      {
+        nv_rec_buffer[ict] = new double[cmapp_sizes[ict]];
+      }
     // recieve data
     rec_data(nv_rec_buffer, cmapp, cmapp_sizes, sable_sol_size);
-    
-    //remove solution from ghost layers of Sable mesh
+
+    // remove solution from ghost layers of Sable mesh
     std::vector<double> sable_solution;
-    for(unsigned int n=0; n<triangulation.n_vertices(); n++)
-    {
-      int non_ghost_node_id = non_ghost_nodes[n];
-      int index = non_ghost_node_id*dim;
-      for(unsigned int i=0; i<dim; i++)
+    for (unsigned int n = 0; n < triangulation.n_vertices(); n++)
       {
-        sable_solution.push_back(nv_rec_buffer[0][index+i]);
+        int non_ghost_node_id = non_ghost_nodes[n];
+        int index = non_ghost_node_id * dim;
+        for (unsigned int i = 0; i < dim; i++)
+          {
+            sable_solution.push_back(nv_rec_buffer[0][index + i]);
+          }
       }
-    }
-    
-    assert(sable_solution.size()==vel_size);
-  
-    //synchronize solution
+
+    assert(sable_solution.size() == vel_size);
+
+    // synchronize solution
     present_solution.reinit(dofs_per_block);
 
-    //Syncronize Sable and OpenIFEM solution
+    // Syncronize Sable and OpenIFEM solution
     std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
-    for (auto cell = dof_handler.begin_active();
-         cell != dof_handler.end();
+    for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
          ++cell)
       {
         for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
@@ -378,30 +402,30 @@ namespace Fluid
             if (!vertex_touched[cell->vertex_index(v)])
               {
                 vertex_touched[cell->vertex_index(v)] = true;
-                for(unsigned int i=0; i<dim; i++)
-                {
-                  //Sable vertex indexing is same as deal.ii
-                  int sable_sol_index = cell->vertex_index(v)*dim+i;
-                  int openifem_sol_index = cell->vertex_dof_index(v,i);
-                  present_solution[openifem_sol_index]=sable_solution[sable_sol_index];
-                }
+                for (unsigned int i = 0; i < dim; i++)
+                  {
+                    // Sable vertex indexing is same as deal.ii
+                    int sable_sol_index = cell->vertex_index(v) * dim + i;
+                    int openifem_sol_index = cell->vertex_dof_index(v, i);
+                    present_solution[openifem_sol_index] =
+                      sable_solution[sable_sol_index];
+                  }
               }
-          
           }
       }
 
-    //delete solution
-    for(unsigned ict = 0;ict < cmapp.size();ict ++)
-    {
-      delete [] nv_rec_buffer[ict];    
-    }
-    delete [] nv_rec_buffer;
+    // delete solution
+    for (unsigned ict = 0; ict < cmapp.size(); ict++)
+      {
+        delete[] nv_rec_buffer[ict];
+      }
+    delete[] nv_rec_buffer;
   }
 
   template <int dim>
-  void SableWrap<dim>::rec_stress(const int& sable_n_elements)
+  void SableWrap<dim>::rec_stress(const int &sable_n_elements)
   {
-    //initialize stress vector
+    // initialize stress vector
     for (unsigned int i = 0; i < dim; ++i)
       {
         for (unsigned int j = 0; j < dim; ++j)
@@ -410,66 +434,69 @@ namespace Fluid
           }
       }
 
-    int sable_stress_size = sable_n_elements*dim*2 ;
-    int sable_stress_per_ele_size = dim*2;
+    int sable_stress_size = sable_n_elements * dim * 2;
+    int sable_stress_per_ele_size = dim * 2;
     std::vector<int> cmapp = sable_ids;
     std::vector<int> cmapp_sizes;
     cmapp_sizes.push_back(sable_stress_size);
-    
+
     int openifem_stress_per_ele_size;
-    if(dim ==2)
+    if (dim == 2)
       openifem_stress_per_ele_size = 3;
     else
       openifem_stress_per_ele_size = 6;
 
-    int openifem_stress_size = triangulation.n_cells()*openifem_stress_per_ele_size;
-    
-    //create rec buffer
-    double ** nv_rec_buffer = new double*[cmapp.size()];
-    for(unsigned ict = 0;ict < cmapp.size();ict ++)
-    {
-      nv_rec_buffer[ict] = new double[cmapp_sizes[ict]];
-    }
+    int openifem_stress_size =
+      triangulation.n_cells() * openifem_stress_per_ele_size;
+
+    // create rec buffer
+    double **nv_rec_buffer = new double *[cmapp.size()];
+    for (unsigned ict = 0; ict < cmapp.size(); ict++)
+      {
+        nv_rec_buffer[ict] = new double[cmapp_sizes[ict]];
+      }
     // recieve data
     rec_data(nv_rec_buffer, cmapp, cmapp_sizes, sable_stress_size);
 
-    //remove solution from ghost layers of Sable mesh
+    // remove solution from ghost layers of Sable mesh
     std::vector<double> sable_stress;
-    
-    for(unsigned int n=0; n<triangulation.n_cells(); n++)
-    {
-      int non_ghost_cell_id = non_ghost_cells[n];
-      int index = non_ghost_cell_id*sable_stress_per_ele_size;
-      for(int i=0; i< sable_stress_per_ele_size; i++)
-      {
-        sable_stress.push_back(nv_rec_buffer[0][index+i]);
-      }
-    }
 
-    assert(sable_stress.size()==triangulation.n_cells()*sable_stress_per_ele_size);
-    
-    std::vector<double> openifem_stress(openifem_stress_size,0);
+    for (unsigned int n = 0; n < triangulation.n_cells(); n++)
+      {
+        int non_ghost_cell_id = non_ghost_cells[n];
+        int index = non_ghost_cell_id * sable_stress_per_ele_size;
+        for (int i = 0; i < sable_stress_per_ele_size; i++)
+          {
+            sable_stress.push_back(nv_rec_buffer[0][index + i]);
+          }
+      }
+
+    assert(sable_stress.size() ==
+           triangulation.n_cells() * sable_stress_per_ele_size);
+
+    std::vector<double> openifem_stress(openifem_stress_size, 0);
 
     // Sable stress tensor in 2D: xx yy zz xy
     // Sable stress tensor in 3D: xx yy zz xy yz xz
     std::vector<int> stress_sequence;
     // create stress sequence according to dimension
-    if(dim==2)
+    if (dim == 2)
       stress_sequence = {0, 3, 1};
     else
       stress_sequence = {0, 3, 1, 5, 4, 2};
 
-    for(unsigned int i=0; i<triangulation.n_cells();i++)
+    for (unsigned int i = 0; i < triangulation.n_cells(); i++)
       {
-        int count =0; 
-        for(auto j : stress_sequence)
-        {
-          openifem_stress[i*openifem_stress_per_ele_size+count]= sable_stress[i*sable_stress_per_ele_size+j];
-          count = count +1;
-        }
-      }  
-    
-    //syncronize solution
+        int count = 0;
+        for (auto j : stress_sequence)
+          {
+            openifem_stress[i * openifem_stress_per_ele_size + count] =
+              sable_stress[i * sable_stress_per_ele_size + j];
+            count = count + 1;
+          }
+      }
+
+    // syncronize solution
     auto cell = dof_handler.begin_active();
     auto scalar_cell = scalar_dof_handler.begin_active();
     std::vector<types::global_dof_index> dof_indices(scalar_fe.dofs_per_cell);
@@ -477,19 +504,20 @@ namespace Fluid
     for (; cell != dof_handler.end(); ++cell, ++scalar_cell)
       {
         scalar_cell->get_dof_indices(dof_indices);
-        int index = cell->active_cell_index()*openifem_stress_per_ele_size;
-        int count=0;
+        int index = cell->active_cell_index() * openifem_stress_per_ele_size;
+        int count = 0;
         for (unsigned int i = 0; i < dim; ++i)
           {
             for (unsigned int j = 0; j <= i; ++j)
               {
                 for (unsigned int k = 0; k < scalar_fe.dofs_per_cell; ++k)
                   {
-                    stress[i][j][dof_indices[k]] += openifem_stress[index+count];
+                    stress[i][j][dof_indices[k]] +=
+                      openifem_stress[index + count];
                     if (i == 0 && j == 0)
                       surrounding_cells[dof_indices[k]]++;
                   }
-                count++;  
+                count++;
               }
           }
       }
@@ -505,41 +533,40 @@ namespace Fluid
           }
       }
 
-     for (unsigned int i = 0; i < dim; ++i)
+    for (unsigned int i = 0; i < dim; ++i)
       {
-        for (unsigned int j = 0; j <=i; ++j)
+        for (unsigned int j = 0; j <= i; ++j)
           {
             for (unsigned int k = 0; k < scalar_dof_handler.n_dofs(); ++k)
               {
                 stress[j][i][k] = stress[i][j][k];
               }
           }
-      } 
+      }
 
-    //delete buffer
-    for(unsigned ict = 0;ict < cmapp.size();ict ++)
-    {
-      delete [] nv_rec_buffer[ict];    
-    }
-    delete [] nv_rec_buffer;
+    // delete buffer
+    for (unsigned ict = 0; ict < cmapp.size(); ict++)
+      {
+        delete[] nv_rec_buffer[ict];
+      }
+    delete[] nv_rec_buffer;
   }
 
   template <int dim>
-  void SableWrap<dim>::send_fsi_force(const int& sable_n_nodes)
+  void SableWrap<dim>::send_fsi_force(const int &sable_n_nodes)
   {
     assemble_force();
 
-    int sable_force_size = sable_n_nodes*dim;
+    int sable_force_size = sable_n_nodes * dim;
     std::vector<int> cmapp = sable_ids;
     std::vector<int> cmapp_sizes;
     cmapp_sizes.push_back(sable_force_size);
 
-    //Syncronize Sable and OpenIFEM solution
-    std::vector<double> sable_fsi_force(triangulation.n_vertices()*dim,0);
-    std::vector<double> sable_fsi_velocity(triangulation.n_vertices()*dim,0);
+    // Syncronize Sable and OpenIFEM solution
+    std::vector<double> sable_fsi_force(triangulation.n_vertices() * dim, 0);
+    std::vector<double> sable_fsi_velocity(triangulation.n_vertices() * dim, 0);
     std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
-    for (auto cell = dof_handler.begin_active();
-         cell != dof_handler.end();
+    for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
          ++cell)
       {
         for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
@@ -547,61 +574,64 @@ namespace Fluid
             if (!vertex_touched[cell->vertex_index(v)])
               {
                 vertex_touched[cell->vertex_index(v)] = true;
-                for(unsigned int i=0; i<dim; i++)
-                {
-                  //Sable vertex indexing is same as deal.ii
-                  int sable_force_index = cell->vertex_index(v)*dim+i;
-                  int openifem_force_index = cell->vertex_dof_index(v,i);
-                  sable_fsi_force[sable_force_index]=fsi_force[openifem_force_index];
-                  sable_fsi_velocity[sable_force_index]=fsi_velocity[openifem_force_index];
-                }
+                for (unsigned int i = 0; i < dim; i++)
+                  {
+                    // Sable vertex indexing is same as deal.ii
+                    int sable_force_index = cell->vertex_index(v) * dim + i;
+                    int openifem_force_index = cell->vertex_dof_index(v, i);
+                    sable_fsi_force[sable_force_index] =
+                      fsi_force[openifem_force_index];
+                    sable_fsi_velocity[sable_force_index] =
+                      fsi_velocity[openifem_force_index];
+                  }
               }
           }
       }
 
-    //create send buffer
-    double ** nv_send_buffer_force = new double*[cmapp.size()];
-    double ** nv_send_buffer_vel = new double*[cmapp.size()];
-    for(unsigned int ict = 0;ict < cmapp.size();ict ++)
-    {
-      nv_send_buffer_force[ict] = new double[cmapp_sizes[ict]];
-      nv_send_buffer_vel[ict] = new double[cmapp_sizes[ict]];
-      for(int jct = 0;jct < cmapp_sizes[ict];jct ++)
+    // create send buffer
+    double **nv_send_buffer_force = new double *[cmapp.size()];
+    double **nv_send_buffer_vel = new double *[cmapp.size()];
+    for (unsigned int ict = 0; ict < cmapp.size(); ict++)
       {
-        nv_send_buffer_force[ict][jct]=0;
-        nv_send_buffer_vel[ict][jct]=0;
+        nv_send_buffer_force[ict] = new double[cmapp_sizes[ict]];
+        nv_send_buffer_vel[ict] = new double[cmapp_sizes[ict]];
+        for (int jct = 0; jct < cmapp_sizes[ict]; jct++)
+          {
+            nv_send_buffer_force[ict][jct] = 0;
+            nv_send_buffer_vel[ict][jct] = 0;
+          }
       }
-    }
-    
-    //add zero nodal forces corresponding to ghost nodes
-    for(unsigned int n=0; n<triangulation.n_vertices(); n++)
-    {
-      int non_ghost_node_id = non_ghost_nodes[n];
-      int index = non_ghost_node_id*dim;
-      for(unsigned int i=0; i<dim; i++)
-      {
-        nv_send_buffer_force[0][index+i]=sable_fsi_force[n*dim +i];
-        nv_send_buffer_vel[0][index+i]=sable_fsi_velocity[n*dim +i];
-      }
-    }
 
-    //send fsi force
-    send_data(nv_send_buffer_force, cmapp,cmapp_sizes); 
-    //send Dirichlet bc values for the artificial fluid
-    send_data(nv_send_buffer_vel, cmapp,cmapp_sizes);                
-    
-    //delete solution
-    for(unsigned ict = 0;ict < cmapp.size();ict ++)
-    {
-      delete [] nv_send_buffer_force[ict]; 
-      delete [] nv_send_buffer_vel[ict];    
-    }
-    delete [] nv_send_buffer_force;
-    delete [] nv_send_buffer_vel;
+    // add zero nodal forces corresponding to ghost nodes
+    for (unsigned int n = 0; n < triangulation.n_vertices(); n++)
+      {
+        int non_ghost_node_id = non_ghost_nodes[n];
+        int index = non_ghost_node_id * dim;
+        for (unsigned int i = 0; i < dim; i++)
+          {
+            nv_send_buffer_force[0][index + i] = sable_fsi_force[n * dim + i];
+            nv_send_buffer_vel[0][index + i] = sable_fsi_velocity[n * dim + i];
+          }
+      }
+
+    // send fsi force
+    send_data(nv_send_buffer_force, cmapp, cmapp_sizes);
+    // send Dirichlet bc values for the artificial fluid
+    send_data(nv_send_buffer_vel, cmapp, cmapp_sizes);
+
+    // delete solution
+    for (unsigned ict = 0; ict < cmapp.size(); ict++)
+      {
+        delete[] nv_send_buffer_force[ict];
+        delete[] nv_send_buffer_vel[ict];
+      }
+    delete[] nv_send_buffer_force;
+    delete[] nv_send_buffer_vel;
   }
 
   template <int dim>
-  void SableWrap<dim>::send_indicator(const int& sable_n_elements, const int& sable_n_nodes)
+  void SableWrap<dim>::send_indicator(const int &sable_n_elements,
+                                      const int &sable_n_nodes)
   {
 
     int sable_indicator_field_size = sable_n_elements;
@@ -611,119 +641,119 @@ namespace Fluid
     std::vector<int> cmapp_sizes_nodal;
     cmapp_sizes_nodal.push_back(sable_n_nodes);
 
-    //create vector of indicator field
-    std::vector<double> indicator_field(triangulation.n_cells(),0);
+    // create vector of indicator field
+    std::vector<double> indicator_field(triangulation.n_cells(), 0);
     std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
-    //create vector of nodal indicator flags
-    std::vector<double> nodal_indicator_field(triangulation.n_vertices(),0);
-    for (auto cell = dof_handler.begin_active();
-         cell != dof_handler.end();
+    // create vector of nodal indicator flags
+    std::vector<double> nodal_indicator_field(triangulation.n_vertices(), 0);
+    for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
          ++cell)
       {
         auto ptr = cell_property.get_data(cell);
-        //multiply indicator value by solid density
-        indicator_field[cell->active_cell_index()]= ptr[0]->indicator*parameters.solid_rho;
-        if(ptr[0]->indicator != 0)
-        {  
-          for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
-            {
-              if (!vertex_touched[cell->vertex_index(v)])
-                {
-                  vertex_touched[cell->vertex_index(v)] = true;
-                  nodal_indicator_field[cell->vertex_index(v)]=1.0;
-                }
-            }
-        }        
-      }  
-
-    std::vector<double> sable_indicator_field(sable_indicator_field_size,0);
-
-    for(unsigned int n=0; n<triangulation.n_cells(); n++)
-    {
-      int non_ghost_cell_id = non_ghost_cells[n];
-      sable_indicator_field[non_ghost_cell_id]= indicator_field[n];
-    }
-    
-    //create send buffer
-    double ** nv_send_buffer = new double*[cmapp.size()];
-    for(unsigned int ict = 0;ict < cmapp.size();ict ++)
-    {
-      nv_send_buffer[ict] = new double[cmapp_sizes_element[ict]];
-      for(int jct = 0;jct < cmapp_sizes_element[ict];jct ++)
-      {
-        nv_send_buffer[ict][jct]=sable_indicator_field[jct];
+        // multiply indicator value by solid density
+        indicator_field[cell->active_cell_index()] =
+          ptr[0]->indicator * parameters.solid_rho;
+        if (ptr[0]->indicator != 0)
+          {
+            for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
+                 ++v)
+              {
+                if (!vertex_touched[cell->vertex_index(v)])
+                  {
+                    vertex_touched[cell->vertex_index(v)] = true;
+                    nodal_indicator_field[cell->vertex_index(v)] = 1.0;
+                  }
+              }
+          }
       }
-    }
-    
-    //send indicator field
-    send_data(nv_send_buffer, cmapp, cmapp_sizes_element); 
-    for(unsigned ict = 0;ict < cmapp.size();ict ++)
-    {
-      delete [] nv_send_buffer[ict];    
-    }
-    //create send buffer
-    nv_send_buffer= new double*[cmapp.size()];
-    for(unsigned int ict = 0;ict < cmapp.size();ict ++)
-    {
-      nv_send_buffer[ict] = new double[cmapp_sizes_nodal[ict]];
-      for(int jct = 0;jct < cmapp_sizes_nodal[ict];jct ++)
-      {
-        nv_send_buffer[ict][jct]=0;
-      }
-    }
-    
-    //add zero nodal indicator corresponding to ghost nodes
-    for(unsigned int n=0; n<triangulation.n_vertices(); n++)
-    {
-      int non_ghost_node_id = non_ghost_nodes[n];
-      nv_send_buffer[0][non_ghost_node_id]= nodal_indicator_field[n];
-    }
 
-    //send data
-    send_data(nv_send_buffer, cmapp, cmapp_sizes_nodal);                
-    
-    //delete solution
-    for(unsigned ict = 0;ict < cmapp.size();ict ++)
-    {
-      delete [] nv_send_buffer[ict];    
-    }
-    delete [] nv_send_buffer;
-  
+    std::vector<double> sable_indicator_field(sable_indicator_field_size, 0);
+
+    for (unsigned int n = 0; n < triangulation.n_cells(); n++)
+      {
+        int non_ghost_cell_id = non_ghost_cells[n];
+        sable_indicator_field[non_ghost_cell_id] = indicator_field[n];
+      }
+
+    // create send buffer
+    double **nv_send_buffer = new double *[cmapp.size()];
+    for (unsigned int ict = 0; ict < cmapp.size(); ict++)
+      {
+        nv_send_buffer[ict] = new double[cmapp_sizes_element[ict]];
+        for (int jct = 0; jct < cmapp_sizes_element[ict]; jct++)
+          {
+            nv_send_buffer[ict][jct] = sable_indicator_field[jct];
+          }
+      }
+
+    // send indicator field
+    send_data(nv_send_buffer, cmapp, cmapp_sizes_element);
+    for (unsigned ict = 0; ict < cmapp.size(); ict++)
+      {
+        delete[] nv_send_buffer[ict];
+      }
+    // create send buffer
+    nv_send_buffer = new double *[cmapp.size()];
+    for (unsigned int ict = 0; ict < cmapp.size(); ict++)
+      {
+        nv_send_buffer[ict] = new double[cmapp_sizes_nodal[ict]];
+        for (int jct = 0; jct < cmapp_sizes_nodal[ict]; jct++)
+          {
+            nv_send_buffer[ict][jct] = 0;
+          }
+      }
+
+    // add zero nodal indicator corresponding to ghost nodes
+    for (unsigned int n = 0; n < triangulation.n_vertices(); n++)
+      {
+        int non_ghost_node_id = non_ghost_nodes[n];
+        nv_send_buffer[0][non_ghost_node_id] = nodal_indicator_field[n];
+      }
+
+    // send data
+    send_data(nv_send_buffer, cmapp, cmapp_sizes_nodal);
+
+    // delete solution
+    for (unsigned ict = 0; ict < cmapp.size(); ict++)
+      {
+        delete[] nv_send_buffer[ict];
+      }
+    delete[] nv_send_buffer;
   }
 
-  template<int dim>
-  bool SableWrap<dim>::All(bool my_b) 
+  template <int dim>
+  bool SableWrap<dim>::All(bool my_b)
   {
     int ib = (my_b == true ? 0 : 1);
     int result = 0;
-    MPI_Allreduce(&ib, &result, 1, MPI_INT , MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(&ib, &result, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
     return (result == 0);
   }
 
-  template<int dim>
+  template <int dim>
   void SableWrap<dim>::get_dt_sable()
   {
-    double dt=0;
+    double dt = 0;
     Max(dt);
     time.set_delta_t(dt);
     time.increment();
-  } 
+  }
 
-  template<int dim>
+  template <int dim>
   void SableWrap<dim>::Max(int &send_buffer)
   {
     int temp;
     MPI_Allreduce(&send_buffer, &temp, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
-    send_buffer=temp;
-  } 
+    send_buffer = temp;
+  }
 
-  template<int dim>
+  template <int dim>
   void SableWrap<dim>::Max(double &send_buffer)
   {
     double temp;
     MPI_Allreduce(&send_buffer, &temp, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-    send_buffer=temp;
-  } 
+    send_buffer = temp;
+  }
 
   template class SableWrap<2>;
   template class SableWrap<3>;
