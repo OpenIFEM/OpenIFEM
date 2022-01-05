@@ -602,6 +602,16 @@ namespace MPI
               {
                 continue;
               }
+            constexpr unsigned fixed_bc_flag{(1 << dim) - 1};
+            auto bc = parameters.solid_dirichlet_bcs.find(
+              s_cell->face(f)->boundary_id());
+            if (bc != parameters.solid_dirichlet_bcs.end() &&
+                bc->second == fixed_bc_flag)
+              {
+                // Skip those fixed faces
+                continue;
+              }
+            // Start computing traction
             for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_face;
                  ++v)
               {
@@ -669,7 +679,12 @@ namespace MPI
                     auto this_vertex = s_cell->face(f)->vertex_iterator(v);
                     // Find the normal of this vertex.
                     Tensor<1, dim> vertex_normal;
-                    auto &face_and_index = solid_boundary_vertices[this_vertex];
+                    auto boundary_vertex_data =
+                      solid_boundary_vertices.find(this_vertex);
+                    AssertThrow(
+                      boundary_vertex_data != solid_boundary_vertices.end(),
+                      ExcMessage("Cannot find boundary vertex data!"));
+                    auto &face_and_index = boundary_vertex_data->second;
                     for (auto [cell, face] : face_and_index.first)
                       {
                         solid_fe_face_values.reinit(cell, face);
@@ -690,8 +705,7 @@ namespace MPI
                       image_point_interpolator(fluid_solver.dof_handler,
                                                s_cell->face(f)->vertex(v),
                                                vertices_mask);
-                    int shear_velocity_index{
-                      solid_boundary_vertices[this_vertex].second};
+                    int shear_velocity_index{face_and_index.second};
                     if (image_point_interpolator.get_cell().state() ==
                         IteratorState::IteratorStates::valid)
                       {

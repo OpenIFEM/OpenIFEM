@@ -18,6 +18,7 @@ namespace MPI
     void run_with_cv_analysis();
     void set_control_volume_boundary(const std::vector<double> &);
     void set_output_solid_boundary(const bool);
+    void set_pressure_probe(const Point<dim>);
 
     //! Destructor
     ~ControlVolumeFSI();
@@ -99,10 +100,12 @@ namespace MPI
     */
     bool output_solid_boundary;
 
-    CellDataStorage<
-      typename parallel::distributed::Triangulation<dim>::active_cell_iterator,
-      Tensor<1, dim>>
-      solid_surface_velocity;
+    // Pressure probe location.
+    bool pressure_probe_set;
+    Point<dim> pressure_probe_location;
+    std::optional<Utils::GridInterpolator<dim, PETScWrappers::MPI::BlockVector>>
+      pressure_probe;
+
     CellDataStorage<
       typename parallel::distributed::Triangulation<dim>::active_cell_iterator,
       SurfaceCutter>
@@ -132,6 +135,10 @@ namespace MPI
       double outlet_pressure_force;
       // Defined as \int_V_{VF}{1}dV
       double VF_volume;
+      // Maximum velocity magnitude
+      double max_velocity;
+      // Pressure probe
+      double probed_pressure;
       struct bernoulli_equation
       {
         double rate_convection_contraction;

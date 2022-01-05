@@ -144,7 +144,9 @@ namespace MPI
                                           Solid::MPI::SharedSolidSolver<dim> &s,
                                           const Parameters::AllParameters &p,
                                           bool use_dirichlet_bc)
-    : FSI<dim>(f, s, p, use_dirichlet_bc), output_solid_boundary(false)
+    : FSI<dim>(f, s, p, use_dirichlet_bc),
+      output_solid_boundary(false),
+      pressure_probe_set(false)
   {
   }
 
@@ -300,6 +302,13 @@ namespace MPI
   void ControlVolumeFSI<dim>::set_output_solid_boundary(const bool output)
   {
     this->output_solid_boundary = output;
+  }
+
+  template <int dim>
+  void ControlVolumeFSI<dim>::set_pressure_probe(const Point<dim> probe_point)
+  {
+    this->pressure_probe_set = true;
+    this->pressure_probe_location = probe_point;
   }
 
   template <int dim>
@@ -589,7 +598,9 @@ namespace MPI
                          << cv_values.energy.rate_vf_work << ","
                          << cv_values.energy.rate_vf_work_from_solid << ","
                          << cv_values.bernoulli.contraction_end_x << ","
-                         << cv_values.bernoulli.jet_start_x << std::endl;
+                         << cv_values.bernoulli.jet_start_x << ","
+                         << cv_values.max_velocity << ","
+                         << cv_values.probed_pressure << std::endl;
       }
     if (output_solid_boundary)
       {
@@ -994,7 +1005,30 @@ namespace MPI
           }
         // Now compute the volume flow
         cv_values.gap_volume_flow += integrate(int_x_velocity) / x_distance;
+
+        // Update max velocity
+        for (auto &vel : present_vel)
+          {
+            cv_values.max_velocity =
+              std::max(cv_values.max_velocity, vel.norm());
+          }
       };
+
+    // Probe pressure
+    if (pressure_probe_set)
+      {
+        // Lazy inititialize pressure probe (interpolator)
+        if (!pressure_probe.has_value())
+          {
+            pressure_probe.emplace(
+              fluid_solver.dof_handler, pressure_probe_location, vertices_mask);
+            // Won't check if cell is valid (not owned)
+          }
+        Vector<double> probed_value(dim + 1);
+        pressure_probe->point_value(fluid_solver.present_solution,
+                                    probed_value);
+        cv_values.probed_pressure = probed_value[dim];
+      }
 
     for (auto sections : cv_f_cells)
       {
@@ -1558,6 +1592,7 @@ namespace MPI
   void ControlVolumeFSI<dim>::output_solid_boundary_vertices()
   {
     move_solid_mesh(true);
+    Vector<double> localized_fluid_pressure(solid_solver.fluid_pressure);
     if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
       {
         fs::create_directory("solid_trace");
@@ -1567,8 +1602,29 @@ namespace MPI
 
         for (const auto &pairs : solid_boundary_vertices)
           {
-            auto &v = pairs.first;
-            output_file << v->index() << " " << v->vertex(0) << std::endl;
+            const auto &adjacent_faces_list{pairs.second.first};
+            AssertThrow(!adjacent_faces_list.empty(),
+                        ExcMessage("Cannot find boundary vertex data!"));
+            auto &this_vertex = pairs.first;
+            TriaActiveIterator<DoFCellAccessor<dim, dim, false>> scalar_s_cell(
+              &solid_solver.triangulation,
+              adjacent_faces_list.begin()->first->level(),
+              adjacent_faces_list.begin()->first->index(),
+              &solid_solver.scalar_dof_handler);
+            auto face_index = pairs.second.first.begin()->second;
+            double pressure{0.0};
+            for (unsigned v = 0; v < GeometryInfo<dim>::vertices_per_face; ++v)
+              {
+                if (scalar_s_cell->face(face_index)->vertex_index(v) ==
+                    this_vertex->vertex_index(0))
+                  {
+                    auto line =
+                      scalar_s_cell->face(face_index)->vertex_dof_index(v, 0);
+                    pressure = localized_fluid_pressure[line];
+                  }
+              }
+            output_file << this_vertex->index() << " " << this_vertex->vertex(0)
+                        << " " << pressure << std::endl;
           }
 
         output_file.close();
@@ -1633,7 +1689,9 @@ namespace MPI
                    << "Rate VF work,"
                    << "Rate VF work from solid,"
                    << "Contraction end xcoord,"
-                   << "Jet start xcoord" << std::endl;
+                   << "Jet start xcoord,"
+                   << "Max velocity,"
+                   << "Probed pressure" << std::endl;
           }
         else // Start from a checkpoint
           {
@@ -1706,6 +1764,10 @@ namespace MPI
     reduce_internal(energy.rate_friction_work);
     reduce_internal(energy.rate_vf_work);
     reduce_internal(energy.rate_vf_work_from_solid);
+    // Pressure probe
+    reduce_internal(probed_pressure);
+    // Maximum velocity
+    max_velocity = Utilities::MPI::max(max_velocity, mpi_communicator);
   }
 
   template <int dim>
@@ -1718,6 +1780,8 @@ namespace MPI
     inlet_pressure_force = 0.0;
     outlet_pressure_force = 0.0;
     VF_volume = 0.0;
+    max_velocity = 0.0;
+    probed_pressure = 0.0;
     // Bernoulli terms
     bernoulli.rate_convection_contraction = 0.0;
     bernoulli.rate_convection_jet = 0.0;
