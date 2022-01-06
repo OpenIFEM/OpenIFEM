@@ -258,8 +258,9 @@ namespace Solid
     std::cout.precision(6);
     std::cout.width(12);
 
-    double gamma = 0.5 + parameters.damping;
-    double beta = gamma / 2;
+    double alpha = -parameters.damping;
+    double gamma = 0.5 - alpha;
+    double beta = pow((1 - alpha), 2) / 4;
 
     if (first_step)
       {
@@ -275,7 +276,8 @@ namespace Solid
         this->solve(system_matrix, previous_acceleration, system_rhs);
         // Update the system_matrix
         assemble_system(false);
-        system_matrix.add(time.get_delta_t() * time.get_delta_t() * beta,
+        system_matrix.add(time.get_delta_t() * time.get_delta_t() * beta *
+                            (1 + alpha),
                           stiffness_matrix);
         this->output_results(time.get_timestep());
       }
@@ -296,8 +298,10 @@ namespace Solid
     // Modify the RHS
     Vector<double> tmp1(system_rhs);
     auto tmp2 = previous_displacement;
-    tmp2.add(
-      dt, previous_velocity, (0.5 - beta) * dt * dt, previous_acceleration);
+    tmp2.add(dt * (1 + alpha),
+             previous_velocity,
+             (0.5 - beta) * dt * dt * (1 + alpha),
+             previous_acceleration);
     Vector<double> tmp3(dof_handler.n_dofs());
     stiffness_matrix.vmult(tmp3, tmp2);
     tmp1 -= tmp3;
