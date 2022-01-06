@@ -262,8 +262,59 @@ namespace Solid
     double gamma = 0.5 - alpha;
     double beta = pow((1 - alpha), 2) / 4;
 
+    static std::map<types::global_dof_index, double> boundary_values;
+
     if (first_step)
       {
+        // define points which need to be constrained
+        std::vector<Point<dim>> points;
+        /*Point<dim> p1;
+        p1[0] = 0;
+        p1[1] = 0.25;
+        Point<dim> p2;
+        p2[0] = 0;
+        p2[1] = -0.25;
+        points.push_back(p1);
+        points.push_back(p2);*/
+        // define corresponding directions which need to be constrained
+        std::vector<unsigned int> directions;
+        /*directions.push_back(0);
+        directions.push_back(0);*/
+
+        // find global dof corresponding to set points and directions
+        if (!points.empty())
+          {
+            assert(points.size() == directions.size());
+            for (unsigned int i = 0; i < points.size(); i++)
+              {
+                std::vector<bool> vertex_touched(triangulation.n_vertices(),
+                                                 false);
+                for (auto cell = dof_handler.begin_active();
+                     cell != dof_handler.end();
+                     ++cell)
+                  {
+                    for (unsigned int v = 0;
+                         v < GeometryInfo<dim>::vertices_per_cell;
+                         ++v)
+                      {
+                        if (!vertex_touched[cell->vertex_index(v)])
+                          {
+                            vertex_touched[cell->vertex_index(v)] = true;
+                            if (abs(cell->vertex(v)(0) - points[i](0)) < 1e-8 &&
+                                abs(cell->vertex(v)(1) - points[i](1)) < 1e-8)
+                              {
+                                unsigned int d = directions[i];
+                                assert(d < dim);
+                                unsigned int dof_index =
+                                  cell->vertex_dof_index(v, d);
+                                boundary_values.insert({dof_index, d});
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+
         // Neet to compute the initial acceleration, \f$ Ma_n = F \f$,
         // at this point set system_matrix to mass_matrix.
         assemble_system(true);
@@ -273,6 +324,9 @@ namespace Solid
             nodal_mass[i] = system_matrix.el(i, i);
           }
         calculate_KE();
+        // apply boundary values
+        MatrixTools::apply_boundary_values(
+          boundary_values, system_matrix, previous_acceleration, system_rhs);
         this->solve(system_matrix, previous_acceleration, system_rhs);
         // Update the system_matrix
         assemble_system(false);
@@ -306,6 +360,8 @@ namespace Solid
     stiffness_matrix.vmult(tmp3, tmp2);
     tmp1 -= tmp3;
 
+    MatrixTools::apply_boundary_values(
+      boundary_values, system_matrix, current_acceleration, tmp1);
     auto state = this->solve(system_matrix, current_acceleration, tmp1);
 
     // update the current velocity
