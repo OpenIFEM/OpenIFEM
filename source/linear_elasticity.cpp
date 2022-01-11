@@ -43,7 +43,6 @@ namespace Solid
                                        update_normal_vectors |
                                        update_JxW_values);
 
-    SymmetricTensor<4, dim> elasticity;
     const double rho = material[0].get_density();
     const unsigned int dofs_per_cell = fe.dofs_per_cell;
     const unsigned int n_q_points = volume_quad_formula.size();
@@ -72,7 +71,8 @@ namespace Solid
         int mat_id = cell->material_id();
         if (material.size() == 1)
           mat_id = 1;
-        elasticity = material[mat_id - 1].get_elasticity();
+        const double lambda = material[mat_id - 1].get_lambda();
+        const double mu = material[mat_id - 1].get_mu();
         Assert(p.size() == GeometryInfo<dim>::faces_per_cell,
                ExcMessage("Wrong number of cell data!"));
         local_matrix = 0;
@@ -94,17 +94,23 @@ namespace Solid
             // Loop over the dofs again, to assemble
             for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
+                const double phi_i_div =
+                  fe_values[displacements].divergence(i, q);
                 if (assemble_matrix)
                   {
                     for (unsigned int j = 0; j < dofs_per_cell; ++j)
                       {
+                        const double phi_j_div =
+                          fe_values[displacements].divergence(j, q);
                         local_matrix[i][j] +=
                           rho * phi[i] * phi[j] * fe_values.JxW(q);
                         if (!is_initial)
                           {
                             local_stiffness[i][j] +=
-                              symmetric_grad_phi[i] * elasticity *
-                              symmetric_grad_phi[j] * fe_values.JxW(q);
+                              (phi_i_div * phi_j_div * lambda +
+                               2 * symmetric_grad_phi[i] * mu *
+                                 symmetric_grad_phi[j]) *
+                              fe_values.JxW(q);
                           }
                       }
                   }

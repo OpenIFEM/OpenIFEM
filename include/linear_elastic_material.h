@@ -23,6 +23,8 @@ namespace Solid
     LinearElasticMaterial(double, double, double, double);
     dealii::SymmetricTensor<4, dim> get_elasticity() const;
     dealii::SymmetricTensor<4, dim> get_viscosity() const;
+    double get_lambda() const { return lambda; }
+    double get_mu() const { return mu; }
 
   protected:
     double E;      //!< Young's modulus
