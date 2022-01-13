@@ -102,6 +102,7 @@ namespace Solid
     previous_velocity.reinit(dof_handler.n_dofs());
     previous_displacement.reinit(dof_handler.n_dofs());
     nodal_mass.reinit(dof_handler.n_dofs());
+    fsi_traction_force.reinit(dof_handler.n_dofs());
 
     // Add initial velocity
     if (time.current() == 0.0)
@@ -285,7 +286,12 @@ namespace Solid
                              current_acceleration,
                              solution_names,
                              data_component_interpretation);
-
+    // acceleration
+    solution_names = std::vector<std::string>(spacedim, "FSI nodal forces");
+    data_out.add_data_vector(dof_handler,
+                             fsi_traction_force,
+                             solution_names,
+                             data_component_interpretation);
     // material ID
     Vector<float> mat(triangulation.n_active_cells());
     int i = 0;
