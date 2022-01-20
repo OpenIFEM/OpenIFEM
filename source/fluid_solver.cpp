@@ -20,8 +20,10 @@ namespace Fluid
          FE_Q<dim>(parameters.fluid_pressure_degree),
          1),
       scalar_fe(parameters.fluid_velocity_degree),
+      fe_vector_output(FE_Q<dim>(parameters.fluid_velocity_degree), dim),
       dof_handler(triangulation),
       scalar_dof_handler(triangulation),
+      dof_handler_vector_output(triangulation),
       volume_quad_formula(parameters.fluid_velocity_degree + 1),
       face_quad_formula(parameters.fluid_velocity_degree + 1),
       time(parameters.end_time,
@@ -41,11 +43,13 @@ namespace Fluid
     // The first step is to associate DoFs with a given mesh.
     dof_handler.distribute_dofs(fe);
     scalar_dof_handler.distribute_dofs(scalar_fe);
+    dof_handler_vector_output.distribute_dofs(fe_vector_output);
 
     // We renumber the components to have all velocity DoFs come before
     // the pressure DoFs to be able to split the solution vector in two blocks
     // which are separately accessed in the block preconditioner.
     DoFRenumbering::Cuthill_McKee(dof_handler);
+    DoFRenumbering::Cuthill_McKee(dof_handler_vector_output);
     std::vector<unsigned int> block_component(dim + 1, 0);
     block_component[dim] = 1;
     DoFRenumbering::component_wise(dof_handler, block_component);
@@ -285,34 +289,40 @@ namespace Fluid
                              solution_names,
                              DataOut<dim>::type_dof_data,
                              data_component_interpretation);
-    // fsi force
+    // fsi force output
+    std::vector<DataComponentInterpretation::DataComponentInterpretation>
+      data_component_interpretation_force(
+        dim, DataComponentInterpretation::component_is_part_of_vector);
+
     Vector<double> fsi_force_output;
     fsi_force_output.reinit(dofs_per_block[0]);
     for (unsigned int i = 0; i < dofs_per_block[0]; i++)
       fsi_force_output[i] = fsi_force[i];
     solution_names = std::vector<std::string>(dim, "fsi_force");
-    data_out.add_data_vector(
-      dof_handler, fsi_force, solution_names, data_component_interpretation);
+    data_out.add_data_vector(dof_handler_vector_output,
+                             fsi_force_output,
+                             solution_names,
+                             data_component_interpretation_force);
 
     Vector<double> fsi_acceleration_output;
     fsi_acceleration_output.reinit(dofs_per_block[0]);
     for (unsigned int i = 0; i < dofs_per_block[0]; i++)
       fsi_acceleration_output[i] = fsi_force_acceleration_part[i];
     solution_names = std::vector<std::string>(dim, "fsi_acceleration");
-    data_out.add_data_vector(dof_handler,
+    data_out.add_data_vector(dof_handler_vector_output,
                              fsi_acceleration_output,
                              solution_names,
-                             data_component_interpretation);
+                             data_component_interpretation_force);
 
     Vector<double> fsi_stress_output;
     fsi_stress_output.reinit(dofs_per_block[0]);
     for (unsigned int i = 0; i < dofs_per_block[0]; i++)
       fsi_stress_output[i] = fsi_force_stress_part[i];
     solution_names = std::vector<std::string>(dim, "fsi_stress");
-    data_out.add_data_vector(dof_handler,
+    data_out.add_data_vector(dof_handler_vector_output,
                              fsi_stress_output,
                              solution_names,
-                             data_component_interpretation);
+                             data_component_interpretation_force);
 
     // Indicator
     Vector<float> ind(triangulation.n_active_cells());

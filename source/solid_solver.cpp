@@ -287,7 +287,7 @@ namespace Solid
                              solution_names,
                              data_component_interpretation);
     // acceleration
-    solution_names = std::vector<std::string>(spacedim, "FSI nodal forces");
+    solution_names = std::vector<std::string>(spacedim, "FSI_nodal_forces");
     data_out.add_data_vector(dof_handler,
                              fsi_traction_force,
                              solution_names,
