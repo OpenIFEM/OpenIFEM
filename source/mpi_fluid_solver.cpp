@@ -1,4 +1,5 @@
 #include "mpi_fluid_solver.h"
+#include "mpi_turbulence_model.h"
 
 namespace Fluid
 {
@@ -47,6 +48,18 @@ namespace Fluid
           mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times),
         pvd_writer(time, "fluid.pvd")
     {
+    }
+
+    template <int dim>
+    void
+    FluidSolver<dim>::attach_turbulence_model(const std::string &model_name)
+    {
+      turbulence_model.reset(
+        TurbulenceModelFactory<dim>::create(*this, model_name));
+      turbulence_model->connect_indicator_field(
+        [this](const typename DoFHandler<dim>::active_cell_iterator &cell) {
+          return this->cell_property.get_data(cell)[0]->indicator;
+        });
     }
 
     template <int dim>
@@ -260,6 +273,10 @@ namespace Fluid
       }
       nonzero_constraints.close();
       zero_constraints.close();
+      if (turbulence_model)
+        {
+          turbulence_model->make_constraints();
+        }
     }
 
     template <int dim>
@@ -270,7 +287,8 @@ namespace Fluid
            cell != triangulation.end();
            ++cell)
         {
-          if (cell->is_locally_owned())
+          // Indicator is ghosted, as it will be used in constraints.
+          if (!cell->is_artificial())
             {
               cell_property.initialize(cell, 1);
               const std::vector<std::shared_ptr<CellProperty>> p =
@@ -430,6 +448,15 @@ namespace Fluid
 
       trans.prepare_for_coarsening_and_refinement(present_solution);
 
+      // Preparation for turbulence model
+      std::optional<parallel::distributed::
+                      SolutionTransfer<dim, PETScWrappers::MPI::Vector>>
+        turbulence_trans;
+      if (turbulence_model)
+        {
+          turbulence_model->pre_refine_mesh(turbulence_trans);
+        }
+
       // Refine the mesh
       triangulation.execute_coarsening_and_refinement();
 
@@ -444,8 +471,13 @@ namespace Fluid
       tmp.reinit(owned_partitioning, mpi_communicator);
       tmp = 0;
       trans.interpolate(tmp);
-      nonzero_constraints.distribute(tmp); // Is this line necessary?
       present_solution = tmp;
+
+      // Transfer solution for turbulence model
+      if (turbulence_model)
+        {
+          turbulence_model->post_refine_mesh(turbulence_trans);
+        }
     }
 
     template <int dim>
@@ -520,6 +552,14 @@ namespace Fluid
           data_out.add_data_vector(scalar_dof_handler, tmp_stress[2][2], "Tzz");
         }
 
+      // Eddy viscosity
+      if (turbulence_model)
+        {
+          data_out.add_data_vector(scalar_dof_handler,
+                                   turbulence_model->get_eddy_viscosity(),
+                                   "eddy_viscosity");
+        }
+
       data_out.build_patches(parameters.fluid_pressure_degree);
 
       data_out.write_vtu_with_pvtu_record(
@@ -552,9 +592,15 @@ namespace Fluid
           while (checkpoints.size() > 1)
             {
               pcout << "Removing " << *checkpoints.begin() << std::endl;
+              // Remove .fluid_checkpoint file
               fs::path to_be_removed(*checkpoints.begin());
               fs::remove(to_be_removed);
+              // Remove .fluid_checkpoint.info file
               to_be_removed.replace_extension(".fluid_checkpoint.info");
+              fs::remove(to_be_removed);
+              // Remove .fluid_checkpoint_fixed.data file
+              to_be_removed.replace_extension("");
+              to_be_removed.replace_extension(".fluid_checkpoint_fixed.data");
               fs::remove(to_be_removed);
               checkpoints.erase(checkpoints.begin());
             }
@@ -567,6 +613,16 @@ namespace Fluid
                                               PETScWrappers::MPI::BlockVector>
         sol_trans(dof_handler);
       sol_trans.prepare_for_serialization(present_solution);
+
+      // Save the turbulence model solution is available
+      std::optional<parallel::distributed::
+                      SolutionTransfer<dim, PETScWrappers::MPI::Vector>>
+        turbulence_sol_trans;
+      if (turbulence_model)
+        {
+          // Must be called before Triangulation::save()
+          turbulence_model->save_checkpoint(turbulence_sol_trans);
+        }
       triangulation.save(checkpoint_file.c_str());
       pcout << "Checkpoint file successfully saved at time step "
             << output_index << "!" << std::endl;
@@ -611,6 +667,16 @@ namespace Fluid
       tmp.reinit(owned_partitioning, mpi_communicator);
       sol_trans.deserialize(tmp);
       present_solution = tmp;
+      if (turbulence_model)
+        {
+          // Same order as they are saved. Must be called before
+          // triangulation::load()
+          bool success = turbulence_model->load_checkpoint();
+          if (!success)
+            {
+              return false;
+            }
+        }
       // Set the current time and write correct .pvd file.
 
       for (int i = 0; i <= Utilities::string_to_int(checkpoint_file.stem());

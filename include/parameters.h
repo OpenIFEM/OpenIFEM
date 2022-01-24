@@ -83,6 +83,26 @@ namespace Parameters
     void parseParameters(ParameterHandler &);
   };
 
+  struct SpalartAllmarasModel
+  {
+    /** Number of Spalart-Allmaras model Dirichlet BCs. */
+    unsigned int n_spalart_allmaras_model_bcs;
+    /**
+     * Spalart-Allmaras model BCs are stored as a map between fluid boundary id
+     * and an int which indicates what kind of condition is applied:
+     * 0: wall (all boundaries with no-penetration fluid bc)
+     * 1: inflow (fluid velocity / pressue inlet)
+     */
+    std::map<unsigned int, unsigned int> spalart_allmaras_model_bcs;
+    double spalart_allmaras_initial_condition_coefficient;
+    /** Wall function effective distance. */
+    double spalart_allmaras_wall_function_distance;
+    /** Wall function sample point (image distance). */
+    double spalart_allmaras_image_distance;
+    static void declareParameters(ParameterHandler &);
+    void parseParameters(ParameterHandler &);
+  };
+
   struct SolidFESystem
   {
     unsigned int solid_degree;
@@ -160,6 +180,7 @@ namespace Parameters
                          public FluidSolver,
                          public FluidDirichlet,
                          public FluidNeumann,
+                         public SpalartAllmarasModel,
                          public SolidFESystem,
                          public SolidMaterial,
                          public SolidSolver,

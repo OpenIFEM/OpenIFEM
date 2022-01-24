@@ -18,6 +18,7 @@ namespace MPI
     void run_with_cv_analysis();
     void set_control_volume_boundary(const std::vector<double> &);
     void set_output_solid_boundary(const bool);
+    void set_pressure_probe(const Point<dim>);
 
     //! Destructor
     ~ControlVolumeFSI();
@@ -33,6 +34,7 @@ namespace MPI
     using FSI<dim>::move_solid_mesh;
     using FSI<dim>::find_solid_bc;
     using FSI<dim>::apply_contact_model;
+    using FSI<dim>::collect_solid_boundary_vertices;
     using FSI<dim>::update_solid_displacement;
     using FSI<dim>::find_fluid_bc;
     using FSI<dim>::refine_mesh;
@@ -45,6 +47,7 @@ namespace MPI
     using FSI<dim>::timer;
     using FSI<dim>::solid_box;
     using FSI<dim>::solid_boundaries;
+    using FSI<dim>::solid_boundary_vertices;
     using FSI<dim>::vertices_mask;
     using FSI<dim>::cell_hints;
     using FSI<dim>::use_dirichlet_bc;
@@ -56,7 +59,6 @@ namespace MPI
 
     void collect_control_volume_cells();
     void collect_inlet_outlet_cells();
-    void collect_solid_boundary_vertices();
     void control_volume_analysis();
     void compute_flux();
     void compute_volume_integral();
@@ -97,13 +99,13 @@ namespace MPI
     timestep for POD analysis.
     */
     bool output_solid_boundary;
-    std::set<typename Triangulation<dim>::active_vertex_iterator>
-      solid_boundary_vertices;
 
-    CellDataStorage<
-      typename parallel::distributed::Triangulation<dim>::active_cell_iterator,
-      Tensor<1, dim>>
-      solid_surface_velocity;
+    // Pressure probe location.
+    bool pressure_probe_set;
+    Point<dim> pressure_probe_location;
+    std::optional<Utils::GridInterpolator<dim, PETScWrappers::MPI::BlockVector>>
+      pressure_probe;
+
     CellDataStorage<
       typename parallel::distributed::Triangulation<dim>::active_cell_iterator,
       SurfaceCutter>
@@ -133,6 +135,10 @@ namespace MPI
       double outlet_pressure_force;
       // Defined as \int_V_{VF}{1}dV
       double VF_volume;
+      // Maximum velocity magnitude
+      double max_velocity;
+      // Pressure probe
+      double probed_pressure;
       struct bernoulli_equation
       {
         double rate_convection_contraction;
@@ -170,6 +176,8 @@ namespace MPI
         // Defined as 0.5 * \int_S_{in/out}{\rho u1 u_i u_i}dS
         double inlet_flux;
         double outlet_flux;
+        // Turbulent energy efflux
+        double rate_turbulence_efflux;
         // The integral convection term. \int_V{\rho u cdot \Nabla u \cdot u}dV
         double convective_KE;
         // The integral of KE flux through the solid. (should be zero)
@@ -187,6 +195,10 @@ namespace MPI
         double rate_dissipation;
         // Defined as \int_V{p u_{i,i}}dV
         double rate_compression_work;
+        // Numerical stabilization effects
+        double rate_stabilization;
+        // Turbulent momentum transfer
+        double rate_turbulence;
         // Defined as \int_S_{VF}{\tau_{ij} u_i n_j}dS
         double rate_friction_work;
         // Defined as \int_S{p u_i n_i}dS

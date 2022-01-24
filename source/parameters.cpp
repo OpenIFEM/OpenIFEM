@@ -278,6 +278,79 @@ namespace Parameters
     prm.leave_subsection();
   }
 
+  void SpalartAllmarasModel::declareParameters(ParameterHandler &prm)
+  {
+    prm.enter_subsection("Spalart Allmaras model");
+    {
+      prm.declare_entry(
+        "Number of S-A model BCs",
+        "0",
+        Patterns::Integer(),
+        "Number of boundaries with Spalart-Allmaras turbulence model BCs");
+      prm.declare_entry(
+        "S-A model boundary id",
+        "",
+        Patterns::List(dealii::Patterns::Integer()),
+        "Ids of the boundaries with Spalart-Allmaras turbulence model BCs");
+      prm.declare_entry("S-A model boundary types",
+                        "",
+                        Patterns::List(dealii::Patterns::Integer(0, 1)),
+                        "Boundary condition types to specify. 0 for walls and "
+                        "1 for inflow condition");
+      prm.declare_entry("Initial condition coefficient",
+                        "0.0",
+                        Patterns::Double(0.0),
+                        "Coefficient of the laminar viscosity for the initial "
+                        "condition of S-A model");
+      prm.declare_entry(
+        "Wall function effective distance",
+        "0.0",
+        Patterns::Double(0.0),
+        "The effective distance of wall function at the moving (FSI) walls");
+      prm.declare_entry("Wall function image distance",
+                        "0.0",
+                        Patterns::Double(0.0),
+                        "The distance away from the moving (FSI) walls where "
+                        "velocities are sampled to compute shear velocity");
+    }
+    prm.leave_subsection();
+  }
+
+  void SpalartAllmarasModel::parseParameters(ParameterHandler &prm)
+  {
+    prm.enter_subsection("Spalart Allmaras model");
+    {
+      n_spalart_allmaras_model_bcs = prm.get_integer("Number of S-A model BCs");
+      std::string raw_input = prm.get("S-A model boundary id");
+      std::vector<std::string> parsed_input =
+        Utilities::split_string_list(raw_input);
+      std::vector<int> ids = Utilities::string_to_int(parsed_input);
+      // Assert only when the user wants to impose Neumann BC
+      AssertThrow(!n_spalart_allmaras_model_bcs ||
+                    ids.size() == n_spalart_allmaras_model_bcs,
+                  ExcMessage("Inconsistent boundary ids!"));
+      raw_input = prm.get("S-A model boundary types");
+      parsed_input = Utilities::split_string_list(raw_input);
+      std::vector<double> values = Utilities::string_to_double(parsed_input);
+      // The size of values should be exactly the same as the number of
+      // the given boundary values.
+      AssertThrow(!n_spalart_allmaras_model_bcs ||
+                    values.size() == n_spalart_allmaras_model_bcs,
+                  ExcMessage("Inconsistent boundary values!"));
+      for (unsigned int i = 0; i < n_spalart_allmaras_model_bcs; ++i)
+        {
+          spalart_allmaras_model_bcs[ids[i]] = values[i];
+        }
+      spalart_allmaras_initial_condition_coefficient =
+        prm.get_double("Initial condition coefficient");
+      spalart_allmaras_wall_function_distance =
+        prm.get_double("Wall function effective distance");
+      spalart_allmaras_image_distance =
+        prm.get_double("Wall function image distance");
+    }
+    prm.leave_subsection();
+  }
+
   void SolidFESystem::declareParameters(ParameterHandler &prm)
   {
     prm.enter_subsection("Solid finite element system");
@@ -548,6 +621,7 @@ namespace Parameters
     FluidSolver::declareParameters(prm);
     FluidDirichlet::declareParameters(prm);
     FluidNeumann::declareParameters(prm);
+    SpalartAllmarasModel::declareParameters(prm);
     SolidFESystem::declareParameters(prm);
     SolidMaterial::declareParameters(prm);
     SolidSolver::declareParameters(prm);
@@ -563,6 +637,7 @@ namespace Parameters
     FluidSolver::parseParameters(prm);
     FluidDirichlet::parseParameters(prm);
     FluidNeumann::parseParameters(prm);
+    SpalartAllmarasModel::parseParameters(prm);
     SolidFESystem::parseParameters(prm);
     SolidMaterial::parseParameters(prm);
     SolidSolver::parseParameters(prm);

@@ -1,4 +1,5 @@
 #include "cv_fsi.h"
+#include "mpi_spalart_allmaras.h"
 
 namespace
 {
@@ -143,7 +144,9 @@ namespace MPI
                                           Solid::MPI::SharedSolidSolver<dim> &s,
                                           const Parameters::AllParameters &p,
                                           bool use_dirichlet_bc)
-    : FSI<dim>(f, s, p, use_dirichlet_bc), output_solid_boundary(false)
+    : FSI<dim>(f, s, p, use_dirichlet_bc),
+      output_solid_boundary(false),
+      pressure_probe_set(false)
   {
   }
 
@@ -194,14 +197,11 @@ namespace MPI
       }
 
     collect_solid_boundaries();
+    collect_solid_boundary_vertices();
     setup_cell_hints();
     update_vertices_mask();
     collect_inlet_outlet_cells();
     collect_control_volume_cells();
-    if (this->output_solid_boundary)
-      {
-        collect_solid_boundary_vertices();
-      }
     cv_values.initialize_output(this->time, this->mpi_communicator);
 
     pcout << "Number of fluid active cells and dofs: ["
@@ -246,9 +246,18 @@ namespace MPI
             fluid_solver.nonzero_constraints.copy_from(
               fluid_solver.zero_constraints);
           }
+        if (fluid_solver.turbulence_model)
+          {
+            fluid_solver.turbulence_model->update_boundary_condition(
+              first_step);
+          }
         find_fluid_bc();
         {
           TimerOutput::Scope timer_section(timer, "Run fluid solver");
+          if (fluid_solver.turbulence_model)
+            {
+              fluid_solver.turbulence_model->run_one_step(true);
+            }
           fluid_solver.run_one_step(true);
         }
         first_step = false;
@@ -293,6 +302,13 @@ namespace MPI
   void ControlVolumeFSI<dim>::set_output_solid_boundary(const bool output)
   {
     this->output_solid_boundary = output;
+  }
+
+  template <int dim>
+  void ControlVolumeFSI<dim>::set_pressure_probe(const Point<dim> probe_point)
+  {
+    this->pressure_probe_set = true;
+    this->pressure_probe_location = probe_point;
   }
 
   template <int dim>
@@ -530,36 +546,6 @@ namespace MPI
   }
 
   template <int dim>
-  void ControlVolumeFSI<dim>::collect_solid_boundary_vertices()
-  {
-    if (Utilities::MPI::this_mpi_process(mpi_communicator) != 0)
-      {
-        return;
-      }
-    unsigned fixed_bc_flag = (1 << dim) - 1;
-
-    for (auto &face : solid_solver.triangulation.active_face_iterators())
-      {
-        if (face->at_boundary())
-          {
-            // Check if the boundary is fixed
-            auto bc = parameters.solid_dirichlet_bcs.find(face->boundary_id());
-            if (bc != parameters.solid_dirichlet_bcs.end() &&
-                bc->second == fixed_bc_flag)
-              {
-                // Skip those fixed vertices
-                continue;
-              }
-
-            for (unsigned v = 0; v < GeometryInfo<dim>::vertices_per_face; ++v)
-              {
-                solid_boundary_vertices.insert(face->vertex_iterator(v));
-              }
-          }
-      }
-  }
-
-  template <int dim>
   void ControlVolumeFSI<dim>::control_volume_analysis()
   {
     cv_values.reset();
@@ -598,6 +584,7 @@ namespace MPI
                          << cv_values.energy.outlet_pressure_work << ","
                          << cv_values.energy.inlet_flux << ","
                          << cv_values.energy.outlet_flux << ","
+                         << cv_values.energy.rate_turbulence_efflux << ","
                          << cv_values.energy.convective_KE << ","
                          << cv_values.energy.penetrating_KE << ","
                          << cv_values.energy.rate_kinetic_energy << ","
@@ -605,11 +592,15 @@ namespace MPI
                          << cv_values.energy.pressure_convection << ","
                          << cv_values.energy.rate_dissipation << ","
                          << cv_values.energy.rate_compression_work << ","
+                         << cv_values.energy.rate_stabilization << ","
+                         << cv_values.energy.rate_turbulence << ","
                          << cv_values.energy.rate_friction_work << ","
                          << cv_values.energy.rate_vf_work << ","
                          << cv_values.energy.rate_vf_work_from_solid << ","
                          << cv_values.bernoulli.contraction_end_x << ","
-                         << cv_values.bernoulli.jet_start_x << std::endl;
+                         << cv_values.bernoulli.jet_start_x << ","
+                         << cv_values.max_velocity << ","
+                         << cv_values.probed_pressure << std::endl;
       }
     if (output_solid_boundary)
       {
@@ -627,6 +618,7 @@ namespace MPI
     std::vector<Tensor<2, dim>> vel_grad(
       GeometryInfo<dim - 1>::vertices_per_cell);
     std::vector<double> pre(GeometryInfo<dim - 1>::vertices_per_cell);
+    std::vector<double> eddy_vis(GeometryInfo<dim - 1>::vertices_per_cell);
 
     MappingQGeneric<dim> mapping(parameters.fluid_velocity_degree);
     MappingQGeneric<dim - 1, dim> cutter_mapping(1);
@@ -641,6 +633,14 @@ namespace MPI
       return 0.5 * parameters.fluid_rho * vel[q][0] * vel[q].norm_square();
     };
     auto int_pressure_work = [&vel, &pre](int q) { return pre[q] * vel[q][0]; };
+    auto int_turbulence_efflux = [&vel, &vel_grad, &eddy_vis](int q) {
+      double retval = 0.0;
+      for (unsigned d = 0; d < dim; ++d)
+        {
+          retval += eddy_vis[q] * vel_grad[q][d][0] * vel[q][d];
+        }
+      return retval;
+    };
     auto int_friction_work =
       [&vel, &vel_grad, mu = parameters.viscosity](int q) {
         double retval = 0.0;
@@ -659,6 +659,7 @@ namespace MPI
         double KE_flux = 0.0;
         double rate_pressure_work = 0.0;
         double rate_friction_work = 0.0;
+        double rate_turbulence_efflux = 0.0;
         // We don't check localness here because they are local already
         auto cutter = surface_cutters.get_data(f_cell);
         FEValues<dim> dummy_fe_values(mapping,
@@ -666,11 +667,22 @@ namespace MPI
                                       cutter[0]->interpolate_q,
                                       update_quadrature_points | update_values |
                                         update_gradients);
+        FEValues<dim> dummy_scalar_fe_values(mapping,
+                                             fluid_solver.scalar_fe,
+                                             cutter[0]->interpolate_q,
+                                             update_quadrature_points |
+                                               update_values);
         FEValues<dim - 1, dim> cutter_fe_values(cutter_mapping,
                                                 cutter[0]->fe,
                                                 cutter[0]->quad_formula,
                                                 update_JxW_values);
         dummy_fe_values.reinit(f_cell);
+        TriaActiveIterator<DoFCellAccessor<dim, dim, false>> scalar_f_cell(
+          &fluid_solver.triangulation,
+          f_cell->level(),
+          f_cell->index(),
+          &fluid_solver.scalar_dof_handler);
+        dummy_scalar_fe_values.reinit(scalar_f_cell);
         cutter_fe_values.reinit(cutter[0]->dof_handler.begin_active());
 
         // Get the solution values on the cutter points
@@ -680,6 +692,12 @@ namespace MPI
           fluid_solver.present_solution, pre);
         dummy_fe_values[velocities].get_function_gradients(
           fluid_solver.present_solution, vel_grad);
+
+        if (fluid_solver.turbulence_model)
+          {
+            dummy_scalar_fe_values.get_function_values(
+              fluid_solver.turbulence_model->get_eddy_viscosity(), eddy_vis);
+          }
         // Integrate the fluxes on the cutter
         auto integrate = [&cutter, &vel, &pre, &cutter_fe_values](
                            const std::function<double(int)> &quant) {
@@ -696,12 +714,14 @@ namespace MPI
         KE_flux += integrate(int_KE);
         rate_pressure_work += integrate(int_pressure_work);
         rate_friction_work += integrate(int_friction_work);
+        rate_turbulence_efflux += integrate(int_turbulence_efflux);
         return std::make_tuple(volume_flow,
                                pressure_force,
                                momentum_flux,
                                KE_flux,
                                rate_pressure_work,
-                               rate_friction_work);
+                               rate_friction_work,
+                               rate_turbulence_efflux);
       };
     for (auto f_cell : this->inlet_cells)
       {
@@ -712,6 +732,7 @@ namespace MPI
         cv_values.energy.inlet_flux += std::get<3>(increases);
         cv_values.energy.inlet_pressure_work += std::get<4>(increases);
         cv_values.energy.rate_friction_work -= std::get<5>(increases);
+        cv_values.energy.rate_turbulence_efflux -= std::get<6>(increases);
       }
     for (auto f_cell : this->outlet_cells)
       {
@@ -722,6 +743,7 @@ namespace MPI
         cv_values.energy.outlet_flux += std::get<3>(increases);
         cv_values.energy.outlet_pressure_work += std::get<4>(increases);
         cv_values.energy.rate_friction_work += std::get<5>(increases);
+        cv_values.energy.rate_turbulence_efflux += std::get<6>(increases);
       }
   }
 
@@ -731,16 +753,45 @@ namespace MPI
     const FEValuesExtractors::Vector velocities(0);
     const FEValuesExtractors::Scalar pressure(dim);
 
+    /**
+     * Nodal strain and stress obtained by taking the average of surrounding
+     * cell-averaged strains and stresses. Their sizes are
+     * [dim, dim, scalar_dof_handler.n_dofs()], i.e., stress[i][j][k]
+     * denotes sigma_{ij} at vertex k.
+     */
+    std::vector<std::vector<PETScWrappers::MPI::Vector>>
+      relevant_partition_stress =
+        std::vector<std::vector<PETScWrappers::MPI::Vector>>(
+          dim,
+          std::vector<PETScWrappers::MPI::Vector>(
+            dim,
+            PETScWrappers::MPI::Vector(
+              fluid_solver.locally_owned_scalar_dofs,
+              fluid_solver.locally_relevant_scalar_dofs,
+              mpi_communicator)));
+    relevant_partition_stress = fluid_solver.stress;
+
     FEValues<dim> fe_values(fluid_solver.fe,
                             fluid_solver.volume_quad_formula,
                             update_values | update_quadrature_points |
                               update_JxW_values | update_gradients);
+    FEValues<dim> scalar_fe_values(fluid_solver.scalar_fe,
+                                   fluid_solver.volume_quad_formula,
+                                   update_values | update_gradients);
 
     std::vector<Tensor<1, dim>> present_vel(fe_values.n_quadrature_points);
     std::vector<double> present_pre(fe_values.n_quadrature_points);
     std::vector<Tensor<2, dim>> vel_grad(fe_values.n_quadrature_points);
     std::vector<Tensor<1, dim>> pre_grad(fe_values.n_quadrature_points);
     std::vector<Tensor<1, dim>> previous_vel(fe_values.n_quadrature_points);
+    std::vector<double> previous_pre(fe_values.n_quadrature_points);
+    std::vector<double> eddy_vis(fe_values.n_quadrature_points);
+
+    std::vector<std::vector<std::vector<Tensor<1, dim>>>> stress_grad(
+      dim,
+      std::vector<std::vector<Tensor<1, dim>>>(
+        dim, std::vector<Tensor<1, dim>>(fe_values.n_quadrature_points)));
+    std::vector<Tensor<1, dim>> stress_div(fe_values.n_quadrature_points);
 
     // Quantities to be integrated
     auto int_rate_momentum = [&present_vel,
@@ -776,9 +827,10 @@ namespace MPI
         }
       return retval;
     };
-    auto int_rate_dissipation = [&vel_grad, mu = parameters.viscosity](int q) {
-      return mu * scalar_product(vel_grad[q], vel_grad[q]);
-    };
+    auto int_rate_dissipation =
+      [&vel_grad, &eddy_vis, mu = parameters.viscosity](int q) {
+        return mu * scalar_product(vel_grad[q], vel_grad[q]);
+      };
     auto int_rate_compression = [&present_pre, &vel_grad](int q) {
       double retval = 0.0;
       for (unsigned i = 0; i < dim; ++i)
@@ -787,11 +839,63 @@ namespace MPI
         }
       return retval;
     };
+
+    auto int_rate_stabilization = [&,
+                                   rho = parameters.fluid_rho,
+                                   mu = parameters.viscosity](int q) {
+      double vel_div = trace(vel_grad[q]);
+      double nu = (mu + eddy_vis[q]) / rho;
+      double v_norm = present_vel[q].norm();
+      double tau_SUPG{0.0};
+      double h{0.0};
+      for (unsigned int a = 0;
+           a < fluid_solver.fe.dofs_per_cell / fluid_solver.fe.dofs_per_vertex;
+           ++a)
+        {
+          h += abs(present_vel[q] * fe_values.shape_grad(a, q));
+        }
+      if (h)
+        {
+          h = 2 * present_vel[q].norm() / h;
+        }
+      else
+        {
+          h = 0.0;
+        }
+      if (h)
+        {
+          tau_SUPG =
+            1 / sqrt((pow(2 / time.get_delta_t(), 2) + pow(2 * v_norm / h, 2) +
+                      pow(4 * nu / pow(h, 2), 2)));
+        }
+      else
+        {
+          tau_SUPG = time.get_delta_t() / 2;
+        };
+      double localRe = v_norm * h / (2 * nu);
+      double z = localRe <= 3 ? (localRe / 3) : 1;
+      double tau_LSIC = h / 2 * v_norm * z;
+      constexpr double cp_to_cv{1.4};
+      constexpr double atm{1013250.0};
+      return tau_SUPG * present_vel[q] * vel_grad[q] *
+               (rho * ((present_vel[q] - previous_vel[q]) / time.get_delta_t() +
+                       present_vel[q] * vel_grad[q]) +
+                pre_grad[q] - stress_div[q]) +
+             (tau_LSIC * rho * vel_div) *
+               ((present_pre[q] - previous_pre[q]) / time.get_delta_t() +
+                cp_to_cv * (atm + present_pre[q]) * vel_div +
+                present_vel[q] * pre_grad[q]) /
+               atm;
+    };
+    auto int_rate_turbulence = [&vel_grad, &eddy_vis](int q) {
+      return eddy_vis[q] * scalar_product(vel_grad[q], vel_grad[q]);
+    };
+
     auto int_x_velocity = [&present_vel](int q) { return present_vel[q][0]; };
 
     // The integrate function
     auto integrate = [&fe_values](const std::function<double(int)> &quant) {
-      double results = 0;
+      double results = 0.0;
       for (unsigned q = 0; q < fe_values.n_quadrature_points; ++q)
         {
           results += quant(q) * fe_values.JxW(q);
@@ -804,6 +908,12 @@ namespace MPI
       [&](typename DoFHandler<dim>::active_cell_iterator f_cell,
           double volume_fraction = 1) mutable {
         fe_values.reinit(f_cell);
+        TriaActiveIterator<DoFCellAccessor<dim, dim, false>> scalar_f_cell(
+          &fluid_solver.triangulation,
+          f_cell->level(),
+          f_cell->index(),
+          &fluid_solver.scalar_dof_handler);
+        scalar_fe_values.reinit(scalar_f_cell);
 
         fe_values[velocities].get_function_values(fluid_solver.present_solution,
                                                   present_vel);
@@ -813,8 +923,41 @@ namespace MPI
           fluid_solver.present_solution, vel_grad);
         fe_values[pressure].get_function_values(fluid_solver.present_solution,
                                                 present_pre);
+        fe_values[pressure].get_function_values(fluid_previous_solution,
+                                                previous_pre);
         fe_values[pressure].get_function_gradients(
           fluid_solver.present_solution, pre_grad);
+
+        for (unsigned i = 0; i < dim; ++i)
+          {
+            for (unsigned j = 0; j < dim; ++j)
+              {
+                scalar_fe_values.get_function_gradients(
+                  relevant_partition_stress[i][j], stress_grad[i][j]);
+              }
+          }
+
+        if (fluid_solver.turbulence_model)
+          {
+            scalar_fe_values.get_function_values(
+              fluid_solver.turbulence_model->get_eddy_viscosity(), eddy_vis);
+          }
+
+        // Compute the divergence of nodal stresses. This is used in
+        // the stabilization terms.
+        for (unsigned q = 0; q < fe_values.n_quadrature_points; ++q)
+          {
+            for (unsigned i = 0; i < dim; ++i)
+              {
+                stress_div[q][i] = 0.0;
+                for (unsigned j = 0; j < dim; ++j)
+                  {
+                    stress_div[q][i] += stress_grad[i][j][q][j];
+                  }
+                stress_div[q][i] *=
+                  (parameters.viscosity + eddy_vis[q]) / parameters.viscosity;
+              }
+          }
 
         // Integrate the quantities on the cells
         cv_values.momentum.rate_momentum +=
@@ -833,6 +976,10 @@ namespace MPI
           integrate(int_rate_dissipation) * volume_fraction;
         cv_values.energy.rate_compression_work +=
           integrate(int_rate_compression) * volume_fraction;
+        cv_values.energy.rate_stabilization +=
+          integrate(int_rate_stabilization) * volume_fraction;
+        cv_values.energy.rate_turbulence +=
+          integrate(int_rate_turbulence) * volume_fraction;
         // Compute the gap volume flow
         bool has_left_vertex = false;
         bool has_right_vertex = false;
@@ -858,7 +1005,30 @@ namespace MPI
           }
         // Now compute the volume flow
         cv_values.gap_volume_flow += integrate(int_x_velocity) / x_distance;
+
+        // Update max velocity
+        for (auto &vel : present_vel)
+          {
+            cv_values.max_velocity =
+              std::max(cv_values.max_velocity, vel.norm());
+          }
       };
+
+    // Probe pressure
+    if (pressure_probe_set)
+      {
+        // Lazy inititialize pressure probe (interpolator)
+        if (!pressure_probe.has_value())
+          {
+            pressure_probe.emplace(
+              fluid_solver.dof_handler, pressure_probe_location, vertices_mask);
+            // Won't check if cell is valid (not owned)
+          }
+        Vector<double> probed_value(dim + 1);
+        pressure_probe->point_value(fluid_solver.present_solution,
+                                    probed_value);
+        cv_values.probed_pressure = probed_value[dim];
+      }
 
     for (auto sections : cv_f_cells)
       {
@@ -1164,6 +1334,7 @@ namespace MPI
     std::vector<Tensor<2, dim>> vel_grad(fe_values.n_quadrature_points);
     std::vector<double> present_pre(fe_values.n_quadrature_points);
     std::vector<Tensor<1, dim>> pre_grad(fe_values.n_quadrature_points);
+    std::vector<double> eddy_vis(fe_values.n_quadrature_points);
     // The order for stress grad is: Sxx, Sxy, (Sxz), Syy, (Syz, Szz)
     std::vector<std::vector<Tensor<1, dim>>> stress_grad(
       (dim * dim + dim) / 2,
@@ -1202,7 +1373,7 @@ namespace MPI
       return present_pre[q] / rho / (atm + 2 * present_pre[q]) * pre_grad[q][0];
     };
     auto int_friction_head = [&stress_grad,
-                              &pre_grad,
+                              &eddy_vis,
                               mu = parameters.viscosity,
                               rho = parameters.fluid_rho](int q) {
       double retval = 0.0;
@@ -1212,30 +1383,18 @@ namespace MPI
       // for Sxx_grad[q][0] Sxy_grad[q][1] (or/and Sxz_grad[q][2])
       for (unsigned d = 0; d < dim; ++d)
         {
-          retval += stress_grad[d][q][d] / rho;
+          retval += stress_grad[d][q][d] / rho / mu * (mu + eddy_vis[q]);
         }
       // for Syy_grad[q][0]
-      retval -= stress_grad[dim][q][0] / rho;
+      retval -= stress_grad[dim][q][0] / rho / mu * (mu + eddy_vis[q]);
       // Since Sxx includes pressure gradient we need to subtract it
       if (dim == 3)
         {
           // for Szz_grad[q][0] (if exists).
-          retval -= stress_grad[5][q][0] / rho;
-          // Only happens in 3d because in 2d Sxx_grad[q][0] and Syy_grad[q][0]
-          // cancel out
-          retval -= pre_grad[q][0] / rho;
+          retval -= stress_grad[5][q][0] / rho / mu * (mu + eddy_vis[q]);
         }
       return retval;
     };
-    auto int_friction_work =
-      [&present_vel, &vel_grad, mu = parameters.viscosity](int q) {
-        double retval = 0.0;
-        for (unsigned d = 0; d < dim; ++d)
-          {
-            retval += mu * vel_grad[q][d][1] * present_vel[q][d];
-          }
-        return retval;
-      };
 
     auto integrate = [&fe_values](const std::function<double(int)> &quant) {
       double results = 0;
@@ -1310,13 +1469,17 @@ namespace MPI
             scalar_fe_values.get_function_gradients(
               relevant_partition_stress[component], stress_grad[component]);
           }
+        if (fluid_solver.turbulence_model)
+          {
+            scalar_fe_values.get_function_values(
+              fluid_solver.turbulence_model->get_eddy_viscosity(), eddy_vis);
+          }
 
         double convection_head = 0.0;
         double pressure_head = 0.0;
         double acceleration = 0.0;
         double rate_density = 0.0;
         double rate_friction_head = 0.0;
-        double rate_friction_work = 0.0;
         // Don't account for those partially in contraction region or jet region
         bool contraction_end =
           (region & in_contraction) && (region & not_in_contraction);
@@ -1336,10 +1499,6 @@ namespace MPI
             acceleration = integrate(int_acceleration_head);
             rate_density = integrate(int_density_head);
             rate_friction_head = integrate(int_friction_head);
-            rate_friction_work = integrate(int_friction_work);
-            // Compute integral for friction work in energy equation
-            cv_values.energy.rate_friction_work +=
-              rate_friction_work * area_fraction;
           }
         if (region & in_contraction)
           {
@@ -1376,7 +1535,6 @@ namespace MPI
           double &acc_int,
           double &density_int,
           double &friction_head_int,
-          double &friction_work_int,
           std::tuple<cell_iterator, cell_iterator, double> &cell_tuple) {
         auto &[cell, scalar_cell, fraction] = cell_tuple;
 
@@ -1412,7 +1570,6 @@ namespace MPI
             acc_int += integrate(int_acceleration_head) * area_fraction;
             density_int += integrate(int_density_head) * area_fraction;
             friction_head_int += integrate(int_friction_head) * area_fraction;
-            friction_work_int += integrate(int_friction_work) * area_fraction;
           }
       };
     get_start_end_quantities(cv_values.bernoulli.rate_convection_contraction,
@@ -1420,14 +1577,12 @@ namespace MPI
                              cv_values.bernoulli.acceleration_contraction,
                              cv_values.bernoulli.rate_density_contraction,
                              cv_values.bernoulli.rate_friction_contraction,
-                             cv_values.energy.rate_friction_work,
                              bernoulli_start_end.first);
     get_start_end_quantities(cv_values.bernoulli.rate_convection_jet,
                              cv_values.bernoulli.rate_pressure_grad_jet,
                              cv_values.bernoulli.acceleration_jet,
                              cv_values.bernoulli.rate_density_jet,
                              cv_values.bernoulli.rate_friction_jet,
-                             cv_values.energy.rate_friction_work,
                              bernoulli_start_end.second);
 
     move_solid_mesh(false);
@@ -1437,6 +1592,7 @@ namespace MPI
   void ControlVolumeFSI<dim>::output_solid_boundary_vertices()
   {
     move_solid_mesh(true);
+    Vector<double> localized_fluid_pressure(solid_solver.fluid_pressure);
     if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
       {
         fs::create_directory("solid_trace");
@@ -1444,9 +1600,31 @@ namespace MPI
                              Utilities::int_to_string(time.get_timestep(), 6));
         std::ofstream output_file(filename, std::ios::out);
 
-        for (const auto &v : solid_boundary_vertices)
+        for (const auto &pairs : solid_boundary_vertices)
           {
-            output_file << v->index() << " " << v->vertex(0) << std::endl;
+            const auto &adjacent_faces_list{pairs.second.first};
+            AssertThrow(!adjacent_faces_list.empty(),
+                        ExcMessage("Cannot find boundary vertex data!"));
+            auto &this_vertex = pairs.first;
+            TriaActiveIterator<DoFCellAccessor<dim, dim, false>> scalar_s_cell(
+              &solid_solver.triangulation,
+              adjacent_faces_list.begin()->first->level(),
+              adjacent_faces_list.begin()->first->index(),
+              &solid_solver.scalar_dof_handler);
+            auto face_index = pairs.second.first.begin()->second;
+            double pressure{0.0};
+            for (unsigned v = 0; v < GeometryInfo<dim>::vertices_per_face; ++v)
+              {
+                if (scalar_s_cell->face(face_index)->vertex_index(v) ==
+                    this_vertex->vertex_index(0))
+                  {
+                    auto line =
+                      scalar_s_cell->face(face_index)->vertex_dof_index(v, 0);
+                    pressure = localized_fluid_pressure[line];
+                  }
+              }
+            output_file << this_vertex->index() << " " << this_vertex->vertex(0)
+                        << " " << pressure << std::endl;
           }
 
         output_file.close();
@@ -1497,6 +1675,7 @@ namespace MPI
                    << "Outlet pressure work,"
                    << "Inlet KE flux,"
                    << "Outlet KE flux,"
+                   << "Rate turbulence efflux,"
                    << "Convective KE,"
                    << "Penetrating KE,"
                    << "Rate KE,"
@@ -1504,11 +1683,15 @@ namespace MPI
                    << "Pressure convection,"
                    << "Rate dissipation,"
                    << "Rate compression work,"
+                   << "Rate stabilization,"
+                   << "Rate turbulence work,"
                    << "Rate friction work,"
                    << "Rate VF work,"
                    << "Rate VF work from solid,"
                    << "Contraction end xcoord,"
-                   << "Jet start xcoord" << std::endl;
+                   << "Jet start xcoord,"
+                   << "Max velocity,"
+                   << "Probed pressure" << std::endl;
           }
         else // Start from a checkpoint
           {
@@ -1558,6 +1741,7 @@ namespace MPI
     reduce_internal(energy.outlet_pressure_work);
     reduce_internal(energy.inlet_flux);
     reduce_internal(energy.outlet_flux);
+    reduce_internal(energy.rate_turbulence_efflux);
     // volume integrals
     reduce_internal(VF_volume);
     reduce_internal(momentum.rate_momentum);
@@ -1568,6 +1752,8 @@ namespace MPI
     reduce_internal(energy.pressure_convection);
     reduce_internal(energy.rate_dissipation);
     reduce_internal(energy.rate_compression_work);
+    reduce_internal(energy.rate_stabilization);
+    reduce_internal(energy.rate_turbulence);
     // KE rate from volume integral
     energy.rate_kinetic_energy =
       (energy.present_KE - energy.previous_KE) / delta_t;
@@ -1578,54 +1764,63 @@ namespace MPI
     reduce_internal(energy.rate_friction_work);
     reduce_internal(energy.rate_vf_work);
     reduce_internal(energy.rate_vf_work_from_solid);
+    // Pressure probe
+    reduce_internal(probed_pressure);
+    // Maximum velocity
+    max_velocity = Utilities::MPI::max(max_velocity, mpi_communicator);
   }
 
   template <int dim>
   void ControlVolumeFSI<dim>::CVValues::reset()
   {
     // General terms
-    inlet_volume_flow = 0;
-    outlet_volume_flow = 0;
-    gap_volume_flow = 0;
-    inlet_pressure_force = 0;
-    outlet_pressure_force = 0;
-    VF_volume = 0;
+    inlet_volume_flow = 0.0;
+    outlet_volume_flow = 0.0;
+    gap_volume_flow = 0.0;
+    inlet_pressure_force = 0.0;
+    outlet_pressure_force = 0.0;
+    VF_volume = 0.0;
+    max_velocity = 0.0;
+    probed_pressure = 0.0;
     // Bernoulli terms
-    bernoulli.rate_convection_contraction = 0;
-    bernoulli.rate_convection_jet = 0;
-    bernoulli.rate_pressure_grad_contraction = 0;
-    bernoulli.rate_pressure_grad_jet = 0;
-    bernoulli.acceleration_contraction = 0;
-    bernoulli.acceleration_jet = 0;
-    bernoulli.rate_density_contraction = 0;
-    bernoulli.rate_density_jet = 0;
-    bernoulli.rate_friction_contraction = 0;
-    bernoulli.rate_friction_jet = 0;
-    bernoulli.contraction_end_x = 0;
-    bernoulli.jet_start_x = 0;
+    bernoulli.rate_convection_contraction = 0.0;
+    bernoulli.rate_convection_jet = 0.0;
+    bernoulli.rate_pressure_grad_contraction = 0.0;
+    bernoulli.rate_pressure_grad_jet = 0.0;
+    bernoulli.acceleration_contraction = 0.0;
+    bernoulli.acceleration_jet = 0.0;
+    bernoulli.rate_density_contraction = 0.0;
+    bernoulli.rate_density_jet = 0.0;
+    bernoulli.rate_friction_contraction = 0.0;
+    bernoulli.rate_friction_jet = 0.0;
+    bernoulli.contraction_end_x = 0.0;
+    bernoulli.jet_start_x = 0.0;
     // Momentum equation terms
-    momentum.inlet_flux = 0;
-    momentum.outlet_flux = 0;
-    momentum.rate_momentum = 0;
-    momentum.VF_drag = 0;
-    momentum.VF_friction = 0;
+    momentum.inlet_flux = 0.0;
+    momentum.outlet_flux = 0.0;
+    momentum.rate_momentum = 0.0;
+    momentum.VF_drag = 0.0;
+    momentum.VF_friction = 0.0;
     // Energy equation terms
-    energy.inlet_pressure_work = 0;
-    energy.outlet_pressure_work = 0;
-    energy.inlet_flux = 0;
-    energy.outlet_flux = 0;
-    energy.convective_KE = 0;
-    energy.penetrating_KE = 0;
-    energy.previous_KE = 0;
-    energy.present_KE = 0;
-    energy.pressure_convection = 0;
-    energy.rate_kinetic_energy = 0;
-    energy.rate_kinetic_energy_direct = 0;
-    energy.rate_dissipation = 0;
-    energy.rate_compression_work = 0;
-    energy.rate_friction_work = 0;
-    energy.rate_vf_work = 0;
-    energy.rate_vf_work_from_solid = 0;
+    energy.inlet_pressure_work = 0.0;
+    energy.outlet_pressure_work = 0.0;
+    energy.inlet_flux = 0.0;
+    energy.outlet_flux = 0.0;
+    energy.rate_turbulence_efflux = 0.0;
+    energy.convective_KE = 0.0;
+    energy.penetrating_KE = 0.0;
+    energy.previous_KE = 0.0;
+    energy.present_KE = 0.0;
+    energy.pressure_convection = 0.0;
+    energy.rate_kinetic_energy = 0.0;
+    energy.rate_kinetic_energy_direct = 0.0;
+    energy.rate_dissipation = 0.0;
+    energy.rate_compression_work = 0.0;
+    energy.rate_stabilization = 0.0;
+    energy.rate_turbulence = 0.0;
+    energy.rate_friction_work = 0.0;
+    energy.rate_vf_work = 0.0;
+    energy.rate_vf_work_from_solid = 0.0;
   }
 
   template <int dim>

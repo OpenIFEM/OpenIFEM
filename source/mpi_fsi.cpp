@@ -1,4 +1,5 @@
 #include "mpi_fsi.h"
+#include "mpi_spalart_allmaras.h"
 #include <iostream>
 
 namespace MPI
@@ -73,19 +74,18 @@ namespace MPI
   template <int dim>
   void FSI<dim>::collect_solid_boundaries()
   {
-    if (dim == 2)
-      for (auto cell = solid_solver.triangulation.begin_active();
-           cell != solid_solver.triangulation.end();
-           ++cell)
-        {
-          for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
-            {
-              if (cell->face(f)->at_boundary())
-                {
-                  solid_boundaries.push_back(cell->face(f));
-                }
-            }
-        }
+    for (auto cell = solid_solver.triangulation.begin_active();
+         cell != solid_solver.triangulation.end();
+         ++cell)
+      {
+        for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+          {
+            if (cell->face(f)->at_boundary())
+              {
+                solid_boundaries.push_back({cell, f});
+              }
+          }
+      }
   }
 
   template <int dim>
@@ -152,10 +152,10 @@ namespace MPI
       {
         unsigned int cross_number = 0;
         unsigned int half_cross_number = 0;
-        for (auto f = solid_boundaries.begin(); f != solid_boundaries.end();
-             ++f)
+        for (auto &[f_cell, face] : solid_boundaries)
           {
-            Point<dim> p1 = (*f)->vertex(0), p2 = (*f)->vertex(1);
+            auto f = f_cell->face(face);
+            Point<dim> p1 = f->vertex(0), p2 = f->vertex(1);
             double y_diff1 = p1(1) - point(1);
             double y_diff2 = p2(1) - point(1);
             double x_diff1 = p1(0) - point(0);
@@ -294,7 +294,8 @@ namespace MPI
          f_cell != fluid_solver.dof_handler.end();
          ++f_cell)
       {
-        if (!f_cell->is_locally_owned())
+        // Indicator is ghosted, as it will be used in constraints.
+        if (f_cell->is_artificial())
           {
             continue;
           }
@@ -541,6 +542,16 @@ namespace MPI
           inner_zero,
           AffineConstraints<double>::MergeConflictBehavior::left_object_wins);
       }
+
+    // If the fluid solver has a turbulence model, update the cell data in the
+    // turbulence model
+    if (auto SA_model = dynamic_cast<Fluid::MPI::SpalartAllmaras<dim> *>(
+          fluid_solver.turbulence_model.get()))
+      {
+        SA_model->update_moving_wall_distance(
+          solid_boundary_vertices, solid_boundaries, shear_velocities);
+      }
+
     move_solid_mesh(false);
   }
 
@@ -553,6 +564,9 @@ namespace MPI
     // Fluid FEValues to do interpolation
     FEValues<dim> fe_values(
       fluid_solver.fe, fluid_solver.volume_quad_formula, update_values);
+    // Solid FEValues for updating vertex normal vector
+    FEFaceValues<dim> solid_fe_face_values(
+      solid_solver.fe, solid_solver.face_quad_formula, update_normal_vectors);
 
     for (unsigned int d = 0; d < dim; ++d)
       {
@@ -584,76 +598,146 @@ namespace MPI
         for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
           {
             // Current face is at boundary and without Dirichlet bc.
-            if (s_cell->face(f)->at_boundary())
+            if (!s_cell->face(f)->at_boundary())
               {
-                for (unsigned int v = 0;
-                     v < GeometryInfo<dim>::vertices_per_face;
-                     ++v)
+                continue;
+              }
+            constexpr unsigned fixed_bc_flag{(1 << dim) - 1};
+            auto bc = parameters.solid_dirichlet_bcs.find(
+              s_cell->face(f)->boundary_id());
+            if (bc != parameters.solid_dirichlet_bcs.end() &&
+                bc->second == fixed_bc_flag)
+              {
+                // Skip those fixed faces
+                continue;
+              }
+            // Start computing traction
+            for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_face;
+                 ++v)
+              {
+                auto line = s_cell->face(f)->vertex_dof_index(v, 0);
+                auto scalar_line =
+                  scalar_s_cell->face(f)->vertex_dof_index(v, 0);
+                // Get interpolated solution from the fluid
+                Vector<double> value(dim + 1);
+                Utils::GridInterpolator<dim, PETScWrappers::MPI::BlockVector>
+                  interpolator(fluid_solver.dof_handler,
+                               s_cell->face(f)->vertex(v),
+                               vertices_mask);
+                interpolator.point_value(fluid_solver.present_solution, value);
+                // Compute the viscous traction
+                SymmetricTensor<2, dim> viscous_stress;
+                // Create the scalar interpolator for stresses based on the
+                // existing interpolator
+                auto f_cell = interpolator.get_cell();
+                if (f_cell.state() == IteratorState::IteratorStates::valid)
                   {
-                    auto line = s_cell->face(f)->vertex_dof_index(v, 0);
-                    auto scalar_line =
-                      scalar_s_cell->face(f)->vertex_dof_index(v, 0);
-                    // Get interpolated solution from the fluid
-                    Vector<double> value(dim + 1);
-                    Utils::GridInterpolator<dim,
-                                            PETScWrappers::MPI::BlockVector>
-                      interpolator(fluid_solver.dof_handler,
-                                   s_cell->face(f)->vertex(v),
-                                   vertices_mask);
-                    interpolator.point_value(fluid_solver.present_solution,
-                                             value);
-                    // Compute the viscous traction
-                    SymmetricTensor<2, dim> viscous_stress;
-                    // Create the scalar interpolator for stresses based on the
-                    // existing interpolator
-                    auto f_cell = interpolator.get_cell();
-                    if (f_cell.state() == IteratorState::IteratorStates::valid)
+                    TriaActiveIterator<DoFCellAccessor<dim, dim, false>>
+                      scalar_f_cell(&fluid_solver.triangulation,
+                                    f_cell->level(),
+                                    f_cell->index(),
+                                    &fluid_solver.scalar_dof_handler);
+                    Utils::GridInterpolator<dim, PETScWrappers::MPI::Vector>
+                      scalar_interpolator(fluid_solver.scalar_dof_handler,
+                                          s_cell->face(f)->vertex(v),
+                                          vertices_mask,
+                                          scalar_f_cell);
+                    for (unsigned int i = 0; i < dim; i++)
                       {
-                        TriaActiveIterator<DoFCellAccessor<dim, dim, false>>
-                          scalar_f_cell(&fluid_solver.triangulation,
-                                        f_cell->level(),
-                                        f_cell->index(),
-                                        &fluid_solver.scalar_dof_handler);
-                        Utils::GridInterpolator<dim, PETScWrappers::MPI::Vector>
-                          scalar_interpolator(fluid_solver.scalar_dof_handler,
-                                              s_cell->face(f)->vertex(v),
-                                              vertices_mask,
-                                              scalar_f_cell);
-                        for (unsigned int i = 0; i < dim; i++)
+                        for (unsigned int j = i; j < dim; j++)
                           {
-                            for (unsigned int j = i; j < dim; j++)
-                              {
-                                Vector<double> stress_component(1);
-                                scalar_interpolator.point_value(
-                                  relevant_partition_stress[i][j],
-                                  stress_component);
-                                viscous_stress[i][j] = stress_component[0];
-                              }
+                            Vector<double> stress_component(1);
+                            scalar_interpolator.point_value(
+                              relevant_partition_stress[i][j],
+                              stress_component);
+                            viscous_stress[i][j] = stress_component[0];
                           }
                       }
-                    // \f$ \sigma = -p\bold{I} + \mu\nabla^S v\f$
-                    SymmetricTensor<2, dim> stress =
-                      -value[dim] *
-                        Physics::Elasticity::StandardTensors<dim>::I +
-                      viscous_stress;
-                    // Assign the cell stress to local row vectors
-                    for (unsigned int d1 = 0; d1 < dim; ++d1)
+                  }
+                // \f$ \sigma = -p\bold{I} + \mu\nabla^S v\f$
+                SymmetricTensor<2, dim> stress =
+                  -value[dim] * Physics::Elasticity::StandardTensors<dim>::I +
+                  viscous_stress;
+                // Assign the cell stress to local row vectors
+                for (unsigned int d1 = 0; d1 < dim; ++d1)
+                  {
+                    for (unsigned int d2 = 0; d2 < dim; ++d2)
                       {
-                        for (unsigned int d2 = 0; d2 < dim; ++d2)
+                        // fluid stress for traction computation
+                        solid_solver.fsi_stress_rows[d1][line + d2] =
+                          stress[d1][d2];
+                      }
+                    // fluid velocity for friction work computation
+                    solid_solver.fluid_velocity[line + d1] = value[d1];
+                  } // End assigning local fluid stress values
+                // fluid pressure for drag computation
+                solid_solver.fluid_pressure[scalar_line] = value[dim];
+                // Update shear velocity for turbulence model wall
+                // function
+                if (fluid_solver.turbulence_model)
+                  {
+                    auto this_vertex = s_cell->face(f)->vertex_iterator(v);
+                    // Find the normal of this vertex.
+                    Tensor<1, dim> vertex_normal;
+                    auto boundary_vertex_data =
+                      solid_boundary_vertices.find(this_vertex);
+                    AssertThrow(
+                      boundary_vertex_data != solid_boundary_vertices.end(),
+                      ExcMessage("Cannot find boundary vertex data!"));
+                    auto &face_and_index = boundary_vertex_data->second;
+                    for (auto [cell, face] : face_and_index.first)
+                      {
+                        solid_fe_face_values.reinit(cell, face);
+                        vertex_normal += solid_fe_face_values.normal_vector(0);
+                      }
+                    vertex_normal /= face_and_index.first.size();
+                    // Locate the image point
+                    /* TODO: the image distance parameter is now unique to SA
+                    model. Will need a separated turbulence model wall function
+                    settings when we have more models.*/
+                    double image_distance{
+                      parameters.spalart_allmaras_image_distance};
+                    Point<dim> image_point{this_vertex->vertex(0) +
+                                           image_distance * vertex_normal};
+                    // Interpolator for image point
+                    Utils::GridInterpolator<dim,
+                                            PETScWrappers::MPI::BlockVector>
+                      image_point_interpolator(fluid_solver.dof_handler,
+                                               s_cell->face(f)->vertex(v),
+                                               vertices_mask);
+                    int shear_velocity_index{face_and_index.second};
+                    if (image_point_interpolator.get_cell().state() ==
+                        IteratorState::IteratorStates::valid)
+                      {
+                        image_point_interpolator.point_value(
+                          fluid_solver.present_solution, value);
+                        // Compute tangential velocity
+                        Tensor<1, dim> image_velocity;
+                        for (unsigned d = 0; d < dim; ++d)
                           {
-                            // fluid stress for traction computation
-                            solid_solver.fsi_stress_rows[d1][line + d2] =
-                              stress[d1][d2];
+                            image_velocity[d] = value[d];
                           }
-                        // fluid velocity for friction work computation
-                        solid_solver.fluid_velocity[line + d1] = value[d1];
-                      } // End assigning local fluid stress values
-                    // fluid pressure for drag computation
-                    solid_solver.fluid_pressure[scalar_line] = value[dim];
-                  } // End looping support points
-              }
-          } // End looping cell faces
-      }     // End looping solid cells
+                        Tensor<1, dim> normal_velocity =
+                          scalar_product(vertex_normal, image_velocity) *
+                          vertex_normal;
+                        double tangential_velocity =
+                          (image_velocity - normal_velocity).norm();
+                        // Use the shear velocity from last time step as
+                        // the initial guess (last arg)
+                        double shear_velocity =
+                          fluid_solver.turbulence_model->get_shear_velocity(
+                            tangential_velocity,
+                            shear_velocities[shear_velocity_index]);
+                        shear_velocities[shear_velocity_index] = shear_velocity;
+                      }
+                    else // Not belong to this process or out of bound
+                      {
+                        shear_velocities[shear_velocity_index] = 0.0;
+                      }
+                  }
+              } // End looping support points
+          }     // End looping cell faces
+      }         // End looping solid cells
     // Add up the local vectors
     for (unsigned int d = 0; d < dim; ++d)
       {
@@ -667,6 +751,11 @@ namespace MPI
     Utilities::MPI::sum(solid_solver.fluid_pressure,
                         solid_solver.mpi_communicator,
                         solid_solver.fluid_pressure);
+    if (fluid_solver.turbulence_model)
+      {
+        Utilities::MPI::sum(
+          shear_velocities, mpi_communicator, shear_velocities);
+      }
     move_solid_mesh(false);
   }
 
@@ -773,6 +862,58 @@ namespace MPI
   }
 
   template <int dim>
+  void FSI<dim>::collect_solid_boundary_vertices()
+  {
+    unsigned fixed_bc_flag = (1 << dim) - 1;
+
+    int current_index{0};
+    for (auto &cell : solid_solver.triangulation.active_cell_iterators())
+      {
+        if (!cell->at_boundary())
+          {
+            continue;
+          }
+        for (unsigned f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+          {
+            auto face = cell->face(f);
+            if (face->at_boundary())
+              {
+                // Check if the boundary is fixed
+                auto bc =
+                  parameters.solid_dirichlet_bcs.find(face->boundary_id());
+                if (bc != parameters.solid_dirichlet_bcs.end() &&
+                    bc->second == fixed_bc_flag)
+                  {
+                    // Skip those fixed vertices
+                    continue;
+                  }
+
+                for (unsigned v = 0; v < GeometryInfo<dim>::vertices_per_face;
+                     ++v)
+                  {
+                    // For shear velocity indexing
+                    if (solid_boundary_vertices.find(face->vertex_iterator(
+                          v)) == solid_boundary_vertices.end())
+                      {
+                        // Stores the index for the shear velocity on this
+                        // vertex
+                        solid_boundary_vertices[face->vertex_iterator(v)]
+                          .second = current_index++;
+                      }
+                    solid_boundary_vertices[face->vertex_iterator(v)]
+                      .first.push_back({cell, f});
+                  }
+              }
+          }
+      }
+    // Initialize shear_velocities.
+    shear_velocities.reinit(current_index);
+    AssertThrow(
+      shear_velocities.size() == solid_boundary_vertices.size(),
+      ExcMessage("Size of solid vertices and shear velocities don't match!"));
+  }
+
+  template <int dim>
   void FSI<dim>::refine_mesh(const unsigned int min_grid_level,
                              const unsigned int max_grid_level)
   {
@@ -801,7 +942,7 @@ namespace MPI
     for (auto f_cell : fluid_solver.dof_handler.active_cell_iterators())
       {
         auto center = f_cell->center();
-        double dist = 1000;
+        double dist{std::numeric_limits<double>::max()};
         for (auto point : solid_boundary_points)
           {
             dist = std::min(center.distance(point), dist);
@@ -838,6 +979,15 @@ namespace MPI
     solution_transfer.prepare_for_coarsening_and_refinement(
       fluid_solver.present_solution);
 
+    // Preparation for turbulence model
+    std::optional<
+      parallel::distributed::SolutionTransfer<dim, PETScWrappers::MPI::Vector>>
+      turbulence_trans;
+    if (fluid_solver.turbulence_model)
+      {
+        fluid_solver.turbulence_model->pre_refine_mesh(turbulence_trans);
+      }
+
     fluid_solver.triangulation.execute_coarsening_and_refinement();
 
     fluid_solver.setup_dofs();
@@ -849,9 +999,14 @@ namespace MPI
                   fluid_solver.mpi_communicator);
     buffer = 0;
     solution_transfer.interpolate(buffer);
-    fluid_solver.nonzero_constraints.distribute(buffer);
     fluid_solver.present_solution = buffer;
     update_vertices_mask();
+
+    // Transfer solution for turbulence model
+    if (fluid_solver.turbulence_model)
+      {
+        fluid_solver.turbulence_model->post_refine_mesh(turbulence_trans);
+      }
   }
 
   template <int dim>
@@ -888,6 +1043,7 @@ namespace MPI
       }
 
     collect_solid_boundaries();
+    collect_solid_boundary_vertices();
     setup_cell_hints();
     update_vertices_mask();
 
@@ -933,9 +1089,18 @@ namespace MPI
             fluid_solver.nonzero_constraints.copy_from(
               fluid_solver.zero_constraints);
           }
+        if (fluid_solver.turbulence_model)
+          {
+            fluid_solver.turbulence_model->update_boundary_condition(
+              first_step);
+          }
         find_fluid_bc();
         {
           TimerOutput::Scope timer_section(timer, "Run fluid solver");
+          if (fluid_solver.turbulence_model)
+            {
+              fluid_solver.turbulence_model->run_one_step(true);
+            }
           fluid_solver.run_one_step(true);
         }
         first_step = false;
