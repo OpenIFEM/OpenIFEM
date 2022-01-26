@@ -162,9 +162,9 @@ namespace Solid
      */
     Vector<double> nodal_mass;
     /**
-     * Nodal force calculated from FSI traction
+     * Nodal force calculated from surface traction
      */
-    Vector<double> fsi_traction_force;
+    Vector<double> nodal_forces_traction;
 
     /**
      * function to calculate total KE of the solid

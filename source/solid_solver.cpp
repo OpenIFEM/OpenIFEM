@@ -102,7 +102,7 @@ namespace Solid
     previous_velocity.reinit(dof_handler.n_dofs());
     previous_displacement.reinit(dof_handler.n_dofs());
     nodal_mass.reinit(dof_handler.n_dofs());
-    fsi_traction_force.reinit(dof_handler.n_dofs());
+    nodal_forces_traction.reinit(dof_handler.n_dofs());
 
     // Add initial velocity
     if (time.current() == 0.0)
@@ -286,10 +286,11 @@ namespace Solid
                              current_acceleration,
                              solution_names,
                              data_component_interpretation);
-    // acceleration
-    solution_names = std::vector<std::string>(spacedim, "FSI_nodal_forces");
+    // nodal forces due to surface tractrion
+    solution_names =
+      std::vector<std::string>(spacedim, "nodal_forces_traction");
     data_out.add_data_vector(dof_handler,
-                             fsi_traction_force,
+                             nodal_forces_traction,
                              solution_names,
                              data_component_interpretation);
     // material ID

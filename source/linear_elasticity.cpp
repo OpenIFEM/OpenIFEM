@@ -31,6 +31,7 @@ namespace Solid
         stiffness_matrix = 0;
       }
     system_rhs = 0;
+    nodal_forces_traction = 0;
 
     FEValues<dim> fe_values(fe,
                             volume_quad_formula,
@@ -51,7 +52,7 @@ namespace Solid
     FullMatrix<double> local_matrix(dofs_per_cell, dofs_per_cell);
     FullMatrix<double> local_stiffness(dofs_per_cell, dofs_per_cell);
     Vector<double> local_rhs(dofs_per_cell);
-    Vector<double> local_fsi_traction_force(dofs_per_cell);
+    Vector<double> local_nodal_forces_traction(dofs_per_cell);
 
     std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
@@ -79,7 +80,7 @@ namespace Solid
         local_matrix = 0;
         local_stiffness = 0;
         local_rhs = 0;
-        local_fsi_traction_force = 0;
+        local_nodal_forces_traction = 0;
 
         fe_values.reinit(cell);
 
@@ -199,7 +200,7 @@ namespace Solid
                     local_rhs(j) += fe_face_values.shape_value(j, q) *
                                     traction[component_j] *
                                     fe_face_values.JxW(q);
-                    local_fsi_traction_force(j) +=
+                    local_nodal_forces_traction(j) +=
                       fe_face_values.shape_value(j, q) * traction[component_j] *
                       fe_face_values.JxW(q);
                   }
@@ -241,15 +242,17 @@ namespace Solid
                                                    system_rhs);
             constraints.distribute_local_to_global(
               local_stiffness, local_dof_indices, stiffness_matrix);
-            constraints.distribute_local_to_global(
-              local_fsi_traction_force, local_dof_indices, fsi_traction_force);
+            constraints.distribute_local_to_global(local_nodal_forces_traction,
+                                                   local_dof_indices,
+                                                   nodal_forces_traction);
           }
         else
           {
             constraints.distribute_local_to_global(
               local_rhs, local_dof_indices, system_rhs);
-            constraints.distribute_local_to_global(
-              local_fsi_traction_force, local_dof_indices, fsi_traction_force);
+            constraints.distribute_local_to_global(local_nodal_forces_traction,
+                                                   local_dof_indices,
+                                                   nodal_forces_traction);
           }
       }
   }

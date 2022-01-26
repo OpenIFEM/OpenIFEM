@@ -130,7 +130,7 @@ namespace Solid
     using SolidSolver<dim>::cell_property;
     using SolidSolver<dim>::nodal_mass;
     using SolidSolver<dim>::calculate_KE;
-    using SolidSolver<dim>::fsi_traction_force;
+    using SolidSolver<dim>::nodal_forces_traction;
 
     void initialize_system();
 
