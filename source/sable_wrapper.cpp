@@ -450,13 +450,16 @@ namespace Fluid
       triangulation.n_cells() * openifem_stress_per_ele_size;
 
     // create rec buffer
-    double **nv_rec_buffer = new double *[cmapp.size()];
+    double **nv_rec_buffer_1 = new double *[cmapp.size()];
+    double **nv_rec_buffer_2 = new double *[cmapp.size()];
     for (unsigned ict = 0; ict < cmapp.size(); ict++)
       {
-        nv_rec_buffer[ict] = new double[cmapp_sizes[ict]];
+        nv_rec_buffer_1[ict] = new double[cmapp_sizes[ict]];
+        nv_rec_buffer_2[ict] = new double[cmapp_sizes[ict]];
       }
     // recieve data
-    rec_data(nv_rec_buffer, cmapp, cmapp_sizes, sable_stress_size);
+    rec_data(nv_rec_buffer_1, cmapp, cmapp_sizes, sable_stress_size);
+    rec_data(nv_rec_buffer_2, cmapp, cmapp_sizes, sable_stress_size);
 
     // remove solution from ghost layers of Sable mesh
     std::vector<double> sable_stress;
@@ -467,7 +470,7 @@ namespace Fluid
         int index = non_ghost_cell_id * sable_stress_per_ele_size;
         for (int i = 0; i < sable_stress_per_ele_size; i++)
           {
-            sable_stress.push_back(nv_rec_buffer[0][index + i]);
+            sable_stress.push_back(nv_rec_buffer_1[0][index + i]);
           }
       }
 
@@ -547,9 +550,11 @@ namespace Fluid
     // delete buffer
     for (unsigned ict = 0; ict < cmapp.size(); ict++)
       {
-        delete[] nv_rec_buffer[ict];
+        delete[] nv_rec_buffer_1[ict];
+        delete[] nv_rec_buffer_2[ict];
       }
-    delete[] nv_rec_buffer;
+    delete[] nv_rec_buffer_1;
+    delete[] nv_rec_buffer_2;
   }
 
   template <int dim>
