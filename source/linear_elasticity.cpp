@@ -119,9 +119,9 @@ namespace Solid
                   }
                 // body force
                 Tensor<1, dim> gravity;
-                for (unsigned int i = 0; i < dim; ++i)
+                for (unsigned int j = 0; j < dim; ++j)
                   {
-                    gravity[i] = parameters.gravity[i];
+                    gravity[j] = parameters.gravity[j];
                   }
                 local_rhs[i] += phi[i] * gravity * rho * fe_values.JxW(q);
               }
