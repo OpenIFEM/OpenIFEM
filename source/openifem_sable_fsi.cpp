@@ -199,8 +199,12 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
                   Vector<double> s_stress_component(1);
                   scalar_interpolator.point_value(solid_solver.stress[j][k],
                                                   s_stress_component);
+                  // When node-based SABLE stress is used
+                  /*sable_solver.fsi_stress[stress_index][scalar_dof_indices[i]]
+                    = f_cell_stress[stress_index][i] - s_stress_component[0];*/
+                  // When using cell-wise  SABLE stress is used
                   sable_solver.fsi_stress[stress_index][scalar_dof_indices[i]] =
-                    f_cell_stress[stress_index][i] - s_stress_component[0];
+                    -s_stress_component[0];
                   stress_index++;
                 }
             }

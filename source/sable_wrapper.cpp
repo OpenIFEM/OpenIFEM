@@ -123,8 +123,21 @@ namespace Fluid
         local_rhs_acceleration_part = 0;
         local_rhs_stress_part = 0;
 
+        SymmetricTensor<2, dim> sable_cell_stress;
         if (ind != 0)
           {
+            auto s = cell_stress.get_data(cell);
+            // Get cell-wise SABLE stress
+            int count = 0;
+            for (unsigned int k = 0; k < dim; k++)
+              {
+                for (unsigned int m = k; m < dim; m++)
+                  {
+                    sable_cell_stress[k][m] = s[0]->cell_stress_vf_avg[count];
+                    count++;
+                  }
+              }
+
             fe_values[velocities].get_function_values(present_solution,
                                                       current_velocity_values);
 
@@ -171,6 +184,8 @@ namespace Fluid
                         stress_index++;
                       }
                   }
+                // When cell-wise SABLE stress is used
+                fsi_stress_tensor += sable_cell_stress;
               }
 
             for (unsigned int i = 0; i < dofs_per_cell; ++i)
