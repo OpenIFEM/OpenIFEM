@@ -33,6 +33,19 @@ namespace Fluid
     // outputting vector quantities
     dof_handler_vector_output.distribute_dofs(fe_vector_output);
     DoFRenumbering::Cuthill_McKee(dof_handler_vector_output);
+
+    // Setup cell wise stress
+    int stress_size = (dim == 2 ? 3 : 6);
+    cell_stress.initialize(
+      triangulation.begin_active(), triangulation.end(), 1);
+    for (auto cell = triangulation.begin_active(); cell != triangulation.end();
+         ++cell)
+      {
+        const std::vector<std::shared_ptr<CellStress>> p =
+          cell_stress.get_data(cell);
+        p[0]->cell_stress_vf_avg.resize(stress_size, 0);
+        p[0]->cell_stress_not_vf_avg.resize(stress_size, 0);
+      }
   }
 
   template <int dim>
@@ -313,11 +326,8 @@ namespace Fluid
     int node_z_begin = 0;
     int node_z_end = node_z;
 
-    int sable_no_el_one_dir;
-    if (dim == 2)
-      sable_no_el_one_dir = int(std::sqrt(sable_no_ele));
-    else
-      sable_no_el_one_dir = int(std::cbrt(sable_no_ele));
+    int sable_no_el_one_dir =
+      (dim == 2 ? int(std::sqrt(sable_no_ele)) : int(std::cbrt(sable_no_ele)));
 
     int ele_z = int(sable_no_ele / (sable_no_el_one_dir * sable_no_el_one_dir));
     int ele_z_begin = 0;
@@ -448,11 +458,7 @@ namespace Fluid
     std::vector<int> cmapp_sizes;
     cmapp_sizes.push_back(sable_stress_size);
 
-    int openifem_stress_per_ele_size;
-    if (dim == 2)
-      openifem_stress_per_ele_size = 3;
-    else
-      openifem_stress_per_ele_size = 6;
+    int openifem_stress_per_ele_size = (dim == 2 ? 3 : 6);
 
     int openifem_stress_size =
       triangulation.n_cells() * openifem_stress_per_ele_size;
@@ -466,11 +472,14 @@ namespace Fluid
         nv_rec_buffer_2[ict] = new double[cmapp_sizes[ict]];
       }
     // recieve data
+    // cell-wise stress for all background materials with VF average
     rec_data(nv_rec_buffer_1, cmapp, cmapp_sizes, sable_stress_size);
+    // cell-wise stress for only selected background material without VF average
     rec_data(nv_rec_buffer_2, cmapp, cmapp_sizes, sable_stress_size);
 
     // remove solution from ghost layers of Sable mesh
-    std::vector<double> sable_stress;
+    std::vector<double> sable_stress_vf_avg;
+    std::vector<double> sable_stress_not_vf_avg;
 
     for (unsigned int n = 0; n < triangulation.n_cells(); n++)
       {
@@ -478,11 +487,14 @@ namespace Fluid
         int index = non_ghost_cell_id * sable_stress_per_ele_size;
         for (int i = 0; i < sable_stress_per_ele_size; i++)
           {
-            sable_stress.push_back(nv_rec_buffer_1[0][index + i]);
+            sable_stress_vf_avg.push_back(nv_rec_buffer_1[0][index + i]);
+            sable_stress_not_vf_avg.push_back(nv_rec_buffer_2[0][index + i]);
           }
       }
 
-    assert(sable_stress.size() ==
+    assert(sable_stress_vf_avg.size() ==
+           triangulation.n_cells() * sable_stress_per_ele_size);
+    assert(sable_stress_not_vf_avg.size() ==
            triangulation.n_cells() * sable_stress_per_ele_size);
 
     std::vector<double> openifem_stress(openifem_stress_size, 0);
@@ -496,13 +508,24 @@ namespace Fluid
     else
       stress_sequence = {0, 3, 1, 5, 4, 2};
 
-    for (unsigned int i = 0; i < triangulation.n_cells(); i++)
+    for (auto cell = triangulation.begin_active(); cell != triangulation.end();
+         ++cell)
       {
         int count = 0;
+        auto ptr = cell_stress.get_data(cell);
         for (auto j : stress_sequence)
           {
-            openifem_stress[i * openifem_stress_per_ele_size + count] =
-              sable_stress[i * sable_stress_per_ele_size + j];
+            openifem_stress[cell->index() * openifem_stress_per_ele_size +
+                            count] =
+              sable_stress_vf_avg[cell->index() * sable_stress_per_ele_size +
+                                  j];
+            ptr[0]->cell_stress_vf_avg[count] =
+              sable_stress_vf_avg[cell->index() * sable_stress_per_ele_size +
+                                  j];
+            ptr[0]->cell_stress_not_vf_avg[count] =
+              sable_stress_not_vf_avg[cell->index() *
+                                        sable_stress_per_ele_size +
+                                      j];
             count = count + 1;
           }
       }
@@ -786,16 +809,37 @@ namespace Fluid
                              solution_names,
                              data_component_interpretation_force);
 
-    // Indicator
+    // Indicator and cell-wise stress
     Vector<float> ind(triangulation.n_active_cells());
+    unsigned int stress_size = (dim == 2 ? 3 : 6);
+    std::vector<Vector<double>> stress_vf_avg;
+    std::vector<Vector<double>> stress_not_vf_avg;
+    stress_vf_avg = std::vector<Vector<double>>(
+      stress_size, Vector<double>(triangulation.n_cells()));
+    stress_not_vf_avg = std::vector<Vector<double>>(
+      stress_size, Vector<double>(triangulation.n_cells()));
+
     int i = 0;
     for (auto cell = triangulation.begin_active(); cell != triangulation.end();
          ++cell)
       {
         auto p = cell_property.get_data(cell);
-        ind[i++] = p[0]->indicator;
+        auto c = cell_stress.get_data(cell);
+        ind[i] = p[0]->indicator;
+        for (unsigned int j = 0; j < stress_size; j++)
+          {
+            stress_vf_avg[j][i] = c[0]->cell_stress_vf_avg[j];
+            stress_not_vf_avg[j][i] = c[0]->cell_stress_vf_avg[j];
+          }
+        i++;
       }
     data_out.add_data_vector(ind, "Indicator");
+    data_out.add_data_vector(stress_vf_avg[0], "Stress_VF_avg_xx");
+    data_out.add_data_vector(stress_vf_avg[1], "Stress_VF_avg_xy");
+    data_out.add_data_vector(stress_vf_avg[2], "Stress_VF_avg_yy");
+    data_out.add_data_vector(stress_not_vf_avg[0], "Stress_no_VF_avg_xx");
+    data_out.add_data_vector(stress_not_vf_avg[1], "Stress_no_VF_avg_xy");
+    data_out.add_data_vector(stress_not_vf_avg[2], "Stress_no_VF_avg_yy");
 
     // viscous stress
     data_out.add_data_vector(scalar_dof_handler, stress[0][0], "Txx");
@@ -806,6 +850,13 @@ namespace Fluid
         data_out.add_data_vector(scalar_dof_handler, stress[0][2], "Txz");
         data_out.add_data_vector(scalar_dof_handler, stress[1][2], "Tyz");
         data_out.add_data_vector(scalar_dof_handler, stress[2][2], "Tzz");
+
+        data_out.add_data_vector(stress_vf_avg[3], "Stress_VF_avg_xz");
+        data_out.add_data_vector(stress_vf_avg[4], "Stress_VF_avg_yz");
+        data_out.add_data_vector(stress_vf_avg[5], "Stress_VF_avg_zz");
+        data_out.add_data_vector(stress_not_vf_avg[3], "Stress_no_VF_avg_xz");
+        data_out.add_data_vector(stress_not_vf_avg[4], "Stress_no_VF_avg_yz");
+        data_out.add_data_vector(stress_not_vf_avg[5], "Stress_no_VF_avg_zz");
       }
 
     data_out.build_patches(parameters.fluid_pressure_degree);

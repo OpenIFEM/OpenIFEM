@@ -34,7 +34,7 @@ namespace Fluid
     void run() override;
 
   private:
-    class BlockSchurPreconditioner;
+    struct CellStress;
 
     using FluidSolver<dim>::setup_dofs;
     using FluidSolver<dim>::initialize_system;
@@ -134,6 +134,21 @@ namespace Fluid
     // Vectors to store non ghost nodes and cells ids
     std::vector<int> non_ghost_cells;
     std::vector<int> non_ghost_nodes;
+
+    CellDataStorage<typename Triangulation<dim>::active_cell_iterator,
+                    CellStress>
+      cell_stress;
+
+    /// A data structure that stores cell-wise stress received from SABLE
+    struct CellStress
+    {
+      // cell-wise stress considering all background materials and averaged with
+      // volume fraction
+      std::vector<double> cell_stress_vf_avg;
+      // cell-wise stress for only selected background material without volume
+      // fraction averaging
+      std::vector<double> cell_stress_not_vf_avg;
+    };
   };
 } // namespace Fluid
 

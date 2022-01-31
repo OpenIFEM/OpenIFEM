@@ -351,7 +351,8 @@ namespace Solid
         system_matrix.add(time.get_delta_t() * time.get_delta_t() * beta *
                             (1 + alpha),
                           stiffness_matrix);
-        // copy previous_acceleration to current_acceleration for outputting the initial acceleration
+        // copy previous_acceleration to current_acceleration for outputting the
+        // initial acceleration
         current_acceleration = previous_acceleration;
         this->output_results(time.get_timestep());
       }
