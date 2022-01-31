@@ -77,7 +77,7 @@ namespace Fluid
                       bool assemble_system = true) override;
 
     /// Output in vtu format.
-    virtual void output_results(const unsigned int) const override;
+    void output_results(const unsigned int) const override;
 
     // FESystem and DofHandler defined only for outputing vector values
     // quantities

@@ -36,7 +36,6 @@ private:
   using FSI<dim>::update_solid_box;
   using FSI<dim>::point_in_solid;
   using FSI<dim>::move_solid_mesh;
-  using FSI<dim>::find_solid_bc;
   using FSI<dim>::update_solid_displacement;
   using FSI<dim>::refine_mesh;
   using FSI<dim>::fluid_solver;
@@ -73,6 +72,15 @@ private:
    *  points to be used by the fluid solver.
    */
   void find_fluid_bc();
+
+  /*! \brief Compute the fluid traction on solid boundaries.
+   *
+   *  The implementation is straight-forward: loop over the faces on the
+   *  solid Neumann boundary, find the quadrature points and normals,
+   *  then interpolate the fluid pressure and symmetric gradient of velocity at
+   *  those points, based on which the fluid traction is calculated.
+   */
+  void find_solid_bc();
 
   /* value is set to true if the cell is partially inside solid
      value is false if the cell is completely inside or outside solid

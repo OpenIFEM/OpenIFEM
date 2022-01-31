@@ -364,6 +364,91 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
 }
 
 template <int dim>
+void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
+{
+  TimerOutput::Scope timer_section(timer, "Find solid BC");
+  // Must use the updated solid coordinates
+  move_solid_mesh(true);
+  // Fluid FEValues to do interpolation
+  FEValues<dim> fe_values(
+    sable_solver.fe, sable_solver.volume_quad_formula, update_values);
+  // Solid FEFaceValues to get the normal at face center
+  FEFaceValues<dim> fe_face_values(solid_solver.fe,
+                                   solid_solver.face_quad_formula,
+                                   update_quadrature_points |
+                                     update_normal_vectors);
+
+  const unsigned int n_f_q_points = solid_solver.face_quad_formula.size();
+
+  for (auto s_cell = solid_solver.dof_handler.begin_active();
+       s_cell != solid_solver.dof_handler.end();
+       ++s_cell)
+    {
+      auto ptr = solid_solver.cell_property.get_data(s_cell);
+      for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+        {
+          // Current face is at boundary and without Dirichlet bc.
+          if (s_cell->face(f)->at_boundary())
+            {
+              ptr[f]->fsi_traction.clear();
+              fe_face_values.reinit(s_cell, f);
+
+              for (unsigned int q = 0; q < n_f_q_points; ++q)
+                {
+                  Point<dim> q_point = fe_face_values.quadrature_point(q);
+                  Tensor<1, dim> normal = fe_face_values.normal_vector(q);
+                  // Get interpolated solution from the fluid
+                  Vector<double> value(dim + 1);
+                  Utils::GridInterpolator<dim, BlockVector<double>>
+                    interpolator(sable_solver.dof_handler, q_point);
+                  interpolator.point_value(sable_solver.present_solution,
+                                           value);
+                  // Create the scalar interpolator for stresses based on the
+                  // existing interpolator
+                  auto f_cell = interpolator.get_cell();
+                  // get cell-wise stress from SABLE
+                  auto ptr_f = sable_solver.cell_stress.get_data(f_cell);
+                  TriaActiveIterator<DoFCellAccessor<dim, dim, false>>
+                    scalar_f_cell(&sable_solver.triangulation,
+                                  f_cell->level(),
+                                  f_cell->index(),
+                                  &sable_solver.scalar_dof_handler);
+                  Utils::GridInterpolator<dim, Vector<double>>
+                    scalar_interpolator(sable_solver.scalar_dof_handler,
+                                        q_point,
+                                        {},
+                                        scalar_f_cell);
+                  SymmetricTensor<2, dim> viscous_stress;
+                  int count = 0;
+                  for (unsigned int i = 0; i < dim; i++)
+                    {
+                      for (unsigned int j = i; j < dim; j++)
+                        {
+                          // Interpolate stress from nodal stress field
+                          /*Vector<double> stress_component(1);
+                          scalar_interpolator.point_value(
+                            sable_solver.stress[i][j], stress_component);
+                          viscous_stress[i][j] = stress_component[0];*/
+
+                          // Get cell-wise stress
+                          viscous_stress[i][j] =
+                            ptr_f[0]->cell_stress_not_vf_avg[count];
+                          count++;
+                        }
+                    }
+                  // \f$ \sigma = -p\bold{I} + \mu\nabla^S v\f$
+                  SymmetricTensor<2, dim> stress =
+                    -value[dim] * Physics::Elasticity::StandardTensors<dim>::I +
+                    viscous_stress;
+                  ptr[f]->fsi_traction.push_back(stress * normal);
+                }
+            }
+        }
+    }
+  move_solid_mesh(false);
+}
+
+template <int dim>
 void OpenIFEM_Sable_FSI<dim>::run()
 {
   // global refinement in sable solver is not possible as it would change the
