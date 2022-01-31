@@ -110,7 +110,7 @@ namespace Fluid
     void refine_mesh(const unsigned int, const unsigned int);
 
     /// Output in vtu format.
-    void output_results(const unsigned int) const;
+    virtual void output_results(const unsigned int) const;
 
     /// Update the viscous stress to output
     virtual void update_stress();
@@ -120,12 +120,8 @@ namespace Fluid
     Triangulation<dim> &triangulation;
     FESystem<dim> fe;
     FE_Q<dim> scalar_fe;
-    // FESystem defined only for outputing vector values quantities
-    FESystem<dim> fe_vector_output;
     DoFHandler<dim> dof_handler;
     DoFHandler<dim> scalar_dof_handler;
-    // DoFHander defined only for outputing vector values quantities
-    DoFHandler<dim> dof_handler_vector_output;
     QGauss<dim> volume_quad_formula;
     QGauss<dim - 1> face_quad_formula;
 

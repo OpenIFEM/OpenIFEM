@@ -38,7 +38,6 @@ namespace Fluid
 
     using FluidSolver<dim>::setup_dofs;
     using FluidSolver<dim>::initialize_system;
-    using FluidSolver<dim>::output_results;
     using FluidSolver<dim>::dofs_per_block;
     using FluidSolver<dim>::triangulation;
     using FluidSolver<dim>::fe;
@@ -76,6 +75,14 @@ namespace Fluid
      */
     void run_one_step(bool apply_nonzero_constraints = true,
                       bool assemble_system = true) override;
+
+    /// Output in vtu format.
+    virtual void output_results(const unsigned int) const override;
+
+    // FESystem and DofHandler defined only for outputing vector values
+    // quantities
+    FESystem<dim> fe_vector_output;
+    DoFHandler<dim> dof_handler_vector_output;
 
     /// Block vector to store nodal fsi acceleration
     BlockVector<double> fsi_acceleration;

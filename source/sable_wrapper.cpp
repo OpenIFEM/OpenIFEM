@@ -8,7 +8,10 @@ namespace Fluid
                             const Parameters::AllParameters &parameters,
                             std::vector<int> &sable_ids,
                             std::shared_ptr<Function<dim>> bc)
-    : FluidSolver<dim>(tria, parameters, bc), sable_ids(sable_ids)
+    : FluidSolver<dim>(tria, parameters, bc),
+      fe_vector_output(FE_Q<dim>(parameters.fluid_velocity_degree), dim),
+      dof_handler_vector_output(triangulation),
+      sable_ids(sable_ids)
   {
     Assert(
       parameters.fluid_velocity_degree - parameters.fluid_pressure_degree == 1,
@@ -25,6 +28,11 @@ namespace Fluid
     int stress_vec_size = dim + dim * (dim - 1) * 0.5;
     fsi_stress = std::vector<Vector<double>>(
       stress_vec_size, Vector<double>(scalar_dof_handler.n_dofs()));
+
+    // Setup and distribute dofs for the DofHandler which is only used for
+    // outputting vector quantities
+    dof_handler_vector_output.distribute_dofs(fe_vector_output);
+    DoFRenumbering::Cuthill_McKee(dof_handler_vector_output);
   }
 
   template <int dim>
@@ -724,6 +732,95 @@ namespace Fluid
         delete[] nv_send_buffer[ict];
       }
     delete[] nv_send_buffer;
+  }
+
+  template <int dim>
+  void SableWrap<dim>::output_results(const unsigned int output_index) const
+  {
+    TimerOutput::Scope timer_section(timer, "Output results");
+
+    std::cout << "Writing results..." << std::endl;
+    std::vector<std::string> solution_names(dim, "velocity");
+    solution_names.push_back("pressure");
+
+    std::vector<DataComponentInterpretation::DataComponentInterpretation>
+      data_component_interpretation(
+        dim, DataComponentInterpretation::component_is_part_of_vector);
+    data_component_interpretation.push_back(
+      DataComponentInterpretation::component_is_scalar);
+    DataOut<dim> data_out;
+    data_out.attach_dof_handler(dof_handler);
+    data_out.add_data_vector(present_solution,
+                             solution_names,
+                             DataOut<dim>::type_dof_data,
+                             data_component_interpretation);
+    // fsi force output
+    std::vector<DataComponentInterpretation::DataComponentInterpretation>
+      data_component_interpretation_force(
+        dim, DataComponentInterpretation::component_is_part_of_vector);
+
+    Vector<double> fsi_force_output;
+    fsi_force_output.reinit(dofs_per_block[0]);
+    fsi_force_output = fsi_force.block(0);
+    solution_names = std::vector<std::string>(dim, "fsi_force");
+    data_out.add_data_vector(dof_handler_vector_output,
+                             fsi_force_output,
+                             solution_names,
+                             data_component_interpretation_force);
+
+    Vector<double> fsi_acceleration_output;
+    fsi_acceleration_output.reinit(dofs_per_block[0]);
+    fsi_acceleration_output = fsi_force_acceleration_part.block(0);
+    solution_names = std::vector<std::string>(dim, "fsi_acceleration");
+    data_out.add_data_vector(dof_handler_vector_output,
+                             fsi_acceleration_output,
+                             solution_names,
+                             data_component_interpretation_force);
+
+    Vector<double> fsi_stress_output;
+    fsi_stress_output.reinit(dofs_per_block[0]);
+    fsi_stress_output = fsi_force_stress_part.block(0);
+    solution_names = std::vector<std::string>(dim, "fsi_stress");
+    data_out.add_data_vector(dof_handler_vector_output,
+                             fsi_stress_output,
+                             solution_names,
+                             data_component_interpretation_force);
+
+    // Indicator
+    Vector<float> ind(triangulation.n_active_cells());
+    int i = 0;
+    for (auto cell = triangulation.begin_active(); cell != triangulation.end();
+         ++cell)
+      {
+        auto p = cell_property.get_data(cell);
+        ind[i++] = p[0]->indicator;
+      }
+    data_out.add_data_vector(ind, "Indicator");
+
+    // viscous stress
+    data_out.add_data_vector(scalar_dof_handler, stress[0][0], "Txx");
+    data_out.add_data_vector(scalar_dof_handler, stress[0][1], "Txy");
+    data_out.add_data_vector(scalar_dof_handler, stress[1][1], "Tyy");
+    if (dim == 3)
+      {
+        data_out.add_data_vector(scalar_dof_handler, stress[0][2], "Txz");
+        data_out.add_data_vector(scalar_dof_handler, stress[1][2], "Tyz");
+        data_out.add_data_vector(scalar_dof_handler, stress[2][2], "Tzz");
+      }
+
+    data_out.build_patches(parameters.fluid_pressure_degree);
+
+    std::string basename = "fluid";
+    std::string filename =
+      basename + "-" + Utilities::int_to_string(output_index, 6) + ".vtu";
+
+    std::ofstream output(filename);
+    data_out.write_vtu(output);
+
+    static std::vector<std::pair<double, std::string>> times_and_names;
+    times_and_names.push_back({time.current(), filename});
+    std::ofstream pvd_output(basename + ".pvd");
+    DataOutBase::write_pvd_record(pvd_output, times_and_names);
   }
 
   template <int dim>
