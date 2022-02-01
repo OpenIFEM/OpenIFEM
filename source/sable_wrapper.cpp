@@ -844,7 +844,7 @@ namespace Fluid
         for (unsigned int j = 0; j < stress_size; j++)
           {
             stress_vf_avg[j][i] = c[0]->cell_stress_vf_avg[j];
-            stress_not_vf_avg[j][i] = c[0]->cell_stress_vf_avg[j];
+            stress_not_vf_avg[j][i] = c[0]->cell_stress_not_vf_avg[j];
           }
         i++;
       }
