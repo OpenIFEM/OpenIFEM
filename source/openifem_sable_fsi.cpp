@@ -410,6 +410,13 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
                   // Create the scalar interpolator for stresses based on the
                   // existing interpolator
                   auto f_cell = interpolator.get_cell();
+                  // If the quadrature point is outside background mesh
+                  if (f_cell->index() == -1)
+                    {
+                      Tensor<1, dim> zero_tensor;
+                      ptr[f]->fsi_traction.push_back(zero_tensor);
+                      continue;
+                    }
                   // get cell-wise stress from SABLE
                   auto ptr_f = sable_solver.cell_stress.get_data(f_cell);
                   TriaActiveIterator<DoFCellAccessor<dim, dim, false>>
