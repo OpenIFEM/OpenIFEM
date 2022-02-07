@@ -137,17 +137,17 @@ namespace Fluid
 
     CellDataStorage<typename Triangulation<dim>::active_cell_iterator,
                     CellStress>
-      cell_stress;
+      cell_wise_stress;
 
     /// A data structure that stores cell-wise stress received from SABLE
     struct CellStress
     {
-      // cell-wise stress considering all background materials and averaged with
-      // volume fraction
-      std::vector<double> cell_stress_vf_avg;
-      // cell-wise stress for only selected background material without volume
-      // fraction averaging
-      std::vector<double> cell_stress_not_vf_avg;
+      // volume fraction averaged cell-wise stress considering all the
+      // backgorund material
+      std::vector<double> cell_stress;
+      // volume fraction averaged cell-wise stress for only selected target
+      // material
+      std::vector<double> cell_stress_no_bgmat;
     };
   };
 } // namespace Fluid

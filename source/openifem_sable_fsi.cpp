@@ -418,7 +418,7 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
                       continue;
                     }
                   // get cell-wise stress from SABLE
-                  auto ptr_f = sable_solver.cell_stress.get_data(f_cell);
+                  auto ptr_f = sable_solver.cell_wise_stress.get_data(f_cell);
                   TriaActiveIterator<DoFCellAccessor<dim, dim, false>>
                     scalar_f_cell(&sable_solver.triangulation,
                                   f_cell->level(),
@@ -443,7 +443,7 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
 
                           // Get cell-wise stress
                           viscous_stress[i][j] =
-                            ptr_f[0]->cell_stress_not_vf_avg[count];
+                            ptr_f[0]->cell_stress_no_bgmat[count];
                           count++;
                         }
                     }
