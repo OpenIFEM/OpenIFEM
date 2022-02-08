@@ -381,6 +381,10 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
                                    solid_solver.face_quad_formula,
                                    update_quadrature_points |
                                      update_normal_vectors);
+  // Get Eulerian cell size
+  // Note: Only works for unifrom, strucutred mesh
+  auto e_cell = sable_solver.triangulation.begin_active();
+  double h = abs(e_cell->vertex(0)(0) - e_cell->vertex(1)(0));
 
   const unsigned int n_f_q_points = solid_solver.face_quad_formula.size();
 
@@ -401,10 +405,18 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
                 {
                   Point<dim> q_point = fe_face_values.quadrature_point(q);
                   Tensor<1, dim> normal = fe_face_values.normal_vector(q);
+                  // hard coded parameter value to scale the distance along the face normal
+                  double beta = 0.1;
+                  double d = h * beta;
+                  // Find a point at a distance d from q_point along the face
+                  // normal
+                  Point<dim> q_point_extension;
+                  for (unsigned int i = 0; i < dim; i++)
+                    q_point_extension(i) = q_point(i) + d * normal[i];
                   // Get interpolated solution from the fluid
                   Vector<double> value(dim + 1);
                   Utils::GridInterpolator<dim, BlockVector<double>>
-                    interpolator(sable_solver.dof_handler, q_point);
+                    interpolator(sable_solver.dof_handler, q_point_extension);
                   interpolator.point_value(sable_solver.present_solution,
                                            value);
                   // Create the scalar interpolator for stresses based on the
