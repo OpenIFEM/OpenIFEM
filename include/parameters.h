@@ -27,6 +27,7 @@ namespace Parameters
     std::string indicator_field_condition;
     std::string fsi_force_calculation_option;
     std::string traction_calculation_option;
+    double solid_traction_extension_scale;
     static void declareParameters(ParameterHandler &);
     void parseParameters(ParameterHandler &);
   };

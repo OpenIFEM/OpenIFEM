@@ -415,7 +415,7 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
                   Tensor<1, dim> normal = fe_face_values.normal_vector(q);
                   // hard coded parameter value to scale the distance along the
                   // face normal
-                  double beta = 0.01;
+                  double beta = parameters.solid_traction_extension_scale;
                   double d = h * beta;
                   // Find a point at a distance d from q_point along the face
                   // normal

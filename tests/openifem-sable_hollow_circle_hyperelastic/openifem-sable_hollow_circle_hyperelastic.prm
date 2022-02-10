@@ -50,6 +50,9 @@ subsection Simulation
   # Options: CellBased and NodeBased
   set SABLE stress option for calculating solid traction = CellBased
 
+  # Extend the quadrature points on the solid boundary along the noraml by given length scale to calculate traction
+  set scale for solid traction extension along the face normal = 0.0
+
 end
 
 # --------------------------------------------------------------------------------

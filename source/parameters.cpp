@@ -56,6 +56,13 @@ namespace Parameters
         Patterns::Selection("CellBased|NodeBased"),
         "Set an option for calculation of traction on Lagrangian solid: use "
         "cell based or node based SABLE Stresses");
+
+      prm.declare_entry(
+        "scale for solid traction extension along the face normal",
+        "0.0",
+        Patterns::Double(0.0),
+        "Extend the solid boundary quadrature points along the normal by given "
+        "scale");
     }
     prm.leave_subsection();
   }
@@ -92,6 +99,11 @@ namespace Parameters
         prm.get("SABLE stress option for calculating FSI force");
       traction_calculation_option =
         prm.get("SABLE stress option for calculating solid traction");
+      solid_traction_extension_scale =
+        prm.get_double("scale for solid traction extension along the face normal");
+      AssertThrow((solid_traction_extension_scale < 1) &&
+                    (solid_traction_extension_scale >= 0),
+                  ExcMessage("Choose extension scale value less than 1!"));
     }
     prm.leave_subsection();
   }
