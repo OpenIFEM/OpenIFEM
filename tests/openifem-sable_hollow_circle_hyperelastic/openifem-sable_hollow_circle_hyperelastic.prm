@@ -41,6 +41,15 @@ subsection Simulation
   # Set condition for calculating indicator field (only applied to OpenIFEM-SABLE Coupling)
   # Options: CompletelyInsideSolid and PartiallyInsideSolid
   set Indicator field condition = CompletelyInsideSolid
+
+  # Set an option for SABLE stress used in calulation of FSI force
+  # Options: CellBased and NodeBased
+  set SABLE stress option for calculating FSI force = CellBased
+
+  # Set an option for SABLE stress used in calulation solid traction
+  # Options: CellBased and NodeBased
+  set SABLE stress option for calculating solid traction = CellBased
+
 end
 
 # --------------------------------------------------------------------------------

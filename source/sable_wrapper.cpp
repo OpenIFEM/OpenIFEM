@@ -185,7 +185,8 @@ namespace Fluid
                       }
                   }
                 // When cell-wise SABLE stress is used
-                fsi_stress_tensor += sable_cell_stress;
+                if (parameters.fsi_force_calculation_option == "CellBased")
+                  fsi_stress_tensor += sable_cell_stress;
               }
 
             for (unsigned int i = 0; i < dofs_per_cell; ++i)

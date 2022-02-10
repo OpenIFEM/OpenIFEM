@@ -200,11 +200,19 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
                   scalar_interpolator.point_value(solid_solver.stress[j][k],
                                                   s_stress_component);
                   // When node-based SABLE stress is used
-                  /*sable_solver.fsi_stress[stress_index][scalar_dof_indices[i]]
-                    = f_cell_stress[stress_index][i] - s_stress_component[0];*/
-                  // When using cell-wise  SABLE stress is used
-                  sable_solver.fsi_stress[stress_index][scalar_dof_indices[i]] =
-                    -s_stress_component[0];
+                  if (parameters.fsi_force_calculation_option == "NodeBased")
+                    {
+                      sable_solver
+                        .fsi_stress[stress_index][scalar_dof_indices[i]] =
+                        f_cell_stress[stress_index][i] - s_stress_component[0];
+                    }
+                  else
+                    {
+                      // When using cell-wise  SABLE stress is used
+                      sable_solver
+                        .fsi_stress[stress_index][scalar_dof_indices[i]] =
+                        -s_stress_component[0];
+                    }
                   stress_index++;
                 }
             }
@@ -405,8 +413,9 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
                 {
                   Point<dim> q_point = fe_face_values.quadrature_point(q);
                   Tensor<1, dim> normal = fe_face_values.normal_vector(q);
-                  // hard coded parameter value to scale the distance along the face normal
-                  double beta = 0.1;
+                  // hard coded parameter value to scale the distance along the
+                  // face normal
+                  double beta = 0.01;
                   double d = h * beta;
                   // Find a point at a distance d from q_point along the face
                   // normal
@@ -448,14 +457,20 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
                       for (unsigned int j = i; j < dim; j++)
                         {
                           // Interpolate stress from nodal stress field
-                          /*Vector<double> stress_component(1);
-                          scalar_interpolator.point_value(
-                            sable_solver.stress[i][j], stress_component);
-                          viscous_stress[i][j] = stress_component[0];*/
-
-                          // Get cell-wise stress
-                          viscous_stress[i][j] =
-                            ptr_f[0]->cell_stress_no_bgmat[count];
+                          if (parameters.traction_calculation_option ==
+                              "NodeBased")
+                            {
+                              Vector<double> stress_component(1);
+                              scalar_interpolator.point_value(
+                                sable_solver.stress[i][j], stress_component);
+                              viscous_stress[i][j] = stress_component[0];
+                            }
+                          else
+                            {
+                              // Get cell-wise stress
+                              viscous_stress[i][j] =
+                                ptr_f[0]->cell_stress_no_bgmat[count];
+                            }
                           count++;
                         }
                     }

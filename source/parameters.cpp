@@ -43,6 +43,19 @@ namespace Parameters
         "CompletelyInsideSolid",
         Patterns::Selection("CompletelyInsideSolid|PartiallyInsideSolid"),
         "Set condition for calculating indicator field");
+
+      prm.declare_entry("SABLE stress option for calculating FSI force",
+                        "CellBased",
+                        Patterns::Selection("CellBased|NodeBased"),
+                        "Set an option for calculation of FSI force: use cell "
+                        "based or node based SABLE Stresses");
+
+      prm.declare_entry(
+        "SABLE stress option for calculating solid traction",
+        "CellBased",
+        Patterns::Selection("CellBased|NodeBased"),
+        "Set an option for calculation of traction on Lagrangian solid: use "
+        "cell based or node based SABLE Stresses");
     }
     prm.leave_subsection();
   }
@@ -75,6 +88,10 @@ namespace Parameters
       AssertThrow(static_cast<int>(initial_velocity.size()) == dimension,
                   ExcMessage("Inconsistent dimension of initial velocity!"));
       indicator_field_condition = prm.get("Indicator field condition");
+      fsi_force_calculation_option =
+        prm.get("SABLE stress option for calculating FSI force");
+      traction_calculation_option =
+        prm.get("SABLE stress option for calculating solid traction");
     }
     prm.leave_subsection();
   }
