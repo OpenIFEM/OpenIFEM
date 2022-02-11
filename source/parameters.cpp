@@ -99,8 +99,8 @@ namespace Parameters
         prm.get("SABLE stress option for calculating FSI force");
       traction_calculation_option =
         prm.get("SABLE stress option for calculating solid traction");
-      solid_traction_extension_scale =
-        prm.get_double("scale for solid traction extension along the face normal");
+      solid_traction_extension_scale = prm.get_double(
+        "scale for solid traction extension along the face normal");
       AssertThrow((solid_traction_extension_scale < 1) &&
                     (solid_traction_extension_scale >= 0),
                   ExcMessage("Choose extension scale value less than 1!"));

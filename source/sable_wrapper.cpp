@@ -45,6 +45,7 @@ namespace Fluid
           cell_wise_stress.get_data(cell);
         p[0]->cell_stress.resize(stress_size, 0);
         p[0]->cell_stress_no_bgmat.resize(stress_size, 0);
+        p[0]->material_vf = 0;
       }
   }
 
@@ -115,6 +116,8 @@ namespace Fluid
       {
         auto p = cell_property.get_data(cell);
         const double ind = p[0]->indicator;
+        auto s = cell_wise_stress.get_data(cell);
+        const double vf = s[0]->material_vf;
 
         fe_values.reinit(cell);
         scalar_fe_values.reinit(scalar_cell);
@@ -126,7 +129,6 @@ namespace Fluid
         SymmetricTensor<2, dim> sable_cell_stress;
         if (ind != 0)
           {
-            auto s = cell_wise_stress.get_data(cell);
             // Get cell-wise SABLE stress
             int count = 0;
             for (unsigned int k = 0; k < dim; k++)
@@ -196,12 +198,13 @@ namespace Fluid
                     local_rhs(i) +=
                       (scalar_product(grad_phi_u[i], fsi_stress_tensor) +
                        fsi_acc_values[q] * phi_u[i]) *
-                      fe_values.JxW(q) * ind;
+                      fe_values.JxW(q) * ind * vf;
                     local_rhs_acceleration_part(i) +=
-                      (fsi_acc_values[q] * phi_u[i]) * fe_values.JxW(q) * ind;
+                      (fsi_acc_values[q] * phi_u[i]) * fe_values.JxW(q) * ind *
+                      vf;
                     local_rhs_stress_part(i) +=
                       (scalar_product(grad_phi_u[i], fsi_stress_tensor)) *
-                      fe_values.JxW(q) * ind;
+                      fe_values.JxW(q) * ind * vf;
                   }
               }
           }
@@ -240,6 +243,7 @@ namespace Fluid
         find_ghost_nodes();
 
         rec_stress(sable_no_ele);
+        rec_vf(sable_no_ele);
         rec_velocity(sable_no_nodes);
         output_results(0);
         std::cout << "Received inital solution from Sable" << std::endl;
@@ -260,6 +264,7 @@ namespace Fluid
         Max(sable_no_ele);
         Max(sable_no_nodes);
         rec_stress(sable_no_ele);
+        rec_vf(sable_no_ele);
         rec_velocity(sable_no_nodes);
         is_comm_active = All(is_comm_active);
         std::cout << std::string(96, '*') << std::endl
@@ -602,6 +607,54 @@ namespace Fluid
   }
 
   template <int dim>
+  void SableWrap<dim>::rec_vf(const int &sable_n_elements)
+  {
+
+    int sable_vf_size = sable_n_elements;
+    std::vector<int> cmapp = sable_ids;
+    std::vector<int> cmapp_sizes;
+    cmapp_sizes.push_back(sable_vf_size);
+
+    // create rec buffer
+    double **nv_rec_buffer_1 = new double *[cmapp.size()];
+    for (unsigned ict = 0; ict < cmapp.size(); ict++)
+      {
+        nv_rec_buffer_1[ict] = new double[cmapp_sizes[ict]];
+      }
+    // recieve volume fraction for the material from SABLE
+    rec_data(nv_rec_buffer_1, cmapp, cmapp_sizes, sable_vf_size);
+
+    // remove solution from ghost layers of Sable mesh
+    std::vector<double> vf_vector;
+
+    for (unsigned int n = 0; n < triangulation.n_cells(); n++)
+      {
+        int index = non_ghost_cells[n];
+        vf_vector.push_back(nv_rec_buffer_1[0][index]);
+      }
+
+    assert(vf_vector.size() == triangulation.n_cells());
+
+    int count = 0;
+    for (auto cell = triangulation.begin_active(); cell != triangulation.end();
+         ++cell)
+      {
+        auto ptr = cell_wise_stress.get_data(cell);
+        ptr[0]->material_vf = vf_vector[count];
+        count += 1;
+      }
+
+    // syncronize solution
+
+    // delete buffer
+    for (unsigned ict = 0; ict < cmapp.size(); ict++)
+      {
+        delete[] nv_rec_buffer_1[ict];
+      }
+    delete[] nv_rec_buffer_1;
+  }
+
+  template <int dim>
   void SableWrap<dim>::send_fsi_force(const int &sable_n_nodes)
   {
     assemble_force();
@@ -699,9 +752,10 @@ namespace Fluid
          ++cell)
       {
         auto ptr = cell_property.get_data(cell);
+        auto s = cell_wise_stress.get_data(cell);
         // multiply indicator value by solid density
         indicator_field[cell->active_cell_index()] =
-          ptr[0]->indicator * parameters.solid_rho;
+          ptr[0]->indicator * parameters.solid_rho * s[0]->material_vf;
         if (ptr[0]->indicator != 0)
           {
             for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;

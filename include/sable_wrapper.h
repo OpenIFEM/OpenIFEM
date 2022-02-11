@@ -109,6 +109,8 @@ namespace Fluid
 
     void rec_stress(const int &sable_n_elements);
 
+    void rec_vf(const int &sable_n_elements);
+
     bool All(bool my_b);
 
     void get_dt_sable();
@@ -139,7 +141,8 @@ namespace Fluid
                     CellStress>
       cell_wise_stress;
 
-    /// A data structure that stores cell-wise stress received from SABLE
+    /// A data structure that stores cell-wise stress and volume fractions
+    /// received from SABLE
     struct CellStress
     {
       // volume fraction averaged cell-wise stress considering all the
@@ -148,6 +151,8 @@ namespace Fluid
       // volume fraction averaged cell-wise stress for only selected target
       // material
       std::vector<double> cell_stress_no_bgmat;
+      // SABLE material volume fraction
+      double material_vf;
     };
   };
 } // namespace Fluid
