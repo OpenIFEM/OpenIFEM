@@ -1,0 +1,172 @@
+# This is the input file for the program. There are three blocks of input parameters,
+# namely the simulation block, which contorls the simulation parameters shared by
+# both fluid and solid, such as the simulation time, output frequency and so on.
+# The fluid block controls the behavior of the fluid solver, and the solid solver
+# controls the solid solver.
+#
+# --------------------------------------------------------------------------------
+# Simulation parameters
+subsection Simulation
+  # Type of simulation: FSI/Fluid/Solid
+  set Simulation type =  Fluid
+
+  # The dimension of the simulation
+  set Dimension = 2
+
+  # Level of global refinement before running,
+  # which applies to all the solvers
+  set Global refinements = 0, 0
+
+  # The end time of the simulation in second
+  set End time = 1e-2
+
+  # The time step in second
+  set Time step size = 1e-3
+
+  # The output interval in second
+  set Output interval = 1e-3
+
+  # Mesh refinement interval in second
+  set Refinement interval = 1000
+
+  # Checkpoint save interval in second
+  set Save interval = 100
+
+  # Body force which applies to both fluid and solid (acceleration)
+  set Gravity = 0.0, 0.0
+end
+
+# --------------------------------------------------------------------------------
+# Fluid solver
+subsection Fluid finite element system
+  # The degree of pressure element
+  set Pressure degree = 1
+
+  # The degree of velocity element. For grad-div solver this must be one higher than pressure
+  set Velocity degree = 1
+end
+
+subsection Fluid material properties
+  # The dynamic viscosity
+  set Dynamic viscosity = 0.001
+
+  # Fluid density
+  set Fluid density = 1
+end
+
+subsection Fluid solver control
+  # The global Grad-Div stabilization, empirically should be in [0.1, 1]
+  set Grad-Div stabilization = 0.1
+
+  # Maximum number of Newton iterations at a time step
+  set Max Newton iterations = 8
+
+  # The relative tolerance of the nonlinear system residual
+  set Nonlinear system tolerance = 1e-6
+end
+
+subsection Fluid Dirichlet BCs
+  # Use the hard-coded boundary values or the input values.
+  # Note: even if this variable is set to 1, the following 3 variables
+  # will still be used so that the hard-coded values BCs applies to the
+  # target boundaries and directions only.
+  set Use hard-coded boundary values = 1
+
+  # Number of boundaries with Dirichlet BCs
+  set Number of Dirichlet BCs = 2
+
+  # List all the boundaries with Dirichlet BCs
+  set Dirichlet boundary id = 2, 3
+
+  # List the constrained components of these boundaries
+  # One decimal number indicates one set of constrained components:
+  # 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
+  # To make sense of the numbering, convert decimals to binaries (zyx)
+  set Dirichlet boundary components = 3, 3
+
+  # Specify the values of the Dirichlet BCs, including both homogeneous and
+  # inhomogeneous ones.
+  set Dirichlet boundary values = 0, 0, 0, 0
+end
+
+subsection Fluid Neumann BCs
+  # Number of boundaries with Neumann BCs (specificaly, pressure BC)
+  # Note: do-nothing (zero pressure) boundary do not need to be explicitly specified!)
+  set Number of Neumann BCs = 1
+
+  # List all the boundaries with Neumann BCs
+  set Neumann boundary id = 0
+
+  #Specify the values of the pressure of the Neumann BCs
+  set Neumann boundary values = 0.24
+end
+
+# --------------------------------------------------------------------------------
+# Solid solver
+subsection Solid finite element system
+  # The polynomial degree of solid element
+  set Degree = 1
+end
+
+subsection Solid material properties
+  # Material type, currently LinearElastic and NeoHookean are available
+  set Solid type = LinearElastic
+
+  # Solid density, used by all solid solvers
+  set Solid density = 1
+
+  # E and nu are only used by linearElasticMaterial
+  set Young's modulus = 2.5
+
+  set Poisson's ratio = 0.25
+
+  # A list of parameters used by hyperelasticMaterial
+  set Hyperelastic parameters = 0.5, 1.67
+end
+
+subsection Solid solver control
+  # Artifitial damping.
+  set Damping = 0.0
+
+  # Number of Newton-Raphson iterations allowed, used by hyperelastic solver only
+  set Max Newton iterations = 10
+
+  # Displacement error tolerance (relative to the first iteration at each timestep)
+  set Displacement tolerance  = 1.0e-6
+
+  # Force residual tolerance (relative to the first iteration at each timestep)
+  set Force tolerance  = 1.0e-6
+end
+
+# Only homogeneous Dirichlet BC is supported, i.e., the prescribed value is always 0.
+subsection Solid Dirichlet BCs
+  # Dirichlet BCs can be applied to multiple boundaries.
+  set Number of Dirichlet BCs = 0
+
+  # List all the constrained boundaries here
+  set Dirichlet boundary id = 0
+
+  # List the constrained components of these boundaries
+  # One decimal number indicates one set of constrained components:
+  # 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
+  # To make sense of the numbering, convert decimals to binaries (zyx)
+  set Dirichlet boundary components = 3
+end
+
+# Two types of Neumann BCs are supported: traction and pressure.
+# Pressure is defined w.r.t. the reference configuration.
+# (Original normal vectors are used to compute the traction.)
+subsection Solid Neumann BCs
+  # Indicates how many sets of Neumann boundary conditions to expect.
+  set Number of Neumann BCs = 0
+
+  # The id, type, and values must appear n_neumann_bcs times.
+  set Neumann boundary id = 3
+
+  # Traction/Pressure, currently they cannot coexist.
+  set Neumann boundary type = Traction
+
+  # If traction, dim*n_solid_neumann_bcs components are expected;
+  # if pressure, n_solid_neumann_bcs components are expected.
+  set Neumann boundary values = 0, -1e-4
+end
