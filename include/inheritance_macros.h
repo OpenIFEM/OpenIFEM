@@ -9,7 +9,7 @@ public:                                                                        \
   using FluidSolver<dim>::set_sigma_pml_field;                                 \
   using FluidSolver<dim>::set_initial_condition;                               \
                                                                                \
-private:                                                                       \
+protected:                                                                     \
   using FluidSolver<dim>::setup_dofs;                                          \
   using FluidSolver<dim>::make_constraints;                                    \
   using FluidSolver<dim>::setup_cell_property;                                 \
@@ -57,6 +57,14 @@ private:                                                                       \
   using FluidSolver<dim>::body_force;                                          \
   using FluidSolver<dim>::sigma_pml_field;                                     \
   using FluidSolver<dim>::initial_condition_field
+
+#define MPISUPGFluidSolverInheritanceMacro()                                   \
+protected:                                                                     \
+  using SUPGFluidSolver<dim>::Abs_A_matrix;                                    \
+  using SUPGFluidSolver<dim>::schur_matrix;                                    \
+  using SUPGFluidSolver<dim>::B2pp_matrix;                                     \
+  using SUPGFluidSolver<dim>::newton_update;                                   \
+  using SUPGFluidSolver<dim>::evaluation_point
 
 #define MPISharedSolidSolverInheritanceMacro()                                 \
 private:                                                                       \

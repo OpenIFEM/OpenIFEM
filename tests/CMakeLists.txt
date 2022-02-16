@@ -25,6 +25,8 @@ set(mpi_tests acoustic_duct_wave_mpi
               fluid_cylinder_mpi_insimex
               fluid_initial_condition_mpi
               fluid_pipe_mpi
+              fluid_pressure_driven_mpi_insim_supg
+              fluid_plane_wall_driven_mpi_insim_supg
               fsi_contact_model_mpi
               fsi_gravity_mpi
               fsi_leaflet_mpi

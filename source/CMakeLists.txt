@@ -14,6 +14,7 @@ set(TARGET_SRC fluid_solver.cpp
                mpi_insimex.cpp
                mpi_linear_elasticity.cpp
                mpi_insim.cpp
+               mpi_insim_supg.cpp
                mpi_scnsex.cpp
                mpi_scnsim.cpp
                mpi_shared_hyper_elasticity.cpp
@@ -22,6 +23,7 @@ set(TARGET_SRC fluid_solver.cpp
                mpi_solid_solver.cpp
                mpi_spalart_allmaras.cpp
                mpi_turbulence_model.cpp
+               mpi_supg_solver.cpp
                parameters.cpp
                preconditioner_pilut.cpp
                scnsim.cpp
@@ -47,6 +49,7 @@ set(headers fluid_solver.h
             mpi_insimex.h
             mpi_linear_elasticity.h
             mpi_insim.h
+            mpi_insim_supg.h
             mpi_scnsex.h
             mpi_scnsim.h
             mpi_shared_hyper_elasticity.h
@@ -55,6 +58,7 @@ set(headers fluid_solver.h
             mpi_solid_solver.h
             mpi_spalart_allmaras.h
             mpi_turbulence_model.h
+            mpi_supg_solver.h
             neoHookean.h
             parameters.h
             preconditioner_pilut.h
