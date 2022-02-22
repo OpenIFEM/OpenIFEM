@@ -657,7 +657,11 @@ namespace Fluid
   template <int dim>
   void SableWrap<dim>::send_fsi_force(const int &sable_n_nodes)
   {
-    assemble_force();
+    // For quadrature points based indicator and FSI force calculation forces
+    // are assembled in find_fluid_bc_qpoints For nodes based indicator and FSI
+    // foce calculation, assemble FSI forces here
+    if (parameters.fsi_force_criteria == "Nodes")
+      assemble_force();
 
     int sable_force_size = sable_n_nodes * dim;
     std::vector<int> cmapp = sable_ids;

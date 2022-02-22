@@ -63,6 +63,12 @@ namespace Parameters
         Patterns::Double(0.0),
         "Extend the solid boundary quadrature points along the normal by given "
         "scale");
+
+      prm.declare_entry(
+        "FSI force criteria",
+        "Nodes",
+        Patterns::Selection("Nodes|QuadraturePoints"),
+        "Set cirteria for calculating indicator field and FSI force");
     }
     prm.leave_subsection();
   }
@@ -104,6 +110,7 @@ namespace Parameters
       AssertThrow((solid_traction_extension_scale < 1) &&
                     (solid_traction_extension_scale >= 0),
                   ExcMessage("Choose extension scale value less than 1!"));
+      fsi_force_criteria = prm.get("FSI force criteria");
     }
     prm.leave_subsection();
   }

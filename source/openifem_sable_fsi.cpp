@@ -755,8 +755,16 @@ void OpenIFEM_Sable_FSI<dim>::run()
       solid_solver.run_one_step(first_step);
       // indicator field
       update_solid_box();
-      update_indicator();
-      find_fluid_bc();
+      if (parameters.fsi_force_criteria == "Nodes")
+        {
+          update_indicator();
+          find_fluid_bc();
+        }
+      else
+        {
+          update_indicator_qpoints();
+          find_fluid_bc_qpoints();
+        }
       sable_solver.send_fsi_force(sable_solver.sable_no_nodes);
       sable_solver.send_indicator(sable_solver.sable_no_ele,
                                   sable_solver.sable_no_nodes);
