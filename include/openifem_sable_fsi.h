@@ -56,6 +56,10 @@ private:
    */
   void update_indicator();
 
+  /*  Calculate indicator field based on quadrature points. Indicator value is
+   * between 0 and 1 based on the number of quadrature points inside the solid*/
+  void update_indicator_qpoints();
+
   /*! \brief Compute the Dirichlet BCs on the artificial fluid using solid
    * velocity,
    *         as well as the fsi stress and acceleration terms at the artificial
@@ -72,6 +76,9 @@ private:
    *  points to be used by the fluid solver.
    */
   void find_fluid_bc();
+
+  /* Calculate FSI force at quadrature points instead of nodes */
+  void find_fluid_bc_qpoints();
 
   /*! \brief Compute the fluid traction on solid boundaries.
    *
