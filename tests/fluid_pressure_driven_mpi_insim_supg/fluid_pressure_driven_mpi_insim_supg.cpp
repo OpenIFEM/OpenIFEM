@@ -28,22 +28,32 @@ int main(int argc, char *argv[])
         }
       Parameters::AllParameters params(infile);
 
-      double L = 2, D = 0.1;
+      double L = 2, D = 0.2;
       if (params.dimension == 2)
         {
           parallel::distributed::Triangulation<2> tria(MPI_COMM_WORLD);
           dealii::GridGenerator::subdivided_hyper_rectangle(
-            tria, {160, 8}, Point<2>(0, 0), Point<2>(L, D), true);
+            tria, {100, 5}, Point<2>(0, 0), Point<2>(L, D / 2), true);
           Fluid::MPI::SUPGInsIM<2> flow(tria, params);
           flow.run();
           auto solution = flow.get_current_solution();
-          // Assuming the mass is conserved and final velocity profile is
-          // parabolic,
-          // vmax should equal 1.5 times the average velocity.
+          // Maximum velocity is given by P * D^2 / (16 \mu L)
           auto v = solution.block(0);
-          double vmax = Utils::PETScVectorMax(v);
-          double verror = std::abs(vmax - 0.15) / 0.15;
-          AssertThrow(verror < 1e-3,
+          Vector<double> serialized_v(v);
+          // Boundary velocities are affected by the numerical stabilization so
+          // they are larger than analytic solution. Take them out by using the
+          // 40th largest value.
+          std::sort(
+            serialized_v.begin(), serialized_v.end(), std::greater<double>());
+          double vmax_30th = serialized_v[29];
+          double vmax = serialized_v[0];
+          // Check twice. The total max is not exceeding 2% and 30th max is not
+          // exceeding 0.01%.
+          double verror_max = std::abs(vmax - 2.5e-2) / 2.5e-2;
+          AssertThrow(verror_max < 2e-2,
+                      ExcMessage("Maximum velocity is incorrect!"));
+          double verror_30thmax = std::abs(vmax_30th - 2.5e-2) / 2.5e-2;
+          AssertThrow(verror_30thmax < 1e-3,
                       ExcMessage("Maximum velocity is incorrect!"));
         }
       else
