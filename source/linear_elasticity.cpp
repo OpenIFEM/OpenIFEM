@@ -43,6 +43,13 @@ namespace Solid
                                      update_values | update_quadrature_points |
                                        update_normal_vectors |
                                        update_JxW_values);
+    // create fe_values corresponding to 1 quadrture point rule for selective
+    // reduced integration
+    const QGauss<dim> volume_quad_formula_c(1);
+    FEValues<dim> fe_values_c(fe,
+                              volume_quad_formula_c,
+                              update_values | update_gradients |
+                                update_quadrature_points | update_JxW_values);
 
     const double rho = material[0].get_density();
     const unsigned int dofs_per_cell = fe.dofs_per_cell;
@@ -97,22 +104,29 @@ namespace Solid
             // Loop over the dofs again, to assemble
             for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
-                const double phi_i_div =
-                  fe_values[displacements].divergence(i, q);
+                /*const double phi_i_div =
+                  fe_values[displacements].divergence(i, q);*/
                 if (assemble_matrix)
                   {
                     for (unsigned int j = 0; j < dofs_per_cell; ++j)
                       {
-                        const double phi_j_div =
-                          fe_values[displacements].divergence(j, q);
+                        /*const double phi_j_div =
+                          fe_values[displacements].divergence(j, q);*/
                         local_matrix[i][j] +=
                           rho * phi[i] * phi[j] * fe_values.JxW(q);
                         if (!is_initial)
                           {
-                            local_stiffness[i][j] +=
+                            // integrate the complete elasticity tensor
+                            /*local_stiffness[i][j] +=
                               (phi_i_div * phi_j_div * lambda +
                                2 * symmetric_grad_phi[i] * mu *
                                  symmetric_grad_phi[j]) *
+                              fe_values.JxW(q);*/
+
+                            // integrate deviatoric part of the elastic tensor
+                            local_stiffness[i][j] +=
+                              (2 * symmetric_grad_phi[i] * mu *
+                               symmetric_grad_phi[j]) *
                               fe_values.JxW(q);
                           }
                       }
@@ -124,6 +138,27 @@ namespace Solid
                     gravity[j] = parameters.gravity[j];
                   }
                 local_rhs[i] += phi[i] * gravity * rho * fe_values.JxW(q);
+              }
+          }
+        // reduced integration for the volumetric part of the elastic tensor
+        fe_values_c.reinit(cell);
+        for (unsigned int i = 0; i < dofs_per_cell; ++i)
+          {
+            const double phi_i_div_c =
+              fe_values_c[displacements].divergence(i, 0);
+            if (assemble_matrix)
+              {
+                for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                  {
+                    const double phi_j_div_c =
+                      fe_values_c[displacements].divergence(j, 0);
+                    if (!is_initial)
+                      {
+                        local_stiffness[i][j] +=
+                          (phi_i_div_c * phi_j_div_c * lambda) *
+                          fe_values_c.JxW(0);
+                      }
+                  }
               }
           }
 
