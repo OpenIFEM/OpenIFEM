@@ -198,13 +198,12 @@ namespace Fluid
                     local_rhs(i) +=
                       (scalar_product(grad_phi_u[i], fsi_stress_tensor) +
                        fsi_acc_values[q] * phi_u[i]) *
-                      fe_values.JxW(q) * ind * vf;
+                      fe_values.JxW(q) * ind;
                     local_rhs_acceleration_part(i) +=
-                      (fsi_acc_values[q] * phi_u[i]) * fe_values.JxW(q) * ind *
-                      vf;
+                      (fsi_acc_values[q] * phi_u[i]) * fe_values.JxW(q) * ind;
                     local_rhs_stress_part(i) +=
                       (scalar_product(grad_phi_u[i], fsi_stress_tensor)) *
-                      fe_values.JxW(q) * ind * vf;
+                      fe_values.JxW(q) * ind;
                   }
               }
           }
@@ -757,9 +756,10 @@ namespace Fluid
       {
         auto ptr = cell_property.get_data(cell);
         auto s = cell_wise_stress.get_data(cell);
+        const double vf = s[0]->material_vf;
         // multiply indicator value by solid density
         indicator_field[cell->active_cell_index()] =
-          ptr[0]->indicator * parameters.solid_rho * s[0]->material_vf;
+          ptr[0]->indicator * parameters.solid_rho;
         if (ptr[0]->indicator != 0)
           {
             for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
