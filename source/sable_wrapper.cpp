@@ -758,8 +758,7 @@ namespace Fluid
         auto s = cell_wise_stress.get_data(cell);
         const double vf = s[0]->material_vf;
         // multiply indicator value by solid density
-        indicator_field[cell->active_cell_index()] =
-          ptr[0]->indicator * parameters.solid_rho;
+        indicator_field[cell->active_cell_index()] = ptr[0]->indicator;
         if (ptr[0]->indicator != 0)
           {
             for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
@@ -775,29 +774,38 @@ namespace Fluid
       }
 
     std::vector<double> sable_indicator_field(sable_indicator_field_size, 0);
+    std::vector<double> sable_lag_density(sable_indicator_field_size, 0);
 
     for (unsigned int n = 0; n < triangulation.n_cells(); n++)
       {
         int non_ghost_cell_id = non_ghost_cells[n];
         sable_indicator_field[non_ghost_cell_id] = indicator_field[n];
+        if (indicator_field[n] != 0)
+          sable_lag_density[non_ghost_cell_id] = parameters.solid_rho;
       }
 
     // create send buffer
     double **nv_send_buffer = new double *[cmapp.size()];
+    double **nv_send_buffer_density = new double *[cmapp.size()];
     for (unsigned int ict = 0; ict < cmapp.size(); ict++)
       {
         nv_send_buffer[ict] = new double[cmapp_sizes_element[ict]];
+        nv_send_buffer_density[ict] = new double[cmapp_sizes_element[ict]];
         for (int jct = 0; jct < cmapp_sizes_element[ict]; jct++)
           {
             nv_send_buffer[ict][jct] = sable_indicator_field[jct];
+            nv_send_buffer_density[ict][jct] = sable_lag_density[jct];
           }
       }
 
     // send indicator field
     send_data(nv_send_buffer, cmapp, cmapp_sizes_element);
+    // send modified Lagrangian density
+    send_data(nv_send_buffer_density, cmapp, cmapp_sizes_element);
     for (unsigned ict = 0; ict < cmapp.size(); ict++)
       {
         delete[] nv_send_buffer[ict];
+        delete[] nv_send_buffer_density[ict];
       }
     // create send buffer
     nv_send_buffer = new double *[cmapp.size()];
