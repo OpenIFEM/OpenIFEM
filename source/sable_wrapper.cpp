@@ -109,6 +109,10 @@ namespace Fluid
     std::vector<Tensor<2, dim>> grad_phi_u(dofs_per_cell);
     std::vector<double> phi_p(dofs_per_cell);
 
+    // create nodal VF vector
+    std::vector<double> nodal_vf(triangulation.n_vertices(), 0);
+    std::vector<double> surrounding_cells(triangulation.n_vertices(), 0);
+
     auto scalar_cell = scalar_dof_handler.begin_active();
     for (auto cell = dof_handler.begin_active();
          scalar_cell != scalar_dof_handler.end(), cell != dof_handler.end();
@@ -117,7 +121,14 @@ namespace Fluid
         auto p = cell_property.get_data(cell);
         const double ind = p[0]->indicator;
         auto s = cell_wise_stress.get_data(cell);
+
+        // lift element vf to nodes
         const double vf = s[0]->material_vf;
+        for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
+          {
+            surrounding_cells[cell->vertex_index(v)] += 1;
+            nodal_vf[cell->vertex_index(v)] += vf;
+          }
 
         fe_values.reinit(cell);
         scalar_fe_values.reinit(scalar_cell);
@@ -217,6 +228,35 @@ namespace Fluid
               local_rhs_acceleration_part(i);
             fsi_force_stress_part[local_dof_indices[i]] +=
               local_rhs_stress_part(i);
+          }
+      }
+
+    // filter out fsi force for nodes with zero vf
+    std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
+
+    for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+         ++cell)
+      {
+
+        for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
+          {
+            if (!vertex_touched[cell->vertex_index(v)])
+              {
+                vertex_touched[cell->vertex_index(v)] = true;
+                nodal_vf[cell->vertex_index(v)] /=
+                  surrounding_cells[cell->vertex_index(v)];
+
+                if (nodal_vf[cell->vertex_index(v)] < 1e-12)
+                  {
+                    for (unsigned int i = 0; i < dim; i++)
+                      {
+                        int index = cell->vertex_dof_index(v, i);
+                        fsi_force[index] = 0;
+                        fsi_force_acceleration_part[index] = 0;
+                        fsi_force_stress_part[index] = 0;
+                      }
+                  }
+              }
           }
       }
   }
