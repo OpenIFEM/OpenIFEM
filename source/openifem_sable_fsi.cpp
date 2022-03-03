@@ -120,8 +120,6 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
   move_solid_mesh(false);
 }
 
-// This function interpolates the solid velocity into the fluid solver,
-// as the Dirichlet boundary conditions for artificial fluid vertices
 template <int dim>
 void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
 {
@@ -600,6 +598,79 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
             local_rhs_stress_part(i);
         }
     }
+
+  // Interpolate velocity to the nodes inside Lagrangian solid
+  const std::vector<Point<dim>> &unit_points =
+    sable_solver.fe.get_unit_support_points();
+
+  BlockVector<double> tmp_fsi_velocity;
+  tmp_fsi_velocity.reinit(sable_solver.dofs_per_block);
+
+  MappingQGeneric<dim> mapping(parameters.fluid_velocity_degree);
+  Quadrature<dim> dummy_q(unit_points);
+  FEValues<dim> dummy_fe_values(mapping,
+                                sable_solver.fe,
+                                dummy_q,
+                                update_quadrature_points | update_values |
+                                  update_gradients);
+  std::vector<types::global_dof_index> dof_indices(
+    sable_solver.fe.dofs_per_cell);
+  std::vector<unsigned int> dof_touched(sable_solver.dof_handler.n_dofs(), 0);
+
+  for (auto f_cell = sable_solver.dof_handler.begin_active();
+       f_cell != sable_solver.dof_handler.end();
+       ++f_cell)
+    {
+
+      auto ptr = sable_solver.cell_property.get_data(f_cell);
+      if (ptr[0]->indicator == 0)
+        continue;
+
+      dummy_fe_values.reinit(f_cell);
+      f_cell->get_dof_indices(dof_indices);
+      auto support_points = dummy_fe_values.get_quadrature_points();
+      // Loop over the support points to calculate fsi acceleration.
+      for (unsigned int i = 0; i < unit_points.size(); ++i)
+        {
+          // Skip the already-set dofs.
+          if (dof_touched[dof_indices[i]] != 0)
+            continue;
+          auto base_index = sable_solver.fe.system_to_base_index(i);
+          const unsigned int i_group = base_index.first.first;
+          Assert(
+            i_group < 2,
+            ExcMessage("There should be only 2 groups of finite element!"));
+          if (i_group == 1)
+            continue; // skip the pressure dofs
+          // Same as fluid_solver.fe.system_to_base_index(i).first.second;
+          const unsigned int index =
+            sable_solver.fe.system_to_component_index(i).first;
+          Assert(index < dim,
+                 ExcMessage("Vector component should be less than dim!"));
+          dof_touched[dof_indices[i]] = 1;
+          if (!point_in_solid(solid_solver.dof_handler, support_points[i]))
+            continue;
+          Utils::GridInterpolator<dim, Vector<double>> interpolator(
+            solid_solver.dof_handler, support_points[i]);
+          if (!interpolator.found_cell())
+            {
+              std::stringstream message;
+              message << "Cannot find point in solid: " << support_points[i]
+                      << std::endl;
+              AssertThrow(interpolator.found_cell(), ExcMessage(message.str()));
+            }
+          // Solid velocity at fluid unit point
+          Vector<double> solid_vel_nodal(dim);
+          interpolator.point_value(solid_solver.current_velocity,
+                                   solid_vel_nodal);
+          auto line = dof_indices[i];
+          tmp_fsi_velocity(line) = solid_vel_nodal[index];
+        }
+    }
+
+  tmp_fsi_velocity.compress(VectorOperation::insert);
+  sable_solver.fsi_velocity = tmp_fsi_velocity;
+
   move_solid_mesh(false);
 }
 
