@@ -210,6 +210,13 @@ int main(int argc, char *argv[])
 
       // Create Lagrangian solid object with hyper elastic material
       Solid::HyperElasticity<2> solid(lag_tria, params);
+      // Constrain three points in the Lagrangian solid in x direction
+      Point<2> p1(0, 1);
+      Point<2> p2(0, 5);
+      Point<2> p3(0, 10);
+      std::vector<Point<2>> points = {p1, p2, p3};
+      std::vector<unsigned int> directions = {0, 0, 0};
+      solid.constrain_points(points, directions);
       // Create FSI object
       OpenIFEM_Sable_FSI<2> fsi(fluid, solid, params, false);
       fsi.run();
