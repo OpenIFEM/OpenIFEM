@@ -81,6 +81,54 @@ namespace Solid
           ComponentMask(mask));
       }
 
+    // compute bc map input from user-specified points and directions
+
+    std::vector<Point<dim>> points = point_boundary_values.first;
+    std::vector<unsigned int> directions = point_boundary_values.second;
+
+    if (!points.empty() && !directions.empty())
+      {
+
+        AssertThrow(points.size() == directions.size(),
+                    ExcMessage("Number of points and direcions must match!"));
+
+        for (unsigned int i = 0; i < point_boundary_values.first.size(); i++)
+          {
+
+            bool find_point = false;
+
+            std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
+
+            for (auto cell = dof_handler.begin_active();
+                 cell != dof_handler.end();
+                 ++cell)
+              {
+
+                for (unsigned int v = 0;
+                     v < GeometryInfo<dim>::vertices_per_cell;
+                     ++v)
+                  {
+
+                    if (!vertex_touched[cell->vertex_index(v)])
+                      {
+                        vertex_touched[cell->vertex_index(v)] = true;
+                        if (abs(cell->vertex(v)(0) - points[i](0)) < 1e-8 &&
+                            abs(cell->vertex(v)(1) - points[i](1)) < 1e-8)
+                          {
+                            find_point = true;
+                            unsigned int d = directions[i];
+                            assert(d < dim);
+                            unsigned int dof_index =
+                              cell->vertex_dof_index(v, d);
+                            constraints.add_line(dof_index);
+                          }
+                      }
+                  }
+              }
+            AssertThrow(find_point == true,
+                        ExcMessage("Did not find the specified point!"));
+          }
+      }
     constraints.close();
   }
 
@@ -146,6 +194,16 @@ namespace Solid
     cell_property.initialize(triangulation.begin_active(),
                              triangulation.end(),
                              GeometryInfo<dim>::faces_per_cell);
+  }
+
+  // store user input points and directions
+  template <int dim, int spacedim>
+  void SolidSolver<dim, spacedim>::constrain_points(
+    const std::vector<Point<dim>> &points,
+    const std::vector<unsigned int> &directions)
+  {
+    point_boundary_values.first = points;
+    point_boundary_values.second = directions;
   }
 
   // Solve linear system \f$Ax = b\f$ using CG solver.

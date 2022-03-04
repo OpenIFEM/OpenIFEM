@@ -70,6 +70,13 @@ namespace Solid
     void run();
     Vector<double> get_current_solution() const;
 
+    /**
+     * Store user's input of the coordinates of the points
+     * and the direction to be constrained.
+     */
+    void constrain_points(const std::vector<Point<dim>> &,
+                          const std::vector<unsigned int> &);
+
   protected:
     struct CellProperty;
     /**
@@ -170,6 +177,11 @@ namespace Solid
      * function to calculate total KE of the solid
      */
     void calculate_KE();
+
+    /** a pair container to store the user specified points and directions
+     */
+    std::pair<std::vector<Point<dim>>, std::vector<unsigned int>>
+      point_boundary_values;
 
     /**
      * Nodal strain and stress obtained by taking the average of surrounding
