@@ -578,12 +578,12 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
               local_rhs(i) +=
                 (scalar_product(grad_phi_u[i], fsi_stress_tensor) +
                  fsi_acc_tensor * phi_u[i]) *
-                fe_values.JxW(q) * vf;
+                fe_values.JxW(q);
               local_rhs_acceleration_part(i) +=
-                (fsi_acc_tensor * phi_u[i]) * fe_values.JxW(q) * vf;
+                (fsi_acc_tensor * phi_u[i]) * fe_values.JxW(q);
               local_rhs_stress_part(i) +=
                 (scalar_product(grad_phi_u[i], fsi_stress_tensor)) *
-                fe_values.JxW(q) * vf;
+                fe_values.JxW(q);
             }
         }
 
