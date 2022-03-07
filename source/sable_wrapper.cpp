@@ -780,7 +780,8 @@ namespace Fluid
         int non_ghost_cell_id = non_ghost_cells[n];
         sable_indicator_field[non_ghost_cell_id] = indicator_field[n];
         if (indicator_field[n] != 0)
-          sable_lag_density[non_ghost_cell_id] = parameters.solid_rho;
+          sable_lag_density[non_ghost_cell_id] =
+            indicator_field[n] * parameters.solid_rho;
       }
 
     // create send buffer
