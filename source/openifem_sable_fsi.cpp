@@ -45,6 +45,11 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
   else if (parameters.indicator_field_condition == "PartiallyInsideSolid")
     min_nodes_inside = 0;
 
+  FEValues<dim> fe_values(sable_solver.fe,
+                          sable_solver.volume_quad_formula,
+                          update_values | update_gradients |
+                            update_quadrature_points | update_JxW_values);
+
   move_solid_mesh(true);
   int cell_count = 0;
   for (auto f_cell = sable_solver.dof_handler.begin_active();
@@ -80,6 +85,21 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
           cell_nodes_outside_solid.insert({cell_count, outside_nodes});
         }
       cell_count += 1;
+
+      // Update quadrature points based indicator field
+      fe_values.reinit(f_cell);
+      auto q_points = fe_values.get_quadrature_points();
+      unsigned int inside_count_qpoint = 0;
+
+      for (unsigned int q = 0; q < q_points.size(); q++)
+        {
+          if (point_in_solid(solid_solver.dof_handler, q_points[q]))
+            {
+              ++inside_count_qpoint;
+            }
+        }
+      p[0]->indicator_qpoint =
+        double(inside_count_qpoint) / double(q_points.size());
     }
   move_solid_mesh(false);
 }
@@ -113,8 +133,8 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
               ++inside_count;
             }
         }
-      p[0]->indicator =
-        double(inside_count) / double(GeometryInfo<dim>::vertices_per_cell);
+      p[0]->indicator = double(inside_count) / double(q_points.size());
+      p[0]->indicator_qpoint = p[0]->indicator;
     }
 
   move_solid_mesh(false);

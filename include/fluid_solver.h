@@ -171,6 +171,8 @@ namespace Fluid
     {
       double indicator; //!< Domain indicator: 1 for artificial fluid 0 for real
                         //! fluid.
+      double indicator_qpoint; //!< Indicator field based on quadrature points:
+                               //!< can take value between 0 and 1.
       Tensor<1, dim> fsi_acceleration; //!< The acceleration term in FSI force.
       SymmetricTensor<2, dim> fsi_stress; //!< The stress term in FSI force.
     };

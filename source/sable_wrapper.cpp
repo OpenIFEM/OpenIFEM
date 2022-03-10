@@ -747,6 +747,7 @@ namespace Fluid
 
     // create vector of indicator field
     std::vector<double> indicator_field(triangulation.n_cells(), 0);
+    std::vector<double> indicator_field_qpoint(triangulation.n_cells(), 0);
     std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
     // create vector of nodal indicator flags
     std::vector<double> nodal_indicator_field(triangulation.n_vertices(), 0);
@@ -758,6 +759,8 @@ namespace Fluid
         const double vf = s[0]->material_vf;
         // multiply indicator value by solid density
         indicator_field[cell->active_cell_index()] = ptr[0]->indicator;
+        indicator_field_qpoint[cell->active_cell_index()] =
+          ptr[0]->indicator_qpoint;
         if (ptr[0]->indicator != 0)
           {
             for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
@@ -773,12 +776,16 @@ namespace Fluid
       }
 
     std::vector<double> sable_indicator_field(sable_indicator_field_size, 0);
+    std::vector<double> sable_indicator_field_qpoint(sable_indicator_field_size,
+                                                     0);
     std::vector<double> sable_lag_density(sable_indicator_field_size, 0);
 
     for (unsigned int n = 0; n < triangulation.n_cells(); n++)
       {
         int non_ghost_cell_id = non_ghost_cells[n];
         sable_indicator_field[non_ghost_cell_id] = indicator_field[n];
+        sable_indicator_field_qpoint[non_ghost_cell_id] =
+          indicator_field_qpoint[n];
         if (indicator_field[n] != 0)
           sable_lag_density[non_ghost_cell_id] =
             indicator_field[n] * parameters.solid_rho;
@@ -786,25 +793,30 @@ namespace Fluid
 
     // create send buffer
     double **nv_send_buffer = new double *[cmapp.size()];
+    double **nv_send_buffer_qpoint = new double *[cmapp.size()];
     double **nv_send_buffer_density = new double *[cmapp.size()];
     for (unsigned int ict = 0; ict < cmapp.size(); ict++)
       {
         nv_send_buffer[ict] = new double[cmapp_sizes_element[ict]];
+        nv_send_buffer_qpoint[ict] = new double[cmapp_sizes_element[ict]];
         nv_send_buffer_density[ict] = new double[cmapp_sizes_element[ict]];
         for (int jct = 0; jct < cmapp_sizes_element[ict]; jct++)
           {
             nv_send_buffer[ict][jct] = sable_indicator_field[jct];
+            nv_send_buffer_qpoint[ict][jct] = sable_indicator_field_qpoint[jct];
             nv_send_buffer_density[ict][jct] = sable_lag_density[jct];
           }
       }
 
     // send indicator field
     send_data(nv_send_buffer, cmapp, cmapp_sizes_element);
+    send_data(nv_send_buffer_qpoint, cmapp, cmapp_sizes_element);
     // send modified Lagrangian density
     send_data(nv_send_buffer_density, cmapp, cmapp_sizes_element);
     for (unsigned ict = 0; ict < cmapp.size(); ict++)
       {
         delete[] nv_send_buffer[ict];
+        delete[] nv_send_buffer_qpoint[ict];
         delete[] nv_send_buffer_density[ict];
       }
     // create send buffer
