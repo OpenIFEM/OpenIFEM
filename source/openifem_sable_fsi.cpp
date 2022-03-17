@@ -87,7 +87,7 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
       cell_count += 1;
 
       // Update quadrature points based indicator field
-      fe_values.reinit(f_cell);
+      /*fe_values.reinit(f_cell);
       auto q_points = fe_values.get_quadrature_points();
       unsigned int inside_count_qpoint = 0;
 
@@ -99,7 +99,22 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
             }
         }
       p[0]->indicator_qpoint =
-        double(inside_count_qpoint) / double(q_points.size());
+        double(inside_count_qpoint) / double(q_points.size());*/
+      Point<dim> l1 = f_cell->vertex(0);
+      Point<dim> u1 = f_cell->vertex(3);
+      // Get uppder and lower corner point for the solid box
+      Point<dim> l2(solid_box[0], solid_box[2]);
+      Point<dim> u2(solid_box[1], solid_box[3]);
+      // check if rectangles overlap
+      if ((l2(0) >= u1(0)) || (l1(0) >= u2(0)))
+        continue;
+      if ((l2(1) >= u1(1)) || (l1(1) >= u2(1)))
+        continue;
+      double intersection_area =
+        (std::min(u1(0), u2(0)) - std::max(l1(0), l2(0))) *
+        (std::min(u1(1), u2(1)) - std::max(l1(1), l2(1)));
+      double total_area = abs(u1(0) - l1(0)) * abs(u1(1) - l1(1));
+      p[0]->indicator_qpoint = intersection_area / total_area;
     }
   move_solid_mesh(false);
 }
@@ -134,7 +149,22 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
             }
         }
       p[0]->indicator = double(inside_count) / double(q_points.size());
-      p[0]->indicator_qpoint = p[0]->indicator;
+      // p[0]->indicator_qpoint = p[0]->indicator;
+      Point<dim> l1 = f_cell->vertex(0);
+      Point<dim> u1 = f_cell->vertex(3);
+      // Get uppder and lower corner point for the solid box
+      Point<dim> l2(solid_box[0], solid_box[2]);
+      Point<dim> u2(solid_box[1], solid_box[3]);
+      // check if rectangles overlap
+      if ((l2(0) >= u1(0)) || (l1(0) >= u2(0)))
+        continue;
+      if ((l2(1) >= u1(1)) || (l1(1) >= u2(1)))
+        continue;
+      double intersection_area =
+        (std::min(u1(0), u2(0)) - std::max(l1(0), l2(0))) *
+        (std::min(u1(1), u2(1)) - std::max(l1(1), l2(1)));
+      double total_area = abs(u1(0) - l1(0)) * abs(u1(1) - l1(1));
+      p[0]->indicator_qpoint = intersection_area / total_area;
     }
 
   move_solid_mesh(false);
