@@ -153,6 +153,8 @@ namespace Fluid
       std::vector<double> cell_stress_no_bgmat;
       // SABLE material volume fraction
       double material_vf;
+      // SABLE elememt density
+      double eulerian_density;
     };
   };
 } // namespace Fluid

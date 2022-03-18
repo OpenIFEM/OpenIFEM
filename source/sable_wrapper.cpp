@@ -46,6 +46,7 @@ namespace Fluid
         p[0]->cell_stress.resize(stress_size, 0);
         p[0]->cell_stress_no_bgmat.resize(stress_size, 0);
         p[0]->material_vf = 0;
+        p[0]->eulerian_density = 0;
       }
   }
 
@@ -117,6 +118,8 @@ namespace Fluid
         auto p = cell_property.get_data(cell);
         const double ind = p[0]->indicator;
         auto s = cell_wise_stress.get_data(cell);
+        const double rho_bar =
+          parameters.solid_rho * ind + s[0]->eulerian_density * (1 - ind);
 
         fe_values.reinit(cell);
         scalar_fe_values.reinit(scalar_cell);
@@ -196,13 +199,14 @@ namespace Fluid
                   {
                     local_rhs(i) +=
                       (scalar_product(grad_phi_u[i], fsi_stress_tensor) +
-                       fsi_acc_values[q] * phi_u[i]) *
-                      fe_values.JxW(q) * ind;
+                       rho_bar * fsi_acc_values[q] * phi_u[i]) *
+                      fe_values.JxW(q);
                     local_rhs_acceleration_part(i) +=
-                      (fsi_acc_values[q] * phi_u[i]) * fe_values.JxW(q) * ind;
+                      (rho_bar * fsi_acc_values[q] * phi_u[i]) *
+                      fe_values.JxW(q);
                     local_rhs_stress_part(i) +=
                       (scalar_product(grad_phi_u[i], fsi_stress_tensor)) *
-                      fe_values.JxW(q) * ind;
+                      fe_values.JxW(q);
                   }
               }
           }
@@ -615,23 +619,30 @@ namespace Fluid
 
     // create rec buffer
     double **nv_rec_buffer_1 = new double *[cmapp.size()];
+    double **nv_rec_buffer_2 = new double *[cmapp.size()];
     for (unsigned ict = 0; ict < cmapp.size(); ict++)
       {
         nv_rec_buffer_1[ict] = new double[cmapp_sizes[ict]];
+        nv_rec_buffer_2[ict] = new double[cmapp_sizes[ict]];
       }
     // recieve volume fraction for the material from SABLE
     rec_data(nv_rec_buffer_1, cmapp, cmapp_sizes, sable_vf_size);
+    // recieve element density for the material from SABLE
+    rec_data(nv_rec_buffer_2, cmapp, cmapp_sizes, sable_vf_size);
 
     // remove solution from ghost layers of Sable mesh
     std::vector<double> vf_vector;
+    std::vector<double> density;
 
     for (unsigned int n = 0; n < triangulation.n_cells(); n++)
       {
         int index = non_ghost_cells[n];
         vf_vector.push_back(nv_rec_buffer_1[0][index]);
+        density.push_back(nv_rec_buffer_2[0][index]);
       }
 
     assert(vf_vector.size() == triangulation.n_cells());
+    assert(density.size() == triangulation.n_cells());
 
     int count = 0;
     for (auto cell = triangulation.begin_active(); cell != triangulation.end();
@@ -639,17 +650,18 @@ namespace Fluid
       {
         auto ptr = cell_wise_stress.get_data(cell);
         ptr[0]->material_vf = vf_vector[count];
+        ptr[0]->eulerian_density = density[count];
         count += 1;
       }
-
-    // syncronize solution
 
     // delete buffer
     for (unsigned ict = 0; ict < cmapp.size(); ict++)
       {
         delete[] nv_rec_buffer_1[ict];
+        delete[] nv_rec_buffer_2[ict];
       }
     delete[] nv_rec_buffer_1;
+    delete[] nv_rec_buffer_2;
   }
 
   template <int dim>
@@ -756,8 +768,7 @@ namespace Fluid
       {
         auto ptr = cell_property.get_data(cell);
         auto s = cell_wise_stress.get_data(cell);
-        const double vf = s[0]->material_vf;
-        // multiply indicator value by solid density
+
         indicator_field[cell->active_cell_index()] = ptr[0]->indicator;
         indicator_field_qpoint[cell->active_cell_index()] =
           ptr[0]->indicator_qpoint;

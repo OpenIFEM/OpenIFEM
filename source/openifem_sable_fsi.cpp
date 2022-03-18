@@ -391,7 +391,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
               // Note that we are setting the value of the constraint to the
               // velocity delta!
               tmp_fsi_acceleration(line) =
-                parameters.solid_rho * (fluid_acc[index] - solid_acc[index]);
+                (fluid_acc[index] - solid_acc[index]);
               tmp_fsi_velocity(line) = vs[index];
             }
         }
@@ -513,12 +513,14 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
        ++f_cell, ++scalar_f_cell)
     {
       auto ptr = sable_solver.cell_property.get_data(f_cell);
+      const double ind = ptr[0]->indicator;
       auto s = sable_solver.cell_wise_stress.get_data(f_cell);
 
-      if (ptr[0]->indicator == 0)
+      if (ind == 0)
         continue;
+      const double rho_bar =
+        parameters.solid_rho * ind + s[0]->eulerian_density * (1 - ind);
 
-      const double vf = s[0]->material_vf;
       fe_values.reinit(f_cell);
       scalar_fe_values.reinit(scalar_f_cell);
 
@@ -571,8 +573,8 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
           //(dv[q]) / time.get_delta_t() + grad_v[q] * v[q];
           // calculate FSI acceleration
           Tensor<1, dim> fsi_acc_tensor;
-          fsi_acc_tensor = parameters.solid_rho * fluid_acc_tensor;
-          fsi_acc_tensor -= parameters.solid_rho * solid_acc_tensor;
+          fsi_acc_tensor = fluid_acc_tensor;
+          fsi_acc_tensor -= solid_acc_tensor;
 
           SymmetricTensor<2, dim> f_cell_stress;
           int count = 0;
@@ -627,10 +629,10 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
 
               local_rhs(i) +=
                 (scalar_product(grad_phi_u[i], fsi_stress_tensor) +
-                 fsi_acc_tensor * phi_u[i]) *
+                 rho_bar * fsi_acc_tensor * phi_u[i]) *
                 fe_values.JxW(q);
               local_rhs_acceleration_part(i) +=
-                (fsi_acc_tensor * phi_u[i]) * fe_values.JxW(q);
+                (rho_bar * fsi_acc_tensor * phi_u[i]) * fe_values.JxW(q);
               local_rhs_stress_part(i) +=
                 (scalar_product(grad_phi_u[i], fsi_stress_tensor)) *
                 fe_values.JxW(q);
