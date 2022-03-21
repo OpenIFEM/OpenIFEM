@@ -132,6 +132,9 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
                           update_values | update_gradients |
                             update_quadrature_points | update_JxW_values);
 
+  int cell_count = 0;
+  cell_nodes_inside_solid.clear();
+  cell_nodes_outside_solid.clear();
   for (auto f_cell = sable_solver.dof_handler.begin_active();
        f_cell != sable_solver.dof_handler.end();
        ++f_cell)
@@ -149,6 +152,24 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
             }
         }
       p[0]->indicator = double(inside_count) / double(q_points.size());
+      // check which cell nodes are inside cells to calculate velocity bc
+      std::vector<int> inside_nodes;
+      std::vector<int> outside_nodes;
+      for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
+        {
+          if (point_in_solid(solid_solver.dof_handler, f_cell->vertex(v)))
+            {
+              inside_nodes.push_back(v);
+            }
+          else
+            outside_nodes.push_back(v);
+        }
+      // store local node ids which are inside and outside the solid
+      cell_nodes_inside_solid.insert({cell_count, inside_nodes});
+      cell_nodes_outside_solid.insert({cell_count, outside_nodes});
+
+      cell_count += 1;
+
       // p[0]->indicator_qpoint = p[0]->indicator;
       Point<dim> l1 = f_cell->vertex(0);
       Point<dim> u1 = f_cell->vertex(3);
@@ -723,6 +744,56 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
   tmp_fsi_velocity.compress(VectorOperation::insert);
   sable_solver.fsi_velocity = tmp_fsi_velocity;
 
+  // distribute solution to the nodes which are outside solid and belongs to
+  // cell which is partially inside the solid
+  int cell_count = 0;
+  std::vector<int> vertex_visited(sable_solver.triangulation.n_vertices(), 0);
+  for (auto f_cell = sable_solver.dof_handler.begin_active();
+       f_cell != sable_solver.dof_handler.end();
+       ++f_cell)
+    {
+      auto ptr = sable_solver.cell_property.get_data(f_cell);
+      std::vector<int> nodes_inside = cell_nodes_inside_solid[cell_count];
+      if (nodes_inside.size() > 0 && ptr[0]->indicator != 0)
+        {
+          // get average solution from the nodes which are inside the solid
+          std::vector<double> solution_vec(dim, 0);
+          for (unsigned int i = 0; i < nodes_inside.size(); i++)
+            {
+              for (unsigned int j = 0; j < dim; j++)
+                {
+                  int vertex_dof_index =
+                    f_cell->vertex_dof_index(nodes_inside[i], j);
+                  solution_vec[j] +=
+                    sable_solver.fsi_velocity[vertex_dof_index] /
+                    nodes_inside.size();
+                }
+            }
+
+          // distribute solution to the nodes which are outside the solid
+          std::vector<int> nodes_outside = cell_nodes_outside_solid[cell_count];
+          for (unsigned int i = 0; i < nodes_outside.size(); i++)
+            {
+              int vertex_index = f_cell->vertex_index(nodes_outside[i]);
+              vertex_visited[vertex_index] += 1;
+              for (unsigned int j = 0; j < dim; j++)
+                {
+                  int vertex_dof_index =
+                    f_cell->vertex_dof_index(nodes_outside[i], j);
+                  sable_solver.fsi_velocity[vertex_dof_index] *=
+                    (vertex_visited[vertex_index] - 1);
+                  sable_solver.fsi_velocity[vertex_dof_index] +=
+                    solution_vec[j];
+                  // average the solution if the corresponding node is visited
+                  // more than once
+                  sable_solver.fsi_velocity[vertex_dof_index] /=
+                    vertex_visited[vertex_index];
+                }
+            }
+        }
+      cell_count += 1;
+    }
+
   move_solid_mesh(false);
 }
 
@@ -764,8 +835,8 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
                 {
                   Point<dim> q_point = fe_face_values.quadrature_point(q);
                   Tensor<1, dim> normal = fe_face_values.normal_vector(q);
-                  // hard coded parameter value to scale the distance along the
-                  // face normal
+                  // hard coded parameter value to scale the distance along
+                  // the face normal
                   double beta = parameters.solid_traction_extension_scale;
                   double d = h * beta;
                   // Find a point at a distance d from q_point along the face
