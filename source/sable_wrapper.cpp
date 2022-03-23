@@ -117,9 +117,12 @@ namespace Fluid
       {
         auto p = cell_property.get_data(cell);
         const double ind = p[0]->indicator;
+        const double ind_qpoint = p[0]->indicator_qpoint;
         auto s = cell_wise_stress.get_data(cell);
-        const double rho_bar =
-          parameters.solid_rho * ind + s[0]->eulerian_density * (1 - ind);
+        /*const double rho_bar =
+          parameters.solid_rho * ind + s[0]->eulerian_density * (1 - ind);*/
+        const double rho_bar = parameters.solid_rho * ind_qpoint +
+                               s[0]->eulerian_density * (1 - ind_qpoint);
 
         fe_values.reinit(cell);
         scalar_fe_values.reinit(scalar_cell);
@@ -797,9 +800,12 @@ namespace Fluid
         sable_indicator_field[non_ghost_cell_id] = indicator_field[n];
         sable_indicator_field_qpoint[non_ghost_cell_id] =
           indicator_field_qpoint[n];
-        if (indicator_field[n] != 0)
+        /*if (indicator_field[n] != 0)
           sable_lag_density[non_ghost_cell_id] =
-            indicator_field[n] * parameters.solid_rho;
+            indicator_field[n] * parameters.solid_rho;*/
+        if (indicator_field_qpoint[n] != 0)
+          sable_lag_density[non_ghost_cell_id] =
+            indicator_field_qpoint[n] * parameters.solid_rho;
       }
 
     // create send buffer

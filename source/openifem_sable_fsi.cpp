@@ -105,6 +105,7 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
       // Get uppder and lower corner point for the solid box
       Point<dim> l2(solid_box[0], solid_box[2]);
       Point<dim> u2(solid_box[1], solid_box[3]);
+      p[0]->indicator_qpoint = 0;
       // check if rectangles overlap
       if ((l2(0) >= u1(0)) || (l1(0) >= u2(0)))
         continue;
@@ -176,6 +177,7 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
       // Get uppder and lower corner point for the solid box
       Point<dim> l2(solid_box[0], solid_box[2]);
       Point<dim> u2(solid_box[1], solid_box[3]);
+      p[0]->indicator_qpoint = 0;
       // check if rectangles overlap
       if ((l2(0) >= u1(0)) || (l1(0) >= u2(0)))
         continue;
