@@ -537,12 +537,15 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
     {
       auto ptr = sable_solver.cell_property.get_data(f_cell);
       const double ind = ptr[0]->indicator;
+      const double ind_qpoint = ptr[0]->indicator_qpoint;
       auto s = sable_solver.cell_wise_stress.get_data(f_cell);
 
       if (ind == 0)
         continue;
-      const double rho_bar =
-        parameters.solid_rho * ind + s[0]->eulerian_density * (1 - ind);
+      /*const double rho_bar =
+        parameters.solid_rho * ind + s[0]->eulerian_density * (1 - ind);*/
+      const double rho_bar = parameters.solid_rho * ind_qpoint +
+                             s[0]->eulerian_density * (1 - ind_qpoint);
 
       fe_values.reinit(f_cell);
       scalar_fe_values.reinit(scalar_f_cell);
