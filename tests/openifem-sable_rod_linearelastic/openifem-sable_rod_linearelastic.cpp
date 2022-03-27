@@ -201,8 +201,8 @@ int main(int argc, char *argv[])
         lag_tria,
         {static_cast<unsigned int>(20),
          static_cast<unsigned int>(100)},
-        Point<2>(-1 , 0),
-        Point<2>(1, 10),
+        Point<2>(-1-0.01 , 0),
+        Point<2>(1+0.01, 10),
         true);
       // scal or offset the Lagrangian mesh
       Tensor<1, 2> offset({0.0, 0.0});
