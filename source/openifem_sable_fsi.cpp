@@ -86,36 +86,96 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
         }
       cell_count += 1;
 
-      // Update quadrature points based indicator field
-      /*fe_values.reinit(f_cell);
-      auto q_points = fe_values.get_quadrature_points();
-      unsigned int inside_count_qpoint = 0;
-
-      for (unsigned int q = 0; q < q_points.size(); q++)
-        {
-          if (point_in_solid(solid_solver.dof_handler, q_points[q]))
-            {
-              ++inside_count_qpoint;
-            }
-        }
-      p[0]->indicator_qpoint =
-        double(inside_count_qpoint) / double(q_points.size());*/
-      Point<dim> l1 = f_cell->vertex(0);
-      Point<dim> u1 = f_cell->vertex(3);
-      // Get uppder and lower corner point for the solid box
-      Point<dim> l2(solid_box[0], solid_box[2]);
-      Point<dim> u2(solid_box[1], solid_box[3]);
+      // update exact indicator field
+      // initialize it to zero
       p[0]->indicator_qpoint = 0;
-      // check if rectangles overlap
-      if ((l2(0) >= u1(0)) || (l1(0) >= u2(0)))
-        continue;
-      if ((l2(1) >= u1(1)) || (l1(1) >= u2(1)))
-        continue;
-      double intersection_area =
-        (std::min(u1(0), u2(0)) - std::max(l1(0), l2(0))) *
-        (std::min(u1(1), u2(1)) - std::max(l1(1), l2(1)));
-      double total_area = abs(u1(0) - l1(0)) * abs(u1(1) - l1(1));
-      p[0]->indicator_qpoint = intersection_area / total_area;
+      // if all nodes are inside the solid
+      if (p[0]->indicator == 1)
+        {
+          p[0]->indicator_qpoint = 1;
+          continue;
+        }
+      // get upper and lower corner for the Eulerian cell
+      Point<dim> l_eu = f_cell->vertex(0);
+      Point<dim> u_eu = f_cell->vertex(3);
+      // get eulerian cell size
+      double h = abs(f_cell->vertex(0)(0) - f_cell->vertex(1)(0));
+      double total_cell_area = h * h;
+      for (auto s_cell = solid_solver.dof_handler.begin_active();
+           s_cell != solid_solver.dof_handler.end();
+           ++s_cell)
+        {
+          // create bounding boc for the Lagrangian element
+          Point<dim> l_lag = s_cell->vertex(0);
+          Point<dim> u_lag = s_cell->vertex(0);
+          for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
+               ++v)
+            {
+              for (unsigned int i = 0; i < dim; i++)
+                {
+                  if (s_cell->vertex(v)(i) < l_lag(i))
+                    l_lag(i) = s_cell->vertex(v)(i);
+                  else if (s_cell->vertex(v)(i) > u_lag(i))
+                    u_lag(i) = s_cell->vertex(v)(i);
+                }
+            }
+          // check if rectangles overlap
+          if ((l_lag(0) >= u_eu(0)) || (l_eu(0) >= u_lag(0)))
+            continue;
+          if ((l_lag(1) >= u_eu(1)) || (l_eu(1) >= u_lag(1)))
+            continue;
+
+          // get upper and lower corncer for the intersection area
+          Point<dim> l_int(std::max(l_eu(0), l_lag(0)),
+                           std::max(l_eu(1), l_lag(1)));
+          Point<dim> u_int(std::min(u_eu(0), u_lag(0)),
+                           std::min(u_eu(1), u_lag(1)));
+          double intersection_area =
+            (u_int(0) - l_int(0)) * (u_int(1) - l_int(1));
+          // if intersection area equals Eulerian cell area assign indicator as
+          // 1
+          if (abs(intersection_area - total_cell_area) < 1e-10)
+            {
+              p[0]->indicator_qpoint = 1;
+              continue;
+            }
+          // sample points in intersection area
+          // create starting point for sampling
+          Point<dim> start_point(l_int(0) + 0.01 * h, l_int(1) + 0.01 * h);
+          // if starting point is outside the intersection box, the overlap is
+          // too small
+          if (start_point(0) > u_int(0) || start_point(1) > u_int(1))
+            continue;
+
+          // set distance to sample equally spaced points from starting point
+          double dh = 0.1 * h;
+          // determine no. of samples in each direction
+          std::vector<int> n_sample_points(dim, 0);
+          for (unsigned int i = 0; i < dim; i++)
+            {
+              double n_samples = abs(u_int(i) - start_point(i)) / (dh);
+              n_sample_points[i] = int(std::round(n_samples));
+            }
+          // sample points
+          int sample_count = 0;
+          int sample_inside = 0;
+          for (int i = 0; i < n_sample_points[0]; i++)
+            {
+              Point<dim> sample_point = start_point;
+              sample_point(0) = start_point(0) + i * dh;
+              for (int j = 0; j < n_sample_points[1]; j++)
+                {
+                  sample_point(1) = start_point(1) + j * dh;
+                  sample_count += 1;
+                  if (s_cell->point_inside(sample_point))
+                    sample_inside += 1;
+                }
+            }
+
+          p[0]->indicator_qpoint +=
+            (intersection_area / total_cell_area) *
+            (double(sample_inside) / double(sample_count));
+        }
     }
   move_solid_mesh(false);
 }
@@ -143,24 +203,26 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
       fe_values.reinit(f_cell);
       auto q_points = fe_values.get_quadrature_points();
       auto p = sable_solver.cell_property.get_data(f_cell);
-      unsigned int inside_count = 0;
+      unsigned int inside_qpoint = 0;
 
       for (unsigned int q = 0; q < q_points.size(); q++)
         {
           if (point_in_solid(solid_solver.dof_handler, q_points[q]))
             {
-              ++inside_count;
+              ++inside_qpoint;
             }
         }
-      p[0]->indicator = double(inside_count) / double(q_points.size());
+      p[0]->indicator = double(inside_qpoint) / double(q_points.size());
       // check which cell nodes are inside cells to calculate velocity bc
       std::vector<int> inside_nodes;
       std::vector<int> outside_nodes;
+      int inside_count = 0;
       for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
         {
           if (point_in_solid(solid_solver.dof_handler, f_cell->vertex(v)))
             {
               inside_nodes.push_back(v);
+              ++inside_count;
             }
           else
             outside_nodes.push_back(v);
@@ -171,23 +233,96 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
 
       cell_count += 1;
 
-      // p[0]->indicator_qpoint = p[0]->indicator;
-      Point<dim> l1 = f_cell->vertex(0);
-      Point<dim> u1 = f_cell->vertex(3);
-      // Get uppder and lower corner point for the solid box
-      Point<dim> l2(solid_box[0], solid_box[2]);
-      Point<dim> u2(solid_box[1], solid_box[3]);
+      // update exact indicator field
+      // initialize it to zero
       p[0]->indicator_qpoint = 0;
-      // check if rectangles overlap
-      if ((l2(0) >= u1(0)) || (l1(0) >= u2(0)))
-        continue;
-      if ((l2(1) >= u1(1)) || (l1(1) >= u2(1)))
-        continue;
-      double intersection_area =
-        (std::min(u1(0), u2(0)) - std::max(l1(0), l2(0))) *
-        (std::min(u1(1), u2(1)) - std::max(l1(1), l2(1)));
-      double total_area = abs(u1(0) - l1(0)) * abs(u1(1) - l1(1));
-      p[0]->indicator_qpoint = intersection_area / total_area;
+      // if all nodes are inside the solid
+      if (inside_count == GeometryInfo<dim>::vertices_per_cell)
+        {
+          p[0]->indicator_qpoint = 1;
+          continue;
+        }
+      // get upper and lower corner for the Eulerian cell
+      Point<dim> l_eu = f_cell->vertex(0);
+      Point<dim> u_eu = f_cell->vertex(3);
+      // get eulerian cell size
+      double h = abs(f_cell->vertex(0)(0) - f_cell->vertex(1)(0));
+      double total_cell_area = h * h;
+      for (auto s_cell = solid_solver.dof_handler.begin_active();
+           s_cell != solid_solver.dof_handler.end();
+           ++s_cell)
+        {
+          // create bounding boc for the Lagrangian element
+          Point<dim> l_lag = s_cell->vertex(0);
+          Point<dim> u_lag = s_cell->vertex(0);
+          for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
+               ++v)
+            {
+              for (unsigned int i = 0; i < dim; i++)
+                {
+                  if (s_cell->vertex(v)(i) < l_lag(i))
+                    l_lag(i) = s_cell->vertex(v)(i);
+                  else if (s_cell->vertex(v)(i) > u_lag(i))
+                    u_lag(i) = s_cell->vertex(v)(i);
+                }
+            }
+          // check if rectangles overlap
+          if ((l_lag(0) >= u_eu(0)) || (l_eu(0) >= u_lag(0)))
+            continue;
+          if ((l_lag(1) >= u_eu(1)) || (l_eu(1) >= u_lag(1)))
+            continue;
+
+          // get upper and lower corncer for the intersection area
+          Point<dim> l_int(std::max(l_eu(0), l_lag(0)),
+                           std::max(l_eu(1), l_lag(1)));
+          Point<dim> u_int(std::min(u_eu(0), u_lag(0)),
+                           std::min(u_eu(1), u_lag(1)));
+          double intersection_area =
+            (u_int(0) - l_int(0)) * (u_int(1) - l_int(1));
+          // if intersection area equals Eulerian cell area assign indicator as
+          // 1
+          if (abs(intersection_area - total_cell_area) < 1e-10)
+            {
+              p[0]->indicator_qpoint = 1;
+              continue;
+            }
+          // sample points in intersection area
+          // create starting point for sampling
+          Point<dim> start_point(l_int(0) + 0.01 * h, l_int(1) + 0.01 * h);
+          // if starting point is outside the intersection box, the overlap is
+          // too small
+          if (start_point(0) > u_int(0) || start_point(1) > u_int(1))
+            continue;
+
+          // set distance to sample equally spaced points from starting point
+          double dh = 0.1 * h;
+          // determine no. of samples in each direction
+          std::vector<int> n_sample_points(dim, 0);
+          for (unsigned int i = 0; i < dim; i++)
+            {
+              double n_samples = abs(u_int(i) - start_point(i)) / (dh);
+              n_sample_points[i] = int(std::round(n_samples));
+            }
+          // sample points
+          int sample_count = 0;
+          int sample_inside = 0;
+          for (int i = 0; i < n_sample_points[0]; i++)
+            {
+              Point<dim> sample_point = start_point;
+              sample_point(0) = start_point(0) + i * dh;
+              for (int j = 0; j < n_sample_points[1]; j++)
+                {
+                  sample_point(1) = start_point(1) + j * dh;
+                  sample_count += 1;
+                  if (s_cell->point_inside(sample_point))
+                    sample_inside += 1;
+                }
+            }
+
+          p[0]->indicator_qpoint +=
+            (intersection_area / total_cell_area) *
+            (double(sample_inside) / double(sample_count));
+        }
     }
 
   move_solid_mesh(false);
