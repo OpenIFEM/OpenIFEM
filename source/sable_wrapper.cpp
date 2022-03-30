@@ -117,12 +117,12 @@ namespace Fluid
       {
         auto p = cell_property.get_data(cell);
         const double ind = p[0]->indicator;
-        const double ind_qpoint = p[0]->indicator_qpoint;
+        const double ind_exact = p[0]->exact_indicator;
         auto s = cell_wise_stress.get_data(cell);
         /*const double rho_bar =
           parameters.solid_rho * ind + s[0]->eulerian_density * (1 - ind);*/
-        const double rho_bar = parameters.solid_rho * ind_qpoint +
-                               s[0]->eulerian_density * (1 - ind_qpoint);
+        const double rho_bar = parameters.solid_rho * ind_exact +
+                               s[0]->eulerian_density * (1 - ind_exact);
 
         fe_values.reinit(cell);
         scalar_fe_values.reinit(scalar_cell);
@@ -762,7 +762,7 @@ namespace Fluid
 
     // create vector of indicator field
     std::vector<double> indicator_field(triangulation.n_cells(), 0);
-    std::vector<double> indicator_field_qpoint(triangulation.n_cells(), 0);
+    std::vector<double> indicator_field_exact(triangulation.n_cells(), 0);
     std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
     // create vector of nodal indicator flags
     std::vector<double> nodal_indicator_field(triangulation.n_vertices(), 0);
@@ -773,8 +773,8 @@ namespace Fluid
         auto s = cell_wise_stress.get_data(cell);
 
         indicator_field[cell->active_cell_index()] = ptr[0]->indicator;
-        indicator_field_qpoint[cell->active_cell_index()] =
-          ptr[0]->indicator_qpoint;
+        indicator_field_exact[cell->active_cell_index()] =
+          ptr[0]->exact_indicator;
         if (ptr[0]->indicator != 0)
           {
             for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
@@ -790,50 +790,50 @@ namespace Fluid
       }
 
     std::vector<double> sable_indicator_field(sable_indicator_field_size, 0);
-    std::vector<double> sable_indicator_field_qpoint(sable_indicator_field_size,
-                                                     0);
+    std::vector<double> sable_indicator_field_exact(sable_indicator_field_size,
+                                                    0);
     std::vector<double> sable_lag_density(sable_indicator_field_size, 0);
 
     for (unsigned int n = 0; n < triangulation.n_cells(); n++)
       {
         int non_ghost_cell_id = non_ghost_cells[n];
         sable_indicator_field[non_ghost_cell_id] = indicator_field[n];
-        sable_indicator_field_qpoint[non_ghost_cell_id] =
-          indicator_field_qpoint[n];
+        sable_indicator_field_exact[non_ghost_cell_id] =
+          indicator_field_exact[n];
         /*if (indicator_field[n] != 0)
           sable_lag_density[non_ghost_cell_id] =
             indicator_field[n] * parameters.solid_rho;*/
-        if (indicator_field_qpoint[n] != 0)
+        if (indicator_field_exact[n] != 0)
           sable_lag_density[non_ghost_cell_id] =
-            indicator_field_qpoint[n] * parameters.solid_rho;
+            indicator_field_exact[n] * parameters.solid_rho;
       }
 
     // create send buffer
     double **nv_send_buffer = new double *[cmapp.size()];
-    double **nv_send_buffer_qpoint = new double *[cmapp.size()];
+    double **nv_send_buffer_exact = new double *[cmapp.size()];
     double **nv_send_buffer_density = new double *[cmapp.size()];
     for (unsigned int ict = 0; ict < cmapp.size(); ict++)
       {
         nv_send_buffer[ict] = new double[cmapp_sizes_element[ict]];
-        nv_send_buffer_qpoint[ict] = new double[cmapp_sizes_element[ict]];
+        nv_send_buffer_exact[ict] = new double[cmapp_sizes_element[ict]];
         nv_send_buffer_density[ict] = new double[cmapp_sizes_element[ict]];
         for (int jct = 0; jct < cmapp_sizes_element[ict]; jct++)
           {
             nv_send_buffer[ict][jct] = sable_indicator_field[jct];
-            nv_send_buffer_qpoint[ict][jct] = sable_indicator_field_qpoint[jct];
+            nv_send_buffer_exact[ict][jct] = sable_indicator_field_exact[jct];
             nv_send_buffer_density[ict][jct] = sable_lag_density[jct];
           }
       }
 
     // send indicator field
     send_data(nv_send_buffer, cmapp, cmapp_sizes_element);
-    send_data(nv_send_buffer_qpoint, cmapp, cmapp_sizes_element);
+    send_data(nv_send_buffer_exact, cmapp, cmapp_sizes_element);
     // send modified Lagrangian density
     send_data(nv_send_buffer_density, cmapp, cmapp_sizes_element);
     for (unsigned ict = 0; ict < cmapp.size(); ict++)
       {
         delete[] nv_send_buffer[ict];
-        delete[] nv_send_buffer_qpoint[ict];
+        delete[] nv_send_buffer_exact[ict];
         delete[] nv_send_buffer_density[ict];
       }
     // create send buffer
@@ -918,7 +918,8 @@ namespace Fluid
                              data_component_interpretation_force);
 
     // Indicator and cell-wise stress
-    Vector<float> ind(triangulation.n_active_cells());
+    Vector<double> ind(triangulation.n_active_cells());
+    Vector<double> exact_ind(triangulation.n_active_cells());
     unsigned int stress_size = (dim == 2 ? 3 : 6);
     std::vector<Vector<double>> sable_stress;
     std::vector<Vector<double>> sable_stress_no_bgmat;
@@ -934,6 +935,7 @@ namespace Fluid
         auto p = cell_property.get_data(cell);
         auto c = cell_wise_stress.get_data(cell);
         ind[i] = p[0]->indicator;
+        exact_ind[i] = p[0]->exact_indicator;
         for (unsigned int j = 0; j < stress_size; j++)
           {
             sable_stress[j][i] = c[0]->cell_stress[j];
@@ -942,6 +944,7 @@ namespace Fluid
         i++;
       }
     data_out.add_data_vector(ind, "Indicator");
+    data_out.add_data_vector(exact_ind, "exact_indicator");
     data_out.add_data_vector(sable_stress[0], "cell_stress_xx");
     data_out.add_data_vector(sable_stress[1], "cell_stress_xy");
     data_out.add_data_vector(sable_stress[2], "cell_stress_yy");

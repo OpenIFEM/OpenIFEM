@@ -88,11 +88,11 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
 
       // update exact indicator field
       // initialize it to zero
-      p[0]->indicator_qpoint = 0;
+      p[0]->exact_indicator = 0;
       // if all nodes are inside the solid
       if (p[0]->indicator == 1)
         {
-          p[0]->indicator_qpoint = 1;
+          p[0]->exact_indicator = 1;
           continue;
         }
       // get upper and lower corner for the Eulerian cell
@@ -136,7 +136,7 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
           // 1
           if (abs(intersection_area - total_cell_area) < 1e-10)
             {
-              p[0]->indicator_qpoint = 1;
+              p[0]->exact_indicator = 1;
               continue;
             }
           // sample points in intersection area
@@ -172,7 +172,7 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
                 }
             }
 
-          p[0]->indicator_qpoint +=
+          p[0]->exact_indicator +=
             (intersection_area / total_cell_area) *
             (double(sample_inside) / double(sample_count));
         }
@@ -235,11 +235,11 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
 
       // update exact indicator field
       // initialize it to zero
-      p[0]->indicator_qpoint = 0;
+      p[0]->exact_indicator = 0;
       // if all nodes are inside the solid
       if (inside_count == GeometryInfo<dim>::vertices_per_cell)
         {
-          p[0]->indicator_qpoint = 1;
+          p[0]->exact_indicator = 1;
           continue;
         }
       // get upper and lower corner for the Eulerian cell
@@ -283,7 +283,7 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
           // 1
           if (abs(intersection_area - total_cell_area) < 1e-10)
             {
-              p[0]->indicator_qpoint = 1;
+              p[0]->exact_indicator = 1;
               continue;
             }
           // sample points in intersection area
@@ -319,7 +319,7 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
                 }
             }
 
-          p[0]->indicator_qpoint +=
+          p[0]->exact_indicator +=
             (intersection_area / total_cell_area) *
             (double(sample_inside) / double(sample_count));
         }
@@ -672,15 +672,15 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
     {
       auto ptr = sable_solver.cell_property.get_data(f_cell);
       const double ind = ptr[0]->indicator;
-      const double ind_qpoint = ptr[0]->indicator_qpoint;
+      const double ind_exact = ptr[0]->exact_indicator;
       auto s = sable_solver.cell_wise_stress.get_data(f_cell);
 
       if (ind == 0)
         continue;
       /*const double rho_bar =
         parameters.solid_rho * ind + s[0]->eulerian_density * (1 - ind);*/
-      const double rho_bar = parameters.solid_rho * ind_qpoint +
-                             s[0]->eulerian_density * (1 - ind_qpoint);
+      const double rho_bar = parameters.solid_rho * ind_exact +
+                             s[0]->eulerian_density * (1 - ind_exact);
 
       fe_values.reinit(f_cell);
       scalar_fe_values.reinit(scalar_f_cell);
