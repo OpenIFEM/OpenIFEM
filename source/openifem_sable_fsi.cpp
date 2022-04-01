@@ -212,7 +212,15 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
               ++inside_qpoint;
             }
         }
-      p[0]->indicator = double(inside_qpoint) / double(q_points.size());
+      if (parameters.indicator_field_condition == "CompletelyInsideSolid")
+        {
+          p[0]->indicator = (inside_qpoint == q_points.size() ? 1 : 0);
+        }
+      else
+        {
+          // parameters.indicator_field_condition == "PartiallyInsideSolid"
+          p[0]->indicator = double(inside_qpoint) / double(q_points.size());
+        }
       // check which cell nodes are inside cells to calculate velocity bc
       std::vector<int> inside_nodes;
       std::vector<int> outside_nodes;
