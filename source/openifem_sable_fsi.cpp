@@ -105,7 +105,7 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
            s_cell != solid_solver.dof_handler.end();
            ++s_cell)
         {
-          // create bounding boc for the Lagrangian element
+          // create bounding box for the Lagrangian element
           Point<dim> l_lag = s_cell->vertex(0);
           Point<dim> u_lag = s_cell->vertex(0);
           for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
@@ -140,32 +140,44 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
               continue;
             }
           // sample points in intersection area
-          // create starting point for sampling
-          Point<dim> start_point(l_int(0) + 0.01 * h, l_int(1) + 0.01 * h);
-          // if starting point is outside the intersection box, the overlap is
-          // too small
-          if (start_point(0) > u_int(0) || start_point(1) > u_int(1))
-            continue;
-
+          int sample_count = 0;
+          int sample_inside = 0;
           // set distance to sample equally spaced points from starting point
-          double dh = 0.1 * h;
+          double dh = 0.01 * h;
           // determine no. of samples in each direction
           std::vector<int> n_sample_points(dim, 0);
           for (unsigned int i = 0; i < dim; i++)
             {
-              double n_samples = abs(u_int(i) - start_point(i)) / (dh);
-              n_sample_points[i] = int(std::round(n_samples));
+              double n_samples = abs(u_int(i) - l_int(i)) / (dh);
+              n_sample_points[i] = int(std::round(n_samples)) + 1;
             }
-          // sample points
-          int sample_count = 0;
-          int sample_inside = 0;
+
+          // create starting point for sampling at lower corner of intersection
+          // box
+          Point<dim> start_point_l(l_int(0), l_int(1));
           for (int i = 0; i < n_sample_points[0]; i++)
             {
-              Point<dim> sample_point = start_point;
-              sample_point(0) = start_point(0) + i * dh;
+              Point<dim> sample_point = start_point_l;
+              sample_point(0) = start_point_l(0) + i * dh;
               for (int j = 0; j < n_sample_points[1]; j++)
                 {
-                  sample_point(1) = start_point(1) + j * dh;
+                  sample_point(1) = start_point_l(1) + j * dh;
+                  sample_count += 1;
+                  if (s_cell->point_inside(sample_point))
+                    sample_inside += 1;
+                }
+            }
+
+          // create starting point for sampling at upper corner of intersection
+          // box
+          Point<dim> start_point_u(u_int(0), u_int(1));
+          for (int i = 0; i < n_sample_points[0]; i++)
+            {
+              Point<dim> sample_point = start_point_u;
+              sample_point(0) = start_point_u(0) - i * dh;
+              for (int j = 0; j < n_sample_points[1]; j++)
+                {
+                  sample_point(1) = start_point_u(1) - j * dh;
                   sample_count += 1;
                   if (s_cell->point_inside(sample_point))
                     sample_inside += 1;
@@ -176,6 +188,9 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
             (intersection_area / total_cell_area) *
             (double(sample_inside) / double(sample_count));
         }
+      // if the exact indicator is greater than one then round it off to 1
+      if (p[0]->exact_indicator > 1.0)
+        p[0]->exact_indicator = 1.0;
     }
   move_solid_mesh(false);
 }
@@ -260,7 +275,7 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
            s_cell != solid_solver.dof_handler.end();
            ++s_cell)
         {
-          // create bounding boc for the Lagrangian element
+          // create bounding box for the Lagrangian element
           Point<dim> l_lag = s_cell->vertex(0);
           Point<dim> u_lag = s_cell->vertex(0);
           for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
@@ -295,32 +310,44 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
               continue;
             }
           // sample points in intersection area
-          // create starting point for sampling
-          Point<dim> start_point(l_int(0) + 0.01 * h, l_int(1) + 0.01 * h);
-          // if starting point is outside the intersection box, the overlap is
-          // too small
-          if (start_point(0) > u_int(0) || start_point(1) > u_int(1))
-            continue;
-
+          int sample_count = 0;
+          int sample_inside = 0;
           // set distance to sample equally spaced points from starting point
-          double dh = 0.1 * h;
+          double dh = 0.01 * h;
           // determine no. of samples in each direction
           std::vector<int> n_sample_points(dim, 0);
           for (unsigned int i = 0; i < dim; i++)
             {
-              double n_samples = abs(u_int(i) - start_point(i)) / (dh);
-              n_sample_points[i] = int(std::round(n_samples));
+              double n_samples = abs(u_int(i) - l_int(i)) / (dh);
+              n_sample_points[i] = int(std::round(n_samples)) + 1;
             }
-          // sample points
-          int sample_count = 0;
-          int sample_inside = 0;
+
+          // create starting point for sampling at lower corner of intersection
+          // box
+          Point<dim> start_point_l(l_int(0), l_int(1));
           for (int i = 0; i < n_sample_points[0]; i++)
             {
-              Point<dim> sample_point = start_point;
-              sample_point(0) = start_point(0) + i * dh;
+              Point<dim> sample_point = start_point_l;
+              sample_point(0) = start_point_l(0) + i * dh;
               for (int j = 0; j < n_sample_points[1]; j++)
                 {
-                  sample_point(1) = start_point(1) + j * dh;
+                  sample_point(1) = start_point_l(1) + j * dh;
+                  sample_count += 1;
+                  if (s_cell->point_inside(sample_point))
+                    sample_inside += 1;
+                }
+            }
+
+          // create starting point for sampling at upper corner of intersection
+          // box
+          Point<dim> start_point_u(u_int(0), u_int(1));
+          for (int i = 0; i < n_sample_points[0]; i++)
+            {
+              Point<dim> sample_point = start_point_u;
+              sample_point(0) = start_point_u(0) - i * dh;
+              for (int j = 0; j < n_sample_points[1]; j++)
+                {
+                  sample_point(1) = start_point_u(1) - j * dh;
                   sample_count += 1;
                   if (s_cell->point_inside(sample_point))
                     sample_inside += 1;
@@ -331,6 +358,9 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
             (intersection_area / total_cell_area) *
             (double(sample_inside) / double(sample_count));
         }
+      // if the exact indicator is greater than one then round it off to 1
+      if (p[0]->exact_indicator > 1.0)
+        p[0]->exact_indicator = 1.0;
     }
 
   move_solid_mesh(false);
