@@ -991,8 +991,26 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
                                      update_normal_vectors);
   // Get Eulerian cell size
   // Note: Only works for unifrom, strucutred mesh
-  auto e_cell = sable_solver.triangulation.begin_active();
-  double h = abs(e_cell->vertex(0)(0) - e_cell->vertex(1)(0));
+  auto f_cell = sable_solver.triangulation.begin_active();
+
+  // x_min and y_min is the lower boundary of the Eulerian cell box
+
+  double h = abs(f_cell->vertex(0)(0) - f_cell->vertex(1)(0));
+  double x_min = f_cell->center()[0] - h / 2;
+  double y_min = f_cell->center()[1] - h / 2;
+
+  // Currently assuming the target Eulerian cell has the same level as the first
+  // Eulerian cell, won't work for AMR
+  auto level = f_cell->level();
+
+  f_cell = sable_solver.triangulation.last_active();
+
+  unsigned int N = std::sqrt((f_cell->index() + 1));
+
+  // x_max and y_max is the upper boundary of the Eulerian cell box
+  double x_max = f_cell->center()[0] + h / 2 + (((N - 1) % N) * h);
+  double y_max =
+    f_cell->center()[1] + h / 2 + (std::floor((N * N - 1) / N) * h);
 
   const unsigned int n_f_q_points = solid_solver.face_quad_formula.size();
 
@@ -1030,14 +1048,98 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
                                            value);
                   // Create the scalar interpolator for stresses based on the
                   // existing interpolator
-                  auto f_cell = interpolator.get_cell();
-                  // If the quadrature point is outside background mesh
-                  if (f_cell->index() == -1)
+                  // auto f_cell = interpolator.get_cell();
+
+                  // Find desired 2-D Eulerian cell. Won't work with AMR
+                  if (q_point_extension[0] >= x_min &&
+                      q_point_extension[0] <= x_max &&
+                      q_point_extension[1] >= y_min &&
+                      q_point_extension[1] <= y_max)
+                    {
+                      // if the quad point is not on the edge of the Eulerian
+                      // cell
+                      if (std::floor(q_point_extension[0] / h) !=
+                            (q_point_extension[0] / h) &&
+                          std::floor(q_point_extension[1] / h) !=
+                            (q_point_extension[1] / h))
+
+                        {
+                          // compute the Eulerian cell index
+                          unsigned int n =
+                            static_cast<unsigned int>(
+                              std::floor(q_point_extension[0] / h)) +
+                            N * static_cast<unsigned int>(
+                                  std::floor(q_point_extension[1] / h));
+
+                          // construct the cell iterator that points to the
+                          // desired Eulerian index
+                          typename DoFHandler<dim>::cell_iterator f_cell(
+                            &fluid_solver.triangulation,
+                            level,
+                            n,
+                            &fluid_solver.dof_handler);
+                        }
+                      else // if the quad point is on the edge of the Eulerian
+                           // cell
+                        {
+                          // create a small distance in the outnormal direction
+                          const double tmp = h * 1e-6;
+
+                          // extend the current quad point positions along the
+                          // outward normal direction
+                          for (unsigned int i = 0; i < dim; i++)
+                            q_point_extension(i) =
+                              q_point_extension(i) + tmp * normal[i];
+
+                          unsigned int n1 = 0;
+                          unsigned int n2 = 0;
+
+                          // if extension[i] is smaller than the Eulerian cell
+                          // lower limit, use std::ceil to round up the index
+                          if (q_point_extension[0] < x_min)
+                            {
+                              n1 = static_cast<unsigned int>(
+                                std::ceil(q_point_extension[0] / h));
+                            }
+                          else
+                            {
+                              n1 = static_cast<unsigned int>(
+                                std::floor(q_point_extension[0] / h));
+                            }
+
+                          if (q_point_extension[1] < y_min)
+                            {
+                              n2 = N * static_cast<unsigned int>(
+                                         std::ceil(q_point_extension[1] / h));
+                            }
+                          else
+                            {
+                              n2 = N * static_cast<unsigned int>(
+                                         std::floor(q_point_extension[1] / h));
+                            }
+                          unsigned int n = n1 + n2;
+
+                          typename DoFHandler<dim>::cell_iterator f_cell(
+                            &fluid_solver.triangulation,
+                            level,
+                            n,
+                            &fluid_solver.dof_handler);
+                        }
+                    }
+                  else // If the quadrature point is outside background mesh
+                       // if (f_cell->index() == -1)
                     {
                       Tensor<1, dim> zero_tensor;
                       ptr[f]->fsi_traction.push_back(zero_tensor);
                       continue;
                     }
+
+                  // warn user if the cell index is outside the cell index range
+                  int a = 0;
+                  int b = N * N - 1;
+                  AssertThrow(f_cell->index() > a && f_cell->index() <= b,
+                              ExcMessage("Wrong Eulerian cell index!"));
+
                   // get cell-wise stress from SABLE
                   auto ptr_f = sable_solver.cell_wise_stress.get_data(f_cell);
                   TriaActiveIterator<DoFCellAccessor<dim, dim, false>>
