@@ -1008,9 +1008,8 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
   unsigned int N = std::sqrt((f_cell->index() + 1));
 
   // x_max and y_max is the upper boundary of the Eulerian cell box
-  double x_max = f_cell->center()[0] + h / 2 + (((N - 1) % N) * h);
-  double y_max =
-    f_cell->center()[1] + h / 2 + (std::floor((N * N - 1) / N) * h);
+  double x_max = f_cell->center()[0] + h / 2;
+  double y_max = f_cell->center()[1] + h / 2;
 
   const unsigned int n_f_q_points = solid_solver.face_quad_formula.size();
 
@@ -1067,17 +1066,17 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
                           // compute the Eulerian cell index
                           unsigned int n =
                             static_cast<unsigned int>(
-                              std::floor(q_point_extension[0] / h)) +
-                            N * static_cast<unsigned int>(
-                                  std::floor(q_point_extension[1] / h));
+                              std::floor((q_point_extension[0] - x_min) / h)) +
+                            N * static_cast<unsigned int>(std::floor(
+                                  (q_point_extension[1] - y_min) / h));
 
                           // construct the cell iterator that points to the
                           // desired Eulerian index
                           typename DoFHandler<dim>::cell_iterator f_cell(
-                            &fluid_solver.triangulation,
+                            &sable_solver.triangulation,
                             level,
                             n,
-                            &fluid_solver.dof_handler);
+                            &sable_solver.dof_handler);
                         }
                       else // if the quad point is on the edge of the Eulerian
                            // cell
@@ -1099,31 +1098,31 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
                           if (q_point_extension[0] < x_min)
                             {
                               n1 = static_cast<unsigned int>(
-                                std::ceil(q_point_extension[0] / h));
+                                std::ceil((q_point_extension[0] - x_min) / h));
                             }
                           else
                             {
                               n1 = static_cast<unsigned int>(
-                                std::floor(q_point_extension[0] / h));
+                                std::floor((q_point_extension[0] - x_min) / h));
                             }
 
                           if (q_point_extension[1] < y_min)
                             {
-                              n2 = N * static_cast<unsigned int>(
-                                         std::ceil(q_point_extension[1] / h));
+                              n2 = N * static_cast<unsigned int>(std::ceil(
+                                         (q_point_extension[1] - y_min) / h));
                             }
                           else
                             {
-                              n2 = N * static_cast<unsigned int>(
-                                         std::floor(q_point_extension[1] / h));
+                              n2 = N * static_cast<unsigned int>(std::floor(
+                                         (q_point_extension[1] - y_min) / h));
                             }
                           unsigned int n = n1 + n2;
 
                           typename DoFHandler<dim>::cell_iterator f_cell(
-                            &fluid_solver.triangulation,
+                            &sable_solver.triangulation,
                             level,
                             n,
-                            &fluid_solver.dof_handler);
+                            &sable_solver.dof_handler);
                         }
                     }
                   else // If the quadrature point is outside background mesh
