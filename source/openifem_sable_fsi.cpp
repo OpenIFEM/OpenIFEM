@@ -1072,11 +1072,12 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
 
                           // construct the cell iterator that points to the
                           // desired Eulerian index
-                          typename DoFHandler<dim>::cell_iterator f_cell(
-                            &sable_solver.triangulation,
-                            level,
-                            n,
-                            &sable_solver.dof_handler);
+                          TriaActiveIterator<DoFCellAccessor<dim, dim, false>>
+                            f_cell_temp(&sable_solver.triangulation,
+                                        level,
+                                        n,
+                                        &sable_solver.dof_handler);
+                          f_cell = f_cell_temp;
                         }
                       else // if the quad point is on the edge of the Eulerian
                            // cell
@@ -1118,11 +1119,12 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
                             }
                           unsigned int n = n1 + n2;
 
-                          typename DoFHandler<dim>::cell_iterator f_cell(
-                            &sable_solver.triangulation,
-                            level,
-                            n,
-                            &sable_solver.dof_handler);
+                          TriaActiveIterator<DoFCellAccessor<dim, dim, false>>
+                            f_cell_temp(&sable_solver.triangulation,
+                                        level,
+                                        n,
+                                        &sable_solver.dof_handler);
+                          f_cell = f_cell_temp;
                         }
                     }
                   else // If the quadrature point is outside background mesh
@@ -1136,7 +1138,7 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
                   // warn user if the cell index is outside the cell index range
                   int a = 0;
                   int b = N * N - 1;
-                  AssertThrow(f_cell->index() > a && f_cell->index() <= b,
+                  AssertThrow(f_cell->index() >= a && f_cell->index() <= b,
                               ExcMessage("Wrong Eulerian cell index!"));
 
                   // get cell-wise stress from SABLE
