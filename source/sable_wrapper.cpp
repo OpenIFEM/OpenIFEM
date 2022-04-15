@@ -249,6 +249,7 @@ namespace Fluid
 
         rec_stress(sable_no_ele);
         rec_vf(sable_no_ele);
+        update_nodal_mass();
         rec_velocity(sable_no_nodes);
         output_results(0);
         std::cout << "Received inital solution from Sable" << std::endl;
@@ -270,6 +271,7 @@ namespace Fluid
         Max(sable_no_nodes);
         rec_stress(sable_no_ele);
         rec_vf(sable_no_ele);
+        update_nodal_mass();
         rec_velocity(sable_no_nodes);
         is_comm_active = All(is_comm_active);
         std::cout << std::string(96, '*') << std::endl
@@ -863,6 +865,33 @@ namespace Fluid
         delete[] nv_send_buffer[ict];
       }
     delete[] nv_send_buffer;
+  }
+
+  template <int dim>
+  void SableWrap<dim>::update_nodal_mass()
+  {
+
+    nodal_mass.reinit(scalar_dof_handler.n_dofs());
+
+    auto cell = scalar_dof_handler.begin_active();
+    double h = abs(cell->vertex(0)(0) - cell->vertex(1)(0));
+    double area = h * h;
+
+    for (auto cell = scalar_dof_handler.begin_active();
+         cell != scalar_dof_handler.end();
+         ++cell)
+      {
+        auto p = cell_wise_stress.get_data(cell);
+        auto eul_density = p[0]->eulerian_density;
+        std::vector<types::global_dof_index> scalar_dof_indices(
+          scalar_fe.dofs_per_cell);
+        cell->get_dof_indices(scalar_dof_indices);
+        for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
+          {
+            auto index = scalar_dof_indices[v];
+            nodal_mass[index] += (eul_density * area) / 4.0;
+          }
+      }
   }
 
   template <int dim>

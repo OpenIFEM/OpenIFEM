@@ -133,6 +133,11 @@ namespace Fluid
     // Function which finds out ghost nodes and cells ids in Sable mesh
     void find_ghost_nodes();
 
+    // calculate lumped mass based on the SABLE density
+    void update_nodal_mass();
+    // vector stores the nodal mass based on the SABLE density
+    Vector<double> nodal_mass;
+
     // Vectors to store non ghost nodes and cells ids
     std::vector<int> non_ghost_cells;
     std::vector<int> non_ghost_nodes;
