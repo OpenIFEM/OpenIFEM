@@ -151,6 +151,7 @@ namespace Solid
     previous_displacement.reinit(dof_handler.n_dofs());
     nodal_mass.reinit(dof_handler.n_dofs());
     nodal_forces_traction.reinit(dof_handler.n_dofs());
+    added_mass_effect.reinit(dof_handler.n_dofs());
 
     // Add initial velocity
     if (time.current() == 0.0)
@@ -349,6 +350,17 @@ namespace Solid
       std::vector<std::string>(spacedim, "nodal_forces_traction");
     data_out.add_data_vector(dof_handler,
                              nodal_forces_traction,
+                             solution_names,
+                             data_component_interpretation);
+
+    // nodal mass with added mass effect
+    Vector<double> nodal_mass_output;
+    nodal_mass_output.reinit(dof_handler.n_dofs());
+    for (unsigned int i = 0; i < dof_handler.n_dofs(); i++)
+      nodal_mass_output[i] = nodal_mass[i] + added_mass_effect[i];
+    solution_names = std::vector<std::string>(spacedim, "nodal_mass");
+    data_out.add_data_vector(dof_handler,
+                             nodal_mass_output,
                              solution_names,
                              data_component_interpretation);
     // material ID

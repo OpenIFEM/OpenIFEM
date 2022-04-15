@@ -89,6 +89,10 @@ private:
    */
   void find_solid_bc();
 
+  /*! \brief Compute the added mass effect on the Lagrangian boundary
+   */
+  void compute_added_mass();
+
   /* value is set to true if the cell is partially inside solid
      value is false if the cell is completely inside or outside solid
   */

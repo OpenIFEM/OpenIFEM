@@ -174,6 +174,11 @@ namespace Solid
     Vector<double> nodal_forces_traction;
 
     /**
+     * Store added mass from the Eulerian material
+     */
+    Vector<double> added_mass_effect;
+
+    /**
      * function to calculate total KE of the solid
      */
     void calculate_KE();

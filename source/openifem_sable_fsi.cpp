@@ -1190,6 +1190,56 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
 }
 
 template <int dim>
+void OpenIFEM_Sable_FSI<dim>::compute_added_mass()
+{
+  TimerOutput::Scope timer_section(timer, "Compute Added Mass");
+
+  solid_solver.added_mass_effect.reinit(solid_solver.dof_handler.n_dofs());
+
+  move_solid_mesh(true);
+  std::vector<bool> vertex_touched(solid_solver.triangulation.n_vertices(),
+                                   false);
+
+  for (auto s_cell = solid_solver.dof_handler.begin_active();
+       s_cell != solid_solver.dof_handler.end();
+       ++s_cell)
+    {
+      for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+        {
+          // Current face is at boundary.
+          if (s_cell->face(f)->at_boundary())
+            {
+              for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_face;
+                   ++v)
+                {
+                  auto face = s_cell->face(f);
+                  auto vertex = face->vertex(v);
+                  if (!vertex_touched[face->vertex_index(v)])
+                    {
+                      vertex_touched[face->vertex_index(v)] = 1;
+                      Vector<double> value(1);
+                      // interpolate nodal mass
+                      Utils::GridInterpolator<dim, Vector<double>>
+                        scalar_interpolator(sable_solver.scalar_dof_handler,
+                                            vertex);
+                      scalar_interpolator.point_value(sable_solver.nodal_mass,
+                                                      value);
+                      // add nodal mass to added_mass_effect vector
+                      for (unsigned int i = 0; i < dim; i++)
+                        {
+                          auto index = face->vertex_dof_index(v, i);
+                          solid_solver.added_mass_effect[index] = value[0];
+                        }
+                    }
+                }
+            }
+        }
+    }
+  solid_solver.constraints.condense(solid_solver.added_mass_effect);
+  move_solid_mesh(false);
+}
+
+template <int dim>
 void OpenIFEM_Sable_FSI<dim>::run()
 {
   // global refinement in sable solver is not possible as it would change the
@@ -1227,6 +1277,7 @@ void OpenIFEM_Sable_FSI<dim>::run()
       solid_solver.time.set_delta_t(sable_solver.time.get_delta_t());
       time.increment();
       find_solid_bc();
+      compute_added_mass();
       solid_solver.run_one_step(first_step);
       // indicator field
       update_solid_box();
