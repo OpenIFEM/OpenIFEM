@@ -73,6 +73,8 @@ namespace Solid
     using SolidSolver<dim>::nodal_mass;
     using SolidSolver<dim>::calculate_KE;
     using SolidSolver<dim>::nodal_forces_traction;
+    using SolidSolver<dim>::system_matrix_updated;
+    using SolidSolver<dim>::added_mass_effect;
 
     /**
      * Assembles lhs and rhs. At time step 0, the lhs is the mass matrix;

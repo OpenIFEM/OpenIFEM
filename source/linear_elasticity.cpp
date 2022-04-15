@@ -328,12 +328,25 @@ namespace Solid
           }
         calculate_KE();
 
-        this->solve(system_matrix, previous_acceleration, system_rhs);
+        // copy system_matrix to system_matrix_updated
+        system_matrix_updated.copy_from(system_matrix);
+        // add added mass effect to system_matrix_updated
+        if (parameters.simulation_type == "FSI")
+          {
+            for (unsigned int i = 0; i < dof_handler.n_dofs(); i++)
+              {
+                system_matrix_updated.set(
+                  i, i, system_matrix.el(i, i) + added_mass_effect[i]);
+              }
+          }
+
+        this->solve(system_matrix_updated, previous_acceleration, system_rhs);
         // Update the system_matrix
         assemble_system(false);
         system_matrix.add(time.get_delta_t() * time.get_delta_t() * beta *
                             (1 + alpha),
                           stiffness_matrix);
+        system_matrix_updated.copy_from(system_matrix);
         // copy previous_acceleration to current_acceleration for outputting the
         // initial acceleration
         current_acceleration = previous_acceleration;
@@ -364,7 +377,16 @@ namespace Solid
     stiffness_matrix.vmult(tmp3, tmp2);
     tmp1 -= tmp3;
 
-    auto state = this->solve(system_matrix, current_acceleration, tmp1);
+    // add added mass effect to system_matrix_updated
+    if (parameters.simulation_type == "FSI")
+      {
+        for (unsigned int i = 0; i < dof_handler.n_dofs(); i++)
+          {
+            system_matrix_updated.set(
+              i, i, system_matrix.el(i, i) + added_mass_effect[i]);
+          }
+      }
+    auto state = this->solve(system_matrix_updated, current_acceleration, tmp1);
 
     // update the current velocity
     // \f$ v_{n+1} = v_n + (1-\gamma)\Delta{t}a_n + \gamma\Delta{t}a_{n+1}
