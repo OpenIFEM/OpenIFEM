@@ -12,6 +12,7 @@ set(serial_tests acoustic_duct_wave
                  fsi_leaflet
                  openifem-sable_block_linearelastic
                  openifem-sable_hollow_circle_hyperelastic
+                 openifem-sable_circle_blast_linearelastic
                  openifem-sable_circle_hyperelastic
                  openifem-sable_circle_linearelastic
 		 openifem-sable_projectile_hyperelastic
