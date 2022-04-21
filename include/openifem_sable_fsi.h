@@ -89,6 +89,12 @@ private:
    */
   void find_solid_bc();
 
+  /*! \brief Compute the fluid cell index given the solid quad point coordiantes
+   * and its unit normal vector Currently, this algorithm only works for a 2-D
+   * structured Eulerian mesh without refinements.
+   */
+  int compute_fluid_cell_index(Point<dim> &, const Tensor<1, dim> &);
+
   /*! \brief Compute the added mass effect on the Lagrangian boundary
    */
   void compute_added_mass();

@@ -377,8 +377,8 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
   AffineConstraints<double> inner_nonzero, inner_zero;
   inner_nonzero.clear();
   inner_zero.clear();
-  // inner_nonzero.reinit(fluid_solver.locally_relevant_dofs);
-  // inner_zero.reinit(fluid_solver.locally_relevant_dofs);
+  // inner_nonzero.reinit(sable_solver.locally_relevant_dofs);
+  // inner_zero.reinit(sable_solver.locally_relevant_dofs);
   BlockVector<double> tmp_fsi_acceleration;
   tmp_fsi_acceleration.reinit(sable_solver.dofs_per_block);
   BlockVector<double> tmp_fsi_velocity;
@@ -548,7 +548,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
                 ExcMessage("There should be only 2 groups of finite element!"));
               if (i_group == 1)
                 continue; // skip the pressure dofs
-              // Same as fluid_solver.fe.system_to_base_index(i).first.second;
+              // Same as sable_solver.fe.system_to_base_index(i).first.second;
               const unsigned int index =
                 sable_solver.fe.system_to_component_index(i).first;
               Assert(index < dim,
@@ -893,7 +893,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
             ExcMessage("There should be only 2 groups of finite element!"));
           if (i_group == 1)
             continue; // skip the pressure dofs
-          // Same as fluid_solver.fe.system_to_base_index(i).first.second;
+          // Same as sable_solver.fe.system_to_base_index(i).first.second;
           const unsigned int index =
             sable_solver.fe.system_to_component_index(i).first;
           Assert(index < dim,
@@ -976,6 +976,100 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
 }
 
 template <int dim>
+int OpenIFEM_Sable_FSI<dim>::compute_fluid_cell_index(
+  Point<dim> &q_point, const Tensor<1, dim> &normal)
+{
+  // Note: Only works for unifrom, strucutred mesh
+  auto f_cell = sable_solver.triangulation.begin_active();
+
+  // x_min and y_min is the lower boundary of the Eulerian cell box
+
+  double h = abs(f_cell->vertex(0)(0) - f_cell->vertex(1)(0));
+  double x_min = f_cell->center()[0] - h / 2;
+  double y_min = f_cell->center()[1] - h / 2;
+
+  // Currently assuming the target Eulerian cell has the same level as the first
+  // Eulerian cell, won't work for AMR
+
+  f_cell = sable_solver.triangulation.last_active();
+
+  unsigned int N = std::sqrt((f_cell->index() + 1));
+
+  // x_max and y_max is the upper boundary of the Eulerian cell box
+  double x_max = f_cell->center()[0] + h / 2;
+  double y_max = f_cell->center()[1] + h / 2;
+
+  // Find desired 2-D Eulerian cell. Won't work with AMR
+  if (q_point[0] >= x_min && q_point[0] <= x_max && q_point[1] >= y_min &&
+      q_point[1] <= y_max)
+    {
+      // if the quad point is not on the edge of the Eulerian
+      // cell
+      if (std::floor(q_point[0] / h) != (q_point[0] / h) &&
+          std::floor(q_point[1] / h) != (q_point[1] / h))
+
+        {
+          // compute the Eulerian cell index
+          int n = static_cast<int>(std::floor((q_point[0] - x_min) / h)) +
+                  N * static_cast<int>(std::floor((q_point[1] - y_min) / h));
+
+          int a = 0;
+          int b = static_cast<int>(N * N - 1);
+          AssertThrow(n >= a && n <= b,
+                      ExcMessage("Wrong Eulerian cell index!"));
+
+          return n;
+        }
+
+      else // if the quad point is on the edge of the Eulerian
+           // cell
+        {
+          // create a small distance in the outnormal direction
+          const double tmp = h * 1e-6;
+
+          // extend the current quad point positions along the
+          // outward normal direction
+          for (unsigned int i = 0; i < dim; i++)
+            q_point(i) = q_point(i) + tmp * normal[i];
+
+          int n1 = 0;
+          int n2 = 0;
+
+          // if extension[i] is smaller than the Eulerian cell
+          // lower limit, use std::ceil to round up the index
+          if (q_point[0] < x_min)
+            {
+              n1 = static_cast<int>(std::ceil((q_point[0] - x_min) / h));
+            }
+          else
+            {
+              n1 = static_cast<int>(std::floor((q_point[0] - x_min) / h));
+            }
+
+          if (q_point[1] < y_min)
+            {
+              n2 = N * static_cast<int>(std::ceil((q_point[1] - y_min) / h));
+            }
+          else
+            {
+              n2 = N * static_cast<int>(std::floor((q_point[1] - y_min) / h));
+            }
+          int n = n1 + n2;
+
+          // warn user if the cell index is outside the cell index range
+          int a = 0;
+          int b = static_cast<int>(N * N - 1);
+          AssertThrow(n >= a && n <= b,
+                      ExcMessage("Wrong Eulerian cell index!"));
+
+          return n;
+        }
+    }
+  else // if the quad point is outside the fluid box
+    return -1;
+}
+
+template <int dim>
 void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
 {
   TimerOutput::Scope timer_section(timer, "Find solid BC");
@@ -993,23 +1087,11 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
   // Note: Only works for unifrom, strucutred mesh
   auto f_cell = sable_solver.triangulation.begin_active();
 
-  // x_min and y_min is the lower boundary of the Eulerian cell box
-
   double h = abs(f_cell->vertex(0)(0) - f_cell->vertex(1)(0));
-  double x_min = f_cell->center()[0] - h / 2;
-  double y_min = f_cell->center()[1] - h / 2;
 
   // Currently assuming the target Eulerian cell has the same level as the first
   // Eulerian cell, won't work for AMR
   auto level = f_cell->level();
-
-  f_cell = sable_solver.triangulation.last_active();
-
-  unsigned int N = std::sqrt((f_cell->index() + 1));
-
-  // x_max and y_max is the upper boundary of the Eulerian cell box
-  double x_max = f_cell->center()[0] + h / 2;
-  double y_max = f_cell->center()[1] + h / 2;
 
   const unsigned int n_f_q_points = solid_solver.face_quad_formula.size();
 
@@ -1049,84 +1131,21 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
                   // existing interpolator
                   // auto f_cell = interpolator.get_cell();
 
-                  // Find desired 2-D Eulerian cell. Won't work with AMR
-                  if (q_point_extension[0] >= x_min &&
-                      q_point_extension[0] <= x_max &&
-                      q_point_extension[1] >= y_min &&
-                      q_point_extension[1] <= y_max)
+                  // compute the Eulerian cell index
+                  int n = compute_fluid_cell_index(q_point_extension, normal);
+
+                  if (n !=-1) // if the solid quad point is within the fluid box
                     {
-                      // if the quad point is not on the edge of the Eulerian
-                      // cell
-                      if (std::floor(q_point_extension[0] / h) !=
-                            (q_point_extension[0] / h) &&
-                          std::floor(q_point_extension[1] / h) !=
-                            (q_point_extension[1] / h))
-
-                        {
-                          // compute the Eulerian cell index
-                          unsigned int n =
-                            static_cast<unsigned int>(
-                              std::floor((q_point_extension[0] - x_min) / h)) +
-                            N * static_cast<unsigned int>(std::floor(
-                                  (q_point_extension[1] - y_min) / h));
-
-                          // construct the cell iterator that points to the
-                          // desired Eulerian index
-                          TriaActiveIterator<DoFCellAccessor<dim, dim, false>>
-                            f_cell_temp(&sable_solver.triangulation,
-                                        level,
-                                        n,
-                                        &sable_solver.dof_handler);
-                          f_cell = f_cell_temp;
-                        }
-                      else // if the quad point is on the edge of the Eulerian
-                           // cell
-                        {
-                          // create a small distance in the outnormal direction
-                          const double tmp = h * 1e-6;
-
-                          // extend the current quad point positions along the
-                          // outward normal direction
-                          for (unsigned int i = 0; i < dim; i++)
-                            q_point_extension(i) =
-                              q_point_extension(i) + tmp * normal[i];
-
-                          unsigned int n1 = 0;
-                          unsigned int n2 = 0;
-
-                          // if extension[i] is smaller than the Eulerian cell
-                          // lower limit, use std::ceil to round up the index
-                          if (q_point_extension[0] < x_min)
-                            {
-                              n1 = static_cast<unsigned int>(
-                                std::ceil((q_point_extension[0] - x_min) / h));
-                            }
-                          else
-                            {
-                              n1 = static_cast<unsigned int>(
-                                std::floor((q_point_extension[0] - x_min) / h));
-                            }
-
-                          if (q_point_extension[1] < y_min)
-                            {
-                              n2 = N * static_cast<unsigned int>(std::ceil(
-                                         (q_point_extension[1] - y_min) / h));
-                            }
-                          else
-                            {
-                              n2 = N * static_cast<unsigned int>(std::floor(
-                                         (q_point_extension[1] - y_min) / h));
-                            }
-                          unsigned int n = n1 + n2;
-
-                          TriaActiveIterator<DoFCellAccessor<dim, dim, false>>
-                            f_cell_temp(&sable_solver.triangulation,
-                                        level,
-                                        n,
-                                        &sable_solver.dof_handler);
-                          f_cell = f_cell_temp;
-                        }
+                      // construct the cell iterator that points to the
+                      // desired Eulerian index
+                      TriaActiveIterator<DoFCellAccessor<dim, dim, false>>
+                        f_cell_temp(&sable_solver.triangulation,
+                                    level,
+                                    n,
+                                    &sable_solver.dof_handler);
+                      f_cell = f_cell_temp;
                     }
+
                   else // If the quadrature point is outside background mesh
                        // if (f_cell->index() == -1)
                     {
@@ -1134,12 +1153,6 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
                       ptr[f]->fsi_traction.push_back(zero_tensor);
                       continue;
                     }
-
-                  // warn user if the cell index is outside the cell index range
-                  int a = 0;
-                  int b = N * N - 1;
-                  AssertThrow(f_cell->index() >= a && f_cell->index() <= b,
-                              ExcMessage("Wrong Eulerian cell index!"));
 
                   // get cell-wise stress from SABLE
                   auto ptr_f = sable_solver.cell_wise_stress.get_data(f_cell);
