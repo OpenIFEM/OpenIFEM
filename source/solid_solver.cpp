@@ -142,6 +142,7 @@ namespace Solid
     system_matrix.reinit(pattern);
     system_matrix_updated.reinit(pattern);
     mass_matrix.reinit(pattern);
+    mass_matrix_updated.reinit(pattern);
     stiffness_matrix.reinit(pattern);
     system_rhs.reinit(dof_handler.n_dofs());
     current_acceleration.reinit(dof_handler.n_dofs());

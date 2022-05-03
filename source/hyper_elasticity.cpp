@@ -72,7 +72,19 @@ namespace Solid
             nodal_mass[i] = mass_matrix.el(i, i);
           }
         calculate_KE();
-        this->solve(mass_matrix, previous_acceleration, system_rhs);
+        // copy mass_matrix to mass_matrix_updated
+        mass_matrix_updated.copy_from(mass_matrix);
+        // add added mass effect to mass_matrix_updated
+        if (parameters.simulation_type == "FSI")
+          {
+            for (unsigned int i = 0; i < dof_handler.n_dofs(); i++)
+              {
+                mass_matrix_updated.set(
+                  i, i, mass_matrix.el(i, i) + added_mass_effect[i]);
+              }
+          }
+
+        this->solve(mass_matrix_updated, previous_acceleration, system_rhs);
         this->output_results(time.get_timestep());
       }
 
@@ -125,12 +137,28 @@ namespace Solid
         // Assemble the system, and modify the RHS to account for
         // the time-discretization.
         assemble_system(false);
-        mass_matrix.vmult(tmp, current_acceleration);
+        // copy system_matrix to system_matrix_updated
+        system_matrix_updated.copy_from(system_matrix);
+        // add added mass effect to system_matrix_updated
+        if (parameters.simulation_type == "FSI")
+          {
+            for (unsigned int i = 0; i < dof_handler.n_dofs(); i++)
+              {
+                system_matrix_updated.set(i,
+                                          i,
+                                          system_matrix.el(i, i) +
+                                            added_mass_effect[i] /
+                                              (beta * dt * dt));
+                mass_matrix_updated.set(
+                  i, i, mass_matrix.el(i, i) + added_mass_effect[i]);
+              }
+          }
+        mass_matrix_updated.vmult(tmp, current_acceleration);
         system_rhs -= tmp;
 
         // Solve linear system
         const std::pair<unsigned int, double> lin_solver_output =
-          this->solve(system_matrix, newton_update, system_rhs);
+          this->solve(system_matrix_updated, newton_update, system_rhs);
 
         // Error evaluation
         {

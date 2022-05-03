@@ -143,9 +143,13 @@ namespace Solid
 
     SparsityPattern pattern;
     SparseMatrix<double> system_matrix; //!< \f$ M + \beta{\Delta{t}}^2K \f$.
-    SparseMatrix<double> system_matrix_updated; //!< updated system matrix with
-                                                //!< added mass effect $.
+    SparseMatrix<double>
+      system_matrix_updated; //!< updated system matrix with
+                             //!< added mass effect (OpenIFEM-SABLE coupling)$.
     SparseMatrix<double> mass_matrix; //!< Required by hyperelastic solver.
+    SparseMatrix<double>
+      mass_matrix_updated; //!< updated mass matrix with
+                           //!< added mass effect (OpenIFEM-SABLE coupling)$.
     SparseMatrix<double>
       stiffness_matrix; //!< The stiffness is used in the rhs.
     Vector<double> system_rhs;
