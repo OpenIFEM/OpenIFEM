@@ -367,6 +367,31 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
 }
 
 template <int dim>
+void OpenIFEM_Sable_FSI<dim>::setup_cell_hints()
+{
+  unsigned int n_unit_points = sable_solver.fe.get_unit_support_points().size();
+  for (auto cell = sable_solver.triangulation.begin_active();
+       cell != sable_solver.triangulation.end();
+       ++cell)
+    {
+      if (!cell->is_artificial())
+        {
+          cell_hints.initialize(cell, n_unit_points);
+          const std::vector<
+            std::shared_ptr<typename DoFHandler<dim>::active_cell_iterator>>
+            hints = cell_hints.get_data(cell);
+          Assert(hints.size() == n_unit_points,
+                 ExcMessage("Wrong number of cell hints!"));
+          for (unsigned int v = 0; v < n_unit_points; ++v)
+            {
+              // Initialize the hints with the begin iterators!
+              *(hints[v]) = solid_solver.dof_handler.begin_active();
+            }
+        }
+    }
+}
+
+template <int dim>
 void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
 {
   TimerOutput::Scope timer_section(timer, "Find fluid BC");
@@ -516,7 +541,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
           if (ptr[0]->indicator == 0)
             continue;
 
-          // auto hints = cell_hints.get_data(f_cell);
+          auto hints = cell_hints.get_data(f_cell);
           dummy_fe_values.reinit(f_cell);
           f_cell->get_dof_indices(dof_indices);
           auto support_points = dummy_fe_values.get_quadrature_points();
@@ -556,11 +581,11 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
               dof_touched[dof_indices[i]] = 1;
               if (!point_in_solid(solid_solver.dof_handler, support_points[i]))
                 continue;
-              /*Utils::CellLocator<dim, DoFHandler<dim>> locator(
+              Utils::CellLocator<dim, DoFHandler<dim>> locator(
                 solid_solver.dof_handler, support_points[i], *(hints[i]));
-              *(hints[i]) = locator.search();*/
+              *(hints[i]) = locator.search();
               Utils::GridInterpolator<dim, Vector<double>> interpolator(
-                solid_solver.dof_handler, support_points[i]);
+                solid_solver.dof_handler, support_points[i],{},*(hints[i]));
               if (!interpolator.found_cell())
                 {
                   std::stringstream message;
@@ -1134,7 +1159,7 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
                   // compute the Eulerian cell index
                   int n = compute_fluid_cell_index(q_point_extension, normal);
 
-                  if (n !=-1) // if the solid quad point is within the fluid box
+                  if (n != -1) // if the solid quad point is within the fluid box
                     {
                       // construct the cell iterator that points to the
                       // desired Eulerian index
@@ -1289,6 +1314,7 @@ void OpenIFEM_Sable_FSI<dim>::run()
       time.set_delta_t(sable_solver.time.get_delta_t());
       solid_solver.time.set_delta_t(sable_solver.time.get_delta_t());
       time.increment();
+      setup_cell_hints();
       find_solid_bc();
       compute_added_mass();
       solid_solver.run_one_step(first_step);

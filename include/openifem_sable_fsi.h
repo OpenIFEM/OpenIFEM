@@ -46,6 +46,9 @@ private:
   using FSI<dim>::solid_box;
   using FSI<dim>::use_dirichlet_bc;
 
+  /// Setup the hints for searching for each fluid cell.
+  void setup_cell_hints();
+
   /*! \brief Update the indicator field of the fluid solver.
    *
    *  Although the indicator field is defined at quadrature points in order to
@@ -110,6 +113,11 @@ private:
   */
   std::map<int, std::vector<int>> cell_nodes_inside_solid;
   std::map<int, std::vector<int>> cell_nodes_outside_solid;
+
+  // Cell storage that stores hints of cell searching from last time step.
+  CellDataStorage<typename Triangulation<dim>::active_cell_iterator,
+                  typename DoFHandler<dim>::active_cell_iterator>
+    cell_hints;
 
   Fluid::SableWrap<dim> &sable_solver;
 };
