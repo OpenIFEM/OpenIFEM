@@ -104,6 +104,20 @@ namespace Solid
      */
     void run_one_step(bool);
 
+    /**
+     * calculate chang in volume (only works for 2D)
+     */
+    void calculate_volume_change();
+    /**
+     * move solid mesh
+     */
+    void move_solid(bool);
+    /**
+     * store volume and dv for each cell
+     */
+    Vector<double> cell_volume;
+    Vector<double> cell_dv;
+
     std::vector<LinearElasticMaterial<dim>> material;
   };
 } // namespace Solid

@@ -585,7 +585,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
                 solid_solver.dof_handler, support_points[i], *(hints[i]));
               *(hints[i]) = locator.search();
               Utils::GridInterpolator<dim, Vector<double>> interpolator(
-                solid_solver.dof_handler, support_points[i],{},*(hints[i]));
+                solid_solver.dof_handler, support_points[i], {}, *(hints[i]));
               if (!interpolator.found_cell())
                 {
                   std::stringstream message;
@@ -1158,8 +1158,8 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
 
                   // compute the Eulerian cell index
                   int n = compute_fluid_cell_index(q_point_extension, normal);
-
-                  if (n != -1) // if the solid quad point is within the fluid box
+                  // if the solid quad point is within the fluid box
+                  if (n != -1)
                     {
                       // construct the cell iterator that points to the
                       // desired Eulerian index
