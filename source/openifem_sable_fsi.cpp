@@ -613,6 +613,9 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
               // velocity delta!
               tmp_fsi_acceleration(line) =
                 (fluid_acc[index] - solid_acc[index]);
+              // add penalty force based on velocity difference
+              tmp_fsi_acceleration(line) +=
+                vel_difference(line) / time.get_delta_t();
               tmp_fsi_velocity(line) = vs[index];
             }
         }
@@ -1278,6 +1281,15 @@ void OpenIFEM_Sable_FSI<dim>::compute_added_mass()
 }
 
 template <int dim>
+void OpenIFEM_Sable_FSI<dim>::check_no_slip_bc()
+{
+  // initialize blockvector
+  vel_difference.reinit(sable_solver.dofs_per_block);
+  vel_difference.add(
+    1, sable_solver.fsi_velocity, -1, sable_solver.present_solution);
+}
+
+template <int dim>
 void OpenIFEM_Sable_FSI<dim>::run()
 {
   // global refinement in sable solver is not possible as it would change the
@@ -1320,6 +1332,10 @@ void OpenIFEM_Sable_FSI<dim>::run()
       solid_solver.run_one_step(first_step);
       // indicator field
       update_solid_box();
+
+      if (first_step)
+        vel_difference.reinit(sable_solver.dofs_per_block);
+
       if (parameters.fsi_force_criteria == "Nodes")
         {
           update_indicator();
@@ -1330,11 +1346,13 @@ void OpenIFEM_Sable_FSI<dim>::run()
           update_indicator_qpoints();
           find_fluid_bc_qpoints();
         }
+      // send_indicator_field
       sable_solver.send_fsi_force(sable_solver.sable_no_nodes);
       sable_solver.send_indicator(sable_solver.sable_no_ele,
                                   sable_solver.sable_no_nodes);
-      // send_indicator_field
       sable_solver.run_one_step();
+      // check if no-slip bc is satisfied 
+      check_no_slip_bc();
       first_step = false;
     }
 }
