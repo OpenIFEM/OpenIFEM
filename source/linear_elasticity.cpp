@@ -351,8 +351,6 @@ namespace Solid
         // initial acceleration
         current_acceleration = previous_acceleration;
         this->output_results(time.get_timestep());
-
-        calculate_volume_change();
       }
 
     const double dt = time.get_delta_t();
@@ -412,8 +410,6 @@ namespace Solid
               << " CG iteration: " << std::setw(3) << state.first
               << " CG residual: " << state.second << std::endl;
 
-    calculate_volume_change();
-
     update_strain_and_stress();
 
     calculate_KE();
@@ -433,10 +429,6 @@ namespace Solid
   template <int dim>
   void LinearElasticity<dim>::update_strain_and_stress()
   {
-    // initialize output file
-    std::ofstream file_pdv;
-    file_pdv.open("solid_pdv.txt", std::ios_base::app);
-
     for (unsigned int i = 0; i < dim; ++i)
       {
         for (unsigned int j = 0; j < dim; ++j)
@@ -487,10 +479,6 @@ namespace Solid
     auto scalar_cell = scalar_dof_handler.begin_active();
     std::vector<types::global_dof_index> dof_indices(scalar_fe.dofs_per_cell);
 
-    // initialize P*dv
-    double pdv = 0;
-    double pressure = 0;
-
     for (; cell != dof_handler.end(); ++cell, ++scalar_cell)
       {
         scalar_cell->get_dof_indices(dof_indices);
@@ -524,8 +512,6 @@ namespace Solid
                     quad_stress[i][j][q] = tmp_stress[i][j];
                   }
               }
-            // calculate hydrostatic pressure
-            pressure -= (tmp_stress[0][0] + tmp_stress[1][1]) * 0.25;
           }
 
         for (unsigned int i = 0; i < dim; ++i)
@@ -543,13 +529,7 @@ namespace Solid
                   }
               }
           }
-        // calculate P*dv
-        pressure = pressure / 3.0;
-        pdv += cell_dv(cell->index()) * pressure;
       }
-
-    file_pdv << time.current() << "\t" << pdv << "\n";
-    file_pdv.close();
 
     for (unsigned int i = 0; i < dim; ++i)
       {
@@ -562,77 +542,6 @@ namespace Solid
               }
           }
       }
-  }
-
-  template <int dim>
-  void LinearElasticity<dim>::move_solid(bool move_forward)
-  {
-    std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
-    for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
-         ++cell)
-      {
-        for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
-          {
-            if (!vertex_touched[cell->vertex_index(v)])
-              {
-                vertex_touched[cell->vertex_index(v)] = true;
-                Point<dim> vertex_displacement;
-                for (unsigned int d = 0; d < dim; ++d)
-                  {
-                    vertex_displacement[d] =
-                      current_displacement(cell->vertex_dof_index(v, d));
-                  }
-                if (move_forward)
-                  {
-                    cell->vertex(v) += vertex_displacement;
-                  }
-                else
-                  {
-                    cell->vertex(v) -= vertex_displacement;
-                  }
-              }
-          }
-      }
-  }
-
-  template <int dim>
-  void LinearElasticity<dim>::calculate_volume_change()
-  {
-    if (time.current() == 0.0)
-      {
-        // initialize vectors
-        cell_volume.reinit(triangulation.n_cells());
-      }
-    cell_dv.reinit(triangulation.n_cells());
-
-    move_solid(true);
-    Vector<double> cell_volume_current(triangulation.n_cells());
-
-    double total_vol = 0;
-    for (auto cell = triangulation.begin_active(); cell != triangulation.end();
-         ++cell)
-      {
-        // area calculation only works for 2D
-        Point<dim> p0 = cell->vertex(0);
-        Point<dim> p1 = cell->vertex(1);
-        Point<dim> p2 = cell->vertex(2);
-        Point<dim> p3 = cell->vertex(3);
-        // area of triangle with vertices: p0, p1, p2
-        double a0 = 0.5 * abs((p2(0) - p1(0)) * (p1(1) - p0(1)) -
-                              (p2(1) - p1(1)) * (p1(0) - p0(0)));
-        // area of triangle with vertices: p3, p1, p2
-        double a3 = 0.5 * abs((p2(0) - p1(0)) * (p1(1) - p3(1)) -
-                              (p2(1) - p1(1)) * (p1(0) - p3(0)));
-        // double a = a0+a3;
-        // std::cout << "AREA " << cell->index() << " "<< a << std::endl;
-        total_vol += a0 + a3;
-        cell_volume_current[cell->index()] = a0 + a3;
-      }
-
-    move_solid(false);
-
-    cell_dv.add(1, cell_volume, -1, cell_volume_current);
-    cell_volume = cell_volume_current;
   }
 
   template class LinearElasticity<2>;
