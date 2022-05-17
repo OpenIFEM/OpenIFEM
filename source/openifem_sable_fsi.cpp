@@ -1351,7 +1351,7 @@ void OpenIFEM_Sable_FSI<dim>::run()
       sable_solver.send_indicator(sable_solver.sable_no_ele,
                                   sable_solver.sable_no_nodes);
       sable_solver.run_one_step();
-      // check if no-slip bc is satisfied 
+      // check if no-slip bc is satisfied
       check_no_slip_bc();
       first_step = false;
     }

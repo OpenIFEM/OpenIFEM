@@ -946,6 +946,34 @@ namespace Fluid
                              solution_names,
                              data_component_interpretation_force);
 
+    // output difference between solid and artificial fluid velocities (no-slip
+    // bc)
+    Vector<double> fsi_velocity_output;
+    fsi_velocity_output.reinit(dofs_per_block[0]);
+    for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+         ++cell)
+      {
+        auto ptr = cell_property.get_data(cell);
+        if (ptr[0]->indicator != 0)
+          {
+            for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
+                 ++v)
+              {
+                for (unsigned int i = 0; i < dim; i++)
+                  {
+                    int index = cell->vertex_dof_index(v, i);
+                    fsi_velocity_output[index] =
+                      fsi_velocity[index] - present_solution[index];
+                  }
+              }
+          }
+      }
+    solution_names = std::vector<std::string>(dim, "fsi_velocity_difference");
+    data_out.add_data_vector(dof_handler_vector_output,
+                             fsi_velocity_output,
+                             solution_names,
+                             data_component_interpretation_force);
+
     // Indicator and cell-wise stress
     Vector<double> ind(triangulation.n_active_cells());
     Vector<double> exact_ind(triangulation.n_active_cells());
