@@ -25,6 +25,7 @@ namespace Fluid
     FluidSolver<dim>::initialize_system();
     fsi_acceleration.reinit(dofs_per_block);
     fsi_velocity.reinit(dofs_per_block);
+    fsi_vel_difference.reinit(dofs_per_block);
     int stress_vec_size = dim + dim * (dim - 1) * 0.5;
     fsi_stress = std::vector<Vector<double>>(
       stress_vec_size, Vector<double>(scalar_dof_handler.n_dofs()));
@@ -273,6 +274,7 @@ namespace Fluid
         rec_vf(sable_no_ele);
         update_nodal_mass();
         rec_velocity(sable_no_nodes);
+        check_no_slip_bc();
         is_comm_active = All(is_comm_active);
         std::cout << std::string(96, '*') << std::endl
                   << "Received solution from Sable at time step = "
@@ -895,6 +897,14 @@ namespace Fluid
   }
 
   template <int dim>
+  void SableWrap<dim>::check_no_slip_bc()
+  {
+    // initialize blockvector
+    fsi_vel_difference.reinit(dofs_per_block);
+    fsi_vel_difference.add(1, fsi_velocity, -1, present_solution);
+  }
+
+  template <int dim>
   void SableWrap<dim>::output_results(const unsigned int output_index) const
   {
     TimerOutput::Scope timer_section(timer, "Output results");
@@ -962,8 +972,7 @@ namespace Fluid
                 for (unsigned int i = 0; i < dim; i++)
                   {
                     int index = cell->vertex_dof_index(v, i);
-                    fsi_velocity_output[index] =
-                      fsi_velocity[index] - present_solution[index];
+                    fsi_velocity_output[index] = fsi_vel_difference[index];
                   }
               }
           }

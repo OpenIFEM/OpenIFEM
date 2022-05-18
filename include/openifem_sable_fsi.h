@@ -102,15 +102,6 @@ private:
    */
   void compute_added_mass();
 
-  /*! check if the no-slip bc is satisfied betweeen Lagrangian and Eulerian
-   * solid
-   */
-  void check_no_slip_bc();
-
-  /* store difference between Lagrangian and Eulerian velocities
-   */
-  BlockVector<double> vel_difference;
-
   /* value is set to true if the cell is partially inside solid
      value is false if the cell is completely inside or outside solid
   */

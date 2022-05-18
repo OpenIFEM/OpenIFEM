@@ -93,6 +93,13 @@ namespace Fluid
     // Vector to store Dirichlet bc values for artificial fluid
     BlockVector<double> fsi_velocity;
 
+    // check if the no-slip bc is satisfied betweeen SABLE and Lagrangian solid
+    void check_no_slip_bc();
+
+    // Vector to store difference between Lagrangian solid velocity and
+    // artificial velocity
+    BlockVector<double> fsi_vel_difference;
+
     // Vector which stores Sable processor ids
     std::vector<int> sable_ids;
 

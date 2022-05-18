@@ -613,9 +613,10 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
               // velocity delta!
               tmp_fsi_acceleration(line) =
                 (fluid_acc[index] - solid_acc[index]);
-              // add penalty force based on velocity difference
+              // add penalty force based on the velocity difference between
+              // Lagrangian solid and SABLE, calculated from previous time step
               tmp_fsi_acceleration(line) +=
-                vel_difference(line) / time.get_delta_t();
+                sable_solver.fsi_vel_difference(line) / time.get_delta_t();
               tmp_fsi_velocity(line) = vs[index];
             }
         }
@@ -729,6 +730,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
   std::vector<Tensor<2, dim>> grad_v(n_q_points);
   std::vector<Tensor<1, dim>> v(n_q_points);
   std::vector<Tensor<1, dim>> dv(n_q_points);
+  std::vector<Tensor<1, dim>> fsi_vel_diff(n_q_points);
 
   auto scalar_f_cell = sable_solver.scalar_dof_handler.begin_active();
   for (auto f_cell = sable_solver.dof_handler.begin_active();
@@ -764,6 +766,9 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
       // Fluid velocity gradient at support points
       fe_values[velocities].get_function_gradients(
         sable_solver.present_solution, grad_v);
+      // Difference between Lagrangian solid and artifical material velocities
+      fe_values[velocities].get_function_values(sable_solver.fsi_vel_difference,
+                                                fsi_vel_diff);
 
       auto q_points = fe_values.get_quadrature_points();
       for (unsigned int q = 0; q < n_q_points; q++)
@@ -802,6 +807,9 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
           Tensor<1, dim> fsi_acc_tensor;
           fsi_acc_tensor = fluid_acc_tensor;
           fsi_acc_tensor -= solid_acc_tensor;
+          // add penalty force based on the velocity difference between
+          // Lagrangian solid and SABLE, calculated from previous time step
+          fsi_acc_tensor += fsi_vel_diff[q] / time.get_delta_t();
 
           SymmetricTensor<2, dim> f_cell_stress;
           int count = 0;
@@ -1281,15 +1289,6 @@ void OpenIFEM_Sable_FSI<dim>::compute_added_mass()
 }
 
 template <int dim>
-void OpenIFEM_Sable_FSI<dim>::check_no_slip_bc()
-{
-  // initialize blockvector
-  vel_difference.reinit(sable_solver.dofs_per_block);
-  vel_difference.add(
-    1, sable_solver.fsi_velocity, -1, sable_solver.present_solution);
-}
-
-template <int dim>
 void OpenIFEM_Sable_FSI<dim>::run()
 {
   // global refinement in sable solver is not possible as it would change the
@@ -1333,9 +1332,6 @@ void OpenIFEM_Sable_FSI<dim>::run()
       // indicator field
       update_solid_box();
 
-      if (first_step)
-        vel_difference.reinit(sable_solver.dofs_per_block);
-
       if (parameters.fsi_force_criteria == "Nodes")
         {
           update_indicator();
@@ -1351,8 +1347,6 @@ void OpenIFEM_Sable_FSI<dim>::run()
       sable_solver.send_indicator(sable_solver.sable_no_ele,
                                   sable_solver.sable_no_nodes);
       sable_solver.run_one_step();
-      // check if no-slip bc is satisfied
-      check_no_slip_bc();
       first_step = false;
     }
 }
