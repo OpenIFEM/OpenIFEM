@@ -1152,20 +1152,22 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
                   // the face normal
                   double beta = parameters.solid_traction_extension_scale;
                   double d = h * beta;
+
                   // Find a point at a distance d from q_point along the face
                   // normal
                   Point<dim> q_point_extension;
                   for (unsigned int i = 0; i < dim; i++)
                     q_point_extension(i) = q_point(i) + d * normal[i];
+                  // old way//
                   // Get interpolated solution from the fluid
-                  Vector<double> value(dim + 1);
+                  /*Vector<double> value(dim + 1);
                   Utils::GridInterpolator<dim, BlockVector<double>>
                     interpolator(sable_solver.dof_handler, q_point_extension);
                   interpolator.point_value(sable_solver.present_solution,
                                            value);
                   // Create the scalar interpolator for stresses based on the
                   // existing interpolator
-                  // auto f_cell = interpolator.get_cell();
+                  auto f_cell = interpolator.get_cell();*/
 
                   // compute the Eulerian cell index
                   int n = compute_fluid_cell_index(q_point_extension, normal);
@@ -1227,9 +1229,12 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
                         }
                     }
                   // \f$ \sigma = -p\bold{I} + \mu\nabla^S v\f$
-                  SymmetricTensor<2, dim> stress =
+                  // old way //
+                  // stress tensor from SABLE includes pressure //
+                  /*SymmetricTensor<2, dim> stress =
                     -value[dim] * Physics::Elasticity::StandardTensors<dim>::I +
-                    viscous_stress;
+                    viscous_stress;*/
+                  SymmetricTensor<2, dim> stress = viscous_stress;
                   ptr[f]->fsi_traction.push_back(stress * normal);
                 }
             }
