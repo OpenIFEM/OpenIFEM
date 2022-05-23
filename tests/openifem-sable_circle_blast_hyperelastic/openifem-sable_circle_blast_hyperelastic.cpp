@@ -2,7 +2,7 @@
 // OpenIFEM hyperleastic solid solver and Sable The generated executable needs
 // to be run with Sable executable
 #include "fsi.h"
-#include "linear_elasticity.h"
+#include "hyper_elasticity.h"
 #include "openifem_sable_fsi.h"
 #include "parameters.h"
 #include "sable_wrapper.h"
@@ -213,18 +213,39 @@ int main(int argc, char *argv[])
       grid_in_3.attach_triangulation(circle_tria_3);
       grid_in_3.read_abaqus(input_solid_3);
 
-      // move circle 2 and cicle 3 triangulations
-      Tensor<1, 2> offset_2({0.3, -0.2});
+      GridIn<2> grid_in_4;
+      Triangulation<2> circle_tria_4;
+      std::ifstream input_solid_4("circle.inp");
+      grid_in_4.attach_triangulation(circle_tria_4);
+      grid_in_4.read_abaqus(input_solid_4);
+
+      GridIn<2> grid_in_5;
+      Triangulation<2> circle_tria_5;
+      std::ifstream input_solid_5("circle.inp");
+      grid_in_5.attach_triangulation(circle_tria_5);
+      grid_in_5.read_abaqus(input_solid_5);
+
+      // move circles
+      Tensor<1, 2> offset_1({-0.433, -0.25});
+      GridTools::shift(offset_1, circle_tria_1);
+
+      Tensor<1, 2> offset_2({-0.25, -0.067});
       GridTools::shift(offset_2, circle_tria_2);
 
-      Tensor<1, 2> offset_3({-0.3, -0.2});
-      GridTools::shift(offset_3, circle_tria_3);
+      Tensor<1, 2> offset_4({ 0.25, -0.067});
+      GridTools::shift(offset_4, circle_tria_4);
+
+      Tensor<1, 2> offset_5({ 0.433, -0.25});
+      GridTools::shift(offset_5, circle_tria_5);
 
       //merge triangulations
       Triangulation<2> lag_tria;
-      dealii::GridGenerator::merge_triangulations({&circle_tria_1, &circle_tria_2, &circle_tria_3}, lag_tria);
+      dealii::GridGenerator::merge_triangulations({&circle_tria_1,
+            &circle_tria_2, &circle_tria_3, &circle_tria_4, &circle_tria_5},
+        lag_tria);
+
       // Create Lagrangian solid object with linear elastic material
-      Solid::LinearElasticity<2> solid(lag_tria, params);
+      Solid::HyperElasticity<2> solid(lag_tria, params);
       // Create FSI object
       OpenIFEM_Sable_FSI<2> fsi(fluid, solid, params, false);
       fsi.run();

@@ -24,7 +24,7 @@ subsection Simulation
   set Time step size = 1e-2
 
   # The output interval frequency
-  set Output interval = 10
+  set Output interval = 100
 
   # Mesh refinement interval in second
   set Refinement interval = 1e6
@@ -133,10 +133,10 @@ end
 
 subsection Solid material properties
   # Material type, currently LinearElastic and NeoHookean are available
-  set Solid type = LinearElastic
+  set Solid type = NeoHookean
 
   # Solid density, used by all solid solvers
-  set Solid density = 7.8724
+  set Solid density = 1.186
 
   # E and nu are only used by linearElasticMaterial
   set Young's modulus = 2.0e12
