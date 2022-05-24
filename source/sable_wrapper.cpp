@@ -26,6 +26,7 @@ namespace Fluid
     fsi_acceleration.reinit(dofs_per_block);
     fsi_velocity.reinit(dofs_per_block);
     fsi_vel_difference.reinit(dofs_per_block);
+    fsi_penalty_force.reinit(dofs_per_block);
     int stress_vec_size = dim + dim * (dim - 1) * 0.5;
     fsi_stress = std::vector<Vector<double>>(
       stress_vec_size, Vector<double>(scalar_dof_handler.n_dofs()));
@@ -64,6 +65,7 @@ namespace Fluid
     fsi_force = 0;
     fsi_force_acceleration_part = 0;
     fsi_force_stress_part = 0;
+    fsi_penalty_force = 0;
 
     FEValues<dim> fe_values(fe,
                             volume_quad_formula,
@@ -93,6 +95,7 @@ namespace Fluid
     Vector<double> local_rhs(dofs_per_cell);
     Vector<double> local_rhs_acceleration_part(dofs_per_cell);
     Vector<double> local_rhs_stress_part(dofs_per_cell);
+    Vector<double> local_penalty_force(dofs_per_cell);
 
     std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
@@ -105,6 +108,7 @@ namespace Fluid
     std::vector<std::vector<double>> fsi_cell_stress =
       std::vector<std::vector<double>>(fsi_stress.size(),
                                        std::vector<double>(n_q_points));
+    std::vector<Tensor<1, dim>> fsi_penalty_values(n_q_points);
 
     std::vector<double> div_phi_u(dofs_per_cell);
     std::vector<Tensor<1, dim>> phi_u(dofs_per_cell);
@@ -131,6 +135,7 @@ namespace Fluid
         local_rhs = 0;
         local_rhs_acceleration_part = 0;
         local_rhs_stress_part = 0;
+        local_penalty_force = 0;
 
         SymmetricTensor<2, dim> sable_cell_stress;
         if (ind != 0)
@@ -160,6 +165,9 @@ namespace Fluid
 
             fe_values[velocities].get_function_values(fsi_acceleration,
                                                       fsi_acc_values);
+
+            fe_values[velocities].get_function_values(fsi_vel_difference,
+                                                      fsi_penalty_values);
 
             for (unsigned int i = 0; i < fsi_stress.size(); i++)
               {
@@ -211,6 +219,9 @@ namespace Fluid
                     local_rhs_stress_part(i) +=
                       (scalar_product(grad_phi_u[i], fsi_stress_tensor)) *
                       fe_values.JxW(q);
+                    local_penalty_force(i) +=
+                      (rho_bar * fsi_penalty_values[q] * phi_u[i]) *
+                      fe_values.JxW(q) / time.get_delta_t();
                   }
               }
           }
@@ -224,6 +235,7 @@ namespace Fluid
               local_rhs_acceleration_part(i);
             fsi_force_stress_part[local_dof_indices[i]] +=
               local_rhs_stress_part(i);
+            fsi_penalty_force[local_dof_indices[i]] += local_penalty_force(i);
           }
       }
   }
@@ -953,6 +965,16 @@ namespace Fluid
     solution_names = std::vector<std::string>(dim, "fsi_stress");
     data_out.add_data_vector(dof_handler_vector_output,
                              fsi_stress_output,
+                             solution_names,
+                             data_component_interpretation_force);
+
+    // output penalty force
+    Vector<double> fsi_penalty_force_output;
+    fsi_penalty_force_output.reinit(dofs_per_block[0]);
+    fsi_penalty_force_output = fsi_penalty_force.block(0);
+    solution_names = std::vector<std::string>(dim, "fsi_penalty_force");
+    data_out.add_data_vector(dof_handler_vector_output,
+                             fsi_penalty_force_output,
                              solution_names,
                              data_component_interpretation_force);
 

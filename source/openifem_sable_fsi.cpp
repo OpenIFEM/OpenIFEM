@@ -706,6 +706,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
   sable_solver.fsi_force = 0;
   sable_solver.fsi_force_acceleration_part = 0;
   sable_solver.fsi_force_stress_part = 0;
+  sable_solver.fsi_penalty_force = 0;
 
   const unsigned int dofs_per_cell = sable_solver.fe.dofs_per_cell;
   const unsigned int u_dofs = sable_solver.fe.base_element(0).dofs_per_cell;
@@ -719,6 +720,8 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
   Vector<double> local_rhs(dofs_per_cell);
   Vector<double> local_rhs_acceleration_part(dofs_per_cell);
   Vector<double> local_rhs_stress_part(dofs_per_cell);
+  Vector<double> local_penalty_force(dofs_per_cell);
+
   std::vector<double> div_phi_u(dofs_per_cell);
   std::vector<Tensor<1, dim>> phi_u(dofs_per_cell);
   std::vector<Tensor<2, dim>> grad_phi_u(dofs_per_cell);
@@ -756,6 +759,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
       local_rhs = 0;
       local_rhs_acceleration_part = 0;
       local_rhs_stress_part = 0;
+      local_penalty_force = 0;
 
       // Fluid velocity at support points
       fe_values[velocities].get_function_values(sable_solver.present_solution,
@@ -810,6 +814,8 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
           // add penalty force based on the velocity difference between
           // Lagrangian solid and SABLE, calculated from previous time step
           fsi_acc_tensor += fsi_vel_diff[q] / time.get_delta_t();
+          Tensor<1, dim> fsi_penalty_tensor;
+          fsi_penalty_tensor = fsi_vel_diff[q] / time.get_delta_t();
 
           SymmetricTensor<2, dim> f_cell_stress;
           int count = 0;
@@ -871,6 +877,8 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
               local_rhs_stress_part(i) +=
                 (scalar_product(grad_phi_u[i], fsi_stress_tensor)) *
                 fe_values.JxW(q);
+              local_penalty_force(i) +=
+                (rho_bar * fsi_penalty_tensor * phi_u[i]) * fe_values.JxW(q);
             }
         }
 
@@ -883,6 +891,8 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
             local_rhs_acceleration_part(i);
           sable_solver.fsi_force_stress_part[local_dof_indices[i]] +=
             local_rhs_stress_part(i);
+          sable_solver.fsi_penalty_force[local_dof_indices[i]] +=
+            local_penalty_force(i);
         }
     }
 

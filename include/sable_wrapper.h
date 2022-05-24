@@ -100,6 +100,9 @@ namespace Fluid
     // artificial velocity
     BlockVector<double> fsi_vel_difference;
 
+    // Vector to store penalty fsi force
+    BlockVector<double> fsi_penalty_force;
+
     // Vector which stores Sable processor ids
     std::vector<int> sable_ids;
 
