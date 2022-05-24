@@ -913,7 +913,24 @@ namespace Fluid
   {
     // initialize blockvector
     fsi_vel_difference.reinit(dofs_per_block);
-    fsi_vel_difference.add(1, fsi_velocity, -1, present_solution);
+    for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+         ++cell)
+      {
+        auto ptr = cell_property.get_data(cell);
+        if (ptr[0]->indicator != 0)
+          {
+            for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
+                 ++v)
+              {
+                for (unsigned int i = 0; i < dim; i++)
+                  {
+                    int index = cell->vertex_dof_index(v, i);
+                    fsi_vel_difference[index] =
+                      fsi_velocity[index] - present_solution[index];
+                  }
+              }
+          }
+      }
   }
 
   template <int dim>
@@ -982,23 +999,7 @@ namespace Fluid
     // bc)
     Vector<double> fsi_velocity_output;
     fsi_velocity_output.reinit(dofs_per_block[0]);
-    for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
-         ++cell)
-      {
-        auto ptr = cell_property.get_data(cell);
-        if (ptr[0]->indicator != 0)
-          {
-            for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
-                 ++v)
-              {
-                for (unsigned int i = 0; i < dim; i++)
-                  {
-                    int index = cell->vertex_dof_index(v, i);
-                    fsi_velocity_output[index] = fsi_vel_difference[index];
-                  }
-              }
-          }
-      }
+    fsi_velocity_output = fsi_vel_difference.block(0);
     solution_names = std::vector<std::string>(dim, "fsi_velocity_difference");
     data_out.add_data_vector(dof_handler_vector_output,
                              fsi_velocity_output,
