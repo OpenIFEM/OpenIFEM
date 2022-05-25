@@ -887,23 +887,69 @@ namespace Fluid
 
     nodal_mass.reinit(scalar_dof_handler.n_dofs());
 
-    auto cell = scalar_dof_handler.begin_active();
-    double h = abs(cell->vertex(0)(0) - cell->vertex(1)(0));
-    double area = h * h;
+    FEValues<dim> scalar_fe_values(scalar_fe,
+                                   volume_quad_formula,
+                                   update_values | update_gradients |
+                                     update_quadrature_points |
+                                     update_JxW_values);
+
+    const unsigned int dofs_per_cell = scalar_fe.dofs_per_cell;
+    const unsigned int n_q_points = volume_quad_formula.size();
+
+    FullMatrix<double> local_matrix(dofs_per_cell, dofs_per_cell);
+    std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
     for (auto cell = scalar_dof_handler.begin_active();
          cell != scalar_dof_handler.end();
          ++cell)
       {
+        scalar_fe_values.reinit(cell);
         auto p = cell_wise_stress.get_data(cell);
         auto eul_density = p[0]->eulerian_density;
-        std::vector<types::global_dof_index> scalar_dof_indices(
-          scalar_fe.dofs_per_cell);
-        cell->get_dof_indices(scalar_dof_indices);
-        for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
+        cell->get_dof_indices(local_dof_indices);
+
+        local_matrix = 0;
+        scalar_fe_values.reinit(cell);
+
+        // Loop over quadrature points
+        for (unsigned int q = 0; q < n_q_points; ++q)
           {
-            auto index = scalar_dof_indices[v];
-            nodal_mass[index] += (eul_density * area) / 4.0;
+            // Loop over the dofs again, to assemble
+            for (unsigned int i = 0; i < dofs_per_cell; ++i)
+              {
+                for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                  {
+                    local_matrix[i][j] += eul_density *
+                                          scalar_fe_values.shape_value(i, q) *
+                                          scalar_fe_values.shape_value(j, q) *
+                                          scalar_fe_values.JxW(q);
+                  }
+              }
+          }
+        for (unsigned int i = 0; i < dofs_per_cell; ++i)
+          {
+            double sum = 0;
+            for (unsigned int j = 0; j < dofs_per_cell; ++j)
+              {
+                sum = sum + local_matrix[i][j];
+              }
+            for (unsigned int j = 0; j < dofs_per_cell; ++j)
+              {
+                if (i == j)
+                  {
+                    local_matrix[i][j] = sum;
+                  }
+                else
+                  {
+                    local_matrix[i][j] = 0;
+                  }
+              }
+          }
+
+        for (unsigned int i = 0; i < dofs_per_cell; ++i)
+          {
+            auto index = local_dof_indices[i];
+            nodal_mass[index] += local_matrix[i][i];
           }
       }
   }
