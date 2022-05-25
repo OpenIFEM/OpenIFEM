@@ -1304,6 +1304,65 @@ void OpenIFEM_Sable_FSI<dim>::compute_added_mass()
 }
 
 template <int dim>
+void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
+{
+
+  std::ofstream file_diff;
+  if (first_step)
+    {
+      file_diff.open("velocity_diff.txt");
+      file_diff << "Time"
+                << "\t"
+                << "vel diff Eul"
+                << "\t"
+                << "vel diff Lag"
+                << "\n";
+    }
+  else
+    {
+      file_diff.open("velocity_diff.txt", std::ios_base::app);
+    }
+  // calculate velocity difference between the two domains at Lagrangian mesh
+  move_solid_mesh(true);
+  Vector<double> vel_diff_lag(solid_solver.dof_handler.n_dofs());
+  std::vector<bool> vertex_touched(solid_solver.triangulation.n_vertices(),
+                                   false);
+  // interpolate Eulerian velocity to Lagrangian mesh
+  for (auto s_cell = solid_solver.dof_handler.begin_active();
+       s_cell != solid_solver.dof_handler.end();
+       ++s_cell)
+    {
+
+      for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
+        {
+          if (!vertex_touched[s_cell->vertex_index(v)])
+            {
+              vertex_touched[s_cell->vertex_index(v)] = true;
+              Vector<double> value(dim + 1);
+              Utils::GridInterpolator<dim, BlockVector<double>> interpolator(
+                sable_solver.dof_handler, s_cell->vertex(v));
+              interpolator.point_value(sable_solver.present_solution, value);
+              for (int i = 0; i < dim; i++)
+                {
+                  auto index = s_cell->vertex_dof_index(v, i);
+                  vel_diff_lag(index) = value[i];
+                }
+            }
+        }
+    }
+  // calculate difference
+  vel_diff_lag.sadd(-1, solid_solver.current_velocity);
+  move_solid_mesh(false);
+  // calculate velocity difference between the two domains at Eulerian mesh
+  Vector<double> vel_diff_eul;
+  vel_diff_eul = sable_solver.fsi_vel_difference.block(0);
+  // output l2 norms of the two vectors
+  file_diff << time.current() << "\t" << vel_diff_eul.l2_norm() << "\t"
+            << vel_diff_lag.l2_norm() << "\n";
+  file_diff.close();
+}
+
+template <int dim>
 void OpenIFEM_Sable_FSI<dim>::run()
 {
   // global refinement in sable solver is not possible as it would change the
@@ -1362,6 +1421,7 @@ void OpenIFEM_Sable_FSI<dim>::run()
       sable_solver.send_indicator(sable_solver.sable_no_ele,
                                   sable_solver.sable_no_nodes);
       sable_solver.run_one_step();
+      output_vel_diff(first_step);
       first_step = false;
     }
 }

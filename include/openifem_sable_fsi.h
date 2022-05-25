@@ -102,6 +102,11 @@ private:
    */
   void compute_added_mass();
 
+  /*! output l2 norm of the velocity difference calculated at both Eulerian and
+   * Lagrangian mesh */
+
+  void output_vel_diff(bool first_step);
+
   /* value is set to true if the cell is partially inside solid
      value is false if the cell is completely inside or outside solid
   */
