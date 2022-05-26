@@ -90,17 +90,22 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
       // initialize it to zero
       p[0]->exact_indicator = 0;
       // if all nodes are inside the solid
-      if (p[0]->indicator == 1)
+      if (inside_count == GeometryInfo<dim>::vertices_per_cell)
         {
           p[0]->exact_indicator = 1;
           continue;
         }
       // get upper and lower corner for the Eulerian cell
       Point<dim> l_eu = f_cell->vertex(0);
-      Point<dim> u_eu = f_cell->vertex(3);
+      Point<dim> u_eu;
+      if (dim == 2)
+        u_eu = f_cell->vertex(3);
+      else
+        u_eu = f_cell->vertex(7);
       // get eulerian cell size
       double h = abs(f_cell->vertex(0)(0) - f_cell->vertex(1)(0));
-      double total_cell_area = h * h;
+      double total_cell_area = pow(h, dim);
+
       for (auto s_cell = solid_solver.dof_handler.begin_active();
            s_cell != solid_solver.dof_handler.end();
            ++s_cell)
@@ -119,19 +124,32 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
                     u_lag(i) = s_cell->vertex(v)(i);
                 }
             }
-          // check if rectangles overlap
-          if ((l_lag(0) >= u_eu(0)) || (l_eu(0) >= u_lag(0)))
-            continue;
-          if ((l_lag(1) >= u_eu(1)) || (l_eu(1) >= u_lag(1)))
+
+          bool intersection = true;
+          for (unsigned int i = 0; i < dim; i++)
+            {
+              if ((l_lag(i) >= u_eu(i)) || (l_eu(i) >= u_lag(i)))
+                {
+                  intersection = false;
+                  break;
+                }
+            }
+          if (!intersection)
             continue;
 
-          // get upper and lower corncer for the intersection area
-          Point<dim> l_int(std::max(l_eu(0), l_lag(0)),
-                           std::max(l_eu(1), l_lag(1)));
-          Point<dim> u_int(std::min(u_eu(0), u_lag(0)),
-                           std::min(u_eu(1), u_lag(1)));
-          double intersection_area =
-            (u_int(0) - l_int(0)) * (u_int(1) - l_int(1));
+          Point<dim> l_int;
+          Point<dim> u_int;
+          for (unsigned int i = 0; i < dim; i++)
+            {
+              l_int(i) = std::max(l_eu(i), l_lag(i));
+              u_int(i) = std::min(u_eu(i), u_lag(i));
+            }
+
+          double intersection_area = 1.0;
+          for (unsigned i = 0; i < dim; i++)
+            {
+              intersection_area *= abs(u_int(i) - l_int(i));
+            }
           // if intersection area equals Eulerian cell area assign indicator as
           // 1
           if (abs(intersection_area - total_cell_area) < 1e-10)
@@ -154,7 +172,7 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
 
           // create starting point for sampling at lower corner of intersection
           // box
-          Point<dim> start_point_l(l_int(0), l_int(1));
+          Point<dim> start_point_l(l_int);
           for (int i = 0; i < n_sample_points[0]; i++)
             {
               Point<dim> sample_point = start_point_l;
@@ -162,15 +180,28 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
               for (int j = 0; j < n_sample_points[1]; j++)
                 {
                   sample_point(1) = start_point_l(1) + j * dh;
-                  sample_count += 1;
-                  if (s_cell->point_inside(sample_point))
-                    sample_inside += 1;
+                  if (dim == 2)
+                    {
+                      sample_count += 1;
+                      if (s_cell->point_inside(sample_point))
+                        sample_inside += 1;
+                    }
+                  else
+                    {
+                      for (int k = 0; k < n_sample_points[2]; k++)
+                        {
+                          sample_point(2) = start_point_l(2) + k * dh;
+                          sample_count += 1;
+                          if (s_cell->point_inside(sample_point))
+                            sample_inside += 1;
+                        }
+                    }
                 }
             }
 
           // create starting point for sampling at upper corner of intersection
           // box
-          Point<dim> start_point_u(u_int(0), u_int(1));
+          Point<dim> start_point_u(u_int);
           for (int i = 0; i < n_sample_points[0]; i++)
             {
               Point<dim> sample_point = start_point_u;
@@ -178,9 +209,22 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
               for (int j = 0; j < n_sample_points[1]; j++)
                 {
                   sample_point(1) = start_point_u(1) - j * dh;
-                  sample_count += 1;
-                  if (s_cell->point_inside(sample_point))
-                    sample_inside += 1;
+                  if (dim == 2)
+                    {
+                      sample_count += 1;
+                      if (s_cell->point_inside(sample_point))
+                        sample_inside += 1;
+                    }
+                  else
+                    {
+                      for (int k = 0; k < n_sample_points[2]; k++)
+                        {
+                          sample_point(2) = start_point_l(2) - k * dh;
+                          sample_count += 1;
+                          if (s_cell->point_inside(sample_point))
+                            sample_inside += 1;
+                        }
+                    }
                 }
             }
 
@@ -267,10 +311,15 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
         }
       // get upper and lower corner for the Eulerian cell
       Point<dim> l_eu = f_cell->vertex(0);
-      Point<dim> u_eu = f_cell->vertex(3);
+      Point<dim> u_eu;
+      if (dim == 2)
+        u_eu = f_cell->vertex(3);
+      else
+        u_eu = f_cell->vertex(7);
       // get eulerian cell size
       double h = abs(f_cell->vertex(0)(0) - f_cell->vertex(1)(0));
-      double total_cell_area = h * h;
+      double total_cell_area = pow(h, dim);
+
       for (auto s_cell = solid_solver.dof_handler.begin_active();
            s_cell != solid_solver.dof_handler.end();
            ++s_cell)
@@ -289,19 +338,32 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
                     u_lag(i) = s_cell->vertex(v)(i);
                 }
             }
-          // check if rectangles overlap
-          if ((l_lag(0) >= u_eu(0)) || (l_eu(0) >= u_lag(0)))
-            continue;
-          if ((l_lag(1) >= u_eu(1)) || (l_eu(1) >= u_lag(1)))
+
+          bool intersection = true;
+          for (unsigned int i = 0; i < dim; i++)
+            {
+              if ((l_lag(i) >= u_eu(i)) || (l_eu(i) >= u_lag(i)))
+                {
+                  intersection = false;
+                  break;
+                }
+            }
+          if (!intersection)
             continue;
 
-          // get upper and lower corncer for the intersection area
-          Point<dim> l_int(std::max(l_eu(0), l_lag(0)),
-                           std::max(l_eu(1), l_lag(1)));
-          Point<dim> u_int(std::min(u_eu(0), u_lag(0)),
-                           std::min(u_eu(1), u_lag(1)));
-          double intersection_area =
-            (u_int(0) - l_int(0)) * (u_int(1) - l_int(1));
+          Point<dim> l_int;
+          Point<dim> u_int;
+          for (unsigned int i = 0; i < dim; i++)
+            {
+              l_int(i) = std::max(l_eu(i), l_lag(i));
+              u_int(i) = std::min(u_eu(i), u_lag(i));
+            }
+
+          double intersection_area = 1.0;
+          for (unsigned i = 0; i < dim; i++)
+            {
+              intersection_area *= abs(u_int(i) - l_int(i));
+            }
           // if intersection area equals Eulerian cell area assign indicator as
           // 1
           if (abs(intersection_area - total_cell_area) < 1e-10)
@@ -324,7 +386,7 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
 
           // create starting point for sampling at lower corner of intersection
           // box
-          Point<dim> start_point_l(l_int(0), l_int(1));
+          Point<dim> start_point_l(l_int);
           for (int i = 0; i < n_sample_points[0]; i++)
             {
               Point<dim> sample_point = start_point_l;
@@ -332,15 +394,28 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
               for (int j = 0; j < n_sample_points[1]; j++)
                 {
                   sample_point(1) = start_point_l(1) + j * dh;
-                  sample_count += 1;
-                  if (s_cell->point_inside(sample_point))
-                    sample_inside += 1;
+                  if (dim == 2)
+                    {
+                      sample_count += 1;
+                      if (s_cell->point_inside(sample_point))
+                        sample_inside += 1;
+                    }
+                  else
+                    {
+                      for (int k = 0; k < n_sample_points[2]; k++)
+                        {
+                          sample_point(2) = start_point_l(2) + k * dh;
+                          sample_count += 1;
+                          if (s_cell->point_inside(sample_point))
+                            sample_inside += 1;
+                        }
+                    }
                 }
             }
 
           // create starting point for sampling at upper corner of intersection
           // box
-          Point<dim> start_point_u(u_int(0), u_int(1));
+          Point<dim> start_point_u(u_int);
           for (int i = 0; i < n_sample_points[0]; i++)
             {
               Point<dim> sample_point = start_point_u;
@@ -348,9 +423,22 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
               for (int j = 0; j < n_sample_points[1]; j++)
                 {
                   sample_point(1) = start_point_u(1) - j * dh;
-                  sample_count += 1;
-                  if (s_cell->point_inside(sample_point))
-                    sample_inside += 1;
+                  if (dim == 2)
+                    {
+                      sample_count += 1;
+                      if (s_cell->point_inside(sample_point))
+                        sample_inside += 1;
+                    }
+                  else
+                    {
+                      for (int k = 0; k < n_sample_points[2]; k++)
+                        {
+                          sample_point(2) = start_point_l(2) - k * dh;
+                          sample_count += 1;
+                          if (s_cell->point_inside(sample_point))
+                            sample_inside += 1;
+                        }
+                    }
                 }
             }
 
