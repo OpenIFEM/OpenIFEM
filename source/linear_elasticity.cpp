@@ -150,8 +150,7 @@ namespace Solid
                 if (parameters.simulation_type == "FSI")
                   {
                     local_rhs[i] += phi[i] * fsi_vel_diff[q] *
-                                    fe_values.JxW(q) * rho /
-                                    time.get_delta_t();
+                                    fe_values.JxW(q) * rho / time.get_delta_t();
                   }
               }
           }

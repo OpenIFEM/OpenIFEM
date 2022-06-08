@@ -356,6 +356,15 @@ namespace Solid
                              solution_names,
                              data_component_interpretation);
 
+    // velocity difference between Eulerian and Lagrangian mesh calculated at
+    // Lagrangian mesh
+    solution_names =
+      std::vector<std::string>(spacedim, "fsi_velocity_difference");
+    data_out.add_data_vector(dof_handler,
+                             fsi_vel_diff_lag,
+                             solution_names,
+                             data_component_interpretation);
+
     // nodal mass with added mass effect
     Vector<double> nodal_mass_output;
     nodal_mass_output.reinit(dof_handler.n_dofs());

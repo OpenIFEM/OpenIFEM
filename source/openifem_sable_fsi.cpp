@@ -1181,8 +1181,8 @@ int OpenIFEM_Sable_FSI<dim>::compute_fluid_cell_index(
       int a = 0;
       int b = static_cast<int>(std::pow(N, dim) - 1);
 
-      if (point_not_on_edge == true)  // if the quad point is not on the edge of the Eulerian
-           // cell
+      if (point_not_on_edge == true) // if the quad point is not on the edge of
+                                     // the Eulerian cell
         {
           // compute the Eulerian cell index
 
@@ -1471,7 +1471,7 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
         }
     }
   // calculate difference
-  vel_diff_lag.sadd(-1, solid_solver.current_velocity);
+  vel_diff_lag.add(-1, solid_solver.current_velocity);
   move_solid_mesh(false);
   solid_solver.fsi_vel_diff_lag = vel_diff_lag;
   // calculate velocity difference between the two domains at Eulerian mesh
