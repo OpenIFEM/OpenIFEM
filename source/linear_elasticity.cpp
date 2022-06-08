@@ -151,6 +151,9 @@ namespace Solid
                   {
                     local_rhs[i] += phi[i] * fsi_vel_diff[q] *
                                     fe_values.JxW(q) * rho / time.get_delta_t();
+                    local_nodal_forces_traction[i] += phi[i] * fsi_vel_diff[q] *
+                                                      fe_values.JxW(q) * rho /
+                                                      time.get_delta_t();
                   }
               }
           }
