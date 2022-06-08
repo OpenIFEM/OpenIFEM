@@ -154,6 +154,7 @@ namespace Solid
     nodal_mass.reinit(dof_handler.n_dofs());
     nodal_forces_traction.reinit(dof_handler.n_dofs());
     added_mass_effect.reinit(dof_handler.n_dofs());
+    fsi_vel_diff_lag.reinit(dof_handler.n_dofs());
 
     // Add initial velocity
     if (time.current() == 0.0)

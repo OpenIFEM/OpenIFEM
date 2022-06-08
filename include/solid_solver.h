@@ -185,6 +185,12 @@ namespace Solid
     Vector<double> added_mass_effect;
 
     /**
+     * Vector to store difference between Lagrangian solid velocity and
+     * artificial velocity calculated at Lagrangian mesh
+     */
+    Vector<double> fsi_vel_diff_lag;
+
+    /**
      * function to calculate total KE of the solid
      */
     void calculate_KE();

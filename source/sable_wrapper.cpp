@@ -25,7 +25,7 @@ namespace Fluid
     FluidSolver<dim>::initialize_system();
     fsi_acceleration.reinit(dofs_per_block);
     fsi_velocity.reinit(dofs_per_block);
-    fsi_vel_difference.reinit(dofs_per_block);
+    fsi_vel_diff_eul.reinit(dofs_per_block);
     fsi_penalty_force.reinit(dofs_per_block);
     int stress_vec_size = dim + dim * (dim - 1) * 0.5;
     fsi_stress = std::vector<Vector<double>>(
@@ -166,7 +166,7 @@ namespace Fluid
             fe_values[velocities].get_function_values(fsi_acceleration,
                                                       fsi_acc_values);
 
-            fe_values[velocities].get_function_values(fsi_vel_difference,
+            fe_values[velocities].get_function_values(fsi_vel_diff_eul,
                                                       fsi_penalty_values);
 
             for (unsigned int i = 0; i < fsi_stress.size(); i++)
@@ -958,7 +958,7 @@ namespace Fluid
   void SableWrap<dim>::check_no_slip_bc()
   {
     // initialize blockvector
-    fsi_vel_difference.reinit(dofs_per_block);
+    fsi_vel_diff_eul.reinit(dofs_per_block);
     for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
          ++cell)
       {
@@ -971,7 +971,7 @@ namespace Fluid
                 for (unsigned int i = 0; i < dim; i++)
                   {
                     int index = cell->vertex_dof_index(v, i);
-                    fsi_vel_difference[index] =
+                    fsi_vel_diff_eul[index] =
                       fsi_velocity[index] - present_solution[index];
                   }
               }
@@ -1045,7 +1045,7 @@ namespace Fluid
     // bc)
     Vector<double> fsi_velocity_output;
     fsi_velocity_output.reinit(dofs_per_block[0]);
-    fsi_velocity_output = fsi_vel_difference.block(0);
+    fsi_velocity_output = fsi_vel_diff_eul.block(0);
     solution_names = std::vector<std::string>(dim, "fsi_velocity_difference");
     data_out.add_data_vector(dof_handler_vector_output,
                              fsi_velocity_output,

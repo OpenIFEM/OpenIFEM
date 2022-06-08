@@ -97,8 +97,8 @@ namespace Fluid
     void check_no_slip_bc();
 
     // Vector to store difference between Lagrangian solid velocity and
-    // artificial velocity
-    BlockVector<double> fsi_vel_difference;
+    // artificial velocity calculated at Eulerian mesh
+    BlockVector<double> fsi_vel_diff_eul;
 
     // Vector to store penalty fsi force
     BlockVector<double> fsi_penalty_force;

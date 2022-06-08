@@ -703,8 +703,8 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
                 (fluid_acc[index] - solid_acc[index]);
               // add penalty force based on the velocity difference between
               // Lagrangian solid and SABLE, calculated from previous time step
-              tmp_fsi_acceleration(line) +=
-                sable_solver.fsi_vel_difference(line) / time.get_delta_t();
+              /*tmp_fsi_acceleration(line) +=
+                sable_solver.fsi_vel_diff_eul(line) / time.get_delta_t();*/
               tmp_fsi_velocity(line) = vs[index];
             }
         }
@@ -859,7 +859,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
       fe_values[velocities].get_function_gradients(
         sable_solver.present_solution, grad_v);
       // Difference between Lagrangian solid and artifical material velocities
-      fe_values[velocities].get_function_values(sable_solver.fsi_vel_difference,
+      fe_values[velocities].get_function_values(sable_solver.fsi_vel_diff_eul,
                                                 fsi_vel_diff);
 
       auto q_points = fe_values.get_quadrature_points();
@@ -901,9 +901,9 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
           fsi_acc_tensor -= solid_acc_tensor;
           // add penalty force based on the velocity difference between
           // Lagrangian solid and SABLE, calculated from previous time step
-          fsi_acc_tensor += fsi_vel_diff[q] / time.get_delta_t();
           Tensor<1, dim> fsi_penalty_tensor;
-          fsi_penalty_tensor = fsi_vel_diff[q] / time.get_delta_t();
+          /*fsi_acc_tensor += fsi_vel_diff[q] / time.get_delta_t();
+          fsi_penalty_tensor = fsi_vel_diff[q] / time.get_delta_t();*/
 
           SymmetricTensor<2, dim> f_cell_stress;
           int count = 0;
@@ -1473,9 +1473,10 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
   // calculate difference
   vel_diff_lag.sadd(-1, solid_solver.current_velocity);
   move_solid_mesh(false);
+  solid_solver.fsi_vel_diff_lag = vel_diff_lag;
   // calculate velocity difference between the two domains at Eulerian mesh
   Vector<double> vel_diff_eul;
-  vel_diff_eul = sable_solver.fsi_vel_difference.block(0);
+  vel_diff_eul = sable_solver.fsi_vel_diff_eul.block(0);
   // output l2 norms of the two vectors
   file_diff << time.current() << "\t" << vel_diff_eul.l2_norm() << "\t"
             << vel_diff_lag.l2_norm() << "\n";
