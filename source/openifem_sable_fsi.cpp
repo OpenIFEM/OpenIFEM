@@ -1116,39 +1116,84 @@ int OpenIFEM_Sable_FSI<dim>::compute_fluid_cell_index(
   // Note: Only works for unifrom, strucutred mesh
   auto f_cell = sable_solver.triangulation.begin_active();
 
-  // x_min and y_min is the lower boundary of the Eulerian cell box
+  // compute the lower boundary of the Eulerian cell box
 
   double h = abs(f_cell->vertex(0)(0) - f_cell->vertex(1)(0));
-  double x_min = f_cell->center()[0] - h / 2;
-  double y_min = f_cell->center()[1] - h / 2;
+
+  Point<dim> lower_boundary;
+
+  for (unsigned int i = 0; i < dim; i++)
+    lower_boundary(i) = f_cell->center()[i] - h / 2;
 
   // Currently assuming the target Eulerian cell has the same level as the first
   // Eulerian cell, won't work for AMR
 
   f_cell = sable_solver.triangulation.last_active();
 
-  unsigned int N = std::sqrt((f_cell->index() + 1));
+  unsigned int N = 0;
 
-  // x_max and y_max is the upper boundary of the Eulerian cell box
-  double x_max = f_cell->center()[0] + h / 2;
-  double y_max = f_cell->center()[1] + h / 2;
-
-  // Find desired 2-D Eulerian cell. Won't work with AMR
-  if (q_point[0] >= x_min && q_point[0] <= x_max && q_point[1] >= y_min &&
-      q_point[1] <= y_max)
+  if (parameters.dimension == 2)
     {
-      // if the quad point is not on the edge of the Eulerian
-      // cell
-      if (std::floor(q_point[0] / h) != (q_point[0] / h) &&
-          std::floor(q_point[1] / h) != (q_point[1] / h))
+      N = std::sqrt((f_cell->index() + 1));
+    }
+  else
+    {
+      N = std::cbrt((f_cell->index() + 1));
+    }
+
+  // compute the upper boundaries of the Eulerian cell box
+
+  Point<dim> upper_boundary;
+
+  for (unsigned int i = 0; i < dim; i++)
+    upper_boundary(i) = f_cell->center()[i] + h / 2;
+
+  bool point_inside = true;
+
+  for (unsigned int i = 0; i < dim; i++)
+
+    {
+
+      if (q_point[i] < lower_boundary(i) && q_point[i] > upper_boundary(i))
+        {
+          point_inside = false;
+          break;
+        }
+    }
+
+  if (point_inside == true)
+
+    {
+      bool point_not_on_edge = true;
+
+      for (unsigned int i = 0; i < dim; i++)
 
         {
-          // compute the Eulerian cell index
-          int n = static_cast<int>(std::floor((q_point[0] - x_min) / h)) +
-                  N * static_cast<int>(std::floor((q_point[1] - y_min) / h));
 
-          int a = 0;
-          int b = static_cast<int>(N * N - 1);
+          if (std::floor(q_point[i] / h) == (q_point[i] / h))
+            {
+              point_not_on_edge = false;
+              break;
+            }
+        }
+
+      // compute the theorical min and max cell ID for assertion
+      int a = 0;
+      int b = static_cast<int>(std::pow(N, dim) - 1);
+
+      if (point_not_on_edge == true)  // if the quad point is not on the edge of the Eulerian
+           // cell
+        {
+          // compute the Eulerian cell index
+
+          int n = 0;
+
+          for (unsigned int i = 0; i < dim; i++)
+
+            n += static_cast<int>(std::pow(N, i)) *
+                 static_cast<int>(
+                   std::floor((q_point[i] - lower_boundary(i)) / h));
+
           AssertThrow(n >= a && n <= b,
                       ExcMessage("Wrong Eulerian cell index!"));
 
@@ -1161,38 +1206,24 @@ int OpenIFEM_Sable_FSI<dim>::compute_fluid_cell_index(
           // create a small distance in the outnormal direction
           const double tmp = h * 1e-6;
 
+          int n = 0;
+
           // extend the current quad point positions along the
           // outward normal direction
           for (unsigned int i = 0; i < dim; i++)
-            q_point(i) = q_point(i) + tmp * normal[i];
+            {
+              q_point(i) = q_point(i) + tmp * normal[i];
 
-          int n1 = 0;
-          int n2 = 0;
+              n += (q_point(i) < lower_boundary(i))
+                     ? static_cast<int>(
+                         std::ceil((q_point[i] - lower_boundary(i)) / h))
+                     :
 
-          // if extension[i] is smaller than the Eulerian cell
-          // lower limit, use std::ceil to round up the index
-          if (q_point[0] < x_min)
-            {
-              n1 = static_cast<int>(std::ceil((q_point[0] - x_min) / h));
+                     static_cast<int>(
+                       std::floor((q_point[i] - lower_boundary(i)) / h));
             }
-          else
-            {
-              n1 = static_cast<int>(std::floor((q_point[0] - x_min) / h));
-            }
-
-          if (q_point[1] < y_min)
-            {
-              n2 = N * static_cast<int>(std::ceil((q_point[1] - y_min) / h));
-            }
-          else
-            {
-              n2 = N * static_cast<int>(std::floor((q_point[1] - y_min) / h));
-            }
-          int n = n1 + n2;
 
           // warn user if the cell index is outside the cell index range
-          int a = 0;
-          int b = static_cast<int>(N * N - 1);
           AssertThrow(n >= a && n <= b,
                       ExcMessage("Wrong Eulerian cell index!"));
 
@@ -1269,6 +1300,7 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
 
                   // compute the Eulerian cell index
                   int n = compute_fluid_cell_index(q_point_extension, normal);
+
                   // if the solid quad point is within the fluid box
                   if (n != -1)
                     {
