@@ -1462,16 +1462,26 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
               Utils::GridInterpolator<dim, BlockVector<double>> interpolator(
                 sable_solver.dof_handler, s_cell->vertex(v));
               interpolator.point_value(sable_solver.present_solution, value);
-              for (int i = 0; i < dim; i++)
+              auto f_cell = interpolator.get_cell();
+              if (f_cell->index() != 1)
                 {
-                  auto index = s_cell->vertex_dof_index(v, i);
-                  vel_diff_lag(index) = value[i];
+                  // get material vf of background Eulerian cell
+                  auto ptr = sable_solver.cell_wise_stress.get_data(f_cell);
+                  double vf = ptr[0]->material_vf;
+                  for (unsigned int i = 0; i < dim; i++)
+                    {
+                      auto index = s_cell->vertex_dof_index(v, i);
+                      vel_diff_lag(index) = value[i];
+                      // subtract Lagrangian solid velocity
+                      vel_diff_lag(index) -=
+                        solid_solver.current_velocity(index);
+                      // scale velocity difference by Eulerian material vf
+                      vel_diff_lag(index) *= vf;
+                    }
                 }
             }
         }
     }
-  // calculate difference
-  vel_diff_lag.add(-1, solid_solver.current_velocity);
   move_solid_mesh(false);
   solid_solver.fsi_vel_diff_lag = vel_diff_lag;
   // calculate velocity difference between the two domains at Eulerian mesh
