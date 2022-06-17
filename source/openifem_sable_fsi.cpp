@@ -1472,11 +1472,17 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
                     {
                       auto index = s_cell->vertex_dof_index(v, i);
                       vel_diff_lag(index) = value[i];
-                      // subtract Lagrangian solid velocity
-                      vel_diff_lag(index) -=
-                        solid_solver.current_velocity(index);
-                      // scale velocity difference by Eulerian material vf
-                      vel_diff_lag(index) *= vf;
+
+                      // if Lagrangian penalty is explicit, subtract known
+                      // Lagrangian velocity
+                      if (solid_solver.is_lag_penalty_explicit)
+                        {
+                          // subtract Lagrangian solid velocity
+                          vel_diff_lag(index) -=
+                            solid_solver.current_velocity(index);
+                          // scale velocity difference by Eulerian material vf
+                          vel_diff_lag(index) *= vf;
+                        }
                     }
                 }
             }

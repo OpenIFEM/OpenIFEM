@@ -152,6 +152,9 @@ namespace Solid
                            //!< added mass effect (OpenIFEM-SABLE coupling)$.
     SparseMatrix<double>
       stiffness_matrix; //!< The stiffness is used in the rhs.
+    SparseMatrix<double>
+      damping_matrix; //!< The damping matrix used for implict Lagrangian
+                      //!< penalty calculation ((OpenIFEM-SABLE coupling)$.
     Vector<double> system_rhs;
 
     /**
@@ -194,6 +197,12 @@ namespace Solid
      * function to calculate total KE of the solid
      */
     void calculate_KE();
+
+    /**
+     * flag to choose explicit or implict Lagrangian penalty (OpenIFEM-SABLE
+     * coupling)
+     */
+    bool is_lag_penalty_explicit;
 
     /** a pair container to store the user specified points and directions
      */

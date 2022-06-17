@@ -58,6 +58,9 @@ namespace Solid
 
     FullMatrix<double> local_matrix(dofs_per_cell, dofs_per_cell);
     FullMatrix<double> local_stiffness(dofs_per_cell, dofs_per_cell);
+    // damping matrix used for implict Lagrangian penalty (OpenIFEM-SABLE
+    // coupling)
+    FullMatrix<double> local_damping(dofs_per_cell, dofs_per_cell);
     Vector<double> local_rhs(dofs_per_cell);
     Vector<double> local_nodal_forces_traction(dofs_per_cell);
 
@@ -137,6 +140,7 @@ namespace Solid
                           }
                       }
                   }
+
                 // body force
                 Tensor<1, dim> gravity;
                 for (unsigned int j = 0; j < dim; ++j)
@@ -154,6 +158,16 @@ namespace Solid
                     local_nodal_forces_traction[i] += phi[i] * fsi_vel_diff[q] *
                                                       fe_values.JxW(q) * rho /
                                                       time.get_delta_t();
+                    // calculate damping matrix for implicit Lagrangian penalty
+                    if (!is_lag_penalty_explicit)
+                      {
+                        for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                          {
+                            local_damping[i][j] += rho * phi[i] * phi[j] *
+                                                   fe_values.JxW(q) /
+                                                   time.get_delta_t();
+                          }
+                      }
                   }
               }
           }
@@ -305,6 +319,11 @@ namespace Solid
             constraints.distribute_local_to_global(local_nodal_forces_traction,
                                                    local_dof_indices,
                                                    nodal_forces_traction);
+            if (!is_lag_penalty_explicit)
+              {
+                constraints.distribute_local_to_global(
+                  local_damping, local_dof_indices, damping_matrix);
+              }
           }
       }
   }
@@ -355,6 +374,13 @@ namespace Solid
                 system_matrix_updated.set(
                   i, i, system_matrix.el(i, i) + added_mass_effect[i]);
               }
+
+            if (!is_lag_penalty_explicit)
+              {
+                Vector<double> tmp(dof_handler.n_dofs());
+                damping_matrix.vmult(tmp, current_velocity);
+                system_rhs.add(-1, tmp);
+              }
           }
 
         this->solve(system_matrix_updated, previous_acceleration, system_rhs);
@@ -363,6 +389,7 @@ namespace Solid
         system_matrix.add(time.get_delta_t() * time.get_delta_t() * beta *
                             (1 + alpha),
                           stiffness_matrix);
+
         system_matrix_updated.copy_from(system_matrix);
         // copy previous_acceleration to current_acceleration for outputting the
         // initial acceleration
@@ -401,6 +428,19 @@ namespace Solid
           {
             system_matrix_updated.set(
               i, i, system_matrix.el(i, i) + added_mass_effect[i]);
+          }
+
+        if (!is_lag_penalty_explicit)
+          {
+            system_matrix_updated.add(gamma * dt, damping_matrix);
+
+            Vector<double> tmp4(dof_handler.n_dofs());
+            Vector<double> tmp5(dof_handler.n_dofs());
+            tmp4 *= dt * (1 - gamma);
+            damping_matrix.vmult(tmp4, previous_acceleration);
+            damping_matrix.vmult(tmp5, previous_velocity);
+            tmp1 -= tmp4;
+            tmp1 -= tmp5;
           }
       }
     auto state = this->solve(system_matrix_updated, current_acceleration, tmp1);

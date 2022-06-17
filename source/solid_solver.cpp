@@ -16,6 +16,7 @@ namespace Solid
       scalar_fe(parameters.solid_degree),
       volume_quad_formula(parameters.solid_degree + 1),
       face_quad_formula(parameters.solid_degree + 1),
+      is_lag_penalty_explicit(true),
       time(parameters.end_time,
            parameters.time_step,
            parameters.output_interval,
@@ -144,6 +145,7 @@ namespace Solid
     mass_matrix.reinit(pattern);
     mass_matrix_updated.reinit(pattern);
     stiffness_matrix.reinit(pattern);
+    damping_matrix.reinit(pattern);
     system_rhs.reinit(dof_handler.n_dofs());
     current_acceleration.reinit(dof_handler.n_dofs());
     current_velocity.reinit(dof_handler.n_dofs());
