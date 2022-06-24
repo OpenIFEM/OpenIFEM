@@ -194,6 +194,12 @@ namespace Solid
     Vector<double> fsi_vel_diff_lag;
 
     /**
+     * Vector to store background Eulerian vf at Lagrangian nodes
+     * this value is used as scaling for Lagrangian penalty force
+     */
+    Vector<double> penalty_scale;
+
+    /**
      * function to calculate total KE of the solid
      */
     void calculate_KE();

@@ -76,6 +76,7 @@ namespace Solid
     using SolidSolver<dim>::system_matrix_updated;
     using SolidSolver<dim>::added_mass_effect;
     using SolidSolver<dim>::fsi_vel_diff_lag;
+    using SolidSolver<dim>::penalty_scale;
     using SolidSolver<dim>::damping_matrix;
     using SolidSolver<dim>::is_lag_penalty_explicit;
 

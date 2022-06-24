@@ -74,9 +74,10 @@ namespace Solid
     std::vector<Tensor<1, dim>> phi(dofs_per_cell);
     // A "viewer" to describe the nodal dofs as a vector.
     FEValuesExtractors::Vector displacements(0);
-    // fsi_vel_diff_lag at quadrature points (used to calculate penalty force
-    // for OpenIFEM-SABLE coupling)
+    // fsi_vel_diff_lag  and penalty_scale at quadrature points (used to
+    // calculate penalty force for OpenIFEM-SABLE coupling)
     std::vector<Tensor<1, dim>> fsi_vel_diff(n_q_points);
+    std::vector<Tensor<1, dim>> penalty_scale_qpoint(n_q_points);
 
     // Loop over cells
     for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
@@ -99,6 +100,8 @@ namespace Solid
 
         fe_values[displacements].get_function_values(fsi_vel_diff_lag,
                                                      fsi_vel_diff);
+        fe_values[displacements].get_function_values(penalty_scale,
+                                                     penalty_scale_qpoint);
 
         // Loop over quadrature points
         for (unsigned int q = 0; q < n_q_points; ++q)
@@ -153,19 +156,23 @@ namespace Solid
                 // difference (only for OpenIFEM-SABLE coupling)
                 if (parameters.simulation_type == "FSI")
                   {
+                    auto component = fe.system_to_component_index(i).first;
                     local_rhs[i] += phi[i] * fsi_vel_diff[q] *
+                                    penalty_scale_qpoint[q][component] *
                                     fe_values.JxW(q) * rho / time.get_delta_t();
-                    local_nodal_forces_traction[i] += phi[i] * fsi_vel_diff[q] *
-                                                      fe_values.JxW(q) * rho /
-                                                      time.get_delta_t();
+                    local_nodal_forces_traction[i] +=
+                      phi[i] * fsi_vel_diff[q] *
+                      penalty_scale_qpoint[q][component] * fe_values.JxW(q) *
+                      rho / time.get_delta_t();
                     // calculate damping matrix for implicit Lagrangian penalty
                     if (!is_lag_penalty_explicit)
                       {
                         for (unsigned int j = 0; j < dofs_per_cell; ++j)
                           {
-                            local_damping[i][j] += rho * phi[i] * phi[j] *
-                                                   fe_values.JxW(q) /
-                                                   time.get_delta_t();
+                            local_damping[i][j] +=
+                              rho * phi[i] * phi[j] *
+                              penalty_scale_qpoint[q][component] *
+                              fe_values.JxW(q) / time.get_delta_t();
                           }
                       }
                   }
