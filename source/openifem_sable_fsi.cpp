@@ -1433,9 +1433,9 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
       file_diff.open("velocity_diff.txt");
       file_diff << "Time"
                 << "\t"
-                << "vel diff Eul"
+                << "vel_diff_Eul"
                 << "\t"
-                << "vel diff Lag"
+                << "vel_diff_Lag"
                 << "\n";
     }
   else
@@ -1447,6 +1447,9 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
   Vector<double> vel_diff_lag(solid_solver.dof_handler.n_dofs());
   std::vector<bool> vertex_touched(solid_solver.triangulation.n_vertices(),
                                    false);
+
+  double maxEulVel = -1.0e+35;
+  double maxLagVel = -1.0e+35;
   // interpolate Eulerian velocity to Lagrangian mesh
   for (auto s_cell = solid_solver.dof_handler.begin_active();
        s_cell != solid_solver.dof_handler.end();
@@ -1463,6 +1466,8 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
                 sable_solver.dof_handler, s_cell->vertex(v));
               interpolator.point_value(sable_solver.present_solution, value);
               auto f_cell = interpolator.get_cell();
+              // save Lagrangian velocity at the given vertex
+              Vector<double> lagVel(dim);
               if (f_cell->index() != 1)
                 {
                   // get material vf of background Eulerian cell
@@ -1477,26 +1482,43 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
                         parameters.penalty_scale_factor * vf;
 
                       // if Lagrangian penalty is explicit, subtract known
-                      // Lagrangian velocity
+                      // Lagrangian velocity.
+                      // For implicit penalty only use Eulerain velocity since
+                      // Lagrangian velocity is unknown.
                       if (solid_solver.is_lag_penalty_explicit)
                         {
                           // subtract Lagrangian solid velocity
                           vel_diff_lag(index) -=
                             solid_solver.current_velocity(index);
                         }
+                      lagVel[i] = solid_solver.current_velocity(index);
                     }
+                  double vnorm = value.l2_norm();
+                  if (vnorm > maxEulVel)
+                    maxEulVel = vnorm;
+                  vnorm = lagVel.l2_norm();
+                  if (vnorm > maxLagVel)
+                    maxLagVel = vnorm;
                 }
             }
         }
     }
   move_solid_mesh(false);
   solid_solver.fsi_vel_diff_lag = vel_diff_lag;
+  // subtract Lagrangian velocity from vel_diff_lag to output velocity differnce
+  // norm
+  if (!solid_solver.is_lag_penalty_explicit)
+    {
+      vel_diff_lag -= solid_solver.current_velocity;
+    }
   // calculate velocity difference between the two domains at Eulerian mesh
   Vector<double> vel_diff_eul;
   vel_diff_eul = sable_solver.fsi_vel_diff_eul.block(0);
   // output l2 norms of the two vectors
-  file_diff << time.current() << "\t" << vel_diff_eul.l2_norm() << "\t"
-            << vel_diff_lag.l2_norm() << "\n";
+  maxEulVel = 1.0 / std::max(maxEulVel, 1.0);
+  maxLagVel = 1.0 / std::max(maxLagVel, 1.0);
+  file_diff << time.current() << "\t" << vel_diff_eul.l2_norm() * maxEulVel
+            << "\t" << vel_diff_lag.l2_norm() * maxLagVel << "\n";
   file_diff.close();
 }
 
