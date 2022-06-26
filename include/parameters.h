@@ -28,6 +28,7 @@ namespace Parameters
     std::string fsi_force_calculation_option;
     std::string traction_calculation_option;
     std::string fsi_force_criteria;
+    std::string use_added_mass;
     double solid_traction_extension_scale;
     static void declareParameters(ParameterHandler &);
     void parseParameters(ParameterHandler &);

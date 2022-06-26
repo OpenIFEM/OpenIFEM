@@ -1538,7 +1538,10 @@ void OpenIFEM_Sable_FSI<dim>::run()
       time.increment();
       setup_cell_hints();
       find_solid_bc();
-      compute_added_mass();
+      if (parameters.use_added_mass == "yes")
+        {
+          compute_added_mass();
+        }
       solid_solver.run_one_step(first_step);
       // indicator field
       update_solid_box();

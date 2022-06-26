@@ -69,6 +69,11 @@ namespace Parameters
         "Nodes",
         Patterns::Selection("Nodes|QuadraturePoints"),
         "Set cirteria for calculating indicator field and FSI force");
+
+      prm.declare_entry("use added mass",
+                        "yes",
+                        Patterns::Selection("yes|no"),
+                        "Set use added mass");
     }
     prm.leave_subsection();
   }
@@ -111,6 +116,7 @@ namespace Parameters
                     (solid_traction_extension_scale >= 0),
                   ExcMessage("Choose extension scale value less than 1!"));
       fsi_force_criteria = prm.get("FSI force criteria");
+      use_added_mass = prm.get("use added mass");
     }
     prm.leave_subsection();
   }
