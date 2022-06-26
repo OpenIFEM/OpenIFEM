@@ -1473,7 +1473,8 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
                       auto index = s_cell->vertex_dof_index(v, i);
                       vel_diff_lag(index) = value[i];
                       // save background vf as a penalty force scaling
-                      solid_solver.penalty_scale(index) = vf;
+                      solid_solver.penalty_scale(index) =
+                        parameters.penalty_scale_factor * vf;
 
                       // if Lagrangian penalty is explicit, subtract known
                       // Lagrangian velocity

@@ -74,6 +74,11 @@ namespace Parameters
                         "yes",
                         Patterns::Selection("yes|no"),
                         "Set use added mass");
+
+      prm.declare_entry("penalty scale factor",
+                        "0.5",
+                        Patterns::Double(0.0),
+                        "Set penalty scale factor");
     }
     prm.leave_subsection();
   }
@@ -117,6 +122,10 @@ namespace Parameters
                   ExcMessage("Choose extension scale value less than 1!"));
       fsi_force_criteria = prm.get("FSI force criteria");
       use_added_mass = prm.get("use added mass");
+      penalty_scale_factor = prm.get_double("penalty scale factor");
+      AssertThrow((penalty_scale_factor <= 1.0) &&
+                    (penalty_scale_factor >= 0.0),
+                  ExcMessage("Penalty scale must be between 0.0 and 1.0!"));
     }
     prm.leave_subsection();
   }
