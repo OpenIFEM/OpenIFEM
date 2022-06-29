@@ -1193,9 +1193,9 @@ int OpenIFEM_Sable_FSI<dim>::compute_fluid_cell_index(
             n += static_cast<int>(std::pow(N, i)) *
                  static_cast<int>(
                    std::floor((q_point[i] - lower_boundary(i)) / h));
-
-          AssertThrow(n >= a && n <= b,
-                      ExcMessage("Wrong Eulerian cell index!"));
+          
+          if (n < a || n > b) 
+          return -1;
 
           return n;
         }
@@ -1223,9 +1223,8 @@ int OpenIFEM_Sable_FSI<dim>::compute_fluid_cell_index(
                        std::floor((q_point[i] - lower_boundary(i)) / h));
             }
 
-          // warn user if the cell index is outside the cell index range
-          AssertThrow(n >= a && n <= b,
-                      ExcMessage("Wrong Eulerian cell index!"));
+          if (n < a || n > b) 
+          return -1;
 
           return n;
         }
