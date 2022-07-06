@@ -183,6 +183,12 @@ namespace Solid
     Vector<double> nodal_forces_traction;
 
     /**
+     * output Nodal penalty force for debug purpose on the OpenIFEM-sable
+     * coupling
+     */
+    Vector<double> nodal_forces_penalty;
+
+    /**
      * Store added mass from the Eulerian material
      */
     Vector<double> added_mass_effect;

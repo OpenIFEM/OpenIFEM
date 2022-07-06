@@ -155,6 +155,7 @@ namespace Solid
     previous_displacement.reinit(dof_handler.n_dofs());
     nodal_mass.reinit(dof_handler.n_dofs());
     nodal_forces_traction.reinit(dof_handler.n_dofs());
+    nodal_forces_penalty.reinit(dof_handler.n_dofs());
     added_mass_effect.reinit(dof_handler.n_dofs());
     fsi_vel_diff_lag.reinit(dof_handler.n_dofs());
     penalty_scale.reinit(dof_handler.n_dofs());
@@ -356,6 +357,13 @@ namespace Solid
       std::vector<std::string>(spacedim, "nodal_forces_traction");
     data_out.add_data_vector(dof_handler,
                              nodal_forces_traction,
+                             solution_names,
+                             data_component_interpretation);
+
+    // nodal forces due to penalty
+    solution_names = std::vector<std::string>(spacedim, "nodal_forces_penalty");
+    data_out.add_data_vector(dof_handler,
+                             nodal_forces_penalty,
                              solution_names,
                              data_component_interpretation);
 

@@ -32,6 +32,7 @@ namespace Solid
       }
     system_rhs = 0;
     nodal_forces_traction = 0;
+    nodal_forces_penalty = 0;
 
     FEValues<dim> fe_values(fe,
                             volume_quad_formula,
@@ -63,6 +64,7 @@ namespace Solid
     FullMatrix<double> local_damping(dofs_per_cell, dofs_per_cell);
     Vector<double> local_rhs(dofs_per_cell);
     Vector<double> local_nodal_forces_traction(dofs_per_cell);
+    Vector<double> local_nodal_forces_penalty(dofs_per_cell);
 
     std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
@@ -95,6 +97,7 @@ namespace Solid
         local_stiffness = 0;
         local_rhs = 0;
         local_nodal_forces_traction = 0;
+        local_nodal_forces_penalty = 0;
 
         fe_values.reinit(cell);
 
@@ -160,10 +163,11 @@ namespace Solid
                     local_rhs[i] += phi[i] * fsi_vel_diff[q] *
                                     penalty_scale_qpoint[q][component] *
                                     fe_values.JxW(q) * rho / time.get_delta_t();
-                    local_nodal_forces_traction[i] +=
+                    local_nodal_forces_penalty[i] +=
                       phi[i] * fsi_vel_diff[q] *
                       penalty_scale_qpoint[q][component] * fe_values.JxW(q) *
                       rho / time.get_delta_t();
+
                     // calculate damping matrix for implicit Lagrangian penalty
                     if (!is_lag_penalty_explicit)
                       {
@@ -318,6 +322,9 @@ namespace Solid
             constraints.distribute_local_to_global(local_nodal_forces_traction,
                                                    local_dof_indices,
                                                    nodal_forces_traction);
+            constraints.distribute_local_to_global(local_nodal_forces_penalty,
+                                                   local_dof_indices,
+                                                   nodal_forces_penalty);
           }
         else
           {
@@ -326,6 +333,9 @@ namespace Solid
             constraints.distribute_local_to_global(local_nodal_forces_traction,
                                                    local_dof_indices,
                                                    nodal_forces_traction);
+            constraints.distribute_local_to_global(local_nodal_forces_penalty,
+                                                   local_dof_indices,
+                                                   nodal_forces_penalty);
             if (!is_lag_penalty_explicit)
               {
                 constraints.distribute_local_to_global(
