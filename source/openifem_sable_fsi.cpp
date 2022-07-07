@@ -1464,6 +1464,10 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
               Utils::GridInterpolator<dim, BlockVector<double>> interpolator(
                 sable_solver.dof_handler, s_cell->vertex(v));
               interpolator.point_value(sable_solver.present_solution, value);
+              Vector<double> vel_diff(dim + 1);
+              // interpolate velocity differnece at Lagrangian mesh to calculate
+              // penalty force
+              interpolator.point_value(sable_solver.fsi_vel_diff_eul, vel_diff);
               auto f_cell = interpolator.get_cell();
               // save Lagrangian velocity at the given vertex
               Vector<double> lagVel(dim);
@@ -1475,7 +1479,8 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
                   for (unsigned int i = 0; i < dim; i++)
                     {
                       auto index = s_cell->vertex_dof_index(v, i);
-                      vel_diff_lag(index) = value[i];
+                      // vel_diff_lag(index) = value[i];
+                      vel_diff_lag(index) = vel_diff[i];
                       // save background vf as a penalty force scaling
                       solid_solver.penalty_scale(index) =
                         parameters.penalty_scale_factor * vf;
@@ -1484,12 +1489,13 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
                       // Lagrangian velocity.
                       // For implicit penalty only use Eulerain velocity since
                       // Lagrangian velocity is unknown.
-                      if (solid_solver.is_lag_penalty_explicit)
+                      // ***** temporary commented out *************//
+                      /*if (solid_solver.is_lag_penalty_explicit)
                         {
                           // subtract Lagrangian solid velocity
                           vel_diff_lag(index) -=
                             solid_solver.current_velocity(index);
-                        }
+                        }*/
                       lagVel[i] = solid_solver.current_velocity(index);
                     }
                   double vnorm = value.l2_norm();
@@ -1506,10 +1512,11 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
   solid_solver.fsi_vel_diff_lag = vel_diff_lag;
   // subtract Lagrangian velocity from vel_diff_lag to output velocity differnce
   // norm
-  if (!solid_solver.is_lag_penalty_explicit)
+  // ***** temporary disable Implicit penalty ******* //
+  /*if (!solid_solver.is_lag_penalty_explicit)
     {
       vel_diff_lag -= solid_solver.current_velocity;
-    }
+    }*/
   // calculate velocity difference between the two domains at Eulerian mesh
   Vector<double> vel_diff_eul;
   vel_diff_eul = sable_solver.fsi_vel_diff_eul.block(0);
