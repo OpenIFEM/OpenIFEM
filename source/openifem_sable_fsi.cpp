@@ -1472,6 +1472,8 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
                   // get material vf of background Eulerian cell
                   auto ptr = sable_solver.cell_wise_stress.get_data(f_cell);
                   double vf = ptr[0]->material_vf;
+                  auto ptr_i = sable_solver.cell_property.get_data(f_cell);
+                  double indicator = ptr_i[0]->indicator;
                   for (unsigned int i = 0; i < dim; i++)
                     {
                       auto index = s_cell->vertex_dof_index(v, i);
@@ -1480,8 +1482,8 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
                       vel_diff_lag(index) -=
                         solid_solver.current_velocity(index);
                       // scale velocity difference by background Eulerian volume
-                      // fraction
-                      vel_diff_lag(index) *= vf;
+                      // fraction and indicator
+                      vel_diff_lag(index) *= vf * indicator;
 
                       lagVel[i] = solid_solver.current_velocity(index);
                     }
