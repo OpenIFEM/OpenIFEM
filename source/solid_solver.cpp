@@ -158,7 +158,6 @@ namespace Solid
     nodal_forces_penalty.reinit(dof_handler.n_dofs());
     added_mass_effect.reinit(dof_handler.n_dofs());
     fsi_vel_diff_lag.reinit(dof_handler.n_dofs());
-    penalty_scale.reinit(dof_handler.n_dofs());
 
     // Add initial velocity
     if (time.current() == 0.0)
