@@ -1435,6 +1435,10 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
                 << "vel_diff_Eul"
                 << "\t"
                 << "vel_diff_Lag"
+                << "\t"
+                << "KE_diff_Eul"
+                << "\t"
+                << "KE_diff_Lag"
                 << "\n";
     }
   else
@@ -1505,8 +1509,18 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
   // output l2 norms of the two vectors
   // maxEulVel = 1.0 / std::max(maxEulVel, 1.0);
   maxLagVel = 1.0 / std::max(maxLagVel, 1.0);
-  file_diff << time.current() << "\t" << vel_diff_eul.l2_norm() * maxLagVel
-            << "\t" << vel_diff_lag.l2_norm() * maxLagVel << "\n";
+  double vel_diff_norm_eul = vel_diff_eul.l2_norm();
+  double vel_diff_norm_lag = vel_diff_lag.l2_norm();
+  double vel_norm_lag = solid_solver.current_velocity.l2_norm();
+
+  file_diff << time.current() << "\t"
+            << vel_diff_norm_eul * maxLagVel /
+                 sable_solver.triangulation.n_vertices()
+            << "\t"
+            << vel_diff_norm_lag * maxLagVel /
+                 sable_solver.triangulation.n_vertices()
+            << "\t" << vel_diff_norm_eul / vel_norm_lag << "\t"
+            << vel_diff_norm_lag / vel_norm_lag << "\n";
   file_diff.close();
 }
 
