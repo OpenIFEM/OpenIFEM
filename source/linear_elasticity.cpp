@@ -157,12 +157,12 @@ namespace Solid
                   {
                     local_rhs[i] += phi[i] * fsi_vel_diff[q] *
                                     fe_values.JxW(q) *
-                                    parameters.penalty_scale_factor * rho /
+                                    parameters.penalty_scale_factor[0] * rho /
                                     time.get_delta_t();
                     local_nodal_forces_penalty[i] +=
                       phi[i] * fsi_vel_diff[q] *
-                      parameters.penalty_scale_factor * fe_values.JxW(q) * rho /
-                      time.get_delta_t();
+                      parameters.penalty_scale_factor[0] * fe_values.JxW(q) *
+                      rho / time.get_delta_t();
 
                     // calculate damping matrix for implicit Lagrangian penalty
                     if (!is_lag_penalty_explicit)

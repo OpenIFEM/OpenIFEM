@@ -695,6 +695,9 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
               // Fluid total acceleration at support points
               Tensor<1, dim> fluid_acc =
                 (vs - v[i]) / time.get_delta_t() + grad_v[i] * v[i];
+              // apply explicit Eulerian penalty
+              fluid_acc += parameters.penalty_scale_factor[1] *
+                           ((vs - v[i]) / time.get_delta_t());
               //(dv[i]) / time.get_delta_t() + grad_v[i] * v[i];
               auto line = dof_indices[i];
               // Note that we are setting the value of the constraint to the
@@ -894,6 +897,10 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
           // Fluid total acceleration at support points
           Tensor<1, dim> fluid_acc_tensor =
             (vs - v[q]) / time.get_delta_t() + grad_v[q] * v[q];
+          // apply explicit Eulerian penalty
+          fluid_acc_tensor += parameters.penalty_scale_factor[1] *
+                              ((vs - v[q]) / time.get_delta_t());
+
           //(dv[q]) / time.get_delta_t() + grad_v[q] * v[q];
           // calculate FSI acceleration
           Tensor<1, dim> fsi_acc_tensor;

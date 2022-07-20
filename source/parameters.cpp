@@ -75,10 +75,11 @@ namespace Parameters
                         Patterns::Selection("yes|no"),
                         "Set use added mass");
 
-      prm.declare_entry("penalty scale factor",
-                        "0.5",
-                        Patterns::Double(0.0),
-                        "Set penalty scale factor");
+      prm.declare_entry(
+        "penalty scale factor",
+        "0.0, 0.0",
+        Patterns::List(dealii::Patterns::Double()),
+        "Set penalty scale factor for Lagrangian and Eulerian respectively");
     }
     prm.leave_subsection();
   }
@@ -122,10 +123,18 @@ namespace Parameters
                   ExcMessage("Choose extension scale value less than 1!"));
       fsi_force_criteria = prm.get("FSI force criteria");
       use_added_mass = prm.get("use added mass");
-      penalty_scale_factor = prm.get_double("penalty scale factor");
-      AssertThrow((penalty_scale_factor <= 1.0) &&
-                    (penalty_scale_factor >= 0.0),
-                  ExcMessage("Penalty scale must be between 0.0 and 1.0!"));
+      raw_input = prm.get("penalty scale factor");
+      parsed_input = Utilities::split_string_list(raw_input);
+      penalty_scale_factor = Utilities::string_to_double(parsed_input);
+      AssertThrow(penalty_scale_factor.size() == 2.0,
+                  ExcMessage("Inconsistent side for penalty scale factors!"));
+      AssertThrow(
+        (penalty_scale_factor[0] <= 1.0) && (penalty_scale_factor[0] >= 0.0),
+        ExcMessage("Lagrangian penalty scale must be between 0.0 and 1.0!"));
+      AssertThrow(
+        penalty_scale_factor[1] >= 0.0,
+        ExcMessage(
+          "Eulerian penalty scale must be grater than or equal to 0.0!"));
     }
     prm.leave_subsection();
   }
