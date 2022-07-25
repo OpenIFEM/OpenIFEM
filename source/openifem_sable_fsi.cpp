@@ -105,7 +105,7 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
       // get eulerian cell size
       double h = abs(f_cell->vertex(0)(0) - f_cell->vertex(1)(0));
       double total_cell_area = pow(h, dim);
-
+      int tot_sample = 0;
       for (auto s_cell = solid_solver.dof_handler.begin_active();
            s_cell != solid_solver.dof_handler.end();
            ++s_cell)
@@ -158,10 +158,10 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
               continue;
             }
           // sample points in intersection area
-          int sample_count = 0;
+          /*int sample_count = 0;
           int sample_inside = 0;
           // set distance to sample equally spaced points from starting point
-          double dh = 0.01 * h;
+          double dh = 0.1 * h;
           // determine no. of samples in each direction
           std::vector<int> n_sample_points(dim, 0);
           for (unsigned int i = 0; i < dim; i++)
@@ -169,7 +169,7 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
               double n_samples = abs(u_int(i) - l_int(i)) / (dh);
               n_sample_points[i] = int(std::round(n_samples)) + 1;
             }
-
+          tot_sample += n_sample_points[0] + n_sample_points[1];
           // create starting point for sampling at lower corner of intersection
           // box
           Point<dim> start_point_l(l_int);
@@ -230,6 +230,31 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
 
           p[0]->exact_indicator +=
             (intersection_area / total_cell_area) *
+            (double(sample_inside) / double(sample_count));*/
+          int n = 10;
+          int sample_count = (n + 1) * (n + 1);
+          double dh = h / double(n);
+          int sample_inside = 0;
+
+          for (int i = 0; i < n + 1; i++)
+            {
+              for (int j = 0; j < n + 1; j++)
+                {
+                  Point<dim> sample;
+                  sample[0] = l_eu[0] + dh * i;
+                  sample[1] = l_eu[1] + dh * j;
+
+                  if ((sample[0] >= l_int[0]) && (sample[0] <= u_int[0]))
+                    {
+                      if ((sample[1] >= l_int[1]) && (sample[1] <= u_int[1]))
+                        {
+                          if (s_cell->point_inside(sample))
+                            sample_inside += 1;
+                        }
+                    }
+                }
+            }
+          p[0]->exact_indicator +=
             (double(sample_inside) / double(sample_count));
         }
       // if the exact indicator is greater than one then round it off to 1
@@ -372,7 +397,7 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
               continue;
             }
           // sample points in intersection area
-          int sample_count = 0;
+          /*int sample_count = 0;
           int sample_inside = 0;
           // set distance to sample equally spaced points from starting point
           double dh = 0.01 * h;
@@ -444,6 +469,32 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
 
           p[0]->exact_indicator +=
             (intersection_area / total_cell_area) *
+            (double(sample_inside) / double(sample_count));*/
+
+          int n = 10;
+          int sample_count = (n + 1) * (n + 1);
+          double dh = h / double(n);
+          int sample_inside = 0;
+
+          for (int i = 0; i < n + 1; i++)
+            {
+              for (int j = 0; j < n + 1; j++)
+                {
+                  Point<dim> sample;
+                  sample[0] = l_eu[0] + dh * i;
+                  sample[1] = l_eu[1] + dh * j;
+
+                  if ((sample[0] >= l_int[0]) && (sample[0] <= u_int[0]))
+                    {
+                      if ((sample[1] >= l_int[1]) && (sample[1] <= u_int[1]))
+                        {
+                          if (s_cell->point_inside(sample))
+                            sample_inside += 1;
+                        }
+                    }
+                }
+            }
+          p[0]->exact_indicator +=
             (double(sample_inside) / double(sample_count));
         }
       // if the exact indicator is greater than one then round it off to 1
