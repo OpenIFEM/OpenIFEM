@@ -48,7 +48,7 @@ endif()
 
 if(NOT DEAL_II_WITH_METIS)
   message(FATAL_ERROR "
-Error! OpenIFEM requires a deal.ii libray that was configured with the following options:
+Error! OpenIFEM requires a deal.ii library that was configured with the following options:
     DEAL_II_WITH_METIS = ON
 However, the deal.II library found at ${DEAL_II_PATH} was configured with these options
     DEAL_II_WITH_METIS = ${DEAL_II_WITH_METIS}

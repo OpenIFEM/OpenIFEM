@@ -252,7 +252,7 @@ namespace Solid
 
     if (first_step)
       {
-        // Neet to compute the initial acceleration, \f$ Ma_n = F \f$,
+        // Need to compute the initial acceleration, \f$ Ma_n = F \f$,
         // at this point set system_matrix to mass_matrix.
         assemble_system(true);
         this->solve(system_matrix, previous_acceleration, system_rhs);

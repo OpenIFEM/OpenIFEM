@@ -118,7 +118,7 @@ namespace MPI
   template <int dim>
   void FSI<dim>::update_vertices_mask()
   {
-    // Initilize vertices mask
+    // Initialize vertices mask
     vertices_mask.clear();
     vertices_mask.resize(fluid_solver.triangulation.n_vertices(), false);
     for (auto cell = fluid_solver.triangulation.begin_active();
@@ -281,7 +281,7 @@ namespace MPI
 
   // Dirichlet bcs are applied to artificial fluid cells, so fluid nodes
   // should be marked as artificial or real. Meanwhile, additional body force
-  // is acted at the artificial fluid quadrature points. To accomodate these
+  // is acted at the artificial fluid quadrature points. To accommodate these
   // two settings, we define indicator at quadrature points, but only when all
   // of the vertices of a fluid cell are found to be in solid domain,
   // set the indicators at all quadrature points to be 1.

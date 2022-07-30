@@ -1,6 +1,6 @@
 # A very simple script to find shell-element
 #
-# This moudle exports:
+# This module exports:
 #   shell-element_FOUND
 #   shell-element_LIBRARY
 #   shell-element_INCLUDE_DIR

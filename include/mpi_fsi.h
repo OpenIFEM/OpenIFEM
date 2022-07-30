@@ -145,7 +145,7 @@ namespace MPI
     // (x_min, x_max, y_min, y_max, z_min, z_max)
     Vector<double> solid_box;
 
-    // This vector collects the solid boundaries for computing thw winding
+    // This vector collects the solid boundaries for computing the winding
     // number.
     std::list<std::pair<typename Triangulation<dim>::active_cell_iterator,
                         unsigned int>>

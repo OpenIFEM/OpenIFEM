@@ -77,20 +77,20 @@ namespace Fluid
       virtual bool load_checkpoint() = 0;
 
       /// Transfer the solution to the locally refined mesh. pre_refine_mesh
-      /// should be called before adapative refinement.
+      /// should be called before adaptive refinement.
       virtual void pre_refine_mesh(
         std::optional<parallel::distributed::
                         SolutionTransfer<dim, PETScWrappers::MPI::Vector>>
           &) = 0;
 
       /// Transfer the solution to the locally refined mesh. post_refine_mesh
-      /// should be called after adapative refinement.
+      /// should be called after adaptive refinement.
       virtual void post_refine_mesh(
         std::optional<parallel::distributed::
                         SolutionTransfer<dim, PETScWrappers::MPI::Vector>>
           &) = 0;
 
-      //! Desctructor
+      //! Destructor
       virtual ~TurbulenceModel();
 
     protected:

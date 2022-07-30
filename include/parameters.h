@@ -91,7 +91,7 @@ namespace Parameters
      * Spalart-Allmaras model BCs are stored as a map between fluid boundary id
      * and an int which indicates what kind of condition is applied:
      * 0: wall (all boundaries with no-penetration fluid bc)
-     * 1: inflow (fluid velocity / pressue inlet)
+     * 1: inflow (fluid velocity / pressure inlet)
      */
     std::map<unsigned int, unsigned int> spalart_allmaras_model_bcs;
     double spalart_allmaras_initial_condition_coefficient;

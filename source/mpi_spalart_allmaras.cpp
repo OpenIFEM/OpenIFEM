@@ -151,7 +151,7 @@ namespace Fluid
       const std::vector<Point<dim>> &unit_points =
         scalar_fe->get_unit_support_points();
 
-      // von Karman constan for wall function
+      // von Karman constant for wall function
       constexpr double kappa{0.41};
       for (const auto &cell : scalar_dof_handler->active_cell_iterators())
         {
@@ -249,7 +249,7 @@ namespace Fluid
                c3 * std::atan2(b1, yp + a1) - c4 * std::atan2(b2, yp + a2);
       };
 
-      // Derivative of u+ in repect to y+
+      // Derivative of u+ in respect to y+
       constexpr double kappa{0.41}, c_nu1_cubed{7.1 * 7.1 * 7.1},
         kappa_cubed{kappa * kappa * kappa};
       auto dup_dyp = [ kappa_cubed, c_nu1_cubed ](double yp) constexpr

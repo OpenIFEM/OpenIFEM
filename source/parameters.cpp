@@ -466,7 +466,7 @@ namespace Parameters
       prm.declare_entry("Damping",
                         "0.0",
                         Patterns::Double(0.0),
-                        "The artifical damping in Newmark-beta method");
+                        "The artificial damping in Newmark-beta method");
       prm.declare_entry("Max Newton iterations",
                         "8",
                         Patterns::Integer(1),

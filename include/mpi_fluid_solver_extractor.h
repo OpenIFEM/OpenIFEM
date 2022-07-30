@@ -43,7 +43,7 @@ namespace Fluid
       static const Parameters::AllParameters *
       get_parameters(const FluidSolver<dim> &);
 
-      /// Retruns the partitions. The first and second items in the returned
+      /// Returns the partitions. The first and second items in the returned
       /// tuple are owned and relevant partitions for velocity-pressure dofs.
       /// The third and fourth items are owned and relevant partitions for
       /// scalar dofs.
