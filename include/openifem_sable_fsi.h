@@ -116,6 +116,11 @@ private:
   std::pair<bool, const typename DoFHandler<dim>::active_cell_iterator>
   point_in_solid_new(const DoFHandler<dim> &df, const Point<dim> &point);
 
+  /*! if an Eulerian vertex is inside the solid, stores vertex id and the
+   * corresponding solid cell iterator*/
+  std::unordered_map<int, const typename DoFHandler<dim>::active_cell_iterator>
+    vertex_indicator_data;
+
   /* value is set to true if the cell is partially inside solid
      value is false if the cell is completely inside or outside solid
   */

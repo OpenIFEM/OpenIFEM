@@ -50,6 +50,8 @@ template <int dim>
 void OpenIFEM_Sable_FSI<dim>::update_indicator()
 {
   TimerOutput::Scope timer_section(timer, "Update indicator");
+  // initialize vertex_indicator_data
+  vertex_indicator_data.clear();
 
   cell_partially_inside_solid.clear();
   cell_nodes_inside_solid.clear();
@@ -67,11 +69,6 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
   else if (parameters.indicator_field_condition == "PartiallyInsideSolid")
     min_nodes_inside = 0;
 
-  FEValues<dim> fe_values(sable_solver.fe,
-                          sable_solver.volume_quad_formula,
-                          update_values | update_gradients |
-                            update_quadrature_points | update_JxW_values);
-
   move_solid_mesh(true);
   int cell_count = 0;
   for (auto f_cell = sable_solver.dof_handler.begin_active();
@@ -84,10 +81,14 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
       std::vector<int> outside_nodes;
       for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
         {
-          if (point_in_solid(solid_solver.dof_handler, f_cell->vertex(v)))
+          auto is_inside_solid =
+            point_in_solid_new(solid_solver.dof_handler, f_cell->vertex(v));
+          if (is_inside_solid.first)
             {
               ++inside_count;
               inside_nodes.push_back(v);
+              vertex_indicator_data.insert(
+                {f_cell->vertex_index(v), is_inside_solid.second});
             }
           else
             outside_nodes.push_back(v);
@@ -1494,9 +1495,12 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_new()
       for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
         {
           auto vertex = f_cell->vertex(v);
+          int key = f_cell->vertex_index(v);
+
           if (parameters.indicator_field_condition == "PartiallyInsideSolid")
             {
-              if (!point_in_solid(solid_solver.dof_handler, vertex))
+              if (vertex_indicator_data.find(key) ==
+                  vertex_indicator_data.end())
                 continue;
             }
 
@@ -1504,8 +1508,11 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_new()
             continue;
           vertex_touched[f_cell->vertex_index(v)] = 1;
 
+          // get Lagrangian cell iterator which holds the given vertex
+          auto s_cell = vertex_indicator_data[key];
+          // construct the interpolator
           Utils::GridInterpolator<dim, Vector<double>> interpolator(
-            solid_solver.dof_handler, vertex);
+            solid_solver.dof_handler, vertex, {}, s_cell);
           if (!interpolator.found_cell())
             {
               std::stringstream message;
@@ -1515,8 +1522,6 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_new()
 
           // Create the scalar interpolator for stresses based on the
           // existing interpolator
-          auto s_cell = interpolator.get_cell();
-
           TriaActiveIterator<DoFCellAccessor<dim, dim, false>> scalar_s_cell(
             &solid_solver.triangulation,
             s_cell->level(),
