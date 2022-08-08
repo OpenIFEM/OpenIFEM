@@ -13,10 +13,9 @@ namespace Fluid
       dof_handler_vector_output(triangulation),
       sable_ids(sable_ids)
   {
-    Assert(
-      parameters.fluid_velocity_degree - parameters.fluid_pressure_degree == 1,
-      ExcMessage(
-        "Velocity finite element should be one order higher than pressure!"));
+    AssertThrow(
+      parameters.fluid_velocity_degree == parameters.fluid_pressure_degree == 1,
+      ExcMessage("Use 1st order elements for both pressure and velocity!"));
   }
 
   template <int dim>
