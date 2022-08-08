@@ -32,9 +32,40 @@ OpenIFEM_Sable_FSI<dim>::point_in_solid_new(const DoFHandler<dim> &df,
     }
   for (auto cell = df.begin_active(); cell != df.end(); ++cell)
     {
-      if (cell->point_inside(point))
+      if (dim == 2)
         {
-          return {true, cell};
+          if (cell->point_inside(point))
+            {
+              return {true, cell};
+            }
+        }
+      else
+        {
+          // modified from deal.ii function point_inside<3> with added tolerence
+          double tolerence = 1e-10;
+          Point<dim> maxp = cell->vertex(0);
+          Point<dim> minp = cell->vertex(0);
+
+          for (unsigned int v = 1; v < cell->n_vertices(); ++v)
+            for (unsigned int d = 0; d < dim; ++d)
+              {
+                maxp[d] = std::max(maxp[d], cell->vertex(v)[d]);
+                minp[d] = std::min(minp[d], cell->vertex(v)[d]);
+              }
+
+          // rule out points outside the
+          // bounding box of this cell
+          for (unsigned int d = 0; d < dim; ++d)
+            if ((point[d] < minp[d]) || (point[d] > maxp[d]))
+              return {false, {}};
+          MappingQ1<dim> mapping;
+          auto p_unit = mapping.transform_real_to_unit_cell(cell, point);
+          auto output =
+            GeometryInfo<dim>::is_inside_unit_cell(p_unit, tolerence);
+          if (output)
+            return {true, cell};
+          else
+            return {false, {}};
         }
     }
   return {false, {}};
