@@ -111,6 +111,11 @@ private:
 
   void output_vel_diff(bool first_step);
 
+  /*! checks if the point is inside Lagrangian solid, if inside then returns the
+   * iteratore of corresponding cell */
+  std::pair<bool, const typename DoFHandler<dim>::active_cell_iterator>
+  point_in_solid_new(const DoFHandler<dim> &df, const Point<dim> &point);
+
   /* value is set to true if the cell is partially inside solid
      value is false if the cell is completely inside or outside solid
   */

@@ -18,6 +18,28 @@ OpenIFEM_Sable_FSI<dim>::OpenIFEM_Sable_FSI(Fluid::SableWrap<dim> &f,
   assert(use_dirichlet_bc == false);
 }
 
+template <int dim>
+std::pair<bool, const typename DoFHandler<dim>::active_cell_iterator>
+OpenIFEM_Sable_FSI<dim>::point_in_solid_new(const DoFHandler<dim> &df,
+                                            const Point<dim> &point)
+{
+  // Check whether the point is in the solid box first.
+  for (unsigned int i = 0; i < dim; ++i)
+    {
+      if (point(i) < solid_box(2 * i) || point(i) > solid_box(2 * i + 1))
+
+        return {false, {}};
+    }
+  for (auto cell = df.begin_active(); cell != df.end(); ++cell)
+    {
+      if (cell->point_inside(point))
+        {
+          return {true, cell};
+        }
+    }
+  return {false, {}};
+}
+
 // Dirichlet bcs are applied to artificial fluid cells, so fluid nodes should
 // be marked as artificial or real. Meanwhile, additional body force is
 // applied to the artificial fluid quadrature points. To accomodate these two
