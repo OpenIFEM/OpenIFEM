@@ -92,6 +92,10 @@ private:
    */
   void find_solid_bc();
 
+  /*! More efficient implementation of find_fluid_bc
+   */
+  void find_fluid_bc_new();
+
   /*! \brief Compute the fluid cell index given the solid quad point coordiantes
    * and its unit normal vector Currently, this algorithm only works for a 2-D
    * structured Eulerian mesh without refinements.

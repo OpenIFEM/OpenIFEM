@@ -1417,6 +1417,225 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
 }
 
 template <int dim>
+void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_new()
+{
+  TimerOutput::Scope timer_section(timer, "Find fluid BC new");
+  move_solid_mesh(true);
+
+  const std::vector<Point<dim>> &unit_points =
+    sable_solver.fe.get_unit_support_points();
+
+  MappingQGeneric<dim> mapping(parameters.fluid_velocity_degree);
+  Quadrature<dim> dummy_q(unit_points);
+  FEValues<dim> dummy_fe_values(mapping,
+                                sable_solver.fe,
+                                dummy_q,
+                                update_quadrature_points | update_values |
+                                  update_gradients);
+
+  const FEValuesExtractors::Vector velocities(0);
+  const FEValuesExtractors::Scalar pressure(dim);
+  std::vector<Tensor<2, dim>> grad_vf(unit_points.size());
+  std::vector<Tensor<1, dim>> vf(unit_points.size());
+
+  std::vector<int> vertex_touched(sable_solver.triangulation.n_vertices(), 0);
+
+  std::vector<types::global_dof_index> scalar_dof_indices(
+    sable_solver.scalar_fe.dofs_per_cell);
+  std::vector<types::global_dof_index> dof_indices(
+    sable_solver.fe.dofs_per_cell);
+
+  auto scalar_f_cell = sable_solver.scalar_dof_handler.begin_active();
+  auto f_cell = sable_solver.dof_handler.begin_active();
+  for (; f_cell != sable_solver.dof_handler.end(),
+         scalar_f_cell != sable_solver.scalar_dof_handler.end();
+       ++f_cell, ++scalar_f_cell)
+    {
+
+      auto ptr = sable_solver.cell_property.get_data(f_cell);
+      if (ptr[0]->indicator == 0)
+        continue;
+
+      scalar_f_cell->get_dof_indices(scalar_dof_indices);
+
+      f_cell->get_dof_indices(dof_indices);
+      dummy_fe_values.reinit(f_cell);
+
+      // Eulerian velocity at support points
+      dummy_fe_values[velocities].get_function_values(
+        sable_solver.present_solution, vf);
+
+      // Eulerian velocity gradient at support points
+      dummy_fe_values[velocities].get_function_gradients(
+        sable_solver.present_solution, grad_vf);
+
+      for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
+        {
+          auto vertex = f_cell->vertex(v);
+          if (parameters.indicator_field_condition == "PartiallyInsideSolid")
+            {
+              if (!point_in_solid(solid_solver.dof_handler, vertex))
+                continue;
+            }
+
+          if (vertex_touched[f_cell->vertex_index(v)])
+            continue;
+          vertex_touched[f_cell->vertex_index(v)] = 1;
+
+          Utils::GridInterpolator<dim, Vector<double>> interpolator(
+            solid_solver.dof_handler, vertex);
+          if (!interpolator.found_cell())
+            {
+              std::stringstream message;
+              message << "Cannot find point in solid: " << vertex << std::endl;
+              AssertThrow(interpolator.found_cell(), ExcMessage(message.str()));
+            }
+
+          // Create the scalar interpolator for stresses based on the
+          // existing interpolator
+          auto s_cell = interpolator.get_cell();
+
+          TriaActiveIterator<DoFCellAccessor<dim, dim, false>> scalar_s_cell(
+            &solid_solver.triangulation,
+            s_cell->level(),
+            s_cell->index(),
+            &solid_solver.scalar_dof_handler);
+          Utils::GridInterpolator<dim, Vector<double>> scalar_interpolator(
+            solid_solver.scalar_dof_handler, vertex, {}, scalar_s_cell);
+
+          // Lagrangian solid acceleration at Eulerian nodes
+          Vector<double> solid_acc(dim);
+          Vector<double> solid_vel(dim);
+          interpolator.point_value(solid_solver.current_acceleration,
+                                   solid_acc);
+          interpolator.point_value(solid_solver.current_velocity, solid_vel);
+
+          Tensor<1, dim> vs;
+          for (int j = 0; j < dim; ++j)
+            {
+              vs[j] = solid_vel[j];
+            }
+
+          for (unsigned int i = 0; i < unit_points.size(); i++)
+            {
+              auto dof_id = sable_solver.fe.system_to_component_index(i).first;
+              auto vertex_id =
+                sable_solver.fe.system_to_component_index(i).second;
+
+              // select support points corresponding to the selected node and
+              // skip pressure dofs
+              if ((vertex_id == v) && (dof_id < dim))
+                {
+                  // Fluid total acceleration at support points
+                  Tensor<1, dim> fluid_acc =
+                    (vs - vf[i]) / time.get_delta_t() + grad_vf[i] * vf[i];
+                  // apply explicit Eulerian penalty
+                  fluid_acc += parameters.penalty_scale_factor[1] *
+                               ((vs - vf[i]) / time.get_delta_t());
+                  //(dv[i]) / time.get_delta_t() + grad_v[i] * v[i];
+                  auto line = dof_indices[i];
+
+                  sable_solver.fsi_acceleration(line) =
+                    (fluid_acc[dof_id] - solid_acc[dof_id]);
+                  sable_solver.fsi_velocity(line) = vs[dof_id];
+                }
+            }
+
+          auto scalar_dof_id = scalar_f_cell->vertex_dof_index(v, 0);
+
+          SymmetricTensor<2, dim> s_cell_stress;
+          int stress_index = 0;
+          for (unsigned int k = 0; k < dim; k++)
+            {
+              for (unsigned int m = k; m < dim; m++)
+                {
+                  // interpolate Lagrangian solid stress at Eulerian nodes
+                  Vector<double> s_stress_component(1);
+                  scalar_interpolator.point_value(solid_solver.stress[k][m],
+                                                  s_stress_component);
+
+                  // When node-based SABLE stress is used
+                  if (parameters.fsi_force_calculation_option == "NodeBased")
+                    {
+
+                      sable_solver.fsi_stress[stress_index][scalar_dof_id] =
+                        sable_solver.stress[k][m][scalar_dof_id] -
+                        s_stress_component[0];
+                    }
+                  else
+                    {
+                      // When using cell-wise  SABLE stress is used, the SABLE
+                      // stress is added at in assmeble_force() function
+                      sable_solver.fsi_stress[stress_index][scalar_dof_id] =
+                        -s_stress_component[0];
+                    }
+                }
+              stress_index++;
+            }
+        }
+
+      if (parameters.indicator_field_condition == "PartiallyInsideSolid")
+        {
+
+          // distribute fsi velocity to the nodes which are outside solid and
+          // belongs to
+          // cell which is partially inside the solid
+          std::vector<int> vertex_visited(
+            sable_solver.triangulation.n_vertices(), 0);
+          for (auto f_cell = sable_solver.dof_handler.begin_active();
+               f_cell != sable_solver.dof_handler.end();
+               ++f_cell)
+            {
+              int cell_count = f_cell->index();
+              if (cell_partially_inside_solid[cell_count])
+                {
+                  // get average solution from the nodes which are inside the
+                  // solid
+                  std::vector<double> solution_vec(dim, 0);
+                  std::vector<int> nodes_inside =
+                    cell_nodes_inside_solid[cell_count];
+                  for (unsigned int i = 0; i < nodes_inside.size(); i++)
+                    {
+                      for (unsigned int j = 0; j < dim; j++)
+                        {
+                          int vertex_dof_index =
+                            f_cell->vertex_dof_index(nodes_inside[i], j);
+                          solution_vec[j] +=
+                            sable_solver.fsi_velocity[vertex_dof_index] /
+                            nodes_inside.size();
+                        }
+                    }
+
+                  // distribute solution to the nodes which are outside the
+                  // solid
+                  std::vector<int> nodes_outside =
+                    cell_nodes_outside_solid[cell_count];
+                  for (unsigned int i = 0; i < nodes_outside.size(); i++)
+                    {
+                      int vertex_index = f_cell->vertex_index(nodes_outside[i]);
+                      vertex_visited[vertex_index] += 1;
+                      for (unsigned int j = 0; j < dim; j++)
+                        {
+                          int vertex_dof_index =
+                            f_cell->vertex_dof_index(nodes_outside[i], j);
+                          sable_solver.fsi_velocity[vertex_dof_index] *=
+                            (vertex_visited[vertex_index] - 1);
+                          sable_solver.fsi_velocity[vertex_dof_index] +=
+                            solution_vec[j];
+                          // average the solution if the corresponding node is
+                          // visited more than once
+                          sable_solver.fsi_velocity[vertex_dof_index] /=
+                            vertex_visited[vertex_index];
+                        }
+                    }
+                }
+            }
+        }
+    }
+  move_solid_mesh(false);
+}
+
+template <int dim>
 int OpenIFEM_Sable_FSI<dim>::compute_fluid_cell_index(
   Point<dim> &q_point, const Tensor<1, dim> &normal)
 {
@@ -1887,6 +2106,7 @@ void OpenIFEM_Sable_FSI<dim>::run()
         {
           update_indicator();
           find_fluid_bc();
+          // find_fluid_bc_new();
         }
       else
         {
