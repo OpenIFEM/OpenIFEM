@@ -30,45 +30,72 @@ OpenIFEM_Sable_FSI<dim>::point_in_solid_new(const DoFHandler<dim> &df,
 
         return {false, {}};
     }
+
   for (auto cell = df.begin_active(); cell != df.end(); ++cell)
     {
-      if (dim == 2)
+
+      Point<dim> maxp = cell->vertex(0);
+      Point<dim> minp = cell->vertex(0);
+
+      for (unsigned int v = 1; v < cell->n_vertices(); ++v)
+        for (unsigned int d = 0; d < dim; ++d)
+          {
+            maxp[d] = std::max(maxp[d], cell->vertex(v)[d]);
+            minp[d] = std::min(minp[d], cell->vertex(v)[d]);
+          }
+
+      // rule out points outside the
+      // bounding box of this cell
+      bool inside_box = true;
+      for (unsigned int d = 0; d < dim; ++d)
         {
-          if (cell->point_inside(point))
+          if ((point[d] < minp[d]) || (point[d] > maxp[d]))
             {
-              return {true, cell};
+              inside_box = false;
+              break;
             }
         }
-      else
-        {
-          // modified from deal.ii function point_inside<3> with added tolerence
-          double tolerence = 1e-10;
-          Point<dim> maxp = cell->vertex(0);
-          Point<dim> minp = cell->vertex(0);
 
-          for (unsigned int v = 1; v < cell->n_vertices(); ++v)
-            for (unsigned int d = 0; d < dim; ++d)
-              {
-                maxp[d] = std::max(maxp[d], cell->vertex(v)[d]);
-                minp[d] = std::min(minp[d], cell->vertex(v)[d]);
-              }
+      if (!inside_box)
+        continue;
 
-          // rule out points outside the
-          // bounding box of this cell
-          for (unsigned int d = 0; d < dim; ++d)
-            if ((point[d] < minp[d]) || (point[d] > maxp[d]))
-              return {false, {}};
-          MappingQ1<dim> mapping;
-          auto p_unit = mapping.transform_real_to_unit_cell(cell, point);
-          auto output =
-            GeometryInfo<dim>::is_inside_unit_cell(p_unit, tolerence);
-          if (output)
-            return {true, cell};
-          else
-            return {false, {}};
-        }
+      if (point_in_cell(cell, point))
+        return {true, cell};
     }
   return {false, {}};
+}
+
+template <int dim>
+bool OpenIFEM_Sable_FSI<dim>::point_in_cell(
+  const typename DoFHandler<dim>::active_cell_iterator &cell,
+  const Point<dim> &p)
+{
+
+  if (dim == 2)
+    {
+      return (cell->point_inside(p));
+    }
+  else
+    {
+      // we need to check more carefully: transform to the
+      // unit cube and check there. unfortunately, this isn't
+      // completely trivial since the transform_real_to_unit_cell
+      // function may throw an exception that indicates that the
+      // point given could not be inverted. we take this as a sign
+      // that the point actually lies outside, as also documented
+      // for that function
+      double tolerence = 1e-10;
+      MappingQ1<dim> mapping;
+      try
+        {
+          auto p_unit = mapping.transform_real_to_unit_cell(cell, p);
+          return GeometryInfo<dim>::is_inside_unit_cell(p_unit, tolerence);
+        }
+      catch (const Mapping<3, 3>::ExcTransformationFailed &)
+        {
+          return false;
+        }
+    }
 }
 
 // Dirichlet bcs are applied to artificial fluid cells, so fluid nodes should

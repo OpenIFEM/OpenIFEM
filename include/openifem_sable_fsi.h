@@ -120,6 +120,13 @@ private:
   std::pair<bool, const typename DoFHandler<dim>::active_cell_iterator>
   point_in_solid_new(const DoFHandler<dim> &df, const Point<dim> &point);
 
+  /*! chekcs if the point is in the given cell. For 2D it is same as deal.ii
+     cell->point_inside() but for 3D it is modified to include a tolerence
+     value. Note: for faster results, check if the point is inside the
+     cell's bounding box before calling this function */
+  bool point_in_cell(const typename DoFHandler<dim>::active_cell_iterator &,
+                     const Point<dim> &);
+
   /*! if an Eulerian vertex is inside the solid, stores vertex id and the
    * corresponding solid cell iterator*/
   std::unordered_map<int, const typename DoFHandler<dim>::active_cell_iterator>
