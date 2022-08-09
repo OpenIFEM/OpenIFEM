@@ -454,7 +454,7 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
                 }
               if (!inside_box)
                 continue;
-              if (s_cell->point_inside(sample))
+              if (point_in_cell(s_cell, sample))
                 sample_inside += 1;
             }
 
@@ -535,7 +535,7 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
 
       for (unsigned int q = 0; q < q_points.size(); q++)
         {
-          if (point_in_solid(solid_solver.dof_handler, q_points[q]))
+          if (point_in_solid_new(solid_solver.dof_handler, q_points[q]).first)
             {
               ++inside_qpoint;
             }
@@ -825,7 +825,7 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
                 }
               if (!inside_box)
                 continue;
-              if (s_cell->point_inside(sample))
+              if (point_in_cell(s_cell, sample))
                 sample_inside += 1;
             }
 
@@ -1822,7 +1822,8 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints_new()
 
           if (parameters.indicator_field_condition == "PartiallyInsideSolid")
             {
-              if (!point_in_solid(solid_solver.dof_handler, q_points[q]))
+              if (!point_in_solid_new(solid_solver.dof_handler, q_points[q])
+                     .first)
                 continue;
             }
 
@@ -2520,13 +2521,13 @@ void OpenIFEM_Sable_FSI<dim>::run()
       if (parameters.fsi_force_criteria == "Nodes")
         {
           update_indicator();
-          //find_fluid_bc();
+          // find_fluid_bc();
           find_fluid_bc_new();
         }
       else
         {
           update_indicator_qpoints();
-          //find_fluid_bc_qpoints();
+          // find_fluid_bc_qpoints();
           find_fluid_bc_qpoints_new();
         }
       // send_indicator_field
