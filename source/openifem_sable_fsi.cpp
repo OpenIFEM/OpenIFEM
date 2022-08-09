@@ -2520,14 +2520,14 @@ void OpenIFEM_Sable_FSI<dim>::run()
       if (parameters.fsi_force_criteria == "Nodes")
         {
           update_indicator();
-          find_fluid_bc();
-          // find_fluid_bc_new();
+          //find_fluid_bc();
+          find_fluid_bc_new();
         }
       else
         {
           update_indicator_qpoints();
-          find_fluid_bc_qpoints();
-          // find_fluid_bc_qpoints_new();
+          //find_fluid_bc_qpoints();
+          find_fluid_bc_qpoints_new();
         }
       // send_indicator_field
       sable_solver.send_fsi_force(sable_solver.sable_no_nodes);
