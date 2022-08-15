@@ -334,7 +334,6 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
         u_eu = f_cell->vertex(7);
       // get eulerian cell size
       double h = abs(f_cell->vertex(0)(0) - f_cell->vertex(1)(0));
-      double total_cell_area = pow(h, dim);
       // check if cell intersects with solid box
       bool intersection = true;
       for (unsigned int i = 0; i < dim; i++)
@@ -362,27 +361,42 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
               sample[0] = l_eu[0] + dh * i;
               sample[1] = l_eu[1] + dh * j;
 
-              if (dim == 3)
+              if (dim == 2)
+                {
+                  bool inside_box = true;
+                  for (unsigned int d = 0; d < dim; d++)
+                    {
+                      if ((sample[d] < solid_box[2 * d]) ||
+                          (sample[d] > solid_box[2 * d + 1]))
+                        {
+                          inside_box = false;
+                          break;
+                        }
+                    }
+                  if (!inside_box)
+                    continue;
+                  sample_points.push_back(sample);
+                }
+              else
                 {
                   for (int k = 0; k < n + 1; k++)
                     {
-                      sample[2] = l_eu[2] + dh * h;
+                      sample[2] = l_eu[2] + dh * k;
+                      bool inside_box = true;
+                      for (unsigned int d = 0; d < 1; d++)
+                        {
+                          if ((sample[d] < solid_box[2 * d]) ||
+                              (sample[d] > solid_box[2 * d + 1]))
+                            {
+                              inside_box = false;
+                              break;
+                            }
+                        }
+                      if (!inside_box)
+                        continue;
+                      sample_points.push_back(sample);
                     }
                 }
-
-              bool inside_box = true;
-              for (unsigned int d = 0; d < dim; d++)
-                {
-                  if ((sample[d] < solid_box[2 * d]) ||
-                      (sample[d] > solid_box[2 * d + 1]))
-                    {
-                      inside_box = false;
-                      break;
-                    }
-                }
-              if (!inside_box)
-                continue;
-              sample_points.push_back(sample);
             }
         }
 
@@ -424,19 +438,6 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator()
             {
               l_int(i) = std::max(l_eu(i), l_lag(i));
               u_int(i) = std::min(u_eu(i), u_lag(i));
-            }
-
-          double intersection_area = 1.0;
-          for (unsigned i = 0; i < dim; i++)
-            {
-              intersection_area *= abs(u_int(i) - l_int(i));
-            }
-          // if intersection area equals Eulerian cell area assign indicator as
-          // 1
-          if (abs(intersection_area - total_cell_area) < 1e-10)
-            {
-              p[0]->exact_indicator = 1;
-              continue;
             }
 
           int sample_inside = 0;
@@ -705,7 +706,6 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
         u_eu = f_cell->vertex(7);
       // get eulerian cell size
       double h = abs(f_cell->vertex(0)(0) - f_cell->vertex(1)(0));
-      double total_cell_area = pow(h, dim);
       // check if cell intersects with solid box
       bool intersection = true;
       for (unsigned int i = 0; i < dim; i++)
@@ -733,27 +733,42 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
               sample[0] = l_eu[0] + dh * i;
               sample[1] = l_eu[1] + dh * j;
 
-              if (dim == 3)
+              if (dim == 2)
+                {
+                  bool inside_box = true;
+                  for (unsigned int d = 0; d < dim; d++)
+                    {
+                      if ((sample[d] < solid_box[2 * d]) ||
+                          (sample[d] > solid_box[2 * d + 1]))
+                        {
+                          inside_box = false;
+                          break;
+                        }
+                    }
+                  if (!inside_box)
+                    continue;
+                  sample_points.push_back(sample);
+                }
+              else
                 {
                   for (int k = 0; k < n + 1; k++)
                     {
-                      sample[2] = l_eu[2] + dh * h;
+                      sample[2] = l_eu[2] + dh * k;
+                      bool inside_box = true;
+                      for (unsigned int d = 0; d < 1; d++)
+                        {
+                          if ((sample[d] < solid_box[2 * d]) ||
+                              (sample[d] > solid_box[2 * d + 1]))
+                            {
+                              inside_box = false;
+                              break;
+                            }
+                        }
+                      if (!inside_box)
+                        continue;
+                      sample_points.push_back(sample);
                     }
                 }
-
-              bool inside_box = true;
-              for (unsigned int d = 0; d < dim; d++)
-                {
-                  if ((sample[d] < solid_box[2 * d]) ||
-                      (sample[d] > solid_box[2 * d + 1]))
-                    {
-                      inside_box = false;
-                      break;
-                    }
-                }
-              if (!inside_box)
-                continue;
-              sample_points.push_back(sample);
             }
         }
 
@@ -795,19 +810,6 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
             {
               l_int(i) = std::max(l_eu(i), l_lag(i));
               u_int(i) = std::min(u_eu(i), u_lag(i));
-            }
-
-          double intersection_area = 1.0;
-          for (unsigned i = 0; i < dim; i++)
-            {
-              intersection_area *= abs(u_int(i) - l_int(i));
-            }
-          // if intersection area equals Eulerian cell area assign indicator as
-          // 1
-          if (abs(intersection_area - total_cell_area) < 1e-10)
-            {
-              p[0]->exact_indicator = 1;
-              continue;
             }
 
           int sample_inside = 0;
