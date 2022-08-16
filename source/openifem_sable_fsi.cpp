@@ -952,7 +952,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
       // get fluid stress at support points
       for (unsigned int i = 0; i < dim; i++)
         {
-          for (unsigned int j = i; j < dim; j++)
+          for (unsigned int j = 0; j < i + 1; j++)
             {
               scalar_fe_values.get_function_values(sable_solver.stress[i][j],
                                                    f_stress_component);
@@ -976,7 +976,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
           stress_index = 0;
           for (unsigned int j = 0; j < dim; j++)
             {
-              for (unsigned int k = j; k < dim; k++)
+              for (unsigned int k = 0; k < i + 1; k++)
                 {
                   Vector<double> s_stress_component(1);
                   scalar_interpolator.point_value(solid_solver.stress[j][k],
@@ -1305,7 +1305,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
           int count = 0;
           for (unsigned int k = 0; k < dim; k++)
             {
-              for (unsigned int m = k; m < dim; m++)
+              for (unsigned int m = 0; m < k + 1; m++)
                 {
                   f_cell_stress[k][m] = s[0]->cell_stress[count];
                   count++;
@@ -1326,7 +1326,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
           SymmetricTensor<2, dim> s_cell_stress;
           for (unsigned int k = 0; k < dim; k++)
             {
-              for (unsigned int m = k; m < dim; m++)
+              for (unsigned int m = 0; m < k + 1; m++)
                 {
 
                   Vector<double> s_stress_component(1);
@@ -1640,7 +1640,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_new()
           int stress_index = 0;
           for (unsigned int k = 0; k < dim; k++)
             {
-              for (unsigned int m = k; m < dim; m++)
+              for (unsigned int m = 0; m < k + 1; m++)
                 {
                   // interpolate Lagrangian solid stress at Eulerian nodes
                   Vector<double> s_stress_component(1);
@@ -1874,7 +1874,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints_new()
           int count = 0;
           for (unsigned int k = 0; k < dim; k++)
             {
-              for (unsigned int m = k; m < dim; m++)
+              for (unsigned int m = 0; m < k + 1; m++)
                 {
                   f_cell_stress[k][m] = s[0]->cell_stress[count];
                   count++;
@@ -1895,7 +1895,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints_new()
           SymmetricTensor<2, dim> s_cell_stress;
           for (unsigned int k = 0; k < dim; k++)
             {
-              for (unsigned int m = k; m < dim; m++)
+              for (unsigned int m = 0; m < k + 1; m++)
                 {
 
                   Vector<double> s_stress_component(1);
@@ -2281,7 +2281,7 @@ void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
                   int count = 0;
                   for (unsigned int i = 0; i < dim; i++)
                     {
-                      for (unsigned int j = i; j < dim; j++)
+                      for (unsigned int j = 0; j < i + 1; j++)
                         {
                           // Interpolate stress from nodal stress field
                           if (parameters.traction_calculation_option ==
