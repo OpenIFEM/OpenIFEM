@@ -143,7 +143,7 @@ namespace Fluid
             int count = 0;
             for (unsigned int k = 0; k < dim; k++)
               {
-                for (unsigned int m = k; m < dim; m++)
+                for (unsigned int m = 0; m < k + 1; m++)
                   {
                     sable_cell_stress[k][m] = s[0]->cell_stress[count];
                     count++;
@@ -192,7 +192,7 @@ namespace Fluid
                 int stress_index = 0;
                 for (unsigned int k = 0; k < dim; k++)
                   {
-                    for (unsigned int m = k; m < dim; m++)
+                    for (unsigned int m = 0; m < k + 1; m++)
                       {
                         fsi_stress_tensor[k][m] =
                           fsi_cell_stress[stress_index][q];
