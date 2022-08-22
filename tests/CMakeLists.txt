@@ -17,6 +17,7 @@ set(serial_tests acoustic_duct_wave
                  openifem-sable_circle_linearelastic
 		 openifem-sable_projectile_hyperelastic
                  openifem-sable_rigid_body
+                 openifem-sable_rigid_body_3d
                  openifem-sable_rod_linearelastic
                  openifem-sable_sphere_hyperelastic                
                  openifem-sable_square_hyperelastic
