@@ -16,6 +16,15 @@ namespace Internal
                                                   parameters.solid_rho));
         update(parameters, Tensor<2, dim>());
       }
+    else if (parameters.solid_type == "Kirchhoff")
+      {
+
+        material.reset(
+          new Solid::KirchhoffElasticMaterial<dim>(parameters.E[mat_id - 1],
+                                                   parameters.nu[mat_id - 1],
+                                                   parameters.solid_rho));
+        update(parameters, Tensor<2, dim>());
+      }
     else
       {
         Assert(false, ExcNotImplemented());
@@ -36,10 +45,19 @@ namespace Internal
         tau = nh->get_tau();
         Jc = nh->get_Jc();
       }
-    else
+    else if (parameters.solid_type == "Kirchhoff")
       {
-        Assert(false, ExcNotImplemented());
+        auto kh =
+          std::dynamic_pointer_cast<Solid::KirchhoffElasticMaterial<dim>>(
+            material);
+        Assert(kh, ExcInternalError());
+        Jc = kh->get_Jc();
+        pk2_stress = kh->get_pk2_stress(F);
       }
+    else
+    {
+      Assert(false, ExcNotImplemented());
+    }
     dPsi_vol_dJ = material->get_dPsi_vol_dJ();
     d2Psi_vol_dJ2 = material->get_d2Psi_vol_dJ2();
   }
@@ -477,7 +495,30 @@ namespace Solid
                 sym_grad_phi[q][k] = symmetrize(grad_phi[q][k]);
               }
 
-            const SymmetricTensor<2, dim> tau = lqph[q]->get_tau();
+            // for Neohookean material, comptute tau as the other hyperelastic
+            // materals; for Kirchhoff material, compute tau from push forward
+            // of pk2 stress
+
+            SymmetricTensor<2, dim> tau = dealii::SymmetricTensor<2, dim>();
+
+            if (parameters.solid_type == "NeoHookean")
+              {
+                // const SymmetricTensor<2, dim> tau = lqph[q]->get_tau();
+                tau = lqph[q]->get_tau();
+              }
+            else if (parameters.solid_type == "Kirchhoff")
+              {
+                const Tensor<2, dim> F = invert(F_inv);
+                const SymmetricTensor<2, dim> pk2_stress =
+                  lqph[q]->get_pk2_stress();
+                tau = Physics::Transformations::Contravariant::push_forward(
+                  pk2_stress, F);
+              }
+            else
+              {
+                Assert(false, ExcNotImplemented());
+              }
+
             const SymmetricTensor<4, dim> Jc = lqph[q]->get_Jc();
             const double rho = lqph[q]->get_density();
             const double dt = time.get_delta_t();

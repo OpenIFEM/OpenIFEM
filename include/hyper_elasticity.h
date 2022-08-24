@@ -1,6 +1,9 @@
 #ifndef HYPER_ELASTICITY
 #define HYPER_ELASTICITY
 
+#include "kirchhoff_elastic_material.h"
+#include "neo_hookean.h"
+#include "solid_solver.h"
 #include <deal.II/base/symmetric_tensor.h>
 #include <deal.II/base/tensor.h>
 #include <deal.II/fe/mapping_q_eulerian.h>
@@ -8,9 +11,7 @@
 #include <deal.II/lac/packaged_operation.h>
 #include <deal.II/physics/elasticity/kinematics.h>
 #include <deal.II/physics/elasticity/standard_tensors.h>
-
-#include "neo_hookean.h"
-#include "solid_solver.h"
+#include <deal.II/physics/transformations.h>
 
 template <int>
 class FSI;
@@ -37,6 +38,7 @@ namespace Internal
     PointHistory()
       : F_inv(ST::I),
         tau(SymmetricTensor<2, dim>()),
+        pk2_stress(SymmetricTensor<2, dim>()),
         Jc(SymmetricTensor<4, dim>()),
         dPsi_vol_dJ(0.0),
         d2Psi_vol_dJ2(0.0)
@@ -53,6 +55,7 @@ namespace Internal
     double get_det_F() const { return material->get_det_F(); }
     const Tensor<2, dim> &get_F_inv() const { return F_inv; }
     const SymmetricTensor<2, dim> &get_tau() const { return tau; }
+    const SymmetricTensor<2, dim> &get_pk2_stress() const { return pk2_stress; }
     const SymmetricTensor<4, dim> &get_Jc() const { return Jc; }
     double get_density() const { return material->get_density(); }
     double get_dPsi_vol_dJ() const { return dPsi_vol_dJ; }
@@ -63,6 +66,7 @@ namespace Internal
     std::shared_ptr<Solid::HyperElasticMaterial<dim>> material;
     Tensor<2, dim> F_inv;
     SymmetricTensor<2, dim> tau;
+    SymmetricTensor<2, dim> pk2_stress;
     SymmetricTensor<4, dim> Jc;
     double dPsi_vol_dJ;
     double d2Psi_vol_dJ2;
