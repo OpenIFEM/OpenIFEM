@@ -55,9 +55,9 @@ namespace Internal
         pk2_stress = kh->get_pk2_stress(F);
       }
     else
-    {
-      Assert(false, ExcNotImplemented());
-    }
+      {
+        Assert(false, ExcNotImplemented());
+      }
     dPsi_vol_dJ = material->get_dPsi_vol_dJ();
     d2Psi_vol_dJ2 = material->get_d2Psi_vol_dJ2();
   }
@@ -717,8 +717,26 @@ namespace Solid
 
         for (unsigned int q = 0; q < volume_quad_formula.size(); ++q)
           {
-            const SymmetricTensor<2, dim> tau = lqph[q]->get_tau();
+
+            SymmetricTensor<2, dim> tau = dealii::SymmetricTensor<2, dim>();
+
             const Tensor<2, dim> F = invert(lqph[q]->get_F_inv());
+
+            if (parameters.solid_type == "NeoHookean")
+              {
+                tau = lqph[q]->get_tau();
+              }
+            else if (parameters.solid_type == "Kirchhoff")
+              {
+                const SymmetricTensor<2, dim> pk2_stress =
+                  lqph[q]->get_pk2_stress();
+                tau = Physics::Transformations::Contravariant::push_forward(
+                  pk2_stress, F);
+              }
+            else
+              {
+                Assert(false, ExcNotImplemented());
+              }
             const double J = lqph[q]->get_det_F();
             for (unsigned int i = 0; i < dim; ++i)
               {
