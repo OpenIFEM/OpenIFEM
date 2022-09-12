@@ -349,7 +349,7 @@ namespace Fluid
 
     // NOTE: SolverFGMRES only applies the preconditioner from the right,
     // as opposed to SolverGMRES which allows both left and right
-    // preconditoners.
+    // preconditioners.
     SolverControl solver_control(
       system_matrix.m(), std::max(1e-8 * system_rhs.l2_norm(), 1e-10), true);
     GrowingVectorMemory<BlockVector<double>> vector_memory;

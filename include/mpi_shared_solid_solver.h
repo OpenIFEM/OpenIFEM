@@ -186,7 +186,7 @@ namespace Solid
        * every
        * timestep. But displacement and velocity also contribute to the rhs of
        * the equation. For the sake of clarity, we explicitly store two sets of
-       * accleration, velocity and displacement.
+       * acceleration, velocity and displacement.
        */
       PETScWrappers::MPI::Vector current_acceleration;
       PETScWrappers::MPI::Vector current_velocity;

@@ -1255,7 +1255,7 @@ namespace MPI
     ***********************IMPORTANT*********************
     gap_tolerance is a HARD-CODED value designed for bernoulli analysis in VF
     simulation. When the gap size exceeds this value, the contraction and jet
-    regions are considered separated. Change it if neccessary.
+    regions are considered separated. Change it if necessary.
     **********************************************
     */
     double gap_tolerance = 0.0045;
@@ -1424,7 +1424,7 @@ namespace MPI
         |------|------|------|
           0101   1111   1010
             5     15     10
-        A cell has the corresponding flag if at least one vertex satisifies the
+        A cell has the corresponding flag if at least one vertex satisfies the
         condition. Therefore, the flag "in_conraction" and "not_in_contraction"
         can co-exist and so do "in_jet" and "not_in_jet".
         The flags seem redundant as partial cells are not accounted at all now,

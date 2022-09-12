@@ -22,7 +22,7 @@ namespace Fluid
      *
      * Explicit time scheme is used for time stepping. The velocity and pressure
      * dofs are decoupled and solved separately. A inner iteration is
-     * incoporated to make sure the solution converges. However, the explicit
+     * incorporated to make sure the solution converges. However, the explicit
      * solver has a strict restriction on time step size. For pure acoustic wave
      * propagation, the time step must be smaller than 1e-7s for convergence.
      *
@@ -94,9 +94,9 @@ namespace Fluid
        */
       PETScWrappers::MPI::BlockVector evaluation_point;
 
-      /** \breif local_matrices
+      /** \brief local_matrices
        * The local matrices is stored in each cell such that the program does
-       * not need repeatly assemble the system matrix. Usually, one global
+       * not need repeatedly assemble the system matrix. Usually, one global
        * matrix suffices for such purpose. However, for time-dependent BC, we
        * need to update the inhomogenius constraints which needs the information
        * from the local system matrices.
@@ -106,7 +106,7 @@ namespace Fluid
         FullMatrix<double>>
         local_matrices;
 
-      /** \breif boundary_condition_time_limits
+      /** \brief boundary_condition_time_limits
        * This map stores the time limit for each time dependent hard coded
        * boundary conditions. In the explicit solver, the system matrix does not
        * have to re-assemble at each time step unless a time dependent boundary

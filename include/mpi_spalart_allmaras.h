@@ -66,7 +66,7 @@ namespace Fluid
 
       virtual double get_shear_velocity(double, double) override;
 
-      //! Desctructor
+      //! Destructor
       ~SpalartAllmaras(){};
 
     protected:

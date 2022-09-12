@@ -144,7 +144,7 @@ namespace Solid
      * every
      * timestep. But displacement and velocity also contribute to the rhs of the
      * equation.
-     * For the sake of clarity, we explicitly store two sets of accleration,
+     * For the sake of clarity, we explicitly store two sets of acceleration,
      * velocity
      * and displacement.
      */
