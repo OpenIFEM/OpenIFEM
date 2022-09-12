@@ -50,7 +50,7 @@ set(tests ${serial_tests} ${mpi_tests})
 # Number of cores used in MPI tests
 set(MPI_TEST_N_CORES "2" CACHE STRING "Number of cores used in MPI tests")
 
-# Create a subdirectory and add an executible for each test
+# Create a subdirectory and add an executable for each test
 foreach(test ${tests})
   set(input ${CMAKE_CURRENT_SOURCE_DIR}/${test}/${test}.prm)
   set(output ${CMAKE_CURRENT_BINARY_DIR}/${test})
