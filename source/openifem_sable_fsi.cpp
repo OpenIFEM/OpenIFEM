@@ -1286,20 +1286,16 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
           // Fluid total acceleration at support points
           Tensor<1, dim> fluid_acc_tensor =
             (vs - v[q]) / time.get_delta_t() + grad_v[q] * v[q];
-          // apply explicit Eulerian penalty
-          fluid_acc_tensor += parameters.penalty_scale_factor[1] *
-                              ((vs - v[q]) / time.get_delta_t());
-
           //(dv[q]) / time.get_delta_t() + grad_v[q] * v[q];
           // calculate FSI acceleration
           Tensor<1, dim> fsi_acc_tensor;
           fsi_acc_tensor = fluid_acc_tensor;
           fsi_acc_tensor -= solid_acc_tensor;
-          // add penalty force based on the velocity difference between
-          // Lagrangian solid and SABLE, calculated from previous time step
+          // add penalty force based on the velocity difference
           Tensor<1, dim> fsi_penalty_tensor;
-          /*fsi_acc_tensor += fsi_vel_diff[q] / time.get_delta_t();
-          fsi_penalty_tensor = fsi_vel_diff[q] / time.get_delta_t();*/
+          fsi_penalty_tensor = parameters.penalty_scale_factor[1] *
+                               ((vs - v[q]) / time.get_delta_t());
+          fsi_acc_tensor += fsi_penalty_tensor;
 
           SymmetricTensor<2, dim> f_cell_stress;
           int count = 0;
@@ -1622,10 +1618,12 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_new()
                   // Fluid total acceleration at support points
                   Tensor<1, dim> fluid_acc =
                     (vs - vf[i]) / time.get_delta_t() + grad_vf[i] * vf[i];
-                  // apply explicit Eulerian penalty
-                  fluid_acc += parameters.penalty_scale_factor[1] *
-                               ((vs - vf[i]) / time.get_delta_t());
                   //(dv[i]) / time.get_delta_t() + grad_v[i] * v[i];
+                  // add penalty force based on the velocity difference
+                  Tensor<1, dim> fsi_penalty_tensor;
+                  fsi_penalty_tensor = parameters.penalty_scale_factor[1] *
+                                       ((vs - vf[i]) / time.get_delta_t());
+                  fluid_acc += fsi_penalty_tensor;
                   auto line = dof_indices[i];
 
                   sable_solver.fsi_acceleration(line) =
@@ -1855,20 +1853,16 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints_new()
           // Fluid total acceleration at support points
           Tensor<1, dim> fluid_acc_tensor =
             (vs - v[q]) / time.get_delta_t() + grad_v[q] * v[q];
-          // apply explicit Eulerian penalty
-          fluid_acc_tensor += parameters.penalty_scale_factor[1] *
-                              ((vs - v[q]) / time.get_delta_t());
-
           //(dv[q]) / time.get_delta_t() + grad_v[q] * v[q];
           // calculate FSI acceleration
           Tensor<1, dim> fsi_acc_tensor;
           fsi_acc_tensor = fluid_acc_tensor;
           fsi_acc_tensor -= solid_acc_tensor;
-          // add penalty force based on the velocity difference between
-          // Lagrangian solid and SABLE, calculated from previous time step
+          // add penalty force based on the velocity difference
           Tensor<1, dim> fsi_penalty_tensor;
-          /*fsi_acc_tensor += fsi_vel_diff[q] / time.get_delta_t();
-          fsi_penalty_tensor = fsi_vel_diff[q] / time.get_delta_t();*/
+          fsi_penalty_tensor = parameters.penalty_scale_factor[1] *
+                               ((vs - v[q]) / time.get_delta_t());
+          fsi_acc_tensor += fsi_penalty_tensor;
 
           SymmetricTensor<2, dim> f_cell_stress;
           int count = 0;
