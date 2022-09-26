@@ -170,6 +170,8 @@ namespace Fluid
       double material_vf;
       // SABLE elememt density
       double eulerian_density;
+      // SABLE shear modulus
+      double modulus;
     };
   };
 } // namespace Fluid
