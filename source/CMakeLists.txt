@@ -65,7 +65,8 @@ set(headers fluid_solver.h
             scnsim.h
             solid_solver.h
             utilities.h
-            cv_fsi.h)
+            cv_fsi.h
+	    kirchhoff_elastic_material.h)
 
 if(OPENIFEM_WITH_rkpm-rk4)
   list(APPEND TARGET_SRC "hypo_elasticity.cpp")

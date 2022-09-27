@@ -15,19 +15,19 @@ subsection Simulation
 
   # Level of global refinement before running,
   # which applies to all the solvers
-  set Global refinements = 0, 1
+  set Global refinements = 0, 4
 
   # The end time of the simulation in second
-  set End time = 2e2
+  set End time = 5e-2
 
   # The time step in second
-  set Time step size = 1e0
+  set Time step size = 1e-4
 
   # The output interval in second
-  set Output interval = 1e0
+  set Output interval = 1e-4
 
   # Mesh refinement interval in second
-  set Refinement interval = 1000
+  set Refinement interval = 100
 
   # Checkpoint save interval in second
   set Save interval = 100
@@ -48,21 +48,21 @@ end
 
 subsection Fluid material properties
   # The dynamic viscosity
-  set Dynamic viscosity = 0.002
+  set Dynamic viscosity = 8.9e-4  # air: 1.81e-5
 
   # Fluid density
-  set Fluid density = 1
+  set Fluid density = 1000 # air: 1.225
 end
 
 subsection Fluid solver control
   # The global Grad-Div stabilization, empirically should be in [0.1, 1]
-  set Grad-Div stabilization = 0.1
+  set Grad-Div stabilization = 1.0
 
   # Maximum number of Newton iterations at a time step
   set Max Newton iterations = 8
 
   # The relative tolerance of the nonlinear system residual
-  set Nonlinear system tolerance = 1e-6
+  set Nonlinear system tolerance = 1e-5
 end
 
 subsection Fluid Dirichlet BCs
@@ -82,11 +82,11 @@ subsection Fluid Dirichlet BCs
   # One decimal number indicates one set of constrained components:
   # 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
   # To make sense of the numbering, convert decimals to binaries (zyx)
-  set Dirichlet boundary components = 3, 2, 3
+  set Dirichlet boundary components = 3, 3, 3
 
   # Specify the values of the Dirichlet BCs, including both homogeneous and
   # inhomogeneous ones.
-  set Dirichlet boundary values = 1, 0, 0, 0, 0
+  set Dirichlet boundary values = 0, 0, 0, 0, 0, 0
 end
 
 subsection Fluid Neumann BCs
@@ -109,16 +109,16 @@ subsection Solid finite element system
 end
 
 subsection Solid material properties
-  # Material type, currently LinearElastic, Kirchhoff and NeoHookean are available
-  set Solid type = LinearElastic
+  # Material type, currently LinearElastic, NeoHookean and Kirchhoff are available
+  set Solid type = Kirchhoff
 
   # Solid density, used by all solid solvers
-  set Solid density = 1
+  set Solid density = 1 #122.5
 
   # E and nu are only used by linearElasticMaterial
-  set Young's modulus = 2.5
+  set Young's modulus = 1e6 #5.249e-5
 
-  set Poisson's ratio = 0.25
+  set Poisson's ratio = 0.44 #0.3
 
   # A list of parameters used by hyperelasticMaterial
   set Hyperelastic parameters = 0.5, 1.67
@@ -126,7 +126,7 @@ end
 
 subsection Solid solver control
   # Artifitial damping.
-  set Damping = 0.0
+  set Damping = 0.1
 
   # Number of Newton-Raphson iterations allowed, used by hyperelastic solver only
   set Max Newton iterations = 10
@@ -141,7 +141,7 @@ end
 # Only homogeneous Dirichlet BC is supported, i.e., the prescribed value is always 0.
 subsection Solid Dirichlet BCs
   # Dirichlet BCs can be applied to multiple boundaries.
-  set Number of Dirichlet BCs = 1
+  set Number of Dirichlet BCs = 0
 
   # List all the constrained boundaries here
   set Dirichlet boundary id = 0
@@ -161,12 +161,12 @@ subsection Solid Neumann BCs
   set Number of Neumann BCs = 1
 
   # The id, type, and values must appear n_neumann_bcs times.
-  set Neumann boundary id = 3
+  set Neumann boundary id = 0
 
   # Traction/Pressure, currently they cannot coexist.
   set Neumann boundary type = Traction
 
   # If traction, dim*n_solid_neumann_bcs components are expected;
   # if pressure, n_solid_neumann_bcs components are expected.
-  set Neumann boundary values = 0, -1e-4
+  set Neumann boundary values = 0, 1e4
 end

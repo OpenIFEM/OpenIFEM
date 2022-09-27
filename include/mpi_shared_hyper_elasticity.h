@@ -9,6 +9,7 @@
 #include <deal.II/physics/elasticity/kinematics.h>
 #include <deal.II/physics/elasticity/standard_tensors.h>
 
+#include "kirchhoff_elastic_material.h"
 #include "mpi_shared_solid_solver.h"
 #include "neo_hookean.h"
 

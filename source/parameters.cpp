@@ -376,10 +376,11 @@ namespace Parameters
   {
     prm.enter_subsection("Solid material properties");
     {
-      prm.declare_entry("Solid type",
-                        "LinearElastic",
-                        Patterns::Selection("LinearElastic|NeoHookean"),
-                        "Type of solid material");
+      prm.declare_entry(
+        "Solid type",
+        "LinearElastic",
+        Patterns::Selection("LinearElastic|NeoHookean|Kirchhoff"),
+        "Type of solid material");
       prm.declare_entry("Number of solid parts",
                         "1",
                         Patterns::Integer(0),

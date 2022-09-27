@@ -73,8 +73,8 @@ namespace MPI
     */
     std::vector<double> control_volume_boundaries;
     /* The outer map stores the inner maps by the sequence of x coordinates.
-       the inner map stores the fluid cells in the control volume by the sequence
-       of y coordinates.
+       the inner map stores the fluid cells in the control volume by the
+       sequence of y coordinates.
     */
     std::map<double, std::map<double, cell_iterator>> cv_f_cells;
     std::set<cell_iterator> inlet_cells;
@@ -89,8 +89,8 @@ namespace MPI
               std::tuple<cell_iterator, cell_iterator, double>>
       bernoulli_start_end;
     /* Streamline path for Bernoulli analysis. The key is the center x
-       coordinate for sorting. First iterator is for vector DoF and second is for
-       scalar DoF handler. Note: this is local
+       coordinate for sorting. First iterator is for vector DoF and second is
+       for scalar DoF handler. Note: this is local
     */
     std::map<double, std::pair<cell_iterator, cell_iterator>>
       streamline_path_cells;

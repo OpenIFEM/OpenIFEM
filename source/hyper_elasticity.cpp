@@ -16,6 +16,15 @@ namespace Internal
                                                   parameters.solid_rho));
         update(parameters, Tensor<2, dim>());
       }
+    else if (parameters.solid_type == "Kirchhoff")
+      {
+
+        material.reset(
+          new Solid::KirchhoffElasticMaterial<dim>(parameters.E[mat_id - 1],
+                                                   parameters.nu[mat_id - 1],
+                                                   parameters.solid_rho));
+        update(parameters, Tensor<2, dim>());
+      }
     else
       {
         Assert(false, ExcNotImplemented());
@@ -35,6 +44,15 @@ namespace Internal
         Assert(nh, ExcInternalError());
         tau = nh->get_tau();
         Jc = nh->get_Jc();
+      }
+    else if (parameters.solid_type == "Kirchhoff")
+      {
+        auto kh =
+          std::dynamic_pointer_cast<Solid::KirchhoffElasticMaterial<dim>>(
+            material);
+        Assert(kh, ExcInternalError());
+        Jc = kh->get_Jc();
+        tau = kh->get_tau(F);
       }
     else
       {

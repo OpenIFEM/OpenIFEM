@@ -109,7 +109,7 @@ subsection Solid finite element system
 end
 
 subsection Solid material properties
-  # Material type, currently LinearElastic and NeoHookean are available
+  # Material type, currently LinearElastic, Kirchhoff and NeoHookean are available
   set Solid type = NeoHookean
 
   # Solid density, used by all solid solvers

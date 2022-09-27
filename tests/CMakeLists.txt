@@ -13,7 +13,8 @@ set(serial_tests acoustic_duct_wave
                  solid_beam_bending_linearelastic
                  solid_beam_bending_NeoHookean
                  solid_gravity_hyperelastic
-                 solid_gravity_linearelastic)
+                 solid_gravity_linearelastic
+		 solid_rotation_Kirchhoff)
 
 # mpi tests
 set(mpi_tests acoustic_duct_wave_mpi
@@ -33,7 +34,8 @@ set(mpi_tests acoustic_duct_wave_mpi
               solid_beam_bending_mpi_linearelastic
               solid_beam_bending_mpi_NeoHookean
               solid_beam_bending_mpi_shared_linearelastic
-              solid_beam_bending_mpi_shared_NeoHookean)
+              solid_beam_bending_mpi_shared_NeoHookean
+	      solid_rotation_mpi_shared_Kirchhoff)
 
 set(rkpm-rk4_serial_tests rkpm-rk4-bending)
 
