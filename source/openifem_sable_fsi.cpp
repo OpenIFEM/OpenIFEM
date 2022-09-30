@@ -483,7 +483,6 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
                           update_values | update_gradients |
                             update_quadrature_points | update_JxW_values);
 
-  int cell_count = 0;
   cell_nodes_inside_solid.clear();
   cell_nodes_outside_solid.clear();
   vertex_indicator_data.clear();
@@ -513,8 +512,8 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
             outside_nodes.push_back(v);
         }
 
-      cell_nodes_inside_solid.insert({cell_count, inside_nodes});
-      cell_nodes_outside_solid.insert({cell_count, outside_nodes});
+      cell_nodes_inside_solid.insert({f_cell->index(), inside_nodes});
+      cell_nodes_outside_solid.insert({f_cell->index(), outside_nodes});
 
       auto p = sable_solver.cell_property.get_data(f_cell);
       if (inside_count == 0)
@@ -550,8 +549,6 @@ void OpenIFEM_Sable_FSI<dim>::update_indicator_qpoints()
           // parameters.indicator_field_condition == "PartiallyInsideSolid"
           p[0]->indicator = double(inside_qpoint) / double(q_points.size());
         }
-
-      cell_count += 1;
 
       // update exact indicator field
       // initialize it to zero
@@ -1749,6 +1746,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints_new()
   sable_solver.fsi_force_acceleration_part = 0;
   sable_solver.fsi_force_stress_part = 0;
   sable_solver.fsi_penalty_force = 0;
+  sable_solver.fsi_velocity = 0;
 
   const unsigned int dofs_per_cell = sable_solver.fe.dofs_per_cell;
   const unsigned int u_dofs = sable_solver.fe.base_element(0).dofs_per_cell;
