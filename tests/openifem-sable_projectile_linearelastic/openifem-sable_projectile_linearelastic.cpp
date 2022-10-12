@@ -2,7 +2,7 @@
 // OpenIFEM hyperleastic solid solver and Sable The generated executable needs
 // to be run with Sable executable
 #include "fsi.h"
-#include "hyper_elasticity.h"
+#include "linear_elasticity.h"
 #include "openifem_sable_fsi.h"
 #include "parameters.h"
 #include "sable_wrapper.h"
@@ -208,8 +208,8 @@ int main(int argc, char *argv[])
       double scale = 1.0;
       GridTools::scale(scale, lag_tria);
 
-      // Create Lagrangian solid object with hyper elastic material
-      Solid::HyperElasticity<2> solid(lag_tria, params);
+      // Create Lagrangian solid object with linear elastic material
+      Solid::LinearElasticity<2> solid(lag_tria, params);
       // Constrain three points in the Lagrangian solid in x direction
       Point<2> p1(0, 1);
       Point<2> p2(0, 5);

@@ -15,7 +15,7 @@ subsection Simulation
 
   # Level of global refinement before running,
   # which applies to all the solvers
-  set Global refinements = 0, 0
+  set Global refinements = 0, 1
 
   # The end time of the simulation in second
   set End time = 5e-2
@@ -36,7 +36,7 @@ subsection Simulation
   set Gravity = 0.0, 0.0
 
   # Initial velocity which only applies to solid
-  set Initial velocity = 0.0, -1000.0
+  set Initial velocity = 0.0, -50000.0
 
   # Set condition for calculating indicator field (only applied to OpenIFEM-SABLE Coupling)
   # Options: CompletelyInsideSolid and PartiallyInsideSolid
@@ -44,7 +44,7 @@ subsection Simulation
 
   # Set cirteria for calculating indicator field and FSI force
   # Options: Nodes and QuadraturePoints
-  set FSI force criteria = Nodes
+  set FSI force criteria = QuadraturePoints
 
   # Set an option for SABLE stress used in calulation of FSI force
   # Options: CellBased and NodeBased
@@ -133,13 +133,13 @@ end
 
 subsection Solid material properties
   # Material type, currently LinearElastic and NeoHookean are available
-  set Solid type = NeoHookean
+  set Solid type = LinearElastic
 
   # Solid density, used by all solid solvers
-  set Solid density = 8.9
+  set Solid density = 7.8
 
   # E and nu are only used by linearElasticMaterial
-  set Young's modulus = 2.5
+  set Young's modulus = 2.0e12
 
   set Poisson's ratio = 0.25
 
