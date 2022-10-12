@@ -2,7 +2,7 @@
 // OpenIFEM hyperleastic solid solver and Sable The generated executable needs
 // to be run with Sable executable
 #include "fsi.h"
-#include "hyper_elasticity.h"
+#include "linear_elasticity.h"
 #include "openifem_sable_fsi.h"
 #include "parameters.h"
 #include "sable_wrapper.h"
@@ -183,7 +183,7 @@ int main(int argc, char *argv[])
       // Lagrangian sphere radius
       double R = 1.0;
       // Lagrangian sphere center
-      Point<3> center(0, 0, 0);
+      Point<3> center(0, 0, 1);
       // Create mesh for Eulerian solid
       Point<3> lower_corner(x, y, z);
       Point<3> upper_corner(x + h * n, y + h * n, z + h * n);
@@ -202,7 +202,7 @@ int main(int argc, char *argv[])
       Triangulation<3> lag_tria;
       Utils::GridCreator<3>::sphere(lag_tria, center, R);
       // Create Lagrangian solid object with hyper elastic material
-      Solid::HyperElasticity<3> solid(lag_tria, params);
+      Solid::LinearElasticity<3> solid(lag_tria, params);
       // Create FSI object
       OpenIFEM_Sable_FSI<3> fsi(fluid, solid, params, false);
       fsi.run();

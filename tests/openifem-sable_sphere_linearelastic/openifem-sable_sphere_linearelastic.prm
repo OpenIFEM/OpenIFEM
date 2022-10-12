@@ -36,7 +36,7 @@ subsection Simulation
   set Gravity = 0.0, 0.0, 0.0
 
   # Initial velocity which only applies to solid
-  set Initial velocity = 0.0, -1000.0, 0.0
+  set Initial velocity = 0.0, -20000.0, 0.0
 
   # Set condition for calculating indicator field (only applied to OpenIFEM-SABLE Coupling)
   # Options: CompletelyInsideSolid and PartiallyInsideSolid
@@ -133,15 +133,15 @@ end
 
 subsection Solid material properties
   # Material type, currently LinearElastic and NeoHookean are available
-  set Solid type = NeoHookean
+  set Solid type = LinearElastic
 
   # Solid density, used by all solid solvers
-  set Solid density = 8.9
+  set Solid density = 7.8
 
   # E and nu are only used by linearElasticMaterial
-  set Young's modulus = 2.5
+  set Young's modulus = 2.0e12
 
-  set Poisson's ratio = 0.25
+  set Poisson's ratio = 0.28
 
   # A list of parameters used by hyperelasticMaterial
   set Hyperelastic parameters = 4.85e11, 1.35e12
