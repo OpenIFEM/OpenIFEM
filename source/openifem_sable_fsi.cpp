@@ -1504,6 +1504,12 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_new()
   TimerOutput::Scope timer_section(timer, "Find fluid BC new");
   move_solid_mesh(true);
 
+  sable_solver.fsi_acceleration = 0;
+  sable_solver.fsi_velocity = 0;
+  int stress_vec_size = dim + dim * (dim - 1) * 0.5;
+  sable_solver.fsi_stress = std::vector<Vector<double>>(
+    stress_vec_size, Vector<double>(sable_solver.scalar_dof_handler.n_dofs()));
+
   const std::vector<Point<dim>> &unit_points =
     sable_solver.fe.get_unit_support_points();
 
@@ -1657,8 +1663,8 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_new()
                       sable_solver.fsi_stress[stress_index][scalar_dof_id] =
                         -s_stress_component[0];
                     }
+                  stress_index++;
                 }
-              stress_index++;
             }
         }
 
