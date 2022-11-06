@@ -1090,10 +1090,6 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
               // velocity delta!
               tmp_fsi_acceleration(line) =
                 (fluid_acc[index] - solid_acc[index]);
-              // add penalty force based on the velocity difference between
-              // Lagrangian solid and SABLE, calculated from previous time step
-              /*tmp_fsi_acceleration(line) +=
-                sable_solver.fsi_vel_diff_eul(line) / time.get_delta_t();*/
               tmp_fsi_velocity(line) = vs[index];
             }
         }
@@ -1210,7 +1206,6 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
   std::vector<Tensor<2, dim>> grad_v(n_q_points);
   std::vector<Tensor<1, dim>> v(n_q_points);
   std::vector<Tensor<1, dim>> dv(n_q_points);
-  std::vector<Tensor<1, dim>> fsi_vel_diff(n_q_points);
 
   auto scalar_f_cell = sable_solver.scalar_dof_handler.begin_active();
   for (auto f_cell = sable_solver.dof_handler.begin_active();
@@ -1247,9 +1242,6 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints()
       // Fluid velocity gradient at support points
       fe_values[velocities].get_function_gradients(
         sable_solver.present_solution, grad_v);
-      // Difference between Lagrangian solid and artifical material velocities
-      fe_values[velocities].get_function_values(sable_solver.fsi_vel_diff_eul,
-                                                fsi_vel_diff);
 
       auto q_points = fe_values.get_quadrature_points();
       for (unsigned int q = 0; q < n_q_points; q++)
@@ -1506,6 +1498,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_new()
 
   sable_solver.fsi_acceleration = 0;
   sable_solver.fsi_velocity = 0;
+  sable_solver.fsi_penalty_acceleration = 0;
   int stress_vec_size = dim + dim * (dim - 1) * 0.5;
   sable_solver.fsi_stress = std::vector<Vector<double>>(
     stress_vec_size, Vector<double>(sable_solver.scalar_dof_handler.n_dofs()));
@@ -1632,6 +1625,8 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_new()
                   sable_solver.fsi_acceleration(line) =
                     (fluid_acc[dof_id] - solid_acc[dof_id]);
                   sable_solver.fsi_velocity(line) = vs[dof_id];
+                  sable_solver.fsi_penalty_acceleration(line) =
+                    fsi_penalty_tensor[dof_id];
                 }
             }
 
@@ -1779,7 +1774,6 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints_new()
   std::vector<Tensor<2, dim>> grad_v(n_q_points);
   std::vector<Tensor<1, dim>> v(n_q_points);
   std::vector<Tensor<1, dim>> dv(n_q_points);
-  std::vector<Tensor<1, dim>> fsi_vel_diff(n_q_points);
 
   auto scalar_f_cell = sable_solver.scalar_dof_handler.begin_active();
   for (auto f_cell = sable_solver.dof_handler.begin_active();
@@ -1816,9 +1810,6 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc_qpoints_new()
       // Fluid velocity gradient at support points
       fe_values[velocities].get_function_gradients(
         sable_solver.present_solution, grad_v);
-      // Difference between Lagrangian solid and artifical material velocities
-      fe_values[velocities].get_function_values(sable_solver.fsi_vel_diff_eul,
-                                                fsi_vel_diff);
 
       auto q_points = fe_values.get_quadrature_points();
       for (unsigned int q = 0; q < n_q_points; q++)

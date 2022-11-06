@@ -100,6 +100,9 @@ namespace Fluid
     // artificial velocity calculated at Eulerian mesh
     BlockVector<double> fsi_vel_diff_eul;
 
+    // Vector to store penalty fsi acceleration
+    BlockVector<double> fsi_penalty_acceleration;
+
     // Vector to store penalty fsi force
     BlockVector<double> fsi_penalty_force;
 

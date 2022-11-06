@@ -25,6 +25,7 @@ namespace Fluid
     fsi_acceleration.reinit(dofs_per_block);
     fsi_velocity.reinit(dofs_per_block);
     fsi_vel_diff_eul.reinit(dofs_per_block);
+    fsi_penalty_acceleration.reinit(dofs_per_block);
     fsi_penalty_force.reinit(dofs_per_block);
     int stress_vec_size = dim + dim * (dim - 1) * 0.5;
     fsi_stress = std::vector<Vector<double>>(
@@ -166,7 +167,7 @@ namespace Fluid
             fe_values[velocities].get_function_values(fsi_acceleration,
                                                       fsi_acc_values);
 
-            fe_values[velocities].get_function_values(fsi_vel_diff_eul,
+            fe_values[velocities].get_function_values(fsi_penalty_acceleration,
                                                       fsi_penalty_values);
 
             for (unsigned int i = 0; i < fsi_stress.size(); i++)
