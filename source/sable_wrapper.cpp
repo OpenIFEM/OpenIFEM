@@ -1063,9 +1063,10 @@ namespace Fluid
                              solution_names,
                              data_component_interpretation_force);
 
-    // Indicator and cell-wise stress
+    // Indicator and cell-wise shear modulus, stress
     Vector<double> ind(triangulation.n_active_cells());
     Vector<double> exact_ind(triangulation.n_active_cells());
+    Vector<double> shear_modulus(triangulation.n_active_cells());
     unsigned int stress_size = (dim == 2 ? 3 : 6);
     std::vector<Vector<double>> sable_stress;
     std::vector<Vector<double>> sable_stress_no_bgmat;
@@ -1082,6 +1083,7 @@ namespace Fluid
         auto c = cell_wise_stress.get_data(cell);
         ind[i] = p[0]->indicator;
         exact_ind[i] = p[0]->exact_indicator;
+        shear_modulus[i] = c[0]->modulus;
         for (unsigned int j = 0; j < stress_size; j++)
           {
             sable_stress[j][i] = c[0]->cell_stress[j];
@@ -1091,6 +1093,7 @@ namespace Fluid
       }
     data_out.add_data_vector(ind, "Indicator");
     data_out.add_data_vector(exact_ind, "exact_indicator");
+    data_out.add_data_vector(shear_modulus, "shear_modulus");
     data_out.add_data_vector(sable_stress[0], "cell_stress_xx");
     data_out.add_data_vector(sable_stress[1], "cell_stress_xy");
     data_out.add_data_vector(sable_stress[2], "cell_stress_yy");
