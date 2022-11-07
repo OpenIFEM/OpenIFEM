@@ -2390,6 +2390,10 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
 
   // double maxEulVel = -1.0e+35;
   double maxLagVel = -1.0e+35;
+  // get background mesh size for the Lagrangian penalty scaling
+  // NOTE: It is assumed that the background mesh is uniform
+  auto f_cell = fluid_solver.dof_handler.begin_active();
+  double dh = abs(f_cell->vertex(0)(0) - f_cell->vertex(1)(0));
   // interpolate Eulerian velocity to Lagrangian mesh
   for (auto s_cell = solid_solver.dof_handler.begin_active();
        s_cell != solid_solver.dof_handler.end();
@@ -2410,11 +2414,14 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
               Vector<double> lagVel(dim);
               if (f_cell->index() != -1)
                 {
-                  // get material vf of background Eulerian cell
+                  // get shear modulus of the background Eulerian cell
                   auto ptr = sable_solver.cell_wise_stress.get_data(f_cell);
-                  double vf = ptr[0]->material_vf;
-                  auto ptr_i = sable_solver.cell_property.get_data(f_cell);
-                  double indicator = ptr_i[0]->indicator;
+                  double modulus = ptr[0]->modulus;
+                  // calculate Lagrangian penalty scaling factor
+                  double lag_penalty_scale =
+                    (parameters.penalty_scale_factor[0] * modulus * dh * dh) /
+                    time.get_delta_t();
+
                   for (unsigned int i = 0; i < dim; i++)
                     {
                       auto index = s_cell->vertex_dof_index(v, i);
@@ -2422,10 +2429,8 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
                       // subtract Lagrangian solid velocity
                       vel_diff_lag(index) -=
                         solid_solver.current_velocity(index);
-                      // scale velocity difference by background Eulerian volume
-                      // fraction and indicator
-                      vel_diff_lag(index) *= vf * indicator;
-
+                      // scale velocity difference
+                      vel_diff_lag(index) *= lag_penalty_scale;
                       lagVel[i] = solid_solver.current_velocity(index);
                     }
                   /*double vnorm = value.l2_norm();

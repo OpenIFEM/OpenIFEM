@@ -155,14 +155,10 @@ namespace Solid
                 // difference (only for OpenIFEM-SABLE coupling)
                 if (parameters.simulation_type == "FSI")
                   {
-                    local_rhs[i] += phi[i] * fsi_vel_diff[q] *
-                                    fe_values.JxW(q) *
-                                    parameters.penalty_scale_factor[0] * rho /
-                                    time.get_delta_t();
+                    local_rhs[i] += phi[i] * fsi_vel_diff[q] * fe_values.JxW(q);
+
                     local_nodal_forces_penalty[i] +=
-                      phi[i] * fsi_vel_diff[q] *
-                      parameters.penalty_scale_factor[0] * fe_values.JxW(q) *
-                      rho / time.get_delta_t();
+                      phi[i] * fsi_vel_diff[q] * fe_values.JxW(q);
 
                     // calculate damping matrix for implicit Lagrangian penalty
                     if (!is_lag_penalty_explicit)
