@@ -2419,8 +2419,9 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
                   double modulus = ptr[0]->modulus;
                   // calculate Lagrangian penalty scaling factor
                   double lag_penalty_scale =
-                    (parameters.penalty_scale_factor[0] * modulus * dh * dh) /
-                    time.get_delta_t();
+                    (parameters.penalty_scale_factor[0] * modulus *
+                     time.get_delta_t()) /
+                    (dh * dh);
 
                   for (unsigned int i = 0; i < dim; i++)
                     {
