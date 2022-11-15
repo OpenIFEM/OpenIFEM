@@ -129,8 +129,9 @@ namespace Parameters
       AssertThrow(penalty_scale_factor.size() == 2.0,
                   ExcMessage("Inconsistent side for penalty scale factors!"));
       AssertThrow(
-        (penalty_scale_factor[0] <= 1.0) && (penalty_scale_factor[0] >= 0.0),
-        ExcMessage("Lagrangian penalty scale must be between 0.0 and 1.0!"));
+        (penalty_scale_factor[0] >= 0.0),
+        ExcMessage(
+          "Lagrangian penalty scale must be grater than or equal to 0.0!"));
       AssertThrow(
         penalty_scale_factor[1] >= 0.0,
         ExcMessage(
