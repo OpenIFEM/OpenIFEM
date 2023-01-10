@@ -1,7 +1,17 @@
-# OpenIFEM
-An implementation of the Immersed Finite Element Method based on [deal.II](https://www.dealii.org/)
+## OpenIFEM-SABLE
+- A specialized OpenIFEM module designed for the simulation of solid-solid interactions, high-velocity impacts
+- A simulation is conducted by running OpenIFEM and SABLE simultaneously 
+- OpenIFEM: An implementation of the modified Immersed Finite Element Method (mIFEM) based on [deal.II](https://www.dealii.org/)
+- SABLE: Multi-material Eulerian hydrocode by Sandia National Laboratories
+- OpenIFEM provides:
+     - Lagrangian solid solvers with linear elastic or hyper elastic material descriptions: `linear_elasticity.cpp`, `hyper_elasticity.cpp`  
+     - An MPI-based communication wrapper that exchanges relevant quantities between the two software: `sable_wrapper.cpp`, `mpi_sable_wrapper.cpp` 
+     - An interaction module based on mIFEM algorithm: `openifem_sable_fsi.cpp`, `mpi_openifem_sable_fsi.cpp`
+- SABLE provides:
+     - Multi-material domain described using a fixed Eulerian mesh
+- For details, please refer [techincal repot](https://www.osti.gov/biblio/1888360) 
 
-## Dependencies
+## OpenIFEM Dependencies
 1. [MPICH](https://www.mpich.org/)/[Open MPI](https://www.open-mpi.org/)
 2. [PETSc](https://www.mcs.anl.gov/petsc/) with `MUMPS` and `Hypre`
 3. [p4est](http://www.p4est.org/)
