@@ -13,6 +13,7 @@ set(TARGET_SRC fluid_solver.cpp
                mpi_insimex.cpp
                mpi_linear_elasticity.cpp
                mpi_insim.cpp
+               mpi_sable_wrapper.cpp
                mpi_scnsex.cpp
                mpi_scnsim.cpp
                mpi_shared_hyper_elasticity.cpp
@@ -45,6 +46,7 @@ set(headers fluid_solver.h
             mpi_insimex.h
             mpi_linear_elasticity.h
             mpi_insim.h
+            mpi_sable_wrapper.h
             mpi_scnsex.h
             mpi_scnsim.h
             mpi_shared_hyper_elasticity.h
