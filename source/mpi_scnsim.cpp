@@ -192,8 +192,9 @@ namespace Fluid
 
     template <int dim>
     SCnsIM<dim>::SCnsIM(parallel::distributed::Triangulation<dim> &tria,
-                        const Parameters::AllParameters &parameters)
-      : FluidSolver<dim>(tria, parameters)
+                        const Parameters::AllParameters &parameters,
+                        MPI_Comm comm)
+      : FluidSolver<dim>(tria, parameters, comm)
     {
       AssertThrow(parameters.fluid_velocity_degree ==
                     parameters.fluid_pressure_degree,

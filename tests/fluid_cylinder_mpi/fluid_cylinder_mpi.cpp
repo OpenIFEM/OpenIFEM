@@ -82,7 +82,7 @@ int main(int argc, char *argv[])
         {
           parallel::distributed::Triangulation<2> tria(MPI_COMM_WORLD);
           Utils::GridCreator<2>::flow_around_cylinder(tria);
-          Fluid::MPI::InsIM<2> flow(tria, params);
+          Fluid::MPI::InsIM<2> flow(tria, params, MPI_COMM_WORLD);
           flow.add_hard_coded_boundary_condition(0, inflow_bc);
           flow.run();
           // Check the max values of velocity and pressure
@@ -99,7 +99,7 @@ int main(int argc, char *argv[])
         {
           parallel::distributed::Triangulation<3> tria(MPI_COMM_WORLD);
           Utils::GridCreator<3>::flow_around_cylinder(tria);
-          Fluid::MPI::InsIM<3> flow(tria, params);
+          Fluid::MPI::InsIM<3> flow(tria, params, MPI_COMM_WORLD);
           flow.add_hard_coded_boundary_condition(4, inflow_bc_3d);
           flow.run();
         }

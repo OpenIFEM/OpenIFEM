@@ -40,7 +40,8 @@ namespace Fluid
     public:
       //! Constructor.
       InsIM(parallel::distributed::Triangulation<dim> &,
-            const Parameters::AllParameters &);
+            const Parameters::AllParameters &,
+            MPI_Comm);
       ~InsIM(){};
       //! Run the simulation.
       void run();

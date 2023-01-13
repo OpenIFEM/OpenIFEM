@@ -41,7 +41,7 @@ int main(int argc, char *argv[])
           Tensor<1, 2> offset({0.25, 0});
           GridTools::shift(offset, tria_solid);
 
-          Fluid::MPI::SCnsIM<2> fluid(tria_fluid, params);
+          Fluid::MPI::SCnsIM<2> fluid(tria_fluid, params, MPI_COMM_WORLD);
           Solid::MPI::SharedLinearElasticity<2> solid(tria_solid, params);
 
           auto penetration_criterion = [](const Point<2> &p) -> double {

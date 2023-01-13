@@ -137,7 +137,7 @@ int main(int argc, char *argv[])
           auto bf_ptr = std::make_shared<ArtificialBF<2>>(ArtificialBF<2>());
 
           Fluid::MPI::SCnsIM<2> fluid(tria_fluid,
-                                      params); //, ptr, pml, bf_ptr);
+                                      params, MPI_COMM_WORLD); //, ptr, pml, bf_ptr);
           Solid::MPI::SharedHypoElasticity<2> solid(
             tria_solid, params, 0.05, 1.3);
           MPI::FSI<2> fsi(fluid, solid, params);

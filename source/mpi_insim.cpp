@@ -129,8 +129,9 @@ namespace Fluid
 
     template <int dim>
     InsIM<dim>::InsIM(parallel::distributed::Triangulation<dim> &tria,
-                      const Parameters::AllParameters &parameters)
-      : FluidSolver<dim>(tria, parameters)
+                      const Parameters::AllParameters &parameters,
+                      MPI_Comm comm)
+      : FluidSolver<dim>(tria, parameters, comm)
     {
       Assert(
         parameters.fluid_velocity_degree - parameters.fluid_pressure_degree ==

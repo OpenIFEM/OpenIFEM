@@ -21,7 +21,8 @@ namespace Fluid
     template <int dim>
     FluidSolver<dim>::FluidSolver(
       parallel::distributed::Triangulation<dim> &tria,
-      const Parameters::AllParameters &parameters)
+      const Parameters::AllParameters &parameters,
+      MPI_Comm comm)
       : triangulation(tria),
         fe(FE_Q<dim>(parameters.fluid_velocity_degree),
            dim,
@@ -33,7 +34,7 @@ namespace Fluid
         volume_quad_formula(parameters.fluid_velocity_degree + 1),
         face_quad_formula(parameters.fluid_velocity_degree + 1),
         parameters(parameters),
-        mpi_communicator(MPI_COMM_WORLD),
+        mpi_communicator(comm),
         pcout(std::cout,
               Utilities::MPI::this_mpi_process(mpi_communicator) == 0),
         time(parameters.end_time,

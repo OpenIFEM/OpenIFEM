@@ -91,7 +91,8 @@ namespace Fluid
 
       //! Constructor.
       FluidSolver(parallel::distributed::Triangulation<dim> &,
-                  const Parameters::AllParameters &);
+                  const Parameters::AllParameters &,
+                  MPI_Comm);
 
       //! Run the simulation.
       virtual void run() = 0;

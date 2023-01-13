@@ -67,7 +67,7 @@ int main(int argc, char *argv[])
           parallel::distributed::Triangulation<2> tria(MPI_COMM_WORLD);
           GridGenerator::subdivided_hyper_rectangle(
             tria, {160, 30}, Point<2>(0, 0), Point<2>(8, 2), true);
-          Fluid::MPI::SCnsIM<2> flow(tria, params);
+          Fluid::MPI::SCnsIM<2> flow(tria, params, MPI_COMM_WORLD);
           flow.set_body_force(body_force);
           flow.set_sigma_pml_field(sigma_pml);
           flow.run();

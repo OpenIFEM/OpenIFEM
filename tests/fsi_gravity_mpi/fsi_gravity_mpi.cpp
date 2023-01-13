@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
                 }
             }
           fluid_tria.execute_coarsening_and_refinement();
-          Fluid::MPI::InsIM<2> fluid(fluid_tria, params);
+          Fluid::MPI::InsIM<2> fluid(fluid_tria, params, MPI_COMM_WORLD);
 
           Triangulation<2> solid_tria;
           Point<2> center(L, -L);
@@ -69,7 +69,7 @@ int main(int argc, char *argv[])
             Point<3>(0, 0, 0),
             Point<3>(W, W, -H),
             true);
-          Fluid::MPI::InsIM<3> fluid(fluid_tria, params);
+          Fluid::MPI::InsIM<3> fluid(fluid_tria, params, MPI_COMM_WORLD);
 
           Triangulation<3> solid_tria;
           Point<3> center(L, L, -L);
