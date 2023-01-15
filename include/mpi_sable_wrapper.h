@@ -31,6 +31,8 @@ namespace Fluid
       using FluidSolver<dim>::initialize_system;
       void initialize_system() override;
 
+      struct SableCellData;
+
       /*! \brief Run the simulation for one time step.
        *
        *  The two input arguments are not used in the wrapper
@@ -85,7 +87,32 @@ namespace Fluid
       // Recieve velocity from SABLE
       void rec_velocity(const int &sable_n_nodes);
 
+      void rec_stress(const int &sable_n_elements);
+
       void send_fsi_force(const int &sable_n_nodes);
+
+      CellDataStorage<
+        typename parallel::distributed::Triangulation<dim>::cell_iterator,
+        SableCellData>
+        sable_cell_data;
+
+      /// A data structure that stores cell-wise stress and volume fractions
+      /// received from SABLE
+      struct SableCellData
+      {
+        // volume fraction averaged cell-wise stress considering all the
+        // backgorund material
+        std::vector<double> cell_stress;
+        // volume fraction averaged cell-wise stress for only selected target
+        // material
+        std::vector<double> cell_stress_no_bgmat;
+        // SABLE material volume fraction
+        double material_vf;
+        // SABLE elememt density
+        double eulerian_density;
+        // SABLE shear modulus
+        double modulus;
+      };
     };
   } // namespace MPI
 } // namespace Fluid

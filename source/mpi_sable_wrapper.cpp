@@ -27,6 +27,25 @@ namespace Fluid
         owned_partitioning, relevant_partitioning, mpi_communicator);
       fsi_velocity.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
+
+      // Setup cell wise stress, vf, density received from SABLE
+      int stress_size = (dim == 2 ? 3 : 6);
+      for (auto cell = triangulation.begin_active();
+           cell != triangulation.end();
+           ++cell)
+        {
+          if (!cell->is_artificial())
+            {
+              sable_cell_data.initialize(cell, 1);
+              const std::vector<std::shared_ptr<SableCellData>> p =
+                sable_cell_data.get_data(cell);
+              p[0]->cell_stress.resize(stress_size, 0);
+              p[0]->cell_stress_no_bgmat.resize(stress_size, 0);
+              p[0]->material_vf = 0;
+              p[0]->eulerian_density = 0;
+              p[0]->modulus = 0;
+            }
+        }
     }
 
     template <int dim>
@@ -63,6 +82,7 @@ namespace Fluid
           find_ghost_nodes();
           create_dof_map();
 
+          rec_stress(sable_no_ele);
           rec_velocity(sable_no_nodes);
 
           output_results(0);
@@ -84,6 +104,7 @@ namespace Fluid
           Max(sable_no_ele);
           Max(sable_no_nodes);
 
+          rec_stress(sable_no_ele);
           rec_velocity(sable_no_nodes);
 
           is_comm_active = All(is_comm_active);
@@ -381,6 +402,89 @@ namespace Fluid
         }
       delete[] nv_send_buffer_force;
       delete[] nv_send_buffer_vel;
+    }
+
+    template <int dim>
+    void SableWrap<dim>::rec_stress(const int &sable_n_elements)
+    {
+      int sable_stress_size = sable_n_elements * dim * 2;
+      int sable_stress_per_ele_size = dim * 2;
+      std::vector<int> cmapp = sable_ids;
+      std::vector<int> cmapp_sizes(cmapp.size(), sable_stress_size);
+      
+      // create rec buffer
+      double **nv_rec_buffer_1 = new double *[cmapp.size()];
+      double **nv_rec_buffer_2 = new double *[cmapp.size()];
+      for (unsigned ict = 0; ict < cmapp.size(); ict++)
+        {
+          nv_rec_buffer_1[ict] = new double[cmapp_sizes[ict]];
+          nv_rec_buffer_2[ict] = new double[cmapp_sizes[ict]];
+        }
+      // recieve data
+      // cell-wise stress for all background materials with VF average
+      rec_data(nv_rec_buffer_1, cmapp, cmapp_sizes, sable_stress_size);
+      // cell-wise stress for only selected background material without VF
+      // average
+      rec_data(nv_rec_buffer_2, cmapp, cmapp_sizes, sable_stress_size);
+
+      // remove solution from ghost layers of Sable mesh
+      std::vector<double> sable_stress;
+      std::vector<double> sable_stress_no_bgmat;
+
+      for (unsigned int n = 0; n < triangulation.n_cells(); n++)
+        {
+          int non_ghost_cell_id = non_ghost_cells[n];
+          int index = non_ghost_cell_id * sable_stress_per_ele_size;
+          for (int i = 0; i < sable_stress_per_ele_size; i++)
+            {
+              sable_stress.push_back(nv_rec_buffer_1[0][index + i]);
+              sable_stress_no_bgmat.push_back(nv_rec_buffer_2[0][index + i]);
+            }
+        }
+
+      assert(sable_stress.size() ==
+             triangulation.n_cells() * sable_stress_per_ele_size);
+      assert(sable_stress_no_bgmat.size() ==
+             triangulation.n_cells() * sable_stress_per_ele_size);
+
+      // Sable stress tensor in 2D: xx yy zz xy
+      // Sable stress tensor in 3D: xx yy zz xy yz xz
+      std::vector<int> stress_sequence;
+      // create stress sequence according to dimension
+      if (dim == 2)
+        stress_sequence = {0, 3, 1};
+      else
+        stress_sequence = {0, 3, 1, 5, 4, 2};
+
+      for (auto cell = triangulation.begin_active();
+           cell != triangulation.end();
+           ++cell)
+        {
+          if (cell->is_locally_owned())
+            {
+              int count = 0;
+              auto ptr = sable_cell_data.get_data(cell);
+              for (auto j : stress_sequence)
+                {
+                  ptr[0]->cell_stress[count] =
+                    sable_stress[cell->index() * sable_stress_per_ele_size + j];
+                  ptr[0]->cell_stress_no_bgmat[count] =
+                    sable_stress_no_bgmat[cell->index() *
+                                            sable_stress_per_ele_size +
+                                          j];
+                  count = count + 1;
+                }
+            }
+        }
+
+      // delete buffer
+      for (unsigned ict = 0; ict < cmapp.size(); ict++)
+        {
+          delete[] nv_rec_buffer_1[ict];
+          delete[] nv_rec_buffer_2[ict];
+        }
+      delete[] nv_rec_buffer_1;
+      delete[] nv_rec_buffer_2;
     }
 
     template class SableWrap<2>;
