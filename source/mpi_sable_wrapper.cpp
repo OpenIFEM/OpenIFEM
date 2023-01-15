@@ -20,6 +20,16 @@ namespace Fluid
     }
 
     template <int dim>
+    void SableWrap<dim>::initialize_system()
+    {
+      FluidSolver<dim>::initialize_system();
+      fsi_force.reinit(
+        owned_partitioning, relevant_partitioning, mpi_communicator);
+      fsi_velocity.reinit(
+        owned_partitioning, relevant_partitioning, mpi_communicator);
+    }
+
+    template <int dim>
     void SableWrap<dim>::run()
     {
 
@@ -59,6 +69,13 @@ namespace Fluid
         }
       else
         {
+          // when simulation_type == FSI, send fsi force and indicator through
+          // openifem-sable fsi solver otherwise send 0 force and indicator
+          if (parameters.simulation_type != "FSI")
+            {
+              send_fsi_force(sable_no_nodes);
+            }
+
           // Recieve no. of nodes and elements from Sable
           sable_no_nodes_one_dir = 0;
           sable_no_ele = 0;
@@ -223,11 +240,15 @@ namespace Fluid
     template <int dim>
     void SableWrap<dim>::create_dof_map()
     {
-
       // Create SABLE to OpenIFEM DOF map
       // Used when data is recieved from SABLE
       // -1: dof is not locally owned
       sable_openifem_dof_map.resize(dof_handler.n_dofs(), -1);
+
+      // initialize OpenIFEM to SABLE dof map
+      PETScWrappers::MPI::Vector tmp_dof_map;
+      tmp_dof_map.reinit(owned_partitioning[0], mpi_communicator);
+
       std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
       for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
            ++cell)
@@ -242,13 +263,19 @@ namespace Fluid
                       vertex_touched[cell->vertex_index(v)] = true;
                       for (unsigned int i = 0; i < dim; i++)
                         {
-                          sable_openifem_dof_map[cell->vertex_dof_index(v, i)] =
-                            cell->vertex_index(v) * dim + i;
+                          // Sable vertex indexing is same as deal.ii
+                          int sable_index = cell->vertex_index(v) * dim + i;
+                          int openifem_index = cell->vertex_dof_index(v, i);
+                          sable_openifem_dof_map[openifem_index] = sable_index;
+                          tmp_dof_map[sable_index] = openifem_index;
                         }
                     }
                 }
             }
         }
+
+      tmp_dof_map.compress(VectorOperation::insert);
+      openifem_sable_dof_map = tmp_dof_map;
     }
 
     template <int dim>
@@ -299,6 +326,61 @@ namespace Fluid
           delete[] nv_rec_buffer[ict];
         }
       delete[] nv_rec_buffer;
+    }
+
+    template <int dim>
+    void SableWrap<dim>::send_fsi_force(const int &sable_n_nodes)
+    {
+
+      Vector<double> localized_fsi_force(fsi_force.block(0));
+      Vector<double> localized_fsi_velocity(fsi_velocity.block(0));
+
+      int sable_force_size = sable_n_nodes * dim;
+      std::vector<int> cmapp = sable_ids;
+      std::vector<int> cmapp_sizes(cmapp.size(), sable_force_size);
+
+      // create send buffer
+      double **nv_send_buffer_force = new double *[cmapp.size()];
+      double **nv_send_buffer_vel = new double *[cmapp.size()];
+
+      for (unsigned int ict = 0; ict < cmapp.size(); ict++)
+        {
+          nv_send_buffer_force[ict] = new double[cmapp_sizes[ict]];
+          nv_send_buffer_vel[ict] = new double[cmapp_sizes[ict]];
+          for (int jct = 0; jct < cmapp_sizes[ict]; jct++)
+            {
+              nv_send_buffer_force[ict][jct] = 0;
+              nv_send_buffer_vel[ict][jct] = 0;
+            }
+        }
+
+      // create send buffer
+      // add zero nodal forces corresponding to ghost nodes
+      for (unsigned int n = 0; n < triangulation.n_vertices(); n++)
+        {
+          int non_ghost_node_id = non_ghost_nodes[n];
+          int index = non_ghost_node_id * dim;
+          for (unsigned int i = 0; i < dim; i++)
+            {
+              nv_send_buffer_force[0][index + i] =
+                localized_fsi_force[openifem_sable_dof_map[n * dim + i]];
+              nv_send_buffer_vel[0][index + i] =
+                localized_fsi_velocity[openifem_sable_dof_map[n * dim + i]];
+            }
+        }
+      // send fsi force
+      send_data(nv_send_buffer_force, cmapp, cmapp_sizes);
+      // send Dirichlet bc values for the artificial fluid
+      send_data(nv_send_buffer_vel, cmapp, cmapp_sizes);
+
+      // delete solution
+      for (unsigned ict = 0; ict < cmapp.size(); ict++)
+        {
+          delete[] nv_send_buffer_force[ict];
+          delete[] nv_send_buffer_vel[ict];
+        }
+      delete[] nv_send_buffer_force;
+      delete[] nv_send_buffer_vel;
     }
 
     template class SableWrap<2>;

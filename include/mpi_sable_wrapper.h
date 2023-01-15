@@ -29,6 +29,7 @@ namespace Fluid
 
     private:
       using FluidSolver<dim>::initialize_system;
+      void initialize_system() override;
 
       /*! \brief Run the simulation for one time step.
        *
@@ -42,6 +43,10 @@ namespace Fluid
 
       // No. of nodes/elements in Sable
       int sable_no_nodes, sable_no_ele, sable_no_nodes_one_dir;
+
+      PETScWrappers::MPI::BlockVector fsi_force;
+      // Vector to store Dirichlet bc values for artificial fluid
+      PETScWrappers::MPI::BlockVector fsi_velocity;
 
       bool is_comm_active = true;
 
@@ -61,6 +66,8 @@ namespace Fluid
 
       // SABLE to OpenIFEM DOF map
       std::vector<int> sable_openifem_dof_map;
+      // OpenIFEM to SABLE DOF map
+      Vector<double> openifem_sable_dof_map;
       // Create map of DOF numbering between OpenIFEM and SABLE
       void create_dof_map();
 
@@ -77,6 +84,8 @@ namespace Fluid
 
       // Recieve velocity from SABLE
       void rec_velocity(const int &sable_n_nodes);
+
+      void send_fsi_force(const int &sable_n_nodes);
     };
   } // namespace MPI
 } // namespace Fluid
