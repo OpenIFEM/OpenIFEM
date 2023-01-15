@@ -51,6 +51,9 @@ namespace Fluid
           Max(sable_no_nodes);
 
           find_ghost_nodes();
+          create_dof_map();
+
+          rec_velocity(sable_no_nodes);
 
           output_results(0);
         }
@@ -63,6 +66,8 @@ namespace Fluid
           Max(sable_no_nodes_one_dir);
           Max(sable_no_ele);
           Max(sable_no_nodes);
+
+          rec_velocity(sable_no_nodes);
 
           is_comm_active = All(is_comm_active);
           std::cout << std::string(96, '*') << std::endl
@@ -213,6 +218,87 @@ namespace Fluid
 
       assert(non_ghost_nodes.size() == triangulation.n_vertices());
       assert(non_ghost_cells.size() == triangulation.n_cells());
+    }
+
+    template <int dim>
+    void SableWrap<dim>::create_dof_map()
+    {
+
+      // Create SABLE to OpenIFEM DOF map
+      // Used when data is recieved from SABLE
+      // -1: dof is not locally owned
+      sable_openifem_dof_map.resize(dof_handler.n_dofs(), -1);
+      std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
+      for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+           ++cell)
+        {
+          if (cell->is_locally_owned())
+            {
+              for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
+                   ++v)
+                {
+                  if (!vertex_touched[cell->vertex_index(v)])
+                    {
+                      vertex_touched[cell->vertex_index(v)] = true;
+                      for (unsigned int i = 0; i < dim; i++)
+                        {
+                          sable_openifem_dof_map[cell->vertex_dof_index(v, i)] =
+                            cell->vertex_index(v) * dim + i;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    template <int dim>
+    void SableWrap<dim>::rec_velocity(const int &sable_n_nodes)
+    {
+      // Recieve solution
+      int sable_sol_size = sable_n_nodes * dim;
+      std::vector<int> cmapp = sable_ids;
+      std::vector<int> cmapp_sizes(sable_ids.size(), sable_sol_size);
+
+      // create rec buffer
+      double **nv_rec_buffer = new double *[cmapp.size()];
+      for (unsigned ict = 0; ict < cmapp.size(); ict++)
+        {
+          nv_rec_buffer[ict] = new double[cmapp_sizes[ict]];
+        }
+      // recieve data
+      rec_data(nv_rec_buffer, cmapp, cmapp_sizes, sable_sol_size);
+
+      // remove solution from ghost layers of Sable mesh
+      std::vector<double> sable_solution;
+      PETScWrappers::MPI::BlockVector tmp;
+      tmp.reinit(owned_partitioning, mpi_communicator);
+
+      for (unsigned int n = 0; n < triangulation.n_vertices(); n++)
+        {
+          int non_ghost_node_id = non_ghost_nodes[n];
+          int index = non_ghost_node_id * dim;
+          for (unsigned int i = 0; i < dim; i++)
+            {
+              sable_solution.push_back(nv_rec_buffer[0][index + i]);
+            }
+        }
+
+      for (unsigned int i = 0; i < sable_openifem_dof_map.size(); i++)
+        {
+          // skip dofs which are not locally owned
+          if (sable_openifem_dof_map[i] != -1)
+            tmp[i] = sable_solution[sable_openifem_dof_map[i]];
+        }
+
+      tmp.compress(VectorOperation::insert);
+      present_solution = tmp;
+
+      // delete solution
+      for (unsigned ict = 0; ict < cmapp.size(); ict++)
+        {
+          delete[] nv_rec_buffer[ict];
+        }
+      delete[] nv_rec_buffer;
     }
 
     template class SableWrap<2>;

@@ -56,9 +56,13 @@ namespace Fluid
       // Vectors to store non ghost nodes and cells ids
       std::vector<int> non_ghost_cells;
       std::vector<int> non_ghost_nodes;
-
       // Function which finds out ghost nodes and cells ids in Sable mesh
       void find_ghost_nodes();
+
+      // SABLE to OpenIFEM DOF map
+      std::vector<int> sable_openifem_dof_map;
+      // Create map of DOF numbering between OpenIFEM and SABLE
+      void create_dof_map();
 
       // Recieve solution from Sable
       void rec_data(double **rec_buffer,
@@ -70,6 +74,9 @@ namespace Fluid
       void send_data(double **send_buffer,
                      const std::vector<int> &cmapp,
                      const std::vector<int> &cmapp_sizes);
+
+      // Recieve velocity from SABLE
+      void rec_velocity(const int &sable_n_nodes);
     };
   } // namespace MPI
 } // namespace Fluid
