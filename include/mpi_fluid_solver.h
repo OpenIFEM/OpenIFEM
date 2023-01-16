@@ -159,7 +159,7 @@ namespace Fluid
       void refine_mesh(const unsigned int, const unsigned int);
 
       /// Output in vtu format.
-      void output_results(const unsigned int) const;
+      virtual void output_results(const unsigned int) const;
 
       /// Update the viscous stress to output
       virtual void update_stress();
@@ -265,6 +265,8 @@ namespace Fluid
       {
         int indicator; //!< Domain indicator: 1 for artificial fluid 0 for real
                        //! fluid.
+        double exact_indicator; //!< accurate estimation of the indicator:
+                                //!< can take value between 0 and 1.
         Tensor<1, dim>
           fsi_acceleration; //!< The acceleration term in FSI force.
         SymmetricTensor<2, dim> fsi_stress; //!< The stress term in FSI force.

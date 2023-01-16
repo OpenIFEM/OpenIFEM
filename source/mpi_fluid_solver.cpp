@@ -276,6 +276,7 @@ namespace Fluid
               const std::vector<std::shared_ptr<CellProperty>> p =
                 cell_property.get_data(cell);
               p[0]->indicator = 0;
+              p[0]->exact_indicator = 0;
               p[0]->fsi_acceleration = 0;
               p[0]->fsi_stress = 0;
               p[0]->material_id = 1;

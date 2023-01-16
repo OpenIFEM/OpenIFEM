@@ -31,6 +31,9 @@ namespace Fluid
       using FluidSolver<dim>::initialize_system;
       void initialize_system() override;
 
+      /// Output in vtu format.
+      void output_results(const unsigned int) const override;
+
       struct SableCellData;
 
       /*! \brief Run the simulation for one time step.
@@ -92,6 +95,14 @@ namespace Fluid
       void rec_vf(const int &sable_n_elements);
 
       void send_fsi_force(const int &sable_n_nodes);
+
+      void send_indicator(const int &sable_n_elements,
+                          const int &sable_n_nodes);
+
+      // calculate lumped mass based on the SABLE density
+      void update_nodal_mass();
+      // vector stores the nodal mass based on the SABLE density
+      PETScWrappers::MPI::Vector nodal_mass;
 
       CellDataStorage<
         typename parallel::distributed::Triangulation<dim>::cell_iterator,
