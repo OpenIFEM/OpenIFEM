@@ -24,6 +24,7 @@ set(serial_tests acoustic_duct_wave
                  openifem-sable_square_hyperelastic
                  sable_wrapper_test
                  sable_wrapper_test_3d
+                 sable_wrapper_test_mpi
                  solid_beam_bending_linearelastic
                  solid_beam_bending_NeoHookean
                  solid_gravity_hyperelastic
