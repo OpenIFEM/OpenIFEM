@@ -83,6 +83,7 @@ namespace Fluid
           create_dof_map();
 
           rec_stress(sable_no_ele);
+          rec_vf(sable_no_ele);
           rec_velocity(sable_no_nodes);
 
           output_results(0);
@@ -105,6 +106,7 @@ namespace Fluid
           Max(sable_no_nodes);
 
           rec_stress(sable_no_ele);
+          rec_vf(sable_no_ele);
           rec_velocity(sable_no_nodes);
 
           is_comm_active = All(is_comm_active);
@@ -411,7 +413,7 @@ namespace Fluid
       int sable_stress_per_ele_size = dim * 2;
       std::vector<int> cmapp = sable_ids;
       std::vector<int> cmapp_sizes(cmapp.size(), sable_stress_size);
-      
+
       // create rec buffer
       double **nv_rec_buffer_1 = new double *[cmapp.size()];
       double **nv_rec_buffer_2 = new double *[cmapp.size()];
@@ -485,6 +487,56 @@ namespace Fluid
         }
       delete[] nv_rec_buffer_1;
       delete[] nv_rec_buffer_2;
+    }
+
+    template <int dim>
+    void SableWrap<dim>::rec_vf(const int &sable_n_elements)
+    {
+
+      std::vector<int> cmapp = sable_ids;
+      std::vector<int> cmapp_sizes(sable_ids.size(), sable_n_elements);
+
+      // create rec buffer
+      double **nv_rec_buffer_1 = new double *[cmapp.size()];
+      double **nv_rec_buffer_2 = new double *[cmapp.size()];
+      double **nv_rec_buffer_3 = new double *[cmapp.size()];
+      for (unsigned ict = 0; ict < cmapp.size(); ict++)
+        {
+          nv_rec_buffer_1[ict] = new double[cmapp_sizes[ict]];
+          nv_rec_buffer_2[ict] = new double[cmapp_sizes[ict]];
+          nv_rec_buffer_3[ict] = new double[cmapp_sizes[ict]];
+        }
+      // recieve volume fraction for the material from SABLE
+      rec_data(nv_rec_buffer_1, cmapp, cmapp_sizes, sable_n_elements);
+      // recieve element density for the material from SABLE
+      rec_data(nv_rec_buffer_2, cmapp, cmapp_sizes, sable_n_elements);
+      // recieve element shear modulus for the material from SABLE
+      rec_data(nv_rec_buffer_3, cmapp, cmapp_sizes, sable_n_elements);
+
+      for (auto cell = triangulation.begin_active();
+           cell != triangulation.end();
+           ++cell)
+        {
+          if (cell->is_locally_owned())
+            {
+              int non_ghost_cell_id = non_ghost_cells[cell->index()];
+              auto ptr = sable_cell_data.get_data(cell);
+              ptr[0]->material_vf = nv_rec_buffer_1[0][non_ghost_cell_id];
+              ptr[0]->eulerian_density = nv_rec_buffer_2[0][non_ghost_cell_id];
+              ptr[0]->modulus = nv_rec_buffer_3[0][non_ghost_cell_id];
+            }
+        }
+
+      // delete buffer
+      for (unsigned ict = 0; ict < cmapp.size(); ict++)
+        {
+          delete[] nv_rec_buffer_1[ict];
+          delete[] nv_rec_buffer_2[ict];
+          delete[] nv_rec_buffer_3[ict];
+        }
+      delete[] nv_rec_buffer_1;
+      delete[] nv_rec_buffer_2;
+      delete[] nv_rec_buffer_3;
     }
 
     template class SableWrap<2>;

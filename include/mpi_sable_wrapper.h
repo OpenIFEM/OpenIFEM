@@ -89,6 +89,8 @@ namespace Fluid
 
       void rec_stress(const int &sable_n_elements);
 
+      void rec_vf(const int &sable_n_elements);
+
       void send_fsi_force(const int &sable_n_nodes);
 
       CellDataStorage<
