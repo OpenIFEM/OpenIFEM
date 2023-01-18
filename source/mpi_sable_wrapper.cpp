@@ -68,6 +68,11 @@ namespace Fluid
     void SableWrap<dim>::run_one_step(bool apply_nonzero_constraints,
                                       bool assemble_system)
     {
+      (void)apply_nonzero_constraints;
+      (void)assemble_system;
+
+      std::cout.precision(6);
+      std::cout.width(12);
 
       if (time.get_timestep() == 0)
         {
@@ -84,6 +89,7 @@ namespace Fluid
 
           rec_stress(sable_no_ele);
           rec_vf(sable_no_ele);
+          update_nodal_mass();
           rec_velocity(sable_no_nodes);
 
           output_results(0);
@@ -109,6 +115,7 @@ namespace Fluid
 
           rec_stress(sable_no_ele);
           rec_vf(sable_no_ele);
+          update_nodal_mass();
           rec_velocity(sable_no_nodes);
 
           is_comm_active = All(is_comm_active);
