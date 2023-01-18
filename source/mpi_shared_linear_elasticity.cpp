@@ -130,8 +130,7 @@ namespace Solid
                               local_mass[i][j] +=
                                 rho * phi[i] * phi[j] * fe_values.JxW(q);
                               local_matrix[i][j] +=
-                                (rho * phi[i] * phi[j] +
-                                 symmetric_grad_phi[i] * viscosity *
+                                (symmetric_grad_phi[i] * viscosity *
                                    symmetric_grad_phi[j] * gamma * dt *
                                    (1 + alpha) +
                                  symmetric_grad_phi[i] * elasticity *
@@ -266,6 +265,32 @@ namespace Solid
                             }
                         }
                     }
+                }
+
+              // create lumped mass matrix
+              if (is_initial)
+                {
+                  for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                    {
+                      double sum = 0;
+                      for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                        {
+                          sum = sum + local_mass[i][j];
+                        }
+                      for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                        {
+                          if (i == j)
+                            {
+                              local_mass[i][j] = sum;
+                            }
+                          else
+                            {
+                              local_mass[i][j] = 0;
+                            }
+                        }
+                    }
+
+                  local_matrix.add(1, local_mass);
                 }
 
               // Now distribute local data to the system, and apply the
