@@ -37,6 +37,7 @@ namespace Solid
     class SharedLinearElasticity : public SharedSolidSolver<dim>
     {
       MPISharedSolidSolverInheritanceMacro();
+      using SharedSolidSolver<dim>::cell_property;
 
     public:
       /*! \brief Constructor.

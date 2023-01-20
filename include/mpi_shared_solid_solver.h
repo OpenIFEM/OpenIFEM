@@ -227,12 +227,17 @@ namespace Solid
       IndexSet locally_relevant_dofs;
       mutable std::vector<std::pair<double, std::string>> times_and_names;
 
+      CellDataStorage<typename Triangulation<dim, spacedim>::cell_iterator,
+                    CellProperty>
+      cell_property;
+
       /**
        * The fluid traction in FSI simulation, which should be set by the FSI.
+       * Only used in OpenIFEM-SABLE coupling
        */
       struct CellProperty
       {
-        std::vector<Tensor<2, spacedim>> fsi_stress;
+        std::vector<Tensor<1, spacedim>> fsi_traction;
       };
     };
   } // namespace MPI

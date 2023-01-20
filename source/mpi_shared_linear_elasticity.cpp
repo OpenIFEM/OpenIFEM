@@ -79,11 +79,14 @@ namespace Solid
       // A "viewer" to describe the nodal dofs as a vector.
       FEValuesExtractors::Vector displacements(0);
 
-      std::vector<std::vector<Tensor<1, dim>>> fsi_stress_rows_values(dim);
+      //********** TO BE FIXED LATER **************//
+      // Temporarily disable fsi_stress_row calculation //
+
+      /*std::vector<std::vector<Tensor<1, dim>>> fsi_stress_rows_values(dim);
       for (unsigned int d = 0; d < dim; ++d)
         {
           fsi_stress_rows_values[d].resize(n_f_q_points);
-        }
+        }*/
       Tensor<1, dim> gravity;
       for (unsigned int i = 0; i < dim; ++i)
         {
@@ -97,6 +100,7 @@ namespace Solid
           // Only operates on the locally owned cells
           if (cell->subdomain_id() == this_mpi_process)
             {
+              auto p = cell_property.get_data(cell);
               int mat_id = cell->material_id();
               if (material.size() == 1)
                 mat_id = 1;
@@ -190,8 +194,11 @@ namespace Solid
                             }
                         }
 
+                      //********** TO BE FIXED LATER **************//
+                      // Temporarily disable fsi_stress_row calculation //
+
                       // Get FSI stress values on face quadrature points
-                      std::vector<Tensor<2, dim>> fsi_stress(n_f_q_points);
+                      /*std::vector<Tensor<2, dim>> fsi_stress(n_f_q_points);
                       if (parameters.simulation_type == "FSI")
                         {
                           std::vector<Point<dim>> vertex_displacement(
@@ -237,7 +244,9 @@ namespace Solid
                       else
                         {
                           fe_face_values.reinit(cell, face);
-                        }
+                        }*/
+
+                      fe_face_values.reinit(cell, face);
 
                       for (unsigned int q = 0; q < n_f_q_points; ++q)
                         {
@@ -251,8 +260,14 @@ namespace Solid
                             }
                           else if (parameters.simulation_type == "FSI")
                             {
-                              traction =
-                                fsi_stress[q] * fe_face_values.normal_vector(q);
+                              //********** TO BE FIXED LATER **************//
+                              // Temporarily disable fsi_stress_row calculation
+                              // //
+                              /*traction =
+                                fsi_stress[q] *
+                                fe_face_values.normal_vector(q);*/
+                              if (p[face]->fsi_traction.size() != 0)
+                                traction = p[face]->fsi_traction[q];
                             }
                           for (unsigned int j = 0; j < dofs_per_cell; ++j)
                             {

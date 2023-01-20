@@ -164,6 +164,11 @@ namespace Solid
           spacedim,
           PETScWrappers::MPI::Vector(locally_owned_scalar_dofs,
                                      mpi_communicator)));
+      // Set up cell property, which contains the FSI traction required in
+      // OpenIFEM-SABLE simulation
+      cell_property.initialize(triangulation.begin_active(),
+                               triangulation.end(),
+                               GeometryInfo<dim>::faces_per_cell);
     }
 
     // Solve linear system \f$Ax = b\f$ using CG solver.
