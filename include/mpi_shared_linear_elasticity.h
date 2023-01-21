@@ -38,6 +38,7 @@ namespace Solid
     {
       MPISharedSolidSolverInheritanceMacro();
       using SharedSolidSolver<dim>::cell_property;
+      using SharedSolidSolver<dim>::added_mass_effect;
 
     public:
       /*! \brief Constructor.

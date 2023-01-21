@@ -144,6 +144,8 @@ namespace Solid
 
       previous_displacement.reinit(locally_owned_dofs, mpi_communicator);
 
+      added_mass_effect.reinit(dof_handler.n_dofs());
+
       fsi_stress_rows.resize(dim);
       for (unsigned int d = 0; d < dim; ++d)
         {

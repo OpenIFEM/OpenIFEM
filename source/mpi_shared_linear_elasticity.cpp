@@ -127,20 +127,20 @@ namespace Solid
                   // Loop over the dofs again, to assemble
                   for (unsigned int i = 0; i < dofs_per_cell; ++i)
                     {
-                      if (is_initial)
+                      for (unsigned int j = 0; j < dofs_per_cell; ++j)
                         {
-                          for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                          local_mass[i][j] +=
+                            rho * phi[i] * phi[j] * fe_values.JxW(q);
+                          local_matrix[i][j] +=
+                            (symmetric_grad_phi[i] * viscosity *
+                               symmetric_grad_phi[j] * gamma * dt *
+                               (1 + alpha) +
+                             symmetric_grad_phi[i] * elasticity *
+                               symmetric_grad_phi[j] * beta * dt * dt *
+                               (1 + alpha)) *
+                            fe_values.JxW(q);
+                          if (is_initial)
                             {
-                              local_mass[i][j] +=
-                                rho * phi[i] * phi[j] * fe_values.JxW(q);
-                              local_matrix[i][j] +=
-                                (symmetric_grad_phi[i] * viscosity *
-                                   symmetric_grad_phi[j] * gamma * dt *
-                                   (1 + alpha) +
-                                 symmetric_grad_phi[i] * elasticity *
-                                   symmetric_grad_phi[j] * beta * dt * dt *
-                                   (1 + alpha)) *
-                                fe_values.JxW(q);
                               local_stiffness[i][j] +=
                                 symmetric_grad_phi[i] * elasticity *
                                 symmetric_grad_phi[j] * fe_values.JxW(q);
@@ -283,39 +283,44 @@ namespace Solid
                 }
 
               // create lumped mass matrix
-              if (is_initial)
+
+              for (unsigned int i = 0; i < dofs_per_cell; ++i)
                 {
-                  for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                  double sum = 0;
+                  for (unsigned int j = 0; j < dofs_per_cell; ++j)
                     {
-                      double sum = 0;
-                      for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                      sum = sum + local_mass[i][j];
+                    }
+                  for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                    {
+                      if (i == j)
                         {
-                          sum = sum + local_mass[i][j];
+                          local_mass[i][j] = sum;
                         }
-                      for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                      else
                         {
-                          if (i == j)
-                            {
-                              local_mass[i][j] = sum;
-                            }
-                          else
-                            {
-                              local_mass[i][j] = 0;
-                            }
+                          local_mass[i][j] = 0;
                         }
                     }
 
-                  local_matrix.add(1, local_mass);
+                  if (parameters.simulation_type == "FSI")
+                    {
+                      // Added mass effect
+                      local_matrix[i][i] +=
+                        added_mass_effect[local_dof_indices[i]];
+                    }
                 }
+
+              local_matrix.add(1, local_mass);
 
               // Now distribute local data to the system, and apply the
               // hanging node constraints at the same time.
+              constraints.distribute_local_to_global(
+                local_matrix, local_dof_indices, system_matrix);
+              constraints.distribute_local_to_global(
+                local_mass, local_dof_indices, mass_matrix);
               if (is_initial)
                 {
-                  constraints.distribute_local_to_global(
-                    local_matrix, local_dof_indices, system_matrix);
-                  constraints.distribute_local_to_global(
-                    local_mass, local_dof_indices, mass_matrix);
                   constraints.distribute_local_to_global(
                     local_stiffness, local_dof_indices, stiffness_matrix);
                   constraints.distribute_local_to_global(
@@ -328,11 +333,11 @@ namespace Solid
       // Synchronize with other processors.
       if (is_initial)
         {
-          system_matrix.compress(VectorOperation::add);
-          mass_matrix.compress(VectorOperation::add);
           stiffness_matrix.compress(VectorOperation::add);
           damping_matrix.compress(VectorOperation::add);
         }
+      system_matrix.compress(VectorOperation::add);
+      mass_matrix.compress(VectorOperation::add);
       system_rhs.compress(VectorOperation::add);
     }
 

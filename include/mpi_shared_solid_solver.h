@@ -196,6 +196,11 @@ namespace Solid
       PETScWrappers::MPI::Vector previous_displacement;
 
       /**
+       * Store added mass from the Eulerian material
+       */
+      Vector<double> added_mass_effect;
+
+      /**
        * Arrays to store the fsi-related quantities. fsi_stress_rows has dim
        * elements and each element is an array of n_dof elements, representing a
        * row in the rank 2 stress tensor. The fsi stresses are used to evaluate
@@ -228,8 +233,8 @@ namespace Solid
       mutable std::vector<std::pair<double, std::string>> times_and_names;
 
       CellDataStorage<typename Triangulation<dim, spacedim>::cell_iterator,
-                    CellProperty>
-      cell_property;
+                      CellProperty>
+        cell_property;
 
       /**
        * The fluid traction in FSI simulation, which should be set by the FSI.
