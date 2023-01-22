@@ -76,6 +76,23 @@ namespace MPI
      * the iteratore of corresponding cell */
     std::pair<bool, const typename DoFHandler<dim>::active_cell_iterator>
     point_in_solid_new(const DoFHandler<dim> &df, const Point<dim> &point);
+
+    /*! \brief Compute the Dirichlet BCs on the artificial fluid using solid
+     * velocity,
+     *         as well as the fsi stress and acceleration terms at the
+     * artificial fluid quadrature points.
+     *
+     *  The Dirichlet BCs are obtained by interpolating solid velocity to the
+     * fluid
+     *  vertices and the FSI force is defined as:
+     *  \f$F^{\text{FSI}} = \frac{Dv^f_i}{Dt}) - \sigma^f_{ij,j})\f$.
+     *  In practice, we avoid directly evaluating stress divergence, so the
+     * stress itself and the acceleration are separately cached onto the fluid
+     * quadrature
+     *  points to be used by the fluid solver.
+     */
+    /* Calculate FSI force at quadrature points instead of nodes */
+    void find_fluid_bc_qpoints();
   };
 } // namespace MPI
 
