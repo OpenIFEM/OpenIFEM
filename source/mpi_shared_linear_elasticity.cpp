@@ -31,10 +31,15 @@ namespace Solid
       double gamma = 0.5 - alpha;
       double beta = pow((1 + alpha), 2) / 4;
 
-      if (is_initial)
+      // In case of OpenIFEM-SABLE coupling, mass matrix needs to be assembled
+      // every time step to account for added mass effect
+      if (is_initial || parameters.simulation_type == "FSI")
         {
           mass_matrix = 0;
           system_matrix = 0;
+        }
+      if (is_initial)
+        {
           stiffness_matrix = 0;
           damping_matrix = 0;
         }
