@@ -17,7 +17,7 @@ namespace MPI
     : fluid_solver(f),
       solid_solver(s),
       parameters(p),
-      mpi_communicator(MPI_COMM_WORLD),
+      mpi_communicator(PETSC_COMM_WORLD),
       pcout(std::cout, Utilities::MPI::this_mpi_process(mpi_communicator) == 0),
       time(parameters.end_time,
            parameters.time_step,
