@@ -148,7 +148,7 @@ namespace MPI
       }
 
     // Compute its angle to each boundary face
-    if (dim == 2)
+    /*if (dim == 2)
       {
         unsigned int cross_number = 0;
         unsigned int half_cross_number = 0;
@@ -209,7 +209,7 @@ namespace MPI
         if (cross_number % 2 == 0)
           return false;
         return true;
-      }
+      }*/
     for (auto cell = df.begin_active(); cell != df.end(); ++cell)
       {
         if (cell->point_inside(point))
