@@ -53,6 +53,8 @@ namespace MPI
         solid_solver.time.set_delta_t(sable_solver.time.get_delta_t());
         time.increment();
 
+        find_solid_bc();
+
         solid_solver.run_one_step(first_step);
         // indicator field
         update_solid_box();
@@ -759,6 +761,289 @@ namespace MPI
           sable_solver.fsi_velocity[i] /= localized_dofs_visited[i];
       }
 
+    move_solid_mesh(false);
+  }
+
+  template <int dim>
+  int OpenIFEM_Sable_FSI<dim>::compute_fluid_cell_index(
+    Point<dim> &q_point, const Tensor<1, dim> &normal)
+  {
+    // Note: Only works for unifrom, strucutred mesh
+    auto f_cell = sable_solver.triangulation.begin_active();
+
+    // compute the lower boundary of the Eulerian cell box
+
+    double h = abs(f_cell->vertex(0)(0) - f_cell->vertex(1)(0));
+
+    Point<dim> lower_boundary;
+
+    for (unsigned int i = 0; i < dim; i++)
+      lower_boundary(i) = f_cell->center()[i] - h / 2;
+
+    // Currently assuming the target Eulerian cell has the same level as the
+    // first Eulerian cell, won't work for AMR
+
+    f_cell = sable_solver.triangulation.last_active();
+
+    unsigned int N = 0;
+
+    if (parameters.dimension == 2)
+      {
+        N = std::sqrt((f_cell->index() + 1));
+      }
+    else
+      {
+        N = std::cbrt((f_cell->index() + 1));
+      }
+
+    // compute the upper boundaries of the Eulerian cell box
+
+    Point<dim> upper_boundary;
+
+    for (unsigned int i = 0; i < dim; i++)
+      upper_boundary(i) = f_cell->center()[i] + h / 2;
+
+    bool point_inside = true;
+
+    for (unsigned int i = 0; i < dim; i++)
+
+      {
+
+        if (q_point[i] < lower_boundary(i) && q_point[i] > upper_boundary(i))
+          {
+            point_inside = false;
+            break;
+          }
+      }
+
+    if (point_inside == true)
+
+      {
+        bool point_not_on_edge = true;
+
+        for (unsigned int i = 0; i < dim; i++)
+
+          {
+
+            if (std::floor(q_point[i] / h) == (q_point[i] / h))
+              {
+                point_not_on_edge = false;
+                break;
+              }
+          }
+
+        // compute the theorical min and max cell ID for assertion
+        int a = 0;
+        int b = static_cast<int>(std::pow(N, dim) - 1);
+
+        if (point_not_on_edge == true) // if the quad point is not on the edge
+                                       // of the Eulerian cell
+          {
+            // compute the Eulerian cell index
+
+            int n = 0;
+
+            for (unsigned int i = 0; i < dim; i++)
+
+              n += static_cast<int>(std::pow(N, i)) *
+                   static_cast<int>(
+                     std::floor((q_point[i] - lower_boundary(i)) / h));
+
+            if (n < a || n > b)
+              return -1;
+
+            return n;
+          }
+
+        else // if the quad point is on the edge of the Eulerian
+             // cell
+          {
+            // create a small distance in the outnormal direction
+            const double tmp = h * 1e-6;
+
+            int n = 0;
+
+            // extend the current quad point positions along the
+            // outward normal direction
+            for (unsigned int i = 0; i < dim; i++)
+              {
+                q_point(i) = q_point(i) + tmp * normal[i];
+
+                n += (q_point(i) < lower_boundary(i))
+                       ? static_cast<int>(
+                           std::ceil((q_point[i] - lower_boundary(i)) / h))
+                       :
+
+                       static_cast<int>(
+                         std::floor((q_point[i] - lower_boundary(i)) / h));
+              }
+
+            if (n < a || n > b)
+              return -1;
+
+            return n;
+          }
+      }
+    else // if the quad point is outside the fluid box
+      return -1;
+  }
+
+  template <int dim>
+  void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
+  {
+    TimerOutput::Scope timer_section(timer, "Find solid BC");
+    // Must use the updated solid coordinates
+    move_solid_mesh(true);
+    // Fluid FEValues to do interpolation
+    FEValues<dim> fe_values(
+      sable_solver.fe, sable_solver.volume_quad_formula, update_values);
+    // Solid FEFaceValues to get the normal at face center
+    FEFaceValues<dim> fe_face_values(solid_solver.fe,
+                                     solid_solver.face_quad_formula,
+                                     update_quadrature_points |
+                                       update_normal_vectors);
+    // Get Eulerian cell size
+    // Note: Only works for unifrom, strucutred mesh
+    auto f_cell = sable_solver.triangulation.begin_active();
+
+    double h = abs(f_cell->vertex(0)(0) - f_cell->vertex(1)(0));
+
+    // Currently assuming the target Eulerian cell has the same level as the
+    // first Eulerian cell, won't work for AMR
+    auto level = f_cell->level();
+
+    const unsigned int n_f_q_points = solid_solver.face_quad_formula.size();
+
+    for (auto s_cell = solid_solver.dof_handler.begin_active();
+         s_cell != solid_solver.dof_handler.end();
+         ++s_cell)
+      {
+        auto ptr = solid_solver.cell_property.get_data(s_cell);
+        for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+          {
+            // Current face is at boundary and without Dirichlet bc.
+            if (s_cell->face(f)->at_boundary())
+              {
+                ptr[f]->fsi_traction.clear();
+                fe_face_values.reinit(s_cell, f);
+
+                for (unsigned int q = 0; q < n_f_q_points; ++q)
+                  {
+                    Point<dim> q_point = fe_face_values.quadrature_point(q);
+                    Tensor<1, dim> normal = fe_face_values.normal_vector(q);
+                    // hard coded parameter value to scale the distance along
+                    // the face normal
+                    double beta = parameters.solid_traction_extension_scale;
+                    double d = h * beta;
+
+                    // Find a point at a distance d from q_point along the face
+                    // normal
+                    Point<dim> q_point_extension;
+                    for (unsigned int i = 0; i < dim; i++)
+                      q_point_extension(i) = q_point(i) + d * normal[i];
+                    // old way//
+                    // Get interpolated solution from the fluid
+                    /*Vector<double> value(dim + 1);
+                    Utils::GridInterpolator<dim, BlockVector<double>>
+                      interpolator(sable_solver.dof_handler, q_point_extension);
+                    interpolator.point_value(sable_solver.present_solution,
+                                             value);
+                    // Create the scalar interpolator for stresses based on the
+                    // existing interpolator
+                    auto f_cell = interpolator.get_cell();*/
+
+                    // compute the Eulerian cell index
+                    int n = compute_fluid_cell_index(q_point_extension, normal);
+
+                    // If the quadrature point is outside background mesh
+                    // if (f_cell->index() == -1)
+                    if (n == -1)
+                      {
+                        Tensor<1, dim> zero_tensor;
+                        ptr[f]->fsi_traction.push_back(zero_tensor);
+                        continue;
+                      }
+                    else
+                      {
+                        TriaActiveIterator<DoFCellAccessor<dim, dim, false>>
+                          f_cell_temp(&sable_solver.triangulation,
+                                      level,
+                                      n,
+                                      &sable_solver.dof_handler);
+                        f_cell = f_cell_temp;
+                      }
+
+                    if (!f_cell->is_locally_owned())
+                      {
+                        Tensor<1, dim> zero_tensor;
+                        ptr[f]->fsi_traction.push_back(zero_tensor);
+                        continue;
+                      }
+
+                    // get cell-wise stress from SABLE
+                    auto ptr_f = sable_solver.sable_cell_data.get_data(f_cell);
+                    TriaActiveIterator<DoFCellAccessor<dim, dim, false>>
+                      scalar_f_cell(&sable_solver.triangulation,
+                                    f_cell->level(),
+                                    f_cell->index(),
+                                    &sable_solver.scalar_dof_handler);
+                    Utils::GridInterpolator<dim, Vector<double>>
+                      scalar_interpolator(sable_solver.scalar_dof_handler,
+                                          q_point,
+                                          {},
+                                          scalar_f_cell);
+                    SymmetricTensor<2, dim> viscous_stress;
+                    int count = 0;
+                    for (unsigned int i = 0; i < dim; i++)
+                      {
+                        for (unsigned int j = 0; j < i + 1; j++)
+                          {
+                            // Interpolate stress from nodal stress field
+                            AssertThrow(
+                              parameters.traction_calculation_option ==
+                                "CellBased",
+                              ExcMessage("NodeBased option is not implemented "
+                                         "in this solver"));
+
+                            // Get cell-wise stress
+                            viscous_stress[i][j] =
+                              ptr_f[0]->cell_stress_no_bgmat[count];
+
+                            count++;
+                          }
+                      }
+                    // \f$ \sigma = -p\bold{I} + \mu\nabla^S v\f$
+                    // old way //
+                    // stress tensor from SABLE includes pressure //
+                    /*SymmetricTensor<2, dim> stress =
+                      -value[dim] * Physics::Elasticity::StandardTensors<dim>::I
+                      + viscous_stress;*/
+                    SymmetricTensor<2, dim> stress = viscous_stress;
+                    ptr[f]->fsi_traction.push_back(stress * normal);
+                  }
+              }
+          }
+      }
+
+    // add up all local traction vectors
+    for (auto s_cell = solid_solver.dof_handler.begin_active();
+         s_cell != solid_solver.dof_handler.end();
+         ++s_cell)
+      {
+        auto ptr = solid_solver.cell_property.get_data(s_cell);
+        for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+          {
+            // Current face is at boundary and without Dirichlet bc.
+            if (s_cell->face(f)->at_boundary())
+              {
+                for (unsigned int q = 0; q < n_f_q_points; ++q)
+                  {
+                    ptr[f]->fsi_traction[q] = Utilities::MPI::sum(
+                      ptr[f]->fsi_traction[q], solid_solver.mpi_communicator);
+                  }
+              }
+          }
+      }
     move_solid_mesh(false);
   }
 

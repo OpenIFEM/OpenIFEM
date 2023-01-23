@@ -106,6 +106,21 @@ namespace MPI
    */
     std::unordered_map<int, std::vector<int>> cell_nodes_inside_solid;
     std::unordered_map<int, std::vector<int>> cell_nodes_outside_solid;
+
+    /*! \brief Compute the fluid cell index given the solid quad point
+     * coordiantes and its unit normal vector Currently, this algorithm only
+     * works structured Eulerian mesh without refinements.
+     */
+    int compute_fluid_cell_index(Point<dim> &, const Tensor<1, dim> &);
+
+    /*! \brief Compute the fluid traction on solid boundaries.
+     *
+     *  The implementation is straight-forward: loop over the faces on the
+     *  solid Neumann boundary, find the quadrature points and normals,
+     *  then interpolate the fluid pressure and symmetric gradient of velocity
+     * at those points, based on which the fluid traction is calculated.
+     */
+    void find_solid_bc();
   };
 } // namespace MPI
 
