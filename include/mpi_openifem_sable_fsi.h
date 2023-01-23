@@ -93,6 +93,19 @@ namespace MPI
      */
     /* Calculate FSI force at quadrature points instead of nodes */
     void find_fluid_bc_qpoints();
+
+    /*! if an Eulerian vertex is inside the solid, stores vertex id and the
+     * corresponding solid cell iterator*/
+    std::unordered_map<int,
+                       const typename DoFHandler<dim>::active_cell_iterator>
+      vertex_indicator_data;
+
+    /*map key: id of the cell which is partially inside the solid
+     map objects: vectors store local node ids which are inside and outside the
+     solid
+   */
+    std::unordered_map<int, std::vector<int>> cell_nodes_inside_solid;
+    std::unordered_map<int, std::vector<int>> cell_nodes_outside_solid;
   };
 } // namespace MPI
 

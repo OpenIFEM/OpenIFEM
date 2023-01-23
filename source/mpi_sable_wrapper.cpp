@@ -25,8 +25,7 @@ namespace Fluid
       FluidSolver<dim>::initialize_system();
       fsi_force.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
-      fsi_velocity.reinit(
-        owned_partitioning, relevant_partitioning, mpi_communicator);
+      fsi_velocity.reinit(dofs_per_block[0]);
 
       // Setup cell wise stress, vf, density received from SABLE
       int stress_size = (dim == 2 ? 3 : 6);
@@ -365,7 +364,6 @@ namespace Fluid
     {
 
       Vector<double> localized_fsi_force(fsi_force.block(0));
-      Vector<double> localized_fsi_velocity(fsi_velocity.block(0));
 
       int sable_force_size = sable_n_nodes * dim;
       std::vector<int> cmapp = sable_ids;
@@ -397,7 +395,7 @@ namespace Fluid
               nv_send_buffer_force[0][index + i] =
                 localized_fsi_force[openifem_sable_dof_map[n * dim + i]];
               nv_send_buffer_vel[0][index + i] =
-                localized_fsi_velocity[openifem_sable_dof_map[n * dim + i]];
+                fsi_velocity[openifem_sable_dof_map[n * dim + i]];
             }
         }
       // send fsi force

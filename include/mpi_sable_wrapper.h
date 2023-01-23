@@ -63,7 +63,7 @@ namespace Fluid
 
       PETScWrappers::MPI::BlockVector fsi_force;
       // Vector to store Dirichlet bc values for artificial fluid
-      PETScWrappers::MPI::BlockVector fsi_velocity;
+      Vector<double> fsi_velocity;
 
       bool is_comm_active = true;
 

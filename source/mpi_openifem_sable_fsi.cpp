@@ -168,6 +168,10 @@ namespace MPI
                             update_values | update_gradients |
                               update_quadrature_points | update_JxW_values);
 
+    cell_nodes_inside_solid.clear();
+    cell_nodes_outside_solid.clear();
+    vertex_indicator_data.clear();
+
     for (auto f_cell = sable_solver.dof_handler.begin_active();
          f_cell != sable_solver.dof_handler.end();
          ++f_cell)
@@ -192,10 +196,15 @@ namespace MPI
               {
                 inside_nodes.push_back(v);
                 ++inside_count;
+                vertex_indicator_data.insert(
+                  {f_cell->vertex_index(v), is_inside_solid.second});
               }
             else
               outside_nodes.push_back(v);
           }
+
+        cell_nodes_inside_solid.insert({f_cell->index(), inside_nodes});
+        cell_nodes_outside_solid.insert({f_cell->index(), outside_nodes});
 
         auto p = sable_solver.cell_property.get_data(f_cell);
         if (inside_count == 0)
@@ -407,9 +416,9 @@ namespace MPI
       solid_solver.current_acceleration);
     Vector<double> localized_solid_velocity(solid_solver.current_velocity);
 
-    PETScWrappers::MPI::BlockVector tmp_fsi_acceleration;
-    tmp_fsi_acceleration.reinit(fluid_solver.owned_partitioning,
-                                fluid_solver.mpi_communicator);
+    PETScWrappers::MPI::BlockVector tmp_fsi_force;
+    tmp_fsi_force.reinit(fluid_solver.owned_partitioning,
+                         fluid_solver.mpi_communicator);
 
     std::vector<std::vector<Vector<double>>> localized_stress(
       dim, std::vector<Vector<double>>(dim));
@@ -607,7 +616,7 @@ namespace MPI
         for (unsigned int i = 0; i < dofs_per_cell; i++)
           {
             // sable_solver.system_rhs[local_dof_indices[i]] += local_rhs(i);
-            tmp_fsi_acceleration[local_dof_indices[i]] += local_rhs(i);
+            tmp_fsi_force[local_dof_indices[i]] += local_rhs(i);
             /*sable_solver.fsi_force_acceleration_part[local_dof_indices[i]] +=
               local_rhs_acceleration_part(i);
             sable_solver.fsi_force_stress_part[local_dof_indices[i]] +=
@@ -617,8 +626,140 @@ namespace MPI
           }
       }
 
-    tmp_fsi_acceleration.compress(VectorOperation::add);
-    sable_solver.fsi_force = tmp_fsi_acceleration;
+    tmp_fsi_force.compress(VectorOperation::add);
+    sable_solver.fsi_force = tmp_fsi_force;
+
+    // interpolate velocity to the nodes inside Lagrangian solid
+    std::vector<int> vertex_touched(sable_solver.triangulation.n_vertices(), 0);
+    PETScWrappers::MPI::Vector tmp_fsi_velocity;
+    tmp_fsi_velocity.reinit(fluid_solver.owned_partitioning[0],
+                            fluid_solver.mpi_communicator);
+
+    for (auto f_cell = sable_solver.dof_handler.begin_active();
+         f_cell != sable_solver.dof_handler.end();
+         ++f_cell)
+      {
+
+        if (!f_cell->is_locally_owned())
+          {
+            continue;
+          }
+
+        auto ptr = sable_solver.cell_property.get_data(f_cell);
+        if (ptr[0]->indicator == 0)
+          continue;
+
+        for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
+          {
+            auto vertex = f_cell->vertex(v);
+            int key = f_cell->vertex_index(v);
+            // check if the vertex is inside Lagrangian solid mesh
+            if (vertex_indicator_data.find(key) == vertex_indicator_data.end())
+              continue;
+
+            if (vertex_touched[f_cell->vertex_index(v)])
+              continue;
+            vertex_touched[f_cell->vertex_index(v)] = 1;
+
+            // get Lagrangian cell iterator which holds the given vertex
+            auto s_cell = vertex_indicator_data[key];
+            // construct the interpolator
+            Utils::GridInterpolator<dim, Vector<double>> interpolator(
+              solid_solver.dof_handler, vertex, {}, s_cell);
+            if (!interpolator.found_cell())
+              {
+                std::stringstream message;
+                message << "Cannot find point in solid: " << vertex
+                        << std::endl;
+                AssertThrow(interpolator.found_cell(),
+                            ExcMessage(message.str()));
+              }
+
+            // Lagrangian solid velocity at Eulerian nodes
+            Vector<double> solid_vel(dim);
+            interpolator.point_value(localized_solid_velocity, solid_vel);
+
+            int n_dofs_per_vertex = sable_solver.fe.n_dofs_per_vertex();
+            // skip pressure dof
+            n_dofs_per_vertex -= 1;
+            for (int i = 0; i < n_dofs_per_vertex; i++)
+              {
+                int dof_index = f_cell->vertex_dof_index(v, i);
+                tmp_fsi_velocity[dof_index] = solid_vel[i];
+              }
+          }
+      }
+
+    tmp_fsi_velocity.compress(VectorOperation::insert);
+    sable_solver.fsi_velocity = tmp_fsi_velocity;
+
+    // distribute solution to the nodes which are outside solid and belongs to
+    // cell which is partially inside the solid
+    PETScWrappers::MPI::Vector dofs_visited;
+    dofs_visited.reinit(fluid_solver.owned_partitioning[0],
+                        fluid_solver.mpi_communicator);
+    for (auto f_cell = sable_solver.dof_handler.begin_active();
+         f_cell != sable_solver.dof_handler.end();
+         ++f_cell)
+      {
+
+        if (!f_cell->is_locally_owned())
+          {
+            continue;
+          }
+
+        auto ptr = sable_solver.cell_property.get_data(f_cell);
+        int cell_count = f_cell->index();
+        std::vector<int> nodes_inside = cell_nodes_inside_solid[cell_count];
+
+        if (nodes_inside.size() > 0 && ptr[0]->indicator != 0)
+          {
+            // get average solution from the nodes which are inside the solid
+            std::vector<double> solution_vec(dim, 0);
+            for (unsigned int i = 0; i < nodes_inside.size(); i++)
+              {
+                for (unsigned int j = 0; j < dim; j++)
+                  {
+                    int vertex_dof_index =
+                      f_cell->vertex_dof_index(nodes_inside[i], j);
+                    solution_vec[j] +=
+                      sable_solver.fsi_velocity[vertex_dof_index] /
+                      nodes_inside.size();
+                  }
+              }
+
+            // distribute solution to the nodes which are outside the solid
+            std::vector<int> nodes_outside =
+              cell_nodes_outside_solid[cell_count];
+            for (unsigned int i = 0; i < nodes_outside.size(); i++)
+              {
+                for (unsigned int j = 0; j < dim; j++)
+                  {
+                    int vertex_dof_index =
+                      f_cell->vertex_dof_index(nodes_outside[i], j);
+                    dofs_visited[vertex_dof_index] += 1;
+
+                    tmp_fsi_velocity[vertex_dof_index] += solution_vec[j];
+                  }
+              }
+          }
+      }
+
+    tmp_fsi_velocity.compress(VectorOperation::add);
+    dofs_visited.compress(VectorOperation::add);
+
+    sable_solver.fsi_velocity = tmp_fsi_velocity;
+    Vector<double> localized_dofs_visited(dofs_visited);
+
+    // if a particular vertex is visited more than once, average the fsi
+    // velocity
+    for (unsigned int i = 0; i < localized_dofs_visited.size(); i++)
+      {
+        if (localized_dofs_visited[i] != 0)
+          sable_solver.fsi_velocity[i] /= localized_dofs_visited[i];
+      }
+
+    move_solid_mesh(false);
   }
 
   template class OpenIFEM_Sable_FSI<2>;
