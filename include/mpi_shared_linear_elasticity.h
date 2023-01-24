@@ -67,6 +67,12 @@ namespace Solid
       void run_one_step(bool first_step);
 
       std::vector<LinearElasticMaterial<dim>> material;
+
+      /**
+       * Save diagonal of the system matrix, used in application of added mass
+       * effect, only used for OpenIFEM-SABLE coupling
+       */
+      std::vector<double> system_matrix_diagonal;
     };
   } // namespace MPI
 } // namespace Solid
