@@ -121,6 +121,10 @@ namespace MPI
      * at those points, based on which the fluid traction is calculated.
      */
     void find_solid_bc();
+
+    /*! \brief Compute the added mass effect on the Lagrangian boundary
+     */
+    void compute_added_mass();
   };
 } // namespace MPI
 

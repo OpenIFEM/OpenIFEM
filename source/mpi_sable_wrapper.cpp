@@ -26,6 +26,9 @@ namespace Fluid
       fsi_force.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
       fsi_velocity.reinit(dofs_per_block[0]);
+      nodal_mass.reinit(locally_owned_scalar_dofs,
+                        locally_relevant_scalar_dofs,
+                        mpi_communicator);
 
       // Setup cell wise stress, vf, density received from SABLE
       int stress_size = (dim == 2 ? 3 : 6);
@@ -682,7 +685,8 @@ namespace Fluid
     template <int dim>
     void SableWrap<dim>::update_nodal_mass()
     {
-      nodal_mass.reinit(locally_owned_scalar_dofs, mpi_communicator);
+      PETScWrappers::MPI::Vector tmp_nodal_mass;
+      tmp_nodal_mass.reinit(locally_owned_scalar_dofs, mpi_communicator);
 
       FEValues<dim> scalar_fe_values(scalar_fe,
                                      volume_quad_formula,
@@ -749,12 +753,13 @@ namespace Fluid
               for (unsigned int i = 0; i < dofs_per_cell; ++i)
                 {
                   auto index = local_dof_indices[i];
-                  nodal_mass[index] += local_matrix[i][i];
+                  tmp_nodal_mass[index] += local_matrix[i][i];
                 }
             }
         }
 
-      nodal_mass.compress(VectorOperation::add);
+      tmp_nodal_mass.compress(VectorOperation::add);
+      nodal_mass = tmp_nodal_mass;
     }
 
     template <int dim>

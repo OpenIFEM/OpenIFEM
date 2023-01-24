@@ -412,8 +412,10 @@ namespace Solid
           for (unsigned int i = 0; i < system_matrix_diagonal.size(); i++)
             {
               int index = i + range.first;
-              system_matrix.set(
-                index, index, system_matrix_diagonal[i] + added_mass_effect[index]);
+              system_matrix.set(index,
+                                index,
+                                system_matrix_diagonal[i] +
+                                  added_mass_effect[index]);
             }
           system_matrix.compress(VectorOperation::insert);
         }
