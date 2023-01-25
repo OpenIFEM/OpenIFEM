@@ -93,6 +93,10 @@ namespace Solid
           gravity[i] = parameters.gravity[i];
         }
 
+      // fsi_vel_diff_lag  at quadrature points (used to
+      // calculate penalty force for OpenIFEM-SABLE coupling)
+      std::vector<Tensor<1, dim>> fsi_vel_diff(n_q_points);
+
       // Loop over cells
       for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
            ++cell)
@@ -114,6 +118,9 @@ namespace Solid
 
               fe_values.reinit(cell);
 
+              fe_values[displacements].get_function_values(fsi_vel_diff_lag,
+                                                           fsi_vel_diff);
+
               // Loop over quadrature points
               for (unsigned int q = 0; q < n_q_points; ++q)
                 {
@@ -127,20 +134,21 @@ namespace Solid
                   // Loop over the dofs again, to assemble
                   for (unsigned int i = 0; i < dofs_per_cell; ++i)
                     {
-                      for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                      if (is_initial)
                         {
-                          local_mass[i][j] +=
-                            rho * phi[i] * phi[j] * fe_values.JxW(q);
-                          local_matrix[i][j] +=
-                            (symmetric_grad_phi[i] * viscosity *
-                               symmetric_grad_phi[j] * gamma * dt *
-                               (1 + alpha) +
-                             symmetric_grad_phi[i] * elasticity *
-                               symmetric_grad_phi[j] * beta * dt * dt *
-                               (1 + alpha)) *
-                            fe_values.JxW(q);
-                          if (is_initial)
+
+                          for (unsigned int j = 0; j < dofs_per_cell; ++j)
                             {
+                              local_mass[i][j] +=
+                                rho * phi[i] * phi[j] * fe_values.JxW(q);
+                              local_matrix[i][j] +=
+                                (symmetric_grad_phi[i] * viscosity *
+                                   symmetric_grad_phi[j] * gamma * dt *
+                                   (1 + alpha) +
+                                 symmetric_grad_phi[i] * elasticity *
+                                   symmetric_grad_phi[j] * beta * dt * dt *
+                                   (1 + alpha)) *
+                                fe_values.JxW(q);
                               local_stiffness[i][j] +=
                                 symmetric_grad_phi[i] * elasticity *
                                 symmetric_grad_phi[j] * fe_values.JxW(q);
@@ -150,6 +158,14 @@ namespace Solid
                             }
                         }
                       local_rhs[i] += phi[i] * gravity * rho * fe_values.JxW(q);
+
+                      // add penalty force based on Eulerian-Lagrangian velocity
+                      // difference (only for OpenIFEM-SABLE coupling)
+                      if (parameters.simulation_type == "FSI")
+                        {
+                          local_rhs[i] +=
+                            phi[i] * fsi_vel_diff[q] * fe_values.JxW(q);
+                        }
                     }
                 }
 
@@ -302,25 +318,18 @@ namespace Solid
                           local_mass[i][j] = 0;
                         }
                     }
-
-                  if (parameters.simulation_type == "FSI")
-                    {
-                      // Added mass effect
-                      local_matrix[i][i] +=
-                        added_mass_effect[local_dof_indices[i]];
-                    }
                 }
 
               local_matrix.add(1, local_mass);
 
               // Now distribute local data to the system, and apply the
               // hanging node constraints at the same time.
-              constraints.distribute_local_to_global(
-                local_matrix, local_dof_indices, system_matrix);
-              constraints.distribute_local_to_global(
-                local_mass, local_dof_indices, mass_matrix);
               if (is_initial)
                 {
+                  constraints.distribute_local_to_global(
+                    local_matrix, local_dof_indices, system_matrix);
+                  constraints.distribute_local_to_global(
+                    local_mass, local_dof_indices, mass_matrix);
                   constraints.distribute_local_to_global(
                     local_stiffness, local_dof_indices, stiffness_matrix);
                   constraints.distribute_local_to_global(
@@ -333,11 +342,20 @@ namespace Solid
       // Synchronize with other processors.
       if (is_initial)
         {
+          system_matrix.compress(VectorOperation::add);
+          mass_matrix.compress(VectorOperation::add);
           stiffness_matrix.compress(VectorOperation::add);
           damping_matrix.compress(VectorOperation::add);
+
+          // OpenIFEM-SABLE coupling: save system_matrix diagonal for
+          // application of added mass effect
+          if (parameters.simulation_type == "FSI")
+            {
+              std::pair<int, int> range = system_matrix.local_range();
+              for (int i = range.first; i < range.second; i++)
+                system_matrix_diagonal.push_back(system_matrix.el(i, i));
+            }
         }
-      system_matrix.compress(VectorOperation::add);
-      mass_matrix.compress(VectorOperation::add);
       system_rhs.compress(VectorOperation::add);
     }
 
@@ -357,6 +375,16 @@ namespace Solid
           // \f$ and the system matrices. This is only done once even in FSI
           // mode.
           assemble_system(true);
+
+          // apply added mass effect
+          if (parameters.simulation_type == "FSI")
+            {
+              std::pair<int, int> range = mass_matrix.local_range();
+              for (int i = range.first; i < range.second; i++)
+                mass_matrix.add(i, i, added_mass_effect[i]);
+              mass_matrix.compress(VectorOperation::add);
+            }
+
           this->solve(mass_matrix, previous_acceleration, system_rhs);
           this->output_results(time.get_timestep());
         }
@@ -391,6 +419,21 @@ namespace Solid
       damping_matrix.vmult(tmp5, tmp4);
       tmp1 -= tmp3;
       tmp1 -= tmp5;
+
+      // apply added mass effect
+      if (parameters.simulation_type == "FSI")
+        {
+          std::pair<int, int> range = system_matrix.local_range();
+          for (unsigned int i = 0; i < system_matrix_diagonal.size(); i++)
+            {
+              int index = i + range.first;
+              system_matrix.set(index,
+                                index,
+                                system_matrix_diagonal[i] +
+                                  added_mass_effect[index]);
+            }
+          system_matrix.compress(VectorOperation::insert);
+        }
 
       auto state = this->solve(system_matrix, current_acceleration, tmp1);
 

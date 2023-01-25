@@ -25,7 +25,12 @@ namespace Fluid
       FluidSolver<dim>::initialize_system();
       fsi_force.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
-      fsi_velocity.reinit(
+      fsi_velocity.reinit(dofs_per_block[0]);
+      nodal_mass.reinit(locally_owned_scalar_dofs,
+                        locally_relevant_scalar_dofs,
+                        mpi_communicator);
+
+      fsi_vel_diff_eul.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
 
       // Setup cell wise stress, vf, density received from SABLE
@@ -93,7 +98,7 @@ namespace Fluid
           rec_velocity(sable_no_nodes);
 
           output_results(0);
-          std::cout << "Received inital solution from Sable" << std::endl;
+          pcout << "Received inital solution from Sable" << std::endl;
         }
       else
         {
@@ -117,12 +122,13 @@ namespace Fluid
           rec_vf(sable_no_ele);
           update_nodal_mass();
           rec_velocity(sable_no_nodes);
+          check_no_slip_bc();
 
           is_comm_active = All(is_comm_active);
-          std::cout << std::string(96, '*') << std::endl
-                    << "Received solution from Sable at time step = "
-                    << time.get_timestep() << ", at t = " << std::scientific
-                    << time.current() << std::endl;
+          pcout << std::string(96, '*') << std::endl
+                << "Received solution from Sable at time step = "
+                << time.get_timestep() << ", at t = " << std::scientific
+                << time.current() << std::endl;
           // Output
           if ((int(time.get_timestep()) % int(parameters.output_interval)) == 0)
             {
@@ -365,7 +371,6 @@ namespace Fluid
     {
 
       Vector<double> localized_fsi_force(fsi_force.block(0));
-      Vector<double> localized_fsi_velocity(fsi_velocity.block(0));
 
       int sable_force_size = sable_n_nodes * dim;
       std::vector<int> cmapp = sable_ids;
@@ -397,7 +402,7 @@ namespace Fluid
               nv_send_buffer_force[0][index + i] =
                 localized_fsi_force[openifem_sable_dof_map[n * dim + i]];
               nv_send_buffer_vel[0][index + i] =
-                localized_fsi_velocity[openifem_sable_dof_map[n * dim + i]];
+                fsi_velocity[openifem_sable_dof_map[n * dim + i]];
             }
         }
       // send fsi force
@@ -684,7 +689,8 @@ namespace Fluid
     template <int dim>
     void SableWrap<dim>::update_nodal_mass()
     {
-      nodal_mass.reinit(locally_owned_scalar_dofs, mpi_communicator);
+      PETScWrappers::MPI::Vector tmp_nodal_mass;
+      tmp_nodal_mass.reinit(locally_owned_scalar_dofs, mpi_communicator);
 
       FEValues<dim> scalar_fe_values(scalar_fe,
                                      volume_quad_formula,
@@ -751,12 +757,13 @@ namespace Fluid
               for (unsigned int i = 0; i < dofs_per_cell; ++i)
                 {
                   auto index = local_dof_indices[i];
-                  nodal_mass[index] += local_matrix[i][i];
+                  tmp_nodal_mass[index] += local_matrix[i][i];
                 }
             }
         }
 
-      nodal_mass.compress(VectorOperation::add);
+      tmp_nodal_mass.compress(VectorOperation::add);
+      nodal_mass = tmp_nodal_mass;
     }
 
     template <int dim>
@@ -882,6 +889,38 @@ namespace Fluid
           std::ofstream pvd_output("fluid.pvd");
           DataOutBase::write_pvd_record(pvd_output, times_and_names);
         }
+    }
+
+    template <int dim>
+    void SableWrap<dim>::check_no_slip_bc()
+    {
+      // initialize blockvector
+      PETScWrappers::MPI::BlockVector tmp_fsi_vel_diff;
+      tmp_fsi_vel_diff.reinit(owned_partitioning, mpi_communicator);
+
+      for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+           ++cell)
+        {
+          if (!cell->is_locally_owned())
+            continue;
+          auto ptr = cell_property.get_data(cell);
+          if (ptr[0]->indicator != 0)
+            {
+              for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
+                   ++v)
+                {
+                  for (unsigned int i = 0; i < dim; i++)
+                    {
+                      int index = cell->vertex_dof_index(v, i);
+                      tmp_fsi_vel_diff[index] =
+                        fsi_velocity[index] - present_solution[index];
+                    }
+                }
+            }
+        }
+
+      tmp_fsi_vel_diff.compress(VectorOperation::insert);
+      fsi_vel_diff_eul = tmp_fsi_vel_diff;
     }
 
     template class SableWrap<2>;

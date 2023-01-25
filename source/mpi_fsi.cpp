@@ -17,7 +17,7 @@ namespace MPI
     : fluid_solver(f),
       solid_solver(s),
       parameters(p),
-      mpi_communicator(MPI_COMM_WORLD),
+      mpi_communicator(PETSC_COMM_WORLD),
       pcout(std::cout, Utilities::MPI::this_mpi_process(mpi_communicator) == 0),
       time(parameters.end_time,
            parameters.time_step,
@@ -148,7 +148,7 @@ namespace MPI
       }
 
     // Compute its angle to each boundary face
-    if (dim == 2)
+    /*if (dim == 2)
       {
         unsigned int cross_number = 0;
         unsigned int half_cross_number = 0;
@@ -209,7 +209,7 @@ namespace MPI
         if (cross_number % 2 == 0)
           return false;
         return true;
-      }
+      }*/
     for (auto cell = df.begin_active(); cell != df.end(); ++cell)
       {
         if (cell->point_inside(point))

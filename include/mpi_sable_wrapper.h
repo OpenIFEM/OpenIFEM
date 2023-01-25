@@ -3,6 +3,14 @@
 
 #include "mpi_fluid_solver.h"
 
+namespace MPI
+{
+  template <int dim>
+  class FSI;
+  template <int dim>
+  class OpenIFEM_Sable_FSI;
+} // namespace MPI
+
 namespace Fluid
 {
   namespace MPI
@@ -18,6 +26,9 @@ namespace Fluid
       MPIFluidSolverInheritanceMacro();
 
     public:
+      //! FSI solver need access to the private members of this solver.
+      friend ::MPI::FSI<dim>;
+      friend ::MPI::OpenIFEM_Sable_FSI<dim>;
       //! Constructor.
       SableWrap(parallel::distributed::Triangulation<dim> &,
                 const Parameters::AllParameters &,
@@ -29,6 +40,7 @@ namespace Fluid
 
     private:
       using FluidSolver<dim>::initialize_system;
+
       void initialize_system() override;
 
       /// Output in vtu format.
@@ -51,7 +63,7 @@ namespace Fluid
 
       PETScWrappers::MPI::BlockVector fsi_force;
       // Vector to store Dirichlet bc values for artificial fluid
-      PETScWrappers::MPI::BlockVector fsi_velocity;
+      Vector<double> fsi_velocity;
 
       bool is_comm_active = true;
 
@@ -103,6 +115,14 @@ namespace Fluid
       void update_nodal_mass();
       // vector stores the nodal mass based on the SABLE density
       PETScWrappers::MPI::Vector nodal_mass;
+
+      // Vector to store difference between Lagrangian solid velocity and
+      // artificial velocity calculated at Eulerian mesh
+      PETScWrappers::MPI::BlockVector fsi_vel_diff_eul;
+
+      // check if the no-slip bc is satisfied betweeen SABLE and Lagrangian
+      // solid
+      void check_no_slip_bc();
 
       CellDataStorage<
         typename parallel::distributed::Triangulation<dim>::cell_iterator,

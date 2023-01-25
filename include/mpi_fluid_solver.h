@@ -72,6 +72,8 @@ namespace MPI
   class FSI;
   template <int dim>
   class ControlVolumeFSI;
+  template <int dim>
+  class OpenIFEM_Sable_FSI;
 } // namespace MPI
 
 namespace Fluid
@@ -88,6 +90,7 @@ namespace Fluid
       //! FSI solver need access to the private members of this solver.
       friend ::MPI::FSI<dim>;
       friend ::MPI::ControlVolumeFSI<dim>;
+      friend ::MPI::OpenIFEM_Sable_FSI<dim>;
 
       //! Constructor.
       FluidSolver(parallel::distributed::Triangulation<dim> &,

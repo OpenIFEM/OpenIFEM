@@ -146,6 +146,8 @@ namespace Solid
 
       added_mass_effect.reinit(dof_handler.n_dofs());
 
+      fsi_vel_diff_lag.reinit(dof_handler.n_dofs());
+
       fsi_stress_rows.resize(dim);
       for (unsigned int d = 0; d < dim; ++d)
         {
