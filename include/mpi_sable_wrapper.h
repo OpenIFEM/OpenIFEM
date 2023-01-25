@@ -116,6 +116,14 @@ namespace Fluid
       // vector stores the nodal mass based on the SABLE density
       PETScWrappers::MPI::Vector nodal_mass;
 
+      // Vector to store difference between Lagrangian solid velocity and
+      // artificial velocity calculated at Eulerian mesh
+      PETScWrappers::MPI::BlockVector fsi_vel_diff_eul;
+
+      // check if the no-slip bc is satisfied betweeen SABLE and Lagrangian
+      // solid
+      void check_no_slip_bc();
+
       CellDataStorage<
         typename parallel::distributed::Triangulation<dim>::cell_iterator,
         SableCellData>

@@ -93,6 +93,10 @@ namespace Solid
           gravity[i] = parameters.gravity[i];
         }
 
+      // fsi_vel_diff_lag  at quadrature points (used to
+      // calculate penalty force for OpenIFEM-SABLE coupling)
+      std::vector<Tensor<1, dim>> fsi_vel_diff(n_q_points);
+
       // Loop over cells
       for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
            ++cell)
@@ -113,6 +117,9 @@ namespace Solid
               local_rhs = 0;
 
               fe_values.reinit(cell);
+
+              fe_values[displacements].get_function_values(fsi_vel_diff_lag,
+                                                           fsi_vel_diff);
 
               // Loop over quadrature points
               for (unsigned int q = 0; q < n_q_points; ++q)
@@ -151,6 +158,14 @@ namespace Solid
                             }
                         }
                       local_rhs[i] += phi[i] * gravity * rho * fe_values.JxW(q);
+
+                      // add penalty force based on Eulerian-Lagrangian velocity
+                      // difference (only for OpenIFEM-SABLE coupling)
+                      if (parameters.simulation_type == "FSI")
+                        {
+                          local_rhs[i] +=
+                            phi[i] * fsi_vel_diff[q] * fe_values.JxW(q);
+                        }
                     }
                 }
 

@@ -125,6 +125,11 @@ namespace MPI
     /*! \brief Compute the added mass effect on the Lagrangian boundary
      */
     void compute_added_mass();
+
+    /*! calculate velocity difference on Lagrangian mesh for penalty application
+     * and output l2 norm of the velocity difference calculated at both Eulerian
+     * and Lagrangian mesh */
+    void compute_lag_penalty(bool first_step);
   };
 } // namespace MPI
 

@@ -77,7 +77,7 @@ namespace MPI
         sable_solver.send_indicator(sable_solver.sable_no_ele,
                                     sable_solver.sable_no_nodes);
         sable_solver.run_one_step();
-        // output_vel_diff(first_step);
+        compute_lag_penalty(first_step);
         first_step = false;
       }
   }
@@ -1104,6 +1104,98 @@ namespace MPI
                         solid_solver.mpi_communicator,
                         solid_solver.added_mass_effect);
     move_solid_mesh(false);
+  }
+
+  template <int dim>
+  void OpenIFEM_Sable_FSI<dim>::compute_lag_penalty(bool first_step)
+  {
+    // calculate velocity difference between the two domains at Lagrangian mesh
+    move_solid_mesh(true);
+    Vector<double> vel_diff_lag(solid_solver.dof_handler.n_dofs());
+    std::vector<bool> vertex_touched(solid_solver.triangulation.n_vertices(),
+                                     false);
+
+    Vector<double> localized_solid_velocity(solid_solver.current_velocity);
+
+    // get background mesh size for the Lagrangian penalty scaling
+    // NOTE: It is assumed that the background mesh is uniform
+    auto f_cell = fluid_solver.dof_handler.begin_active();
+    double dh = abs(f_cell->vertex(0)(0) - f_cell->vertex(1)(0));
+    // interpolate Eulerian velocity to Lagrangian mesh
+    for (auto s_cell = solid_solver.dof_handler.begin_active();
+         s_cell != solid_solver.dof_handler.end();
+         ++s_cell)
+      {
+
+        for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
+          {
+            if (!vertex_touched[s_cell->vertex_index(v)])
+              {
+                vertex_touched[s_cell->vertex_index(v)] = true;
+                Vector<double> value(dim + 1);
+                Utils::GridInterpolator<dim, PETScWrappers::MPI::BlockVector>
+                  interpolator(sable_solver.dof_handler, s_cell->vertex(v));
+                interpolator.point_value(sable_solver.present_solution, value);
+                auto f_cell = interpolator.get_cell();
+                // save Lagrangian velocity at the given vertex
+                Vector<double> lagVel(dim);
+                if (f_cell->index() != -1 && f_cell->is_locally_owned())
+                  {
+                    // get shear modulus of the background Eulerian cell
+                    auto ptr = sable_solver.sable_cell_data.get_data(f_cell);
+                    double modulus = ptr[0]->modulus;
+                    // calculate Lagrangian penalty scaling factor
+                    double lag_penalty_scale =
+                      (parameters.penalty_scale_factor[0] * modulus *
+                       time.get_delta_t()) /
+                      (dh * dh);
+
+                    for (unsigned int i = 0; i < dim; i++)
+                      {
+                        auto index = s_cell->vertex_dof_index(v, i);
+                        vel_diff_lag(index) = value[i];
+                        // subtract Lagrangian solid velocity
+                        vel_diff_lag(index) -= localized_solid_velocity(index);
+                        // scale velocity difference
+                        vel_diff_lag(index) *= lag_penalty_scale;
+                        // lagVel[i] = solid_solver.current_velocity(index);
+                      }
+                  }
+              }
+          }
+      }
+    move_solid_mesh(false);
+    solid_solver.fsi_vel_diff_lag = vel_diff_lag;
+
+    Utilities::MPI::sum(solid_solver.fsi_vel_diff_lag,
+                        solid_solver.mpi_communicator,
+                        solid_solver.fsi_vel_diff_lag);
+
+    double vel_diff_norm_eul = sable_solver.fsi_vel_diff_eul.block(0).l2_norm();
+    double vel_norm_lag = localized_solid_velocity.l2_norm();
+
+    if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+      {
+        std::ofstream file_diff;
+        if (first_step)
+          {
+            file_diff.open("velocity_diff.txt");
+            file_diff << "Time"
+                      << "\t"
+                      << "vel_diff_Eul"
+                      << "\t"
+                      << "vel_diff_Eul_percent"
+                      << "\n";
+          }
+        else
+          {
+            file_diff.open("velocity_diff.txt", std::ios_base::app);
+          }
+
+        file_diff << time.current() << "\t" << vel_diff_norm_eul << "\t"
+                  << vel_diff_norm_eul / vel_norm_lag << "\n";
+        file_diff.close();
+      }
   }
 
   template class OpenIFEM_Sable_FSI<2>;

@@ -30,6 +30,9 @@ namespace Fluid
                         locally_relevant_scalar_dofs,
                         mpi_communicator);
 
+      fsi_vel_diff_eul.reinit(
+        owned_partitioning, relevant_partitioning, mpi_communicator);
+
       // Setup cell wise stress, vf, density received from SABLE
       int stress_size = (dim == 2 ? 3 : 6);
       for (auto cell = triangulation.begin_active();
@@ -119,6 +122,7 @@ namespace Fluid
           rec_vf(sable_no_ele);
           update_nodal_mass();
           rec_velocity(sable_no_nodes);
+          check_no_slip_bc();
 
           is_comm_active = All(is_comm_active);
           std::cout << std::string(96, '*') << std::endl
@@ -885,6 +889,38 @@ namespace Fluid
           std::ofstream pvd_output("fluid.pvd");
           DataOutBase::write_pvd_record(pvd_output, times_and_names);
         }
+    }
+
+    template <int dim>
+    void SableWrap<dim>::check_no_slip_bc()
+    {
+      // initialize blockvector
+      PETScWrappers::MPI::BlockVector tmp_fsi_vel_diff;
+      tmp_fsi_vel_diff.reinit(owned_partitioning, mpi_communicator);
+
+      for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+           ++cell)
+        {
+          if (!cell->is_locally_owned())
+            continue;
+          auto ptr = cell_property.get_data(cell);
+          if (ptr[0]->indicator != 0)
+            {
+              for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
+                   ++v)
+                {
+                  for (unsigned int i = 0; i < dim; i++)
+                    {
+                      int index = cell->vertex_dof_index(v, i);
+                      tmp_fsi_vel_diff[index] =
+                        fsi_velocity[index] - present_solution[index];
+                    }
+                }
+            }
+        }
+
+      tmp_fsi_vel_diff.compress(VectorOperation::insert);
+      fsi_vel_diff_eul = tmp_fsi_vel_diff;
     }
 
     template class SableWrap<2>;
