@@ -3,6 +3,7 @@
 
 #include "hyper_elastic_material.h"
 #include <deal.II/base/symmetric_tensor.h>
+#include <deal.II/physics/transformations.h>
 
 namespace Solid
 {
@@ -31,18 +32,6 @@ namespace Solid
       this->mu = this->E / (2 * (1 + this->nu));
     }
 
-    /** Compute PK2 stress */
-    dealii::SymmetricTensor<2, dim>
-    get_pk2_stress(const dealii::Tensor<2, dim> &F) const
-    {
-      const dealii::SymmetricTensor<2, dim> E_tensor =
-        dealii::Physics::Elasticity::Kinematics::E(F);
-      dealii::SymmetricTensor<2, dim> pk2_stress =
-        this->lambda * dealii::trace(E_tensor) * ST::I +
-        2 * this->mu * E_tensor;
-      return pk2_stress;
-    }
-
     /** Compute the tangent elasticity tensor*/
 
     virtual dealii::SymmetricTensor<4, dim> get_Jc() const override
@@ -59,6 +48,27 @@ namespace Solid
 
     {
       return dealii::SymmetricTensor<4, dim>();
+    }
+
+    // function overloading to compute tau, the issue for this implementation is
+    // that the get_tau() from parent class will be hiden in this function due
+    // to the C++ features
+
+    virtual dealii::SymmetricTensor<2, dim>
+    get_tau(const dealii::Tensor<2, dim> &F) const
+    {
+      const dealii::SymmetricTensor<2, dim> E_tensor =
+        dealii::Physics::Elasticity::Kinematics::E(F);
+
+      dealii::SymmetricTensor<2, dim> pk2_stress =
+        this->lambda * dealii::trace(E_tensor) * ST::I +
+        2 * this->mu * E_tensor;
+
+      const dealii::SymmetricTensor<2, dim> tau =
+        dealii::Physics::Transformations::Contravariant::push_forward(
+          pk2_stress, F);
+
+      return tau;
     }
 
   private:
