@@ -98,7 +98,7 @@ namespace Fluid
           rec_velocity(sable_no_nodes);
 
           output_results(0);
-          std::cout << "Received inital solution from Sable" << std::endl;
+          pcout << "Received inital solution from Sable" << std::endl;
         }
       else
         {
@@ -125,10 +125,10 @@ namespace Fluid
           check_no_slip_bc();
 
           is_comm_active = All(is_comm_active);
-          std::cout << std::string(96, '*') << std::endl
-                    << "Received solution from Sable at time step = "
-                    << time.get_timestep() << ", at t = " << std::scientific
-                    << time.current() << std::endl;
+          pcout << std::string(96, '*') << std::endl
+                << "Received solution from Sable at time step = "
+                << time.get_timestep() << ", at t = " << std::scientific
+                << time.current() << std::endl;
           // Output
           if ((int(time.get_timestep()) % int(parameters.output_interval)) == 0)
             {
