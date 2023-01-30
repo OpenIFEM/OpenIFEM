@@ -376,6 +376,14 @@ namespace Solid
           // mode.
           assemble_system(true);
 
+          // Save nodal mass in a vector
+          std::pair<int, int> range = mass_matrix.local_range();
+          for (int i = range.first; i < range.second; i++)
+            {
+              nodal_mass[i] = mass_matrix.el(i, i);
+            }
+          nodal_mass.compress(VectorOperation::insert);
+
           // apply added mass effect
           if (parameters.simulation_type == "FSI")
             {

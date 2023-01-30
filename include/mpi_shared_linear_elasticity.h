@@ -40,6 +40,7 @@ namespace Solid
       using SharedSolidSolver<dim>::cell_property;
       using SharedSolidSolver<dim>::added_mass_effect;
       using SharedSolidSolver<dim>::fsi_vel_diff_lag;
+      using SharedSolidSolver<dim>::nodal_mass;
 
     public:
       /*! \brief Constructor.

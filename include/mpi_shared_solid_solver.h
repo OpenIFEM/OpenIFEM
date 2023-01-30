@@ -210,6 +210,12 @@ namespace Solid
       Vector<double> fsi_vel_diff_lag;
 
       /**
+       * Vector stores nodal mass which is used for calculation of toal solid KE
+       * and momentum
+       */
+      PETScWrappers::MPI::Vector nodal_mass;
+
+      /**
        * Arrays to store the fsi-related quantities. fsi_stress_rows has dim
        * elements and each element is an array of n_dof elements, representing a
        * row in the rank 2 stress tensor. The fsi stresses are used to evaluate

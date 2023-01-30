@@ -148,6 +148,8 @@ namespace Solid
 
       fsi_vel_diff_lag.reinit(dof_handler.n_dofs());
 
+      nodal_mass.reinit(locally_owned_dofs, mpi_communicator);
+
       fsi_stress_rows.resize(dim);
       for (unsigned int d = 0; d < dim; ++d)
         {
