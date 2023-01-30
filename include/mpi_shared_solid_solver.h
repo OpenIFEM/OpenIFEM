@@ -97,6 +97,13 @@ namespace Solid
       void run();
       PETScWrappers::MPI::Vector get_current_solution() const;
 
+      /**
+       * Store user's input of the coordinates of the points
+       * and the direction to be constrained.
+       */
+      void constrain_points(const std::vector<Point<dim>> &,
+                            const std::vector<unsigned int> &);
+
     protected:
       struct CellProperty;
       /**
@@ -210,6 +217,11 @@ namespace Solid
       Vector<double> fsi_vel_diff_lag;
 
       /**
+       * function to calculate total solid KE and momemtum
+       */
+      void calculate_KE_and_momemtum();
+
+      /**
        * Vector stores nodal mass which is used for calculation of toal solid KE
        * and momentum
        */
@@ -226,6 +238,11 @@ namespace Solid
       std::vector<Vector<double>> fsi_stress_rows;
       Vector<double> fluid_velocity;
       Vector<double> fluid_pressure;
+
+      /** a pair container to store the user specified points and directions
+       */
+      std::pair<std::vector<Point<dim>>, std::vector<unsigned int>>
+        point_boundary_values;
 
       /**
        * Nodal strain and stress obtained by taking the average of surrounding

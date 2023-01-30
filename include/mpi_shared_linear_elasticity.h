@@ -41,6 +41,7 @@ namespace Solid
       using SharedSolidSolver<dim>::added_mass_effect;
       using SharedSolidSolver<dim>::fsi_vel_diff_lag;
       using SharedSolidSolver<dim>::nodal_mass;
+      using SharedSolidSolver<dim>::calculate_KE_and_momemtum;
 
     public:
       /*! \brief Constructor.

@@ -384,6 +384,8 @@ namespace Solid
             }
           nodal_mass.compress(VectorOperation::insert);
 
+          calculate_KE_and_momemtum();
+
           // apply added mass effect
           if (parameters.simulation_type == "FSI")
             {
@@ -472,6 +474,8 @@ namespace Solid
 
       // strain and stress
       update_strain_and_stress();
+
+      calculate_KE_and_momemtum();
 
       if (time.time_to_output())
         {
