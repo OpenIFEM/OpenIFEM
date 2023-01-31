@@ -16,11 +16,14 @@ set(serial_tests acoustic_duct_wave
                  openifem-sable_circle_hyperelastic
                  openifem-sable_circle_linearelastic
                  openifem-sable_ogival_proj_linearelastic
+                 openifem-sable_ogival_proj_linearelastic_mpi
 		 openifem-sable_projectile_linearelastic
+                 openifem-sable_projectile_linearelastic_mpi
                  openifem-sable_rigid_body
                  openifem-sable_rigid_body_3d
                  openifem-sable_rod_linearelastic
-                 openifem-sable_sphere_linearelastic                
+                 openifem-sable_sphere_linearelastic
+                 openifem-sable_sphere_linearelastic_mpi                
                  openifem-sable_square_hyperelastic
                  sable_wrapper_test
                  sable_wrapper_test_3d
