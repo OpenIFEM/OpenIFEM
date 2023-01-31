@@ -135,8 +135,8 @@ namespace Solid
                       if (!vertex_touched[cell->vertex_index(v)])
                         {
                           vertex_touched[cell->vertex_index(v)] = true;
-                          if (abs(cell->vertex(v)(0) - points[i](0)) < 1e-8 &&
-                              abs(cell->vertex(v)(1) - points[i](1)) < 1e-8)
+                          if (abs(cell->vertex(v)(0) - points[i](0)) < 1e-4 &&
+                              abs(cell->vertex(v)(1) - points[i](1)) < 1e-4)
                             {
                               find_point = true;
                               unsigned int d = directions[i];
