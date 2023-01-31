@@ -405,10 +405,13 @@ namespace Fluid
                 fsi_velocity[openifem_sable_dof_map[n * dim + i]];
             }
         }
-      // send fsi force
-      send_data(nv_send_buffer_force, cmapp, cmapp_sizes);
-      // send Dirichlet bc values for the artificial fluid
-      send_data(nv_send_buffer_vel, cmapp, cmapp_sizes);
+      if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+        {
+          // send fsi force
+          send_data(nv_send_buffer_force, cmapp, cmapp_sizes);
+          // send Dirichlet bc values for the artificial fluid
+          send_data(nv_send_buffer_vel, cmapp, cmapp_sizes);
+        }
 
       // delete solution
       for (unsigned ict = 0; ict < cmapp.size(); ict++)
@@ -661,14 +664,16 @@ namespace Fluid
                         MPI_MAX,
                         mpi_communicator);
         }
-
-      // send indicator field
-      send_data(nv_send_buffer_ind, cmapp, cmapp_sizes_element);
-      send_data(nv_send_buffer_exact_ind, cmapp, cmapp_sizes_element);
-      // send modified Lagrangian density
-      send_data(nv_send_buffer_density, cmapp, cmapp_sizes_element);
-      // send nodal indicator field
-      send_data(nv_send_buffer_nodal_ind, cmapp, cmapp_sizes_nodal);
+      if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+        {
+          // send indicator field
+          send_data(nv_send_buffer_ind, cmapp, cmapp_sizes_element);
+          send_data(nv_send_buffer_exact_ind, cmapp, cmapp_sizes_element);
+          // send modified Lagrangian density
+          send_data(nv_send_buffer_density, cmapp, cmapp_sizes_element);
+          // send nodal indicator field
+          send_data(nv_send_buffer_nodal_ind, cmapp, cmapp_sizes_nodal);
+        }
 
       for (unsigned ict = 0; ict < cmapp.size(); ict++)
         {
