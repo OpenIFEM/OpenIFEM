@@ -1327,8 +1327,11 @@ namespace MPI
                         solid_solver.mpi_communicator,
                         solid_solver.fsi_vel_diff_lag);
 
-    double vel_diff_norm_eul = sable_solver.fsi_vel_diff_eul.block(0).l2_norm();
-    double vel_norm_lag = localized_solid_velocity.l2_norm();
+    /****** NOTE: Text output is Temporarily disabled ******/
+
+    /*double vel_diff_norm_eul =
+    sable_solver.fsi_vel_diff_eul.block(0).l2_norm(); double vel_norm_lag =
+    localized_solid_velocity.l2_norm();
 
     if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
       {
@@ -1351,7 +1354,7 @@ namespace MPI
         file_diff << time.current() << "\t" << vel_diff_norm_eul << "\t"
                   << vel_diff_norm_eul / vel_norm_lag << "\n";
         file_diff.close();
-      }
+      }*/
   }
 
   template class OpenIFEM_Sable_FSI<2>;

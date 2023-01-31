@@ -809,13 +809,13 @@ namespace Fluid
       Vector<double> ind(triangulation.n_active_cells());
       Vector<double> exact_ind(triangulation.n_active_cells());
       Vector<double> shear_modulus(triangulation.n_active_cells());
-      unsigned int stress_size = (dim == 2 ? 3 : 6);
+      /*unsigned int stress_size = (dim == 2 ? 3 : 6);
       std::vector<Vector<double>> sable_stress;
       std::vector<Vector<double>> sable_stress_no_bgmat;
       sable_stress = std::vector<Vector<double>>(
         stress_size, Vector<double>(triangulation.n_cells()));
       sable_stress_no_bgmat = std::vector<Vector<double>>(
-        stress_size, Vector<double>(triangulation.n_cells()));
+        stress_size, Vector<double>(triangulation.n_cells()));*/
 
       for (auto cell = triangulation.begin_active();
            cell != triangulation.end();
@@ -828,19 +828,19 @@ namespace Fluid
               ind[cell->active_cell_index()] = p[0]->indicator;
               exact_ind[cell->active_cell_index()] = p[0]->exact_indicator;
               shear_modulus[cell->active_cell_index()] = c[0]->modulus;
-              for (unsigned int j = 0; j < stress_size; j++)
+              /*for (unsigned int j = 0; j < stress_size; j++)
                 {
                   sable_stress[j][cell->active_cell_index()] =
                     c[0]->cell_stress[j];
                   sable_stress_no_bgmat[j][cell->active_cell_index()] =
                     c[0]->cell_stress_no_bgmat[j];
-                }
+                }*/
             }
         }
       data_out.add_data_vector(ind, "Indicator");
       data_out.add_data_vector(exact_ind, "exact_indicator");
       data_out.add_data_vector(shear_modulus, "shear_modulus");
-      data_out.add_data_vector(sable_stress[0], "cell_stress_xx");
+      /*data_out.add_data_vector(sable_stress[0], "cell_stress_xx");
       data_out.add_data_vector(sable_stress[1], "cell_stress_xy");
       data_out.add_data_vector(sable_stress[2], "cell_stress_yy");
       data_out.add_data_vector(sable_stress_no_bgmat[0],
@@ -861,7 +861,7 @@ namespace Fluid
                                    "cell_stress_no_bgmat_yz");
           data_out.add_data_vector(sable_stress_no_bgmat[5],
                                    "cell_stress_no_bgmat_zz");
-        }
+        }*/
 
       data_out.build_patches(parameters.fluid_pressure_degree);
 
