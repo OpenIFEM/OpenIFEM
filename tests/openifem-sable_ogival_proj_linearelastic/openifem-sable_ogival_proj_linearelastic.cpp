@@ -211,9 +211,9 @@ int main(int argc, char *argv[])
       // Create Lagrangian solid object with linear elastic material
       Solid::LinearElasticity<2> solid(lag_tria, params);
       // Constrain three points in the Lagrangian solid in y direction
-      Point<2> p1(3.82919, 0);
-      Point<2> p2(8.07291, 0);
-      Point<2> p3(14.3721, 0);
+      Point<2> p1(4.21, -0.000811369);
+      Point<2> p2(8.6804, -0.000454367);
+      Point<2> p3(14.37, 0);
       std::vector<Point<2>> points = {p1, p2, p3};
       std::vector<unsigned int> directions = {1, 1, 1};
       solid.constrain_points(points, directions);
