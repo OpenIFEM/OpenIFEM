@@ -770,7 +770,7 @@ namespace MPI
   }
 
   template <int dim>
-  int OpenIFEM_Sable_FSI<dim>::compute_fluid_cell_index(
+  int OpenIFEM_Sable_FSI<dim>::compute_fluid_cell_index_qpoint(
     Point<dim> &q_point, const Tensor<1, dim> &normal)
   {
     // Note: Only works for unifrom, strucutred mesh
@@ -894,6 +894,84 @@ namespace MPI
   }
 
   template <int dim>
+  int OpenIFEM_Sable_FSI<dim>::compute_fluid_cell_index_vertex(
+    Point<dim> &q_point)
+  {
+    // Note: Only works for unifrom, strucutred mesh
+    auto f_cell = sable_solver.triangulation.begin_active();
+
+    // compute the lower boundary of the Eulerian cell box
+
+    double h = abs(f_cell->vertex(0)(0) - f_cell->vertex(1)(0));
+
+    Point<dim> lower_boundary;
+
+    for (unsigned int i = 0; i < dim; i++)
+      lower_boundary(i) = f_cell->center()[i] - h / 2;
+
+    // Currently assuming the target Eulerian cell has the same level as the
+    // first Eulerian cell, won't work for AMR
+
+    f_cell = sable_solver.triangulation.last_active();
+
+    unsigned int N = 0;
+
+    if (parameters.dimension == 2)
+      {
+        N = std::sqrt((f_cell->index() + 1));
+      }
+    else
+      {
+        N = std::cbrt((f_cell->index() + 1));
+      }
+
+    // compute the upper boundaries of the Eulerian cell box
+
+    Point<dim> upper_boundary;
+
+    for (unsigned int i = 0; i < dim; i++)
+      upper_boundary(i) = f_cell->center()[i] + h / 2;
+
+    bool point_inside = true;
+
+    for (unsigned int i = 0; i < dim; i++)
+
+      {
+
+        if (q_point[i] < lower_boundary(i) && q_point[i] > upper_boundary(i))
+          {
+            point_inside = false;
+            break;
+          }
+      }
+
+    if (point_inside == true)
+
+      {
+        // compute the theorical min and max cell ID for assertion
+        int a = 0;
+        int b = static_cast<int>(std::pow(N, dim) - 1);
+
+        // compute the Eulerian cell index
+
+        int n = 0;
+
+        for (unsigned int i = 0; i < dim; i++)
+
+          n +=
+            static_cast<int>(std::pow(N, i)) *
+            static_cast<int>(std::floor((q_point[i] - lower_boundary(i)) / h));
+
+        if (n < a || n > b)
+          return -1;
+
+        return n;
+      }
+    else // if the quad point is outside the fluid box
+      return -1;
+  }
+
+  template <int dim>
   void OpenIFEM_Sable_FSI<dim>::find_solid_bc()
   {
     TimerOutput::Scope timer_section(timer, "Find solid BC");
@@ -958,7 +1036,8 @@ namespace MPI
                     auto f_cell = interpolator.get_cell();*/
 
                     // compute the Eulerian cell index
-                    int n = compute_fluid_cell_index(q_point_extension, normal);
+                    int n = compute_fluid_cell_index_qpoint(q_point_extension,
+                                                            normal);
 
                     // If the quadrature point is outside background mesh
                     // if (f_cell->index() == -1)
@@ -1063,6 +1142,9 @@ namespace MPI
     std::vector<bool> vertex_touched(solid_solver.triangulation.n_vertices(),
                                      false);
 
+    auto f_cell = fluid_solver.scalar_dof_handler.begin_active();
+    auto level = f_cell->level();
+
     for (auto s_cell = solid_solver.dof_handler.begin_active();
          s_cell != solid_solver.dof_handler.end();
          ++s_cell)
@@ -1082,10 +1164,47 @@ namespace MPI
                       {
                         vertex_touched[face->vertex_index(v)] = 1;
                         Vector<double> value(1);
-                        // interpolate nodal mass
+
+                        /*** new way start**/
+                        // compute the Eulerian cell index
+                        int n = compute_fluid_cell_index_vertex(vertex);
+
+                        // If the vertex is outside background mesh
+                        // if (f_cell->index() == -1)
+                        if (n == -1)
+                          {
+                            value = 0;
+                            continue;
+                          }
+                        else
+                          {
+                            TriaActiveIterator<DoFCellAccessor<dim, dim, false>>
+                              f_cell_temp(&sable_solver.triangulation,
+                                          level,
+                                          n,
+                                          &sable_solver.scalar_dof_handler);
+                            f_cell = f_cell_temp;
+                          }
+
+                        if (!f_cell->is_locally_owned())
+                          {
+                            value = 0;
+                            continue;
+                          }
+
                         Utils::GridInterpolator<dim, PETScWrappers::MPI::Vector>
                           scalar_interpolator(sable_solver.scalar_dof_handler,
-                                              vertex);
+                                              vertex,
+                                              {},
+                                              f_cell);
+                        /*** new way end**/
+                        /*** old way **/
+                        // interpolate nodal mass
+                        /*Utils::GridInterpolator<dim,
+                          PETScWrappers::MPI::Vector>
+                          scalar_interpolator(sable_solver.scalar_dof_handler,
+                                              vertex);*/
+                        /*** old way **/
                         scalar_interpolator.point_value(sable_solver.nodal_mass,
                                                         value);
                         // add nodal mass to added_mass_effect vector
@@ -1109,6 +1228,7 @@ namespace MPI
   template <int dim>
   void OpenIFEM_Sable_FSI<dim>::compute_lag_penalty(bool first_step)
   {
+    TimerOutput::Scope timer_section(timer, "Calculate Lagrangian Penalty");
     // calculate velocity difference between the two domains at Lagrangian mesh
     move_solid_mesh(true);
     Vector<double> vel_diff_lag(solid_solver.dof_handler.n_dofs());
@@ -1120,6 +1240,8 @@ namespace MPI
     // get background mesh size for the Lagrangian penalty scaling
     // NOTE: It is assumed that the background mesh is uniform
     auto f_cell = fluid_solver.dof_handler.begin_active();
+    auto level = f_cell->level();
+
     double dh = abs(f_cell->vertex(0)(0) - f_cell->vertex(1)(0));
     // interpolate Eulerian velocity to Lagrangian mesh
     for (auto s_cell = solid_solver.dof_handler.begin_active();
@@ -1133,12 +1255,46 @@ namespace MPI
               {
                 vertex_touched[s_cell->vertex_index(v)] = true;
                 Vector<double> value(dim + 1);
+
+                /*** new way start**/
+                // compute the Eulerian cell index
+                int n = compute_fluid_cell_index_vertex(s_cell->vertex(v));
+
+                // If the vertex is outside background mesh
+                // if (f_cell->index() == -1)
+                if (n == -1)
+                  {
+                    value = 0;
+                    continue;
+                  }
+                else
+                  {
+                    TriaActiveIterator<DoFCellAccessor<dim, dim, false>>
+                      f_cell_temp(&sable_solver.triangulation,
+                                  level,
+                                  n,
+                                  &sable_solver.dof_handler);
+                    f_cell = f_cell_temp;
+                  }
+
+                if (!f_cell->is_locally_owned())
+                  {
+                    value = 0;
+                    continue;
+                  }
+
                 Utils::GridInterpolator<dim, PETScWrappers::MPI::BlockVector>
-                  interpolator(sable_solver.dof_handler, s_cell->vertex(v));
+                  interpolator(
+                    sable_solver.dof_handler, s_cell->vertex(v), {}, f_cell);
+                /*** new way end**/
+                /*** old way **/
+                // Utils::GridInterpolator<dim, PETScWrappers::MPI::BlockVector>
+                //  interpolator(sable_solver.dof_handler, s_cell->vertex(v));
+                /*** old way **/
                 interpolator.point_value(sable_solver.present_solution, value);
                 auto f_cell = interpolator.get_cell();
                 // save Lagrangian velocity at the given vertex
-                Vector<double> lagVel(dim);
+                // Vector<double> lagVel(dim);
                 if (f_cell->index() != -1 && f_cell->is_locally_owned())
                   {
                     // get shear modulus of the background Eulerian cell
