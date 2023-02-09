@@ -228,6 +228,13 @@ namespace Solid
       PETScWrappers::MPI::Vector nodal_mass;
 
       /**
+       * Save average and maximum penalty factor for Lagrangian solid. Only used
+       * for OpenIFEM-SABLE coupling
+       */
+      double max_penalty_scale;
+      double avg_penalty_scale;
+
+      /**
        * Arrays to store the fsi-related quantities. fsi_stress_rows has dim
        * elements and each element is an array of n_dof elements, representing a
        * row in the rank 2 stress tensor. The fsi stresses are used to evaluate

@@ -376,6 +376,10 @@ namespace Solid
               file_ke << "Time"
                       << "\t"
                       << "Solid KE"
+                      << "\t"
+                      << "Avg Penalty Scale"
+                      << "\t"
+                      << "Max Penalty Scale"
                       << "\n";
 
               file_momx.open("solid_mom_x.txt");
@@ -410,7 +414,8 @@ namespace Solid
                 file_momz.open("solid_mom_z.txt", std::ios_base::app);
             }
 
-          file_ke << time.current() << "\t" << ke << "\n";
+          file_ke << time.current() << "\t" << ke << "\t" << avg_penalty_scale
+                  << "\t" << max_penalty_scale << "\n";
           file_ke.close();
 
           file_momx << time.current() << "\t" << solid_momentum[0] << "\n";

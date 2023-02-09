@@ -1243,6 +1243,9 @@ namespace MPI
     auto level = f_cell->level();
 
     double dh = abs(f_cell->vertex(0)(0) - f_cell->vertex(1)(0));
+    // keep track of average and max penalty scaling factor
+    double max_penalty_scale = 0;
+    double avg_penalty_scale = 0;
     // interpolate Eulerian velocity to Lagrangian mesh
     for (auto s_cell = solid_solver.dof_handler.begin_active();
          s_cell != solid_solver.dof_handler.end();
@@ -1306,6 +1309,10 @@ namespace MPI
                        time.get_delta_t()) /
                       (dh * dh);
 
+                    if (lag_penalty_scale > max_penalty_scale)
+                      max_penalty_scale = lag_penalty_scale;
+                    avg_penalty_scale += lag_penalty_scale;
+
                     for (unsigned int i = 0; i < dim; i++)
                       {
                         auto index = s_cell->vertex_dof_index(v, i);
@@ -1326,6 +1333,15 @@ namespace MPI
     Utilities::MPI::sum(solid_solver.fsi_vel_diff_lag,
                         solid_solver.mpi_communicator,
                         solid_solver.fsi_vel_diff_lag);
+
+    avg_penalty_scale =
+      Utilities::MPI::sum(avg_penalty_scale, solid_solver.mpi_communicator);
+
+    max_penalty_scale =
+      Utilities::MPI::max(max_penalty_scale, solid_solver.mpi_communicator);
+    avg_penalty_scale /= solid_solver.triangulation.n_vertices();
+    solid_solver.max_penalty_scale = max_penalty_scale;
+    solid_solver.avg_penalty_scale = avg_penalty_scale;
 
     /****** NOTE: Text output is Temporarily disabled ******/
 
