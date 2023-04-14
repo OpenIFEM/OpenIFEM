@@ -29,7 +29,7 @@ public:
                      Solid::SolidSolver<dim> &,
                      const Parameters::AllParameters &,
                      bool use_dirichlet_bc = false);
-  virtual void run();
+  void run() override;
   ~OpenIFEM_Sable_FSI();
 
 private:

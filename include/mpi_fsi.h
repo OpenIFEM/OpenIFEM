@@ -40,7 +40,7 @@ namespace MPI
         Solid::MPI::SharedSolidSolver<dim> &,
         const Parameters::AllParameters &,
         bool use_dirichlet_bc = false);
-    void run();
+    virtual void run();
 
     void
     set_penetration_criterion(const std::function<double(const Point<dim> &)> &,

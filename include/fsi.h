@@ -29,7 +29,7 @@ public:
       Solid::SolidSolver<dim> &,
       const Parameters::AllParameters &,
       bool use_dirichlet_bc = false);
-  void run();
+  virtual void run();
   ~FSI();
 
 protected:
