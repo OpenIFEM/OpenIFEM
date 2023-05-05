@@ -831,8 +831,15 @@ namespace Fluid
           sable_lag_density[non_ghost_cell_id] =
             indicator_field[n] * parameters.solid_rho;*/
         if (indicator_field_exact[n] != 0)
-          sable_lag_density[non_ghost_cell_id] =
-            indicator_field_exact[n] * parameters.solid_rho;
+          {
+            sable_lag_density[non_ghost_cell_id] =
+              indicator_field_exact[n] * parameters.solid_rho;
+
+            // change mass matrix for implicit Eulerian penalty
+            if (indicator_field[n] == 1)
+              sable_lag_density[non_ghost_cell_id] +=
+                parameters.solid_rho * parameters.penalty_scale_factor[1];
+          }
       }
 
     // create send buffer
