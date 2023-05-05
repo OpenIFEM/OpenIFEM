@@ -1,5 +1,5 @@
 # This is the input file for the program. There are three blocks of input parameters,
-# namely the simulation block, which contorls the simulation parameters shared by
+# namely the simulation block, which controls the simulation parameters shared by
 # both fluid and solid, such as the simulation time, output frequency and so on.
 # The fluid block controls the behavior of the fluid solver, and the solid solver
 # controls the solid solver.
@@ -87,7 +87,7 @@ subsection Fluid Dirichlet BCs
 end
 
 subsection Fluid Neumann BCs
-  # Number of boundaries with Neumann BCs (specificaly, pressure BC)
+  # Number of boundaries with Neumann BCs (specifically, pressure BC)
   # Note: do-nothing (zero pressure) boundary do not need to be explicitly specified!)
   set Number of Neumann BCs = 0
 

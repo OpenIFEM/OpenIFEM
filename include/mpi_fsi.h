@@ -66,7 +66,7 @@ namespace MPI
     /// Define a smallest rectangle (or hex in 3d) that contains the solid.
     void update_solid_box();
 
-    /// Find the vertices that are onwed by the local process.
+    /// Find the vertices that are owned by the local process.
     void update_vertices_mask();
 
     /// Check if a point is inside a mesh.
