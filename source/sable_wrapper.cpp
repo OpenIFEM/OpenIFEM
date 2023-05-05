@@ -890,6 +890,8 @@ namespace Fluid
         delete[] nv_send_buffer[ict];
       }
     delete[] nv_send_buffer;
+    delete[] nv_send_buffer_exact;
+    delete[] nv_send_buffer_density;
   }
 
   template <int dim>

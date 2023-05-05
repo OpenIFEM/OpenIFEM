@@ -973,7 +973,7 @@ void OpenIFEM_Sable_FSI<dim>::find_fluid_bc()
           stress_index = 0;
           for (unsigned int j = 0; j < dim; j++)
             {
-              for (unsigned int k = 0; k < i + 1; k++)
+              for (unsigned int k = 0; k < j + 1; k++)
                 {
                   Vector<double> s_stress_component(1);
                   scalar_interpolator.point_value(solid_solver.stress[j][k],
