@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
           parallel::distributed::Triangulation<2> tria(MPI_COMM_WORLD);
           GridGenerator::subdivided_hyper_rectangle(
             tria, {150, 20}, Point<2>(0, 0), Point<2>(15, 2), true);
-          Fluid::MPI::SCnsIM<2> flow(tria, params, MPI_COMM_WORLD);
+          Fluid::MPI::SCnsIM<2> flow(tria, params);
           flow.set_initial_condition(initial_condition);
           flow.run();
           // Check the max values of pressure

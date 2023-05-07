@@ -198,7 +198,7 @@ int main(int argc, char *argv[])
         upper_corner,
         true);
     // Create Eulerian solid object with Sable wrapper
-    Fluid::MPI::SableWrap<3> fluid(eul_tria, params, sable_ids, PETSC_COMM_WORLD);
+    Fluid::MPI::SableWrap<3> fluid(eul_tria, params, sable_ids);
     // Create mesh for Lagrangian solid
     //Lagrangian sphere radius
     double R = 1.0;

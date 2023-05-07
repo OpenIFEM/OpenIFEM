@@ -32,8 +32,7 @@ namespace Fluid
       //! Constructor.
       SableWrap(parallel::distributed::Triangulation<dim> &,
                 const Parameters::AllParameters &,
-                std::vector<int> &,
-                MPI_Comm);
+                std::vector<int> &);
       ~SableWrap(){};
       //! Run the simulation.
       void run();

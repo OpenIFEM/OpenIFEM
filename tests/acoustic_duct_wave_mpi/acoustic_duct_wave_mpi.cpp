@@ -54,7 +54,7 @@ int main(int argc, char *argv[])
           dealii::GridGenerator::subdivided_hyper_rectangle(
             tria, {8, 2}, Point<2>(0, 0), Point<2>(L, H), true);
 
-          Fluid::MPI::SCnsIM<2> flow(tria, params, MPI_COMM_WORLD);
+          Fluid::MPI::SCnsIM<2> flow(tria, params);
           flow.add_hard_coded_boundary_condition(0, gaussian_pulse);
           flow.run();
           // After the computation the max velocity should be ~

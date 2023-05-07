@@ -42,7 +42,7 @@ int main(int argc, char *argv[])
             Point<2>(0, 0),
             Point<2>(L, D / 2),
             true);
-          Fluid::MPI::InsIM<2> flow(tria, params, MPI_COMM_WORLD);
+          Fluid::MPI::InsIM<2> flow(tria, params);
           flow.run();
           auto solution = flow.get_current_solution();
           // Assuming the mass is conserved and final velocity profile is
@@ -58,7 +58,7 @@ int main(int argc, char *argv[])
         {
           parallel::distributed::Triangulation<3> tria(MPI_COMM_WORLD);
           Utils::GridCreator<3>::cylinder(tria, D / 2, L);
-          Fluid::MPI::InsIMEX<3> flow(tria, params, MPI_COMM_WORLD);
+          Fluid::MPI::InsIMEX<3> flow(tria, params);
           flow.run();
         }
       else

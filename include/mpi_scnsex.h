@@ -37,8 +37,7 @@ namespace Fluid
     public:
       //! Constructor.
       SCnsEX(parallel::distributed::Triangulation<dim> &,
-             const Parameters::AllParameters &,
-             MPI_Comm);
+             const Parameters::AllParameters &);
       ~SCnsEX(){};
       //! Run the simulation.
       void run();

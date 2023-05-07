@@ -36,8 +36,7 @@ namespace Fluid
     public:
       //! Constructor.
       InsIMEX(parallel::distributed::Triangulation<dim> &,
-              const Parameters::AllParameters &,
-              MPI_Comm);
+              const Parameters::AllParameters &);
       ~InsIMEX(){};
       //! Run the simulation.
       void run();

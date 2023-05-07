@@ -9,9 +9,8 @@ namespace Fluid
     template <int dim>
     SableWrap<dim>::SableWrap(parallel::distributed::Triangulation<dim> &tria,
                               const Parameters::AllParameters &parameters,
-                              std::vector<int> &sable_ids,
-                              MPI_Comm m)
-      : FluidSolver<dim>(tria, parameters, m), sable_ids(sable_ids)
+                              std::vector<int> &sable_ids)
+      : FluidSolver<dim>(tria, parameters), sable_ids(sable_ids)
     {
       AssertThrow(
         parameters.fluid_velocity_degree == parameters.fluid_pressure_degree ==

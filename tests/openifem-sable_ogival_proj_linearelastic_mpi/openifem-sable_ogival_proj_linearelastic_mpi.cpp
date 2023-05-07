@@ -196,7 +196,7 @@ int main(int argc, char *argv[])
         upper_corner,
         true);
       // Create Eulerian solid object with Sable wrapper
-      Fluid::MPI::SableWrap<2> fluid(eul_tria, params, sable_ids, PETSC_COMM_WORLD);
+      Fluid::MPI::SableWrap<2> fluid(eul_tria, params, sable_ids);
       // Read mesh for Lagrangian solid
       GridIn<2> grid_in;
       Triangulation<2> lag_tria;
