@@ -136,7 +136,6 @@ namespace Solid
                     {
                       if (is_initial)
                         {
-
                           for (unsigned int j = 0; j < dofs_per_cell; ++j)
                             {
                               local_mass[i][j] +=

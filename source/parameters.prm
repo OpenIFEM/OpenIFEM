@@ -1,5 +1,5 @@
 # This is the input file for the program. There are three blocks of input parameters,
-# namely the simulation block, which contorls the simulation parameters shared by
+# namely the simulation block, which controls the simulation parameters shared by
 # both fluid and solid, such as the simulation time, output frequency and so on.
 # The fluid block controls the behavior of the fluid solver, and the solid solver
 # controls the solid solver.
@@ -90,7 +90,7 @@ subsection Fluid Dirichlet BCs
 end
 
 subsection Fluid Neumann BCs
-  # Number of boundaries with Neumann BCs (specificaly, pressure BC)
+  # Number of boundaries with Neumann BCs (specifically, pressure BC)
   # Note: do-nothing (zero pressure) boundary do not need to be explicitly specified!)
   set Number of Neumann BCs = 0
 
@@ -101,6 +101,27 @@ subsection Fluid Neumann BCs
   set Neumann boundary values = 10
 end
 
+subsection Spalart Allmaras model
+  # Number of boundaries with Spalart-Allmaras turbulence model BCs
+  set Number of S-A model BCs = 3
+
+  # Ids of the boundaries with Spalart-Allmaras turbulence model BCs
+  set S-A model boundary id = 0, 2, 3
+
+  # Boundary condition types to specify. 0 for walls and 1 for inflow condition
+  set S-A model boundary types = 1, 0, 0
+
+  # Coefficient of the laminar viscosity for the initial condition of S-A model
+  set Initial condition coefficient = 0.0
+
+  # The effective distance of wall function at the moving (FSI) walls
+  set Wall function effective distance = 1.0
+
+  # The distance away from the moving (FSI) walls where velocities are sampled
+  # to compute shear velocity
+  set Wall function image distance = 0.01
+end
+
 # --------------------------------------------------------------------------------
 # Solid solver
 subsection Solid finite element system
@@ -109,7 +130,7 @@ subsection Solid finite element system
 end
 
 subsection Solid material properties
-  # Material type, currently LinearElastic and NeoHookean are available
+  # Material type, currently LinearElastic, NeoHookean and Kirchhoff are available
   set Solid type = LinearElastic
 
   # Solid density, used by all solid solvers

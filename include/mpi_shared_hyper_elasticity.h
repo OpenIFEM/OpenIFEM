@@ -9,6 +9,7 @@
 #include <deal.II/physics/elasticity/kinematics.h>
 #include <deal.II/physics/elasticity/standard_tensors.h>
 
+#include "kirchhoff_elastic_material.h"
 #include "mpi_shared_solid_solver.h"
 #include "neo_hookean.h"
 
@@ -139,7 +140,7 @@ namespace Solid
                                    //! first iteration.
       double normalized_error_update; //!< error_update / initial_error_update
 
-      // Reture the residual in the Newton iteration
+      // Return the residual in the Newton iteration
       void get_error_residual(double &);
       // Compute the l2 norm of the solution increment
       void get_error_update(const PETScWrappers::MPI::Vector &, double &);

@@ -127,7 +127,7 @@ namespace Solid
                                       //!< dof per vertex.
       FESystem<dim> fe;
       FE_DGQ<dim>
-        dg_fe; //!< Discontinous Glerkin FE for the nodal strain/stress
+        dg_fe; //!< Discontinuous Glerkin FE for the nodal strain/stress
       const QGauss<dim>
         volume_quad_formula; //!< Quadrature formula for volume integration.
       const QGauss<dim - 1>
@@ -152,7 +152,7 @@ namespace Solid
        * every
        * timestep. But displacement and velocity also contribute to the rhs of
        * the equation. For the sake of clarity, we explicitly store two sets of
-       * accleration, velocity and displacement.
+       * acceleration, velocity and displacement.
        */
       PETScWrappers::MPI::Vector current_acceleration;
       PETScWrappers::MPI::Vector current_velocity;

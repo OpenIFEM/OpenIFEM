@@ -82,6 +82,11 @@ namespace Fluid
 
   namespace MPI
   {
+    template <int dim>
+    class FluidSolverExtractor;
+    template <int dim>
+    class TurbulenceModel;
+
     /// Base class for all mpi fluid solvers.
     template <int dim>
     class FluidSolver
@@ -91,6 +96,7 @@ namespace Fluid
       friend ::MPI::FSI<dim>;
       friend ::MPI::ControlVolumeFSI<dim>;
       friend ::MPI::OpenIFEM_Sable_FSI<dim>;
+      friend FluidSolverExtractor<dim>;
 
       //! Constructor.
       FluidSolver(parallel::distributed::Triangulation<dim> &,
@@ -101,6 +107,13 @@ namespace Fluid
 
       //! Destructor
       ~FluidSolver();
+
+      // /*! \brief Add a RANS turbulence model to the fluid solver. The
+      // argument
+      //  * is a string that matches available turbulence models. Corresponding
+      //  * boundary conditions must be specified in the parameters input file.
+      //  */
+      void attach_turbulence_model(const std::string &);
 
       /*! \brief Setup the hard-coded boundary conditions. The first argument
        * stands for the boundary ID that the condition is applied to, and the
@@ -228,17 +241,18 @@ namespace Fluid
       /// handy.
       IndexSet locally_relevant_dofs;
 
-      /// The vector to store vtu filenames that will be written into pvd file.
-      mutable std::vector<std::pair<double, std::string>> times_and_names;
-
       Utils::Time time;
       mutable TimerOutput timer;
       mutable TimerOutput timer2;
+
+      mutable Utils::PVDWriter pvd_writer;
 
       CellDataStorage<
         typename parallel::distributed::Triangulation<dim>::cell_iterator,
         CellProperty>
         cell_property;
+
+      std::shared_ptr<TurbulenceModel<dim>> turbulence_model;
 
       /// Hard-coded boundary values, only used when told so in the input
       /// parameters.
@@ -259,6 +273,9 @@ namespace Fluid
       std::shared_ptr<
         std::function<double(const Point<dim> &, const unsigned int)>>
         initial_condition_field;
+
+      /// The vector to store vtu filenames that will be written into pvd file.
+      mutable std::vector<std::pair<double, std::string>> times_and_names;
 
       /// A data structure that caches the real/artificial fluid indicator,
       /// FSI stress, and FSI acceleration terms at quadrature points, that

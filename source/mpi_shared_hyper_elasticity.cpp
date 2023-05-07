@@ -16,6 +16,17 @@ namespace Internal
                                                   parameters.solid_rho));
         update(parameters, Tensor<2, dim>());
       }
+
+    else if (parameters.solid_type == "Kirchhoff")
+      {
+
+        material.reset(
+          new Solid::KirchhoffElasticMaterial<dim>(parameters.E[mat_id - 1],
+                                                   parameters.nu[mat_id - 1],
+                                                   parameters.solid_rho));
+        update(parameters, Tensor<2, dim>());
+      }
+
     else
       {
         Assert(false, ExcNotImplemented());
@@ -35,6 +46,16 @@ namespace Internal
         Assert(nh, ExcInternalError());
         tau = nh->get_tau();
         Jc = nh->get_Jc();
+      }
+
+    else if (parameters.solid_type == "Kirchhoff")
+      {
+        auto kh =
+          std::dynamic_pointer_cast<Solid::KirchhoffElasticMaterial<dim>>(
+            material);
+        Assert(kh, ExcInternalError());
+        Jc = kh->get_Jc();
+        tau = kh->get_tau(F);
       }
     else
       {
@@ -62,7 +83,7 @@ namespace Solid
     void SharedHyperElasticity<dim>::run_one_step(bool first_step)
     {
       double gamma = 0.5 + parameters.damping;
-      double beta = pow((gamma + 0.5), 2) / 4;
+      double beta = gamma / 2;
 
       if (first_step)
         {
@@ -307,7 +328,7 @@ namespace Solid
       const unsigned int dofs_per_cell = fe.dofs_per_cell;
       FEValuesExtractors::Vector displacement(0);
       double gamma = 0.5 + parameters.damping;
-      double beta = pow((gamma + 0.5), 2) / 4;
+      double beta = gamma / 2;
 
       if (initial_step)
         {

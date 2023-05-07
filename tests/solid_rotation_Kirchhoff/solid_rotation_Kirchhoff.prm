@@ -37,10 +37,6 @@ subsection Simulation
 
   # Initial velocity which only applies to solid
   set Initial velocity = 0.0, 0.0
-
-  # Set condition for calculating indicator field (only applied to OpenIFEM-SABLE Coupling)
-  # Options: CompletelyInsideSolid and PartiallyInsideSolid
-  set Indicator field condition = CompletelyInsideSolid
 end
 
 # --------------------------------------------------------------------------------
@@ -55,21 +51,36 @@ end
 
 subsection Fluid material properties
   # The dynamic viscosity
+<<<<<<< HEAD
   set Dynamic viscosity = 0.002
 
   # Fluid density
   set Fluid density = 1
+=======
+  set Dynamic viscosity = 8.9e-4  # air: 1.81e-5
+
+  # Fluid density
+  set Fluid density = 1000 # air: 1.225
+>>>>>>> master
 end
 
 subsection Fluid solver control
   # The global Grad-Div stabilization, empirically should be in [0.1, 1]
+<<<<<<< HEAD
   set Grad-Div stabilization = 0.1
+=======
+  set Grad-Div stabilization = 1.0
+>>>>>>> master
 
   # Maximum number of Newton iterations at a time step
   set Max Newton iterations = 8
 
   # The relative tolerance of the nonlinear system residual
+<<<<<<< HEAD
   set Nonlinear system tolerance = 1e-6
+=======
+  set Nonlinear system tolerance = 1e-5
+>>>>>>> master
 end
 
 subsection Fluid Dirichlet BCs
@@ -89,11 +100,19 @@ subsection Fluid Dirichlet BCs
   # One decimal number indicates one set of constrained components:
   # 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
   # To make sense of the numbering, convert decimals to binaries (zyx)
+<<<<<<< HEAD
   set Dirichlet boundary components = 3, 2, 3
 
   # Specify the values of the Dirichlet BCs, including both homogeneous and
   # inhomogeneous ones.
   set Dirichlet boundary values = 1, 0, 0, 0, 0
+=======
+  set Dirichlet boundary components = 3, 3, 3
+
+  # Specify the values of the Dirichlet BCs, including both homogeneous and
+  # inhomogeneous ones.
+  set Dirichlet boundary values = 0, 0, 0, 0, 0, 0
+>>>>>>> master
 end
 
 subsection Fluid Neumann BCs
@@ -120,6 +139,7 @@ subsection Solid material properties
   set Solid type = Kirchhoff
 
   # Solid density, used by all solid solvers
+<<<<<<< HEAD
   set Solid density = 1
 
   # E and nu are used by linearElastic and Kirchhoff Material
@@ -129,6 +149,17 @@ subsection Solid material properties
 
   # A list of parameters used by hyperelasticMaterial
   set Hyperelastic parameters = 1.74e5, 2.78e6
+=======
+  set Solid density = 1 #122.5
+
+  # E and nu are only used by linearElasticMaterial
+  set Young's modulus = 1e6 #5.249e-5
+
+  set Poisson's ratio = 0.44 #0.3
+
+  # A list of parameters used by hyperelasticMaterial
+  set Hyperelastic parameters = 0.5, 1.67
+>>>>>>> master
 end
 
 subsection Solid solver control

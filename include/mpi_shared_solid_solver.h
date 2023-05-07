@@ -196,7 +196,7 @@ namespace Solid
        * every
        * timestep. But displacement and velocity also contribute to the rhs of
        * the equation. For the sake of clarity, we explicitly store two sets of
-       * accleration, velocity and displacement.
+       * acceleration, velocity and displacement.
        */
       PETScWrappers::MPI::Vector current_acceleration;
       PETScWrappers::MPI::Vector current_velocity;
@@ -266,10 +266,10 @@ namespace Solid
       ConditionalOStream pcout;
       Utils::Time time;
       mutable TimerOutput timer;
+      mutable Utils::PVDWriter pvd_writer;
       IndexSet locally_owned_dofs;
       IndexSet locally_owned_scalar_dofs;
       IndexSet locally_relevant_dofs;
-      mutable std::vector<std::pair<double, std::string>> times_and_names;
 
       CellDataStorage<typename Triangulation<dim, spacedim>::cell_iterator,
                       CellProperty>

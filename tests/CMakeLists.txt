@@ -40,16 +40,20 @@ set(mpi_tests acoustic_duct_wave_mpi
               acoustic_pml_mpi
               fluid_body_force_mpi
               fluid_cylinder_mpi
+              fluid_cylinder_mpi_scnsim
               fluid_cylinder_mpi_insimex
               fluid_initial_condition_mpi
               fluid_pipe_mpi
+              fluid_pressure_driven_mpi_insim_supg
+              fluid_plane_wall_driven_mpi_insim_supg
               fsi_contact_model_mpi
               fsi_gravity_mpi
               fsi_leaflet_mpi
               solid_beam_bending_mpi_linearelastic
               solid_beam_bending_mpi_NeoHookean
               solid_beam_bending_mpi_shared_linearelastic
-              solid_beam_bending_mpi_shared_NeoHookean)
+              solid_beam_bending_mpi_shared_NeoHookean
+	      solid_rotation_mpi_shared_Kirchhoff)
 
 set(rkpm-rk4_serial_tests rkpm-rk4-bending)
 
@@ -66,7 +70,7 @@ set(tests ${serial_tests} ${mpi_tests})
 # Number of cores used in MPI tests
 set(MPI_TEST_N_CORES "2" CACHE STRING "Number of cores used in MPI tests")
 
-# Create a subdirectory and add an executible for each test
+# Create a subdirectory and add an executable for each test
 foreach(test ${tests})
   set(input ${CMAKE_CURRENT_SOURCE_DIR}/${test}/${test}.prm)
   set(output ${CMAKE_CURRENT_BINARY_DIR}/${test})

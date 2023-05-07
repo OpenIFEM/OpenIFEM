@@ -361,8 +361,7 @@ namespace Solid
 
     if (first_step)
       {
-
-        // Neet to compute the initial acceleration, \f$ Ma_n = F \f$,
+        // Need to compute the initial acceleration, \f$ Ma_n = F \f$,
         // at this point set system_matrix to mass_matrix.
         assemble_system(true);
         // Save nodal mass in a vector

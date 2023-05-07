@@ -50,6 +50,13 @@ namespace MPI
     ~FSI();
 
   protected:
+    using SolidVerticesStorage = std::map<
+      typename Triangulation<dim>::active_vertex_iterator,
+      std::pair<
+        std::list<std::pair<typename Triangulation<dim>::active_cell_iterator,
+                            unsigned int>>,
+        int>>;
+
     /// Collect all the boundary lines in solid triangulation.
     void collect_solid_boundaries();
 
@@ -59,7 +66,7 @@ namespace MPI
     /// Define a smallest rectangle (or hex in 3d) that contains the solid.
     void update_solid_box();
 
-    /// Find the vertices that are onwed by the local process.
+    /// Find the vertices that are owned by the local process.
     void update_vertices_mask();
 
     /// Check if a point is inside a mesh.
@@ -114,6 +121,12 @@ namespace MPI
      */
     void apply_contact_model(bool);
 
+    /*! \brief Collect the solid boundary vertices, except for those fixed
+     * boundaries. This can be used in computing nearest wall distance for some
+     * turbulence models.
+     */
+    void collect_solid_boundary_vertices();
+
     /// Mesh adaption.
     void refine_mesh(const unsigned int, const unsigned int);
 
@@ -132,9 +145,17 @@ namespace MPI
     // (x_min, x_max, y_min, y_max, z_min, z_max)
     Vector<double> solid_box;
 
-    // This vector collects the solid boundaries for computing thw winding
+    // This vector collects the solid boundaries for computing the winding
     // number.
-    std::list<typename Triangulation<dim>::face_iterator> solid_boundaries;
+    std::list<std::pair<typename Triangulation<dim>::active_cell_iterator,
+                        unsigned int>>
+      solid_boundaries;
+    // A collection of moving solid boundary vertices and their adjacent free
+    // boundary lines. Also stores their corresponding indices for shear
+    // velocity values in shear_velocities
+    SolidVerticesStorage solid_boundary_vertices;
+    // For wall function
+    Vector<double> shear_velocities;
 
     // A mask that marks local fluid vertices for solid bc interpolation
     // searching.

@@ -1,6 +1,6 @@
 # A very simple script to find rkpm-rk4
 #
-# This moudle exports:
+# This module exports:
 #   rkpm-rk4_FOUND
 #   rkpm-rk4_LIBRARY
 #   rkpm-rk4_INCLUDE_DIR

@@ -142,7 +142,7 @@ void FSI<dim>::update_solid_displacement()
 
 // Dirichlet bcs are applied to artificial fluid cells, so fluid nodes should
 // be marked as artificial or real. Meanwhile, additional body force is
-// applied to the artificial fluid quadrature points. To accomodate these two
+// applied to the artificial fluid quadrature points. To accommodate these two
 // settings, we define indicator at quadrature points, but only when all
 // of the vertices of a fluid cell are found to be in solid domain,
 // set the indicators at all quadrature points to be 1.

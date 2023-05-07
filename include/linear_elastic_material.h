@@ -7,7 +7,7 @@
 
 namespace Solid
 {
-  /*! \breif Linear elastic material.
+  /*! \brief Linear elastic material.
    */
   template <int dim>
   class LinearElasticMaterial : public Material<dim>
