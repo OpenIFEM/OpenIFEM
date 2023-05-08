@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
           Tensor<1, 3> offset({0, 0, 2});
           GridTools::shift(offset, tria_solid);
 
-          Fluid::MPI::SCnsIM<3> fluid(tria_fluid, params);
+          Fluid::MPI::SCnsIM<3> fluid(tria_fluid, params, MPI_COMM_WORLD);
           Solid::MPI::SharedHypoElasticity<3> solid(
             tria_solid, params, 0.05, 1.3);
           MPI::FSI<3> fsi(fluid, solid, params);

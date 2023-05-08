@@ -54,6 +54,8 @@
 
 template <int>
 class FSI;
+template <int>
+class OpenIFEM_Sable_FSI;
 
 namespace Fluid
 {
@@ -66,7 +68,7 @@ namespace Fluid
   public:
     //! FSI solver need access to the private members of this solver.
     friend FSI<dim>;
-
+    friend OpenIFEM_Sable_FSI<dim>;
     //! Constructor
     FluidSolver(Triangulation<dim> &,
                 const Parameters::AllParameters &,
@@ -108,7 +110,7 @@ namespace Fluid
     void refine_mesh(const unsigned int, const unsigned int);
 
     /// Output in vtu format.
-    void output_results(const unsigned int) const;
+    virtual void output_results(const unsigned int) const;
 
     /// Update the viscous stress to output
     virtual void update_stress();
@@ -136,6 +138,10 @@ namespace Fluid
     BlockVector<double> present_solution;
     BlockVector<double> solution_increment;
     BlockVector<double> system_rhs;
+    // Assembled FSI force sent to Sable
+    BlockVector<double> fsi_force;
+    BlockVector<double> fsi_force_acceleration_part;
+    BlockVector<double> fsi_force_stress_part;
 
     /**
      * Nodal strain and stress obtained by taking the average of surrounding
@@ -163,8 +169,10 @@ namespace Fluid
     /// will only be used in FSI simulations.
     struct CellProperty
     {
-      int indicator; //!< Domain indicator: 1 for artificial fluid 0 for real
-                     //! fluid.
+      double indicator; //!< Domain indicator: 1 for artificial fluid 0 for real
+                        //! fluid.
+      double exact_indicator; //!< accurate estimation of the indicator:
+                              //!< can take value between 0 and 1.
       Tensor<1, dim> fsi_acceleration; //!< The acceleration term in FSI force.
       SymmetricTensor<2, dim> fsi_stress; //!< The stress term in FSI force.
     };

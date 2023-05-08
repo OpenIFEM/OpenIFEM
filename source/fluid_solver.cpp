@@ -171,6 +171,7 @@ namespace Fluid
         const std::vector<std::shared_ptr<CellProperty>> p =
           cell_property.get_data(cell);
         p[0]->indicator = 0;
+        p[0]->exact_indicator = 0;
         p[0]->fsi_acceleration = 0;
         p[0]->fsi_stress = 0;
       }
@@ -193,6 +194,9 @@ namespace Fluid
     present_solution.reinit(dofs_per_block);
     solution_increment.reinit(dofs_per_block);
     system_rhs.reinit(dofs_per_block);
+    fsi_force.reinit(dofs_per_block);
+    fsi_force_acceleration_part.reinit(dofs_per_block);
+    fsi_force_stress_part.reinit(dofs_per_block);
 
     // Compute the sparsity pattern for mass schur in advance.
     // It should be the same as \f$BB^T\f$.

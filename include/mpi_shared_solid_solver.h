@@ -70,6 +70,8 @@ namespace MPI
   template <int dim>
   class FSI;
   template <int dim>
+  class OpenIFEM_Sable_FSI;
+  template <int dim>
   class ControlVolumeFSI;
 } // namespace MPI
 
@@ -87,12 +89,20 @@ namespace Solid
       //! FSI solver need access to the private members of this solver.
       friend ::MPI::FSI<spacedim>;
       friend ::MPI::ControlVolumeFSI<spacedim>;
+      friend ::MPI::OpenIFEM_Sable_FSI<spacedim>;
 
       SharedSolidSolver(Triangulation<dim, spacedim> &,
                         const Parameters::AllParameters &);
       ~SharedSolidSolver();
       void run();
       PETScWrappers::MPI::Vector get_current_solution() const;
+
+      /**
+       * Store user's input of the coordinates of the points
+       * and the direction to be constrained.
+       */
+      void constrain_points(const std::vector<Point<dim>> &,
+                            const std::vector<unsigned int> &);
 
     protected:
       struct CellProperty;
@@ -196,6 +206,35 @@ namespace Solid
       PETScWrappers::MPI::Vector previous_displacement;
 
       /**
+       * Store added mass from the Eulerian material
+       */
+      Vector<double> added_mass_effect;
+
+      /**
+       * Vector to store difference between Lagrangian solid velocity and
+       * artificial velocity calculated at Lagrangian mesh
+       */
+      Vector<double> fsi_vel_diff_lag;
+
+      /**
+       * function to calculate total solid KE and momemtum
+       */
+      void calculate_KE_and_momemtum();
+
+      /**
+       * Vector stores nodal mass which is used for calculation of toal solid KE
+       * and momentum
+       */
+      PETScWrappers::MPI::Vector nodal_mass;
+
+      /**
+       * Save average and maximum penalty factor for Lagrangian solid. Only used
+       * for OpenIFEM-SABLE coupling
+       */
+      double max_penalty_scale;
+      double avg_penalty_scale;
+
+      /**
        * Arrays to store the fsi-related quantities. fsi_stress_rows has dim
        * elements and each element is an array of n_dof elements, representing a
        * row in the rank 2 stress tensor. The fsi stresses are used to evaluate
@@ -206,6 +245,11 @@ namespace Solid
       std::vector<Vector<double>> fsi_stress_rows;
       Vector<double> fluid_velocity;
       Vector<double> fluid_pressure;
+
+      /** a pair container to store the user specified points and directions
+       */
+      std::pair<std::vector<Point<dim>>, std::vector<unsigned int>>
+        point_boundary_values;
 
       /**
        * Nodal strain and stress obtained by taking the average of surrounding
@@ -227,12 +271,17 @@ namespace Solid
       IndexSet locally_owned_scalar_dofs;
       IndexSet locally_relevant_dofs;
 
+      CellDataStorage<typename Triangulation<dim, spacedim>::cell_iterator,
+                      CellProperty>
+        cell_property;
+
       /**
        * The fluid traction in FSI simulation, which should be set by the FSI.
+       * Only used in OpenIFEM-SABLE coupling
        */
       struct CellProperty
       {
-        std::vector<Tensor<2, spacedim>> fsi_stress;
+        std::vector<Tensor<1, spacedim>> fsi_traction;
       };
     };
   } // namespace MPI

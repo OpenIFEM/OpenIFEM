@@ -16,6 +16,7 @@ namespace Solid
       scalar_fe(parameters.solid_degree),
       volume_quad_formula(parameters.solid_degree + 1),
       face_quad_formula(parameters.solid_degree + 1),
+      is_lag_penalty_explicit(true),
       time(parameters.end_time,
            parameters.time_step,
            parameters.output_interval,
@@ -81,6 +82,54 @@ namespace Solid
           ComponentMask(mask));
       }
 
+    // compute bc map input from user-specified points and directions
+
+    std::vector<Point<dim>> points = point_boundary_values.first;
+    std::vector<unsigned int> directions = point_boundary_values.second;
+
+    if (!points.empty() && !directions.empty())
+      {
+
+        AssertThrow(points.size() == directions.size(),
+                    ExcMessage("Number of points and direcions must match!"));
+
+        for (unsigned int i = 0; i < point_boundary_values.first.size(); i++)
+          {
+
+            bool find_point = false;
+
+            std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
+
+            for (auto cell = dof_handler.begin_active();
+                 cell != dof_handler.end();
+                 ++cell)
+              {
+
+                for (unsigned int v = 0;
+                     v < GeometryInfo<dim>::vertices_per_cell;
+                     ++v)
+                  {
+
+                    if (!vertex_touched[cell->vertex_index(v)])
+                      {
+                        vertex_touched[cell->vertex_index(v)] = true;
+                        if (abs(cell->vertex(v)(0) - points[i](0)) < 1e-4 &&
+                            abs(cell->vertex(v)(1) - points[i](1)) < 1e-4)
+                          {
+                            find_point = true;
+                            unsigned int d = directions[i];
+                            assert(d < dim);
+                            unsigned int dof_index =
+                              cell->vertex_dof_index(v, d);
+                            constraints.add_line(dof_index);
+                          }
+                      }
+                  }
+              }
+            AssertThrow(find_point == true,
+                        ExcMessage("Did not find the specified point!"));
+          }
+      }
     constraints.close();
   }
 
@@ -92,8 +141,11 @@ namespace Solid
     pattern.copy_from(dsp);
 
     system_matrix.reinit(pattern);
+    system_matrix_updated.reinit(pattern);
     mass_matrix.reinit(pattern);
+    mass_matrix_updated.reinit(pattern);
     stiffness_matrix.reinit(pattern);
+    damping_matrix.reinit(pattern);
     system_rhs.reinit(dof_handler.n_dofs());
     current_acceleration.reinit(dof_handler.n_dofs());
     current_velocity.reinit(dof_handler.n_dofs());
@@ -101,6 +153,39 @@ namespace Solid
     previous_acceleration.reinit(dof_handler.n_dofs());
     previous_velocity.reinit(dof_handler.n_dofs());
     previous_displacement.reinit(dof_handler.n_dofs());
+    nodal_mass.reinit(dof_handler.n_dofs());
+    nodal_forces_traction.reinit(dof_handler.n_dofs());
+    nodal_forces_penalty.reinit(dof_handler.n_dofs());
+    added_mass_effect.reinit(dof_handler.n_dofs());
+    fsi_vel_diff_lag.reinit(dof_handler.n_dofs());
+
+    // Add initial velocity
+    if (time.current() == 0.0)
+      {
+        const std::vector<Point<dim>> &unit_points =
+          fe.get_unit_support_points();
+        std::vector<types::global_dof_index> dof_indices(fe.dofs_per_cell);
+        std::vector<unsigned int> dof_touched(dof_handler.n_dofs(), 0);
+        for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+             ++cell)
+          {
+            cell->get_dof_indices(dof_indices);
+            for (unsigned int i = 0; i < unit_points.size(); ++i)
+              {
+                if (dof_touched[dof_indices[i]] == 0)
+                  {
+                    dof_touched[dof_indices[i]] = 1;
+                    auto component_index =
+                      fe.system_to_component_index(i).first;
+                    auto line = dof_indices[i];
+                    previous_velocity[line] =
+                      parameters.initial_velocity[component_index];
+                  }
+              }
+          }
+        constraints.distribute(previous_velocity);
+        current_velocity = previous_velocity;
+      }
 
     strain = std::vector<std::vector<Vector<double>>>(
       spacedim,
@@ -118,6 +203,16 @@ namespace Solid
                              GeometryInfo<dim>::faces_per_cell);
   }
 
+  // store user input points and directions
+  template <int dim, int spacedim>
+  void SolidSolver<dim, spacedim>::constrain_points(
+    const std::vector<Point<dim>> &points,
+    const std::vector<unsigned int> &directions)
+  {
+    point_boundary_values.first = points;
+    point_boundary_values.second = directions;
+  }
+
   // Solve linear system \f$Ax = b\f$ using CG solver.
   template <int dim, int spacedim>
   std::pair<unsigned int, double> SolidSolver<dim, spacedim>::solve(
@@ -125,7 +220,7 @@ namespace Solid
   {
     TimerOutput::Scope timer_section(timer, "Solve linear system");
 
-    SolverControl solver_control(A.m(), 1e-6 * b.l2_norm());
+    SolverControl solver_control(A.m() * 100, 1e-12 * b.l2_norm());
     SolverCG<> cg(solver_control);
 
     PreconditionSSOR<> preconditioner;
@@ -135,6 +230,94 @@ namespace Solid
     constraints.distribute(x);
 
     return {solver_control.last_step(), solver_control.last_value()};
+  }
+
+  template <int dim, int spacedim>
+  void SolidSolver<dim, spacedim>::calculate_KE()
+  {
+    double ke = 0;
+    std::vector<double> solid_momentum(dim, 0);
+    std::ofstream file_ke;
+    std::ofstream file_momx;
+    std::ofstream file_momy;
+    std::ofstream file_momz;
+
+    if (time.current() == 0.0)
+      {
+        file_ke.open("solid_KE.txt");
+        file_ke << "Time"
+                << "\t"
+                << "Solid KE"
+                << "\n";
+
+        file_momx.open("solid_mom_x.txt");
+        file_momx << "Time"
+                  << "\t"
+                  << "Solid Mom X"
+                  << "\n";
+
+        file_momy.open("solid_mom_y.txt");
+        file_momy << "Time"
+                  << "\t"
+                  << "Solid Mom Y"
+                  << "\n";
+
+        if (dim == 3)
+          {
+            file_momz.open("solid_mom_z.txt");
+            file_momz << "Time"
+                      << "\t"
+                      << "Solid Mom Z"
+                      << "\n";
+          }
+      }
+    else
+      {
+        file_ke.open("solid_KE.txt", std::ios_base::app);
+        file_momx.open("solid_mom_x.txt", std::ios_base::app);
+        file_momy.open("solid_mom_y.txt", std::ios_base::app);
+        if (dim == 3)
+          file_momz.open("solid_mom_z.txt", std::ios_base::app);
+      }
+
+    FEValues<dim, spacedim> fe_values(
+      fe, volume_quad_formula, update_values | update_quadrature_points);
+    std::vector<unsigned int> dof_touched(dof_handler.n_dofs(), 0);
+    std::vector<types::global_dof_index> dof_indices(fe.dofs_per_cell);
+
+    for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+         ++cell)
+      {
+        fe_values.reinit(cell);
+        cell->get_dof_indices(dof_indices);
+        for (unsigned int i = 0; i < fe.dofs_per_cell; ++i)
+          {
+            auto index = dof_indices[i];
+            if (!dof_touched[index])
+              {
+                dof_touched[index] = 1;
+                ke += 0.5 * current_velocity[index] * current_velocity[index] *
+                      nodal_mass[index];
+                auto component = fe.system_to_component_index(i).first;
+                solid_momentum[component] +=
+                  current_velocity[index] * nodal_mass[index];
+              }
+          }
+      }
+    file_ke << time.current() << "\t" << ke << "\n";
+    file_ke.close();
+
+    file_momx << time.current() << "\t" << solid_momentum[0] << "\n";
+    file_momx.close();
+
+    file_momy << time.current() << "\t" << solid_momentum[1] << "\n";
+    file_momy.close();
+
+    if (dim == 3)
+      {
+        file_momz << time.current() << "\t" << solid_momentum[2] << "\n";
+        file_momz.close();
+      }
   }
 
   template <int dim, int spacedim>
@@ -162,7 +345,46 @@ namespace Solid
                              current_velocity,
                              solution_names,
                              data_component_interpretation);
+    // acceleration
+    solution_names = std::vector<std::string>(spacedim, "acceleration");
+    data_out.add_data_vector(dof_handler,
+                             current_acceleration,
+                             solution_names,
+                             data_component_interpretation);
+    // nodal forces due to surface tractrion
+    solution_names =
+      std::vector<std::string>(spacedim, "nodal_forces_traction");
+    data_out.add_data_vector(dof_handler,
+                             nodal_forces_traction,
+                             solution_names,
+                             data_component_interpretation);
 
+    // nodal forces due to penalty
+    solution_names = std::vector<std::string>(spacedim, "nodal_forces_penalty");
+    data_out.add_data_vector(dof_handler,
+                             nodal_forces_penalty,
+                             solution_names,
+                             data_component_interpretation);
+
+    // velocity difference between Eulerian and Lagrangian mesh calculated at
+    // Lagrangian mesh
+    solution_names =
+      std::vector<std::string>(spacedim, "fsi_velocity_difference");
+    data_out.add_data_vector(dof_handler,
+                             fsi_vel_diff_lag,
+                             solution_names,
+                             data_component_interpretation);
+
+    // nodal mass with added mass effect
+    Vector<double> nodal_mass_output;
+    nodal_mass_output.reinit(dof_handler.n_dofs());
+    for (unsigned int i = 0; i < dof_handler.n_dofs(); i++)
+      nodal_mass_output[i] = nodal_mass[i] + added_mass_effect[i];
+    solution_names = std::vector<std::string>(spacedim, "nodal_mass");
+    data_out.add_data_vector(dof_handler,
+                             nodal_mass_output,
+                             solution_names,
+                             data_component_interpretation);
     // material ID
     Vector<float> mat(triangulation.n_active_cells());
     int i = 0;

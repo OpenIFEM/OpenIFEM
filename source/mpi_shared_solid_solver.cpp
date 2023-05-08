@@ -18,7 +18,7 @@ namespace Solid
         scalar_fe(parameters.solid_degree),
         volume_quad_formula(parameters.solid_degree + 1),
         face_quad_formula(parameters.solid_degree + 1),
-        mpi_communicator(MPI_COMM_WORLD),
+        mpi_communicator(PETSC_COMM_WORLD),
         n_mpi_processes(Utilities::MPI::n_mpi_processes(mpi_communicator)),
         this_mpi_process(Utilities::MPI::this_mpi_process(mpi_communicator)),
         pcout(std::cout, (this_mpi_process == 0)),
@@ -104,6 +104,56 @@ namespace Solid
             ComponentMask(mask));
         }
 
+      // compute bc map input from user-specified points and directions
+
+      std::vector<Point<dim>> points = point_boundary_values.first;
+      std::vector<unsigned int> directions = point_boundary_values.second;
+
+      if (!points.empty() && !directions.empty())
+        {
+
+          AssertThrow(points.size() == directions.size(),
+                      ExcMessage("Number of points and direcions must match!"));
+
+          for (unsigned int i = 0; i < point_boundary_values.first.size(); i++)
+            {
+
+              bool find_point = false;
+
+              std::vector<bool> vertex_touched(triangulation.n_vertices(),
+                                               false);
+
+              for (auto cell = dof_handler.begin_active();
+                   cell != dof_handler.end();
+                   ++cell)
+                {
+
+                  for (unsigned int v = 0;
+                       v < GeometryInfo<dim>::vertices_per_cell;
+                       ++v)
+                    {
+
+                      if (!vertex_touched[cell->vertex_index(v)])
+                        {
+                          vertex_touched[cell->vertex_index(v)] = true;
+                          if (abs(cell->vertex(v)(0) - points[i](0)) < 1e-4 &&
+                              abs(cell->vertex(v)(1) - points[i](1)) < 1e-4)
+                            {
+                              find_point = true;
+                              unsigned int d = directions[i];
+                              assert(d < dim);
+                              unsigned int dof_index =
+                                cell->vertex_dof_index(v, d);
+                              constraints.add_line(dof_index);
+                            }
+                        }
+                    }
+                }
+              AssertThrow(find_point == true,
+                          ExcMessage("Did not find the specified point!"));
+            }
+        }
+
       constraints.close();
 
       pcout << "  Number of active solid cells: "
@@ -145,6 +195,12 @@ namespace Solid
 
       previous_displacement.reinit(locally_owned_dofs, mpi_communicator);
 
+      added_mass_effect.reinit(dof_handler.n_dofs());
+
+      fsi_vel_diff_lag.reinit(dof_handler.n_dofs());
+
+      nodal_mass.reinit(locally_owned_dofs, mpi_communicator);
+
       fsi_stress_rows.resize(dim);
       for (unsigned int d = 0; d < dim; ++d)
         {
@@ -152,6 +208,49 @@ namespace Solid
         }
       fluid_velocity.reinit(dof_handler.n_dofs());
       fluid_pressure.reinit(scalar_dof_handler.n_dofs());
+
+      // Add initial velocity
+      if (time.current() == 0.0)
+        {
+          const std::vector<Point<dim>> &unit_points =
+            fe.get_unit_support_points();
+          std::vector<types::global_dof_index> dof_indices(fe.dofs_per_cell);
+          std::vector<unsigned int> dof_touched(dof_handler.n_dofs(), 0);
+
+          for (auto cell = dof_handler.begin_active();
+               cell != dof_handler.end();
+               ++cell)
+            {
+
+              if (cell->subdomain_id() == this_mpi_process)
+                {
+
+                  cell->get_dof_indices(dof_indices);
+
+                  for (unsigned int i = 0; i < unit_points.size(); ++i)
+                    {
+                      if (dof_touched[dof_indices[i]] == 0)
+                        {
+                          dof_touched[dof_indices[i]] = 1;
+
+                          auto component_index =
+                            fe.system_to_component_index(i).first;
+
+                          auto line = dof_indices[i];
+
+                          previous_velocity[line] =
+                            parameters.initial_velocity[component_index];
+                        }
+                    }
+                }
+            }
+
+          previous_velocity.compress(VectorOperation::insert);
+
+          constraints.distribute(previous_velocity);
+
+          current_velocity = previous_velocity;
+        }
 
       strain = std::vector<std::vector<PETScWrappers::MPI::Vector>>(
         spacedim,
@@ -165,6 +264,21 @@ namespace Solid
           spacedim,
           PETScWrappers::MPI::Vector(locally_owned_scalar_dofs,
                                      mpi_communicator)));
+      // Set up cell property, which contains the FSI traction required in
+      // OpenIFEM-SABLE simulation
+      cell_property.initialize(triangulation.begin_active(),
+                               triangulation.end(),
+                               GeometryInfo<dim>::faces_per_cell);
+    }
+
+    // store user input points and directions
+    template <int dim, int spacedim>
+    void SharedSolidSolver<dim, spacedim>::constrain_points(
+      const std::vector<Point<dim>> &points,
+      const std::vector<unsigned int> &directions)
+    {
+      point_boundary_values.first = points;
+      point_boundary_values.second = directions;
     }
 
     // Solve linear system \f$Ax = b\f$ using CG solver.
@@ -193,6 +307,128 @@ namespace Solid
     }
 
     template <int dim, int spacedim>
+    void SharedSolidSolver<dim, spacedim>::calculate_KE_and_momemtum()
+    {
+
+      double ke = 0;
+      std::vector<double> solid_momentum(dim, 0);
+
+      FEValues<dim, spacedim> fe_values(
+        fe, volume_quad_formula, update_values | update_quadrature_points);
+      std::vector<unsigned int> dof_touched(dof_handler.n_dofs(), 0);
+      std::vector<types::global_dof_index> dof_indices(fe.dofs_per_cell);
+
+      for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+           ++cell)
+        {
+
+          if (cell->subdomain_id() == this_mpi_process)
+
+            {
+              fe_values.reinit(cell);
+              cell->get_dof_indices(dof_indices);
+
+              for (unsigned int i = 0; i < fe.dofs_per_cell; ++i)
+                {
+                  auto index = dof_indices[i];
+
+                  if (!current_velocity.in_local_range(index))
+                    {
+                      continue;
+                    }
+
+                  if (!dof_touched[index])
+                    {
+                      dof_touched[index] = 1;
+
+                      ke += 0.5 * current_velocity[index] *
+                            current_velocity[index] * nodal_mass[index];
+
+                      auto component = fe.system_to_component_index(i).first;
+
+                      solid_momentum[component] +=
+                        current_velocity[index] * nodal_mass[index];
+                    }
+                }
+            }
+        }
+
+      // add up all KE and momemtum for all processors
+
+      ke = Utilities::MPI::sum(ke, mpi_communicator);
+
+      for (unsigned int i = 0; i < dim; ++i)
+        {
+          solid_momentum[i] =
+            Utilities::MPI::sum(solid_momentum[i], mpi_communicator);
+        }
+
+      if (this_mpi_process == 0)
+        {
+
+          std::ofstream file_ke;
+          std::ofstream file_momx;
+          std::ofstream file_momy;
+          std::ofstream file_momz;
+
+          if (time.current() == 0.0)
+            {
+              file_ke.open("solid_KE.txt");
+              file_ke << "Time"
+                      << "\t"
+                      << "Solid KE"
+                      << "\n";
+
+              file_momx.open("solid_mom_x.txt");
+              file_momx << "Time"
+                        << "\t"
+                        << "Solid Mom X"
+                        << "\n";
+
+              file_momy.open("solid_mom_y.txt");
+              file_momy << "Time"
+                        << "\t"
+                        << "Solid Mom Y"
+                        << "\n";
+
+              if (dim == 3)
+                {
+                  file_momz.open("solid_mom_z.txt");
+                  file_momz << "Time"
+                            << "\t"
+                            << "Solid Mom Z"
+                            << "\n";
+                }
+            }
+
+          else
+
+            {
+              file_ke.open("solid_KE.txt", std::ios_base::app);
+              file_momx.open("solid_mom_x.txt", std::ios_base::app);
+              file_momy.open("solid_mom_y.txt", std::ios_base::app);
+              if (dim == 3)
+                file_momz.open("solid_mom_z.txt", std::ios_base::app);
+            }
+
+          file_ke << time.current() << "\t" << ke << "\n";
+          file_ke.close();
+
+          file_momx << time.current() << "\t" << solid_momentum[0] << "\n";
+          file_momx.close();
+
+          file_momy << time.current() << "\t" << solid_momentum[1] << "\n";
+          file_momy.close();
+
+          if (dim == 3)
+            {
+              file_momz << time.current() << "\t" << solid_momentum[2] << "\n";
+              file_momz.close();
+            }
+        }
+    }
+
+    template <int dim, int spacedim>
     void SharedSolidSolver<dim, spacedim>::output_results(
       const unsigned int output_index)
     {
@@ -200,7 +436,7 @@ namespace Solid
       pcout << "Writing solid results..." << std::endl;
 
       // Since only process 0 writes the output, we want all the others
-      // to sned their data to process 0, which is automatically done
+      // to send their data to process 0, which is automatically done
       // in this copy constructor.
       Vector<double> displacement(current_displacement);
       Vector<double> velocity(current_velocity);

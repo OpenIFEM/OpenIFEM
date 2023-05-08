@@ -34,7 +34,7 @@ namespace Fluid
         volume_quad_formula(parameters.fluid_velocity_degree + 1),
         face_quad_formula(parameters.fluid_velocity_degree + 1),
         parameters(parameters),
-        mpi_communicator(MPI_COMM_WORLD),
+        mpi_communicator(PETSC_COMM_WORLD),
         pcout(std::cout,
               Utilities::MPI::this_mpi_process(mpi_communicator) == 0),
         time(parameters.end_time,
@@ -294,6 +294,7 @@ namespace Fluid
               const std::vector<std::shared_ptr<CellProperty>> p =
                 cell_property.get_data(cell);
               p[0]->indicator = 0;
+              p[0]->exact_indicator = 0;
               p[0]->fsi_acceleration = 0;
               p[0]->fsi_stress = 0;
               p[0]->material_id = 1;

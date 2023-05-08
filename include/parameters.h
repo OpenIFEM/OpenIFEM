@@ -23,6 +23,14 @@ namespace Parameters
     double refinement_interval;
     double save_interval;
     std::vector<double> gravity;
+    std::vector<double> initial_velocity;
+    std::string indicator_field_condition;
+    std::string fsi_force_calculation_option;
+    std::string traction_calculation_option;
+    std::string fsi_force_criteria;
+    std::string use_added_mass;
+    std::vector<double> penalty_scale_factor;
+    double solid_traction_extension_scale;
     static void declareParameters(ParameterHandler &);
     void parseParameters(ParameterHandler &);
   };

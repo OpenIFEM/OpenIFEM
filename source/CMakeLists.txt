@@ -14,6 +14,8 @@ set(TARGET_SRC fluid_solver.cpp
                mpi_insimex.cpp
                mpi_linear_elasticity.cpp
                mpi_insim.cpp
+               mpi_openifem_sable_fsi.cpp
+               mpi_sable_wrapper.cpp
                mpi_insim_supg.cpp
                mpi_scnsex.cpp
                mpi_scnsim.cpp
@@ -21,11 +23,13 @@ set(TARGET_SRC fluid_solver.cpp
                mpi_shared_linear_elasticity.cpp
                mpi_shared_solid_solver.cpp
                mpi_solid_solver.cpp
+               openifem_sable_fsi.cpp
                mpi_spalart_allmaras.cpp
                mpi_turbulence_model.cpp
                mpi_supg_solver.cpp
                parameters.cpp
                preconditioner_pilut.cpp
+               sable_wrapper.cpp
                scnsim.cpp
                solid_solver.cpp
                utilities.cpp
@@ -49,6 +53,8 @@ set(headers fluid_solver.h
             mpi_insimex.h
             mpi_linear_elasticity.h
             mpi_insim.h
+            mpi_openifem_sable_fsi.h
+            mpi_sable_wrapper.h
             mpi_insim_supg.h
             mpi_scnsex.h
             mpi_scnsim.h
@@ -60,13 +66,15 @@ set(headers fluid_solver.h
             mpi_turbulence_model.h
             mpi_supg_solver.h
             neoHookean.h
+            openifem_sable_fsi.cpp
             parameters.h
             preconditioner_pilut.h
+            sable_wrapper.h
             scnsim.h
             solid_solver.h
             utilities.h
             cv_fsi.h
-	    kirchhoff_elastic_material.h)
+            kirchhoff_elastic_material.h)
 
 if(OPENIFEM_WITH_rkpm-rk4)
   list(APPEND TARGET_SRC "hypo_elasticity.cpp")

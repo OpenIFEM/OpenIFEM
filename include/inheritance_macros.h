@@ -47,6 +47,7 @@ protected:                                                                     \
   using FluidSolver<dim>::locally_owned_scalar_dofs;                           \
   using FluidSolver<dim>::locally_relevant_dofs;                               \
   using FluidSolver<dim>::locally_relevant_scalar_dofs;                        \
+  using FluidSolver<dim>::times_and_names;                                     \
   using FluidSolver<dim>::time;                                                \
   using FluidSolver<dim>::timer;                                               \
   using FluidSolver<dim>::timer2;                                              \

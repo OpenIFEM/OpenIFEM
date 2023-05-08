@@ -29,10 +29,10 @@ public:
       Solid::SolidSolver<dim> &,
       const Parameters::AllParameters &,
       bool use_dirichlet_bc = false);
-  void run();
+  virtual void run();
   ~FSI();
 
-private:
+protected:
   /// Define a smallest rectangle (or hex in 3d) that contains the solid.
   void update_solid_box();
 
@@ -47,7 +47,7 @@ private:
    *  all of the vertices are in solid mesh (because later on Dirichlet BCs
    *  obtained from the solid will be applied).
    */
-  void update_indicator();
+  virtual void update_indicator();
 
   /// Move solid triangulation either forward or backward using displacements,
   void move_solid_mesh(bool);
@@ -59,7 +59,7 @@ private:
    *  then interpolate the fluid pressure and symmetric gradient of velocity at
    *  those points, based on which the fluid traction is calculated.
    */
-  void find_solid_bc();
+  virtual void find_solid_bc();
 
   /*! \brief Interpolate the fluid velocity to solid vertices.
    *
@@ -82,7 +82,7 @@ private:
    * quadrature
    *  points to be used by the fluid solver.
    */
-  void find_fluid_bc();
+  virtual void find_fluid_bc();
 
   /// Mesh adaption.
   void refine_mesh(const unsigned int, const unsigned int);

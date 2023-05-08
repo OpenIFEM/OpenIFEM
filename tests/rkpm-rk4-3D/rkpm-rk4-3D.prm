@@ -23,8 +23,8 @@ subsection Simulation
   # The time step in second
   set Time step size = 1e-2
 
-  # The output interval in second
-  set Output interval = 1e0
+  # The output interval frequency
+  set Output interval = 100
 
   # Mesh refinement interval in second
   set Refinement interval = 5e2
@@ -34,6 +34,13 @@ subsection Simulation
 
   # Body force which applies to both fluid and solid (acceleration)
   set Gravity = 0.0, 0.0, 0.0
+
+  # Initial velocity which only applies to solid
+  set Initial velocity = 0.0, 0.0, 0.0
+
+  # Set condition for calculating indicator field (only applied to OpenIFEM-SABLE Coupling)
+  # Options: CompletelyInsideSolid and PartiallyInsideSolid
+  set Indicator field condition = CompletelyInsideSolid
 end
 
 # --------------------------------------------------------------------------------

@@ -25,15 +25,14 @@ namespace Solid
   {
     TimerOutput::Scope timer_section(timer, "Assemble system");
 
-    double gamma = 0.5 + parameters.damping;
-    double beta = gamma / 2;
-
     if (assemble_matrix)
       {
         system_matrix = 0;
         stiffness_matrix = 0;
       }
     system_rhs = 0;
+    nodal_forces_traction = 0;
+    nodal_forces_penalty = 0;
 
     FEValues<dim> fe_values(fe,
                             volume_quad_formula,
@@ -45,18 +44,27 @@ namespace Solid
                                      update_values | update_quadrature_points |
                                        update_normal_vectors |
                                        update_JxW_values);
+    // create fe_values corresponding to 1 quadrture point rule for selective
+    // reduced integration
+    const QGauss<dim> volume_quad_formula_c(1);
+    FEValues<dim> fe_values_c(fe,
+                              volume_quad_formula_c,
+                              update_values | update_gradients |
+                                update_quadrature_points | update_JxW_values);
 
-    SymmetricTensor<4, dim> elasticity;
     const double rho = material[0].get_density();
-    const double dt = time.get_delta_t();
-
     const unsigned int dofs_per_cell = fe.dofs_per_cell;
     const unsigned int n_q_points = volume_quad_formula.size();
     const unsigned int n_f_q_points = face_quad_formula.size();
 
     FullMatrix<double> local_matrix(dofs_per_cell, dofs_per_cell);
     FullMatrix<double> local_stiffness(dofs_per_cell, dofs_per_cell);
+    // damping matrix used for implict Lagrangian penalty (OpenIFEM-SABLE
+    // coupling)
+    FullMatrix<double> local_damping(dofs_per_cell, dofs_per_cell);
     Vector<double> local_rhs(dofs_per_cell);
+    Vector<double> local_nodal_forces_traction(dofs_per_cell);
+    Vector<double> local_nodal_forces_penalty(dofs_per_cell);
 
     std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
@@ -68,6 +76,9 @@ namespace Solid
     std::vector<Tensor<1, dim>> phi(dofs_per_cell);
     // A "viewer" to describe the nodal dofs as a vector.
     FEValuesExtractors::Vector displacements(0);
+    // fsi_vel_diff_lag  at quadrature points (used to
+    // calculate penalty force for OpenIFEM-SABLE coupling)
+    std::vector<Tensor<1, dim>> fsi_vel_diff(n_q_points);
 
     // Loop over cells
     for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
@@ -77,15 +88,20 @@ namespace Solid
         int mat_id = cell->material_id();
         if (material.size() == 1)
           mat_id = 1;
-        elasticity = material[mat_id - 1].get_elasticity();
+        const double lambda = material[mat_id - 1].get_lambda();
+        const double mu = material[mat_id - 1].get_mu();
         Assert(p.size() == GeometryInfo<dim>::faces_per_cell,
                ExcMessage("Wrong number of cell data!"));
         local_matrix = 0;
         local_stiffness = 0;
         local_rhs = 0;
+        local_nodal_forces_traction = 0;
+        local_nodal_forces_penalty = 0;
 
         fe_values.reinit(cell);
 
+        fe_values[displacements].get_function_values(fsi_vel_diff_lag,
+                                                     fsi_vel_diff);
         // Loop over quadrature points
         for (unsigned int q = 0; q < n_q_points; ++q)
           {
@@ -99,35 +115,83 @@ namespace Solid
             // Loop over the dofs again, to assemble
             for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
+                /*const double phi_i_div =
+                  fe_values[displacements].divergence(i, q);*/
                 if (assemble_matrix)
                   {
                     for (unsigned int j = 0; j < dofs_per_cell; ++j)
                       {
-                        if (is_initial)
+                        /*const double phi_j_div =
+                          fe_values[displacements].divergence(j, q);*/
+                        local_matrix[i][j] +=
+                          rho * phi[i] * phi[j] * fe_values.JxW(q);
+                        if (!is_initial)
                           {
-                            local_matrix[i][j] +=
-                              rho * phi[i] * phi[j] * fe_values.JxW(q);
-                          }
-                        else
-                          {
-                            local_matrix[i][j] +=
-                              (rho * phi[i] * phi[j] +
-                               symmetric_grad_phi[i] * elasticity *
-                                 symmetric_grad_phi[j] * beta * dt * dt) *
-                              fe_values.JxW(q);
+                            // integrate the complete elasticity tensor
+                            /*local_stiffness[i][j] +=
+                              (phi_i_div * phi_j_div * lambda +
+                               2 * symmetric_grad_phi[i] * mu *
+                                 symmetric_grad_phi[j]) *
+                              fe_values.JxW(q);*/
+
+                            // integrate deviatoric part of the elastic tensor
                             local_stiffness[i][j] +=
-                              symmetric_grad_phi[i] * elasticity *
-                              symmetric_grad_phi[j] * fe_values.JxW(q);
+                              (2 * symmetric_grad_phi[i] * mu *
+                               symmetric_grad_phi[j]) *
+                              fe_values.JxW(q);
                           }
                       }
                   }
+
                 // body force
                 Tensor<1, dim> gravity;
-                for (unsigned int i = 0; i < dim; ++i)
+                for (unsigned int j = 0; j < dim; ++j)
                   {
-                    gravity[i] = parameters.gravity[i];
+                    gravity[j] = parameters.gravity[j];
                   }
                 local_rhs[i] += phi[i] * gravity * rho * fe_values.JxW(q);
+
+                // add penalty force based on Eulerian-Lagrangian velocity
+                // difference (only for OpenIFEM-SABLE coupling)
+                if (parameters.simulation_type == "FSI")
+                  {
+                    local_rhs[i] += phi[i] * fsi_vel_diff[q] * fe_values.JxW(q);
+
+                    local_nodal_forces_penalty[i] +=
+                      phi[i] * fsi_vel_diff[q] * fe_values.JxW(q);
+
+                    // calculate damping matrix for implicit Lagrangian penalty
+                    if (!is_lag_penalty_explicit)
+                      {
+                        for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                          {
+                            local_damping[i][j] += rho * phi[i] * phi[j] *
+                                                   fe_values.JxW(q) /
+                                                   time.get_delta_t();
+                          }
+                      }
+                  }
+              }
+          }
+        // reduced integration for the volumetric part of the elastic tensor
+        fe_values_c.reinit(cell);
+        for (unsigned int i = 0; i < dofs_per_cell; ++i)
+          {
+            const double phi_i_div_c =
+              fe_values_c[displacements].divergence(i, 0);
+            if (assemble_matrix)
+              {
+                for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                  {
+                    const double phi_j_div_c =
+                      fe_values_c[displacements].divergence(j, 0);
+                    if (!is_initial)
+                      {
+                        local_stiffness[i][j] +=
+                          (phi_i_div_c * phi_j_div_c * lambda) *
+                          fe_values_c.JxW(0);
+                      }
+                  }
               }
           }
 
@@ -193,7 +257,7 @@ namespace Solid
                   }
                 else if (parameters.simulation_type == "FSI")
                   {
-                    traction = p[face]->fsi_traction;
+                    traction = p[face]->fsi_traction[q];
                   }
 
                 for (unsigned int j = 0; j < dofs_per_cell; ++j)
@@ -204,6 +268,33 @@ namespace Solid
                     local_rhs(j) += fe_face_values.shape_value(j, q) *
                                     traction[component_j] *
                                     fe_face_values.JxW(q);
+                    local_nodal_forces_traction(j) +=
+                      fe_face_values.shape_value(j, q) * traction[component_j] *
+                      fe_face_values.JxW(q);
+                  }
+              }
+          }
+
+        // create lumped mass matrix
+        if (assemble_matrix)
+          {
+            for (unsigned int i = 0; i < dofs_per_cell; ++i)
+              {
+                double sum = 0;
+                for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                  {
+                    sum = sum + local_matrix[i][j];
+                  }
+                for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                  {
+                    if (i == j)
+                      {
+                        local_matrix[i][j] = sum;
+                      }
+                    else
+                      {
+                        local_matrix[i][j] = 0;
+                      }
                   }
               }
           }
@@ -219,11 +310,28 @@ namespace Solid
                                                    system_rhs);
             constraints.distribute_local_to_global(
               local_stiffness, local_dof_indices, stiffness_matrix);
+            constraints.distribute_local_to_global(local_nodal_forces_traction,
+                                                   local_dof_indices,
+                                                   nodal_forces_traction);
+            constraints.distribute_local_to_global(local_nodal_forces_penalty,
+                                                   local_dof_indices,
+                                                   nodal_forces_penalty);
           }
         else
           {
             constraints.distribute_local_to_global(
               local_rhs, local_dof_indices, system_rhs);
+            constraints.distribute_local_to_global(local_nodal_forces_traction,
+                                                   local_dof_indices,
+                                                   nodal_forces_traction);
+            constraints.distribute_local_to_global(local_nodal_forces_penalty,
+                                                   local_dof_indices,
+                                                   nodal_forces_penalty);
+            if (!is_lag_penalty_explicit)
+              {
+                constraints.distribute_local_to_global(
+                  local_damping, local_dof_indices, damping_matrix);
+              }
           }
       }
   }
@@ -247,17 +355,52 @@ namespace Solid
     std::cout.precision(6);
     std::cout.width(12);
 
-    double gamma = 0.5 + parameters.damping;
-    double beta = gamma / 2;
+    double alpha = -parameters.damping;
+    double gamma = 0.5 - alpha;
+    double beta = pow((1 - alpha), 2) / 4;
 
     if (first_step)
       {
         // Need to compute the initial acceleration, \f$ Ma_n = F \f$,
         // at this point set system_matrix to mass_matrix.
         assemble_system(true);
-        this->solve(system_matrix, previous_acceleration, system_rhs);
+        // Save nodal mass in a vector
+        for (unsigned int i = 0; i < dof_handler.n_dofs(); i++)
+          {
+            nodal_mass[i] = system_matrix.el(i, i);
+          }
+        calculate_KE();
+
+        // copy system_matrix to system_matrix_updated
+        system_matrix_updated.copy_from(system_matrix);
+        // add added mass effect to system_matrix_updated
+        if (parameters.simulation_type == "FSI")
+          {
+            for (unsigned int i = 0; i < dof_handler.n_dofs(); i++)
+              {
+                system_matrix_updated.set(
+                  i, i, system_matrix.el(i, i) + added_mass_effect[i]);
+              }
+
+            if (!is_lag_penalty_explicit)
+              {
+                Vector<double> tmp(dof_handler.n_dofs());
+                damping_matrix.vmult(tmp, current_velocity);
+                system_rhs.add(-1, tmp);
+              }
+          }
+
+        this->solve(system_matrix_updated, previous_acceleration, system_rhs);
         // Update the system_matrix
         assemble_system(false);
+        system_matrix.add(time.get_delta_t() * time.get_delta_t() * beta *
+                            (1 + alpha),
+                          stiffness_matrix);
+
+        system_matrix_updated.copy_from(system_matrix);
+        // copy previous_acceleration to current_acceleration for outputting the
+        // initial acceleration
+        current_acceleration = previous_acceleration;
         this->output_results(time.get_timestep());
       }
 
@@ -277,13 +420,37 @@ namespace Solid
     // Modify the RHS
     Vector<double> tmp1(system_rhs);
     auto tmp2 = previous_displacement;
-    tmp2.add(
-      dt, previous_velocity, (0.5 - beta) * dt * dt, previous_acceleration);
+    tmp2.add(dt * (1 + alpha),
+             previous_velocity,
+             (0.5 - beta) * dt * dt * (1 + alpha),
+             previous_acceleration);
     Vector<double> tmp3(dof_handler.n_dofs());
     stiffness_matrix.vmult(tmp3, tmp2);
     tmp1 -= tmp3;
 
-    auto state = this->solve(system_matrix, current_acceleration, tmp1);
+    // add added mass effect to system_matrix_updated
+    if (parameters.simulation_type == "FSI")
+      {
+        for (unsigned int i = 0; i < dof_handler.n_dofs(); i++)
+          {
+            system_matrix_updated.set(
+              i, i, system_matrix.el(i, i) + added_mass_effect[i]);
+          }
+
+        if (!is_lag_penalty_explicit)
+          {
+            system_matrix_updated.add(gamma * dt, damping_matrix);
+
+            Vector<double> tmp4(dof_handler.n_dofs());
+            Vector<double> tmp5(dof_handler.n_dofs());
+            tmp4 *= dt * (1 - gamma);
+            damping_matrix.vmult(tmp4, previous_acceleration);
+            damping_matrix.vmult(tmp5, previous_velocity);
+            tmp1 -= tmp4;
+            tmp1 -= tmp5;
+          }
+      }
+    auto state = this->solve(system_matrix_updated, current_acceleration, tmp1);
 
     // update the current velocity
     // \f$ v_{n+1} = v_n + (1-\gamma)\Delta{t}a_n + \gamma\Delta{t}a_{n+1}
@@ -309,6 +476,8 @@ namespace Solid
 
     update_strain_and_stress();
 
+    calculate_KE();
+
     if (time.time_to_output())
       {
         this->output_results(time.get_timestep());
@@ -332,6 +501,7 @@ namespace Solid
             stress[i][j] = 0.0;
           }
       }
+
     std::vector<int> surrounding_cells(scalar_dof_handler.n_dofs(), 0);
     // The strain and stress tensors are stored as 2D vectors of shape dim*dim
     // at cell and quadrature point level.
@@ -372,6 +542,7 @@ namespace Solid
     auto cell = dof_handler.begin_active();
     auto scalar_cell = scalar_dof_handler.begin_active();
     std::vector<types::global_dof_index> dof_indices(scalar_fe.dofs_per_cell);
+
     for (; cell != dof_handler.end(); ++cell, ++scalar_cell)
       {
         scalar_cell->get_dof_indices(dof_indices);

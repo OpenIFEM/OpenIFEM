@@ -84,7 +84,25 @@ namespace Solid
       {
         // Solve for the initial acceleration
         assemble_system(true);
-        this->solve(mass_matrix, previous_acceleration, system_rhs);
+        // Save nodal mass in a vector
+        for (unsigned int i = 0; i < dof_handler.n_dofs(); i++)
+          {
+            nodal_mass[i] = mass_matrix.el(i, i);
+          }
+        calculate_KE();
+        // copy mass_matrix to mass_matrix_updated
+        mass_matrix_updated.copy_from(mass_matrix);
+        // add added mass effect to mass_matrix_updated
+        if (parameters.simulation_type == "FSI")
+          {
+            for (unsigned int i = 0; i < dof_handler.n_dofs(); i++)
+              {
+                mass_matrix_updated.set(
+                  i, i, mass_matrix.el(i, i) + added_mass_effect[i]);
+              }
+          }
+
+        this->solve(mass_matrix_updated, previous_acceleration, system_rhs);
         this->output_results(time.get_timestep());
       }
 
@@ -137,12 +155,28 @@ namespace Solid
         // Assemble the system, and modify the RHS to account for
         // the time-discretization.
         assemble_system(false);
-        mass_matrix.vmult(tmp, current_acceleration);
+        // copy system_matrix to system_matrix_updated
+        system_matrix_updated.copy_from(system_matrix);
+        // add added mass effect to system_matrix_updated
+        if (parameters.simulation_type == "FSI")
+          {
+            for (unsigned int i = 0; i < dof_handler.n_dofs(); i++)
+              {
+                system_matrix_updated.set(i,
+                                          i,
+                                          system_matrix.el(i, i) +
+                                            added_mass_effect[i] /
+                                              (beta * dt * dt));
+                mass_matrix_updated.set(
+                  i, i, mass_matrix.el(i, i) + added_mass_effect[i]);
+              }
+          }
+        mass_matrix_updated.vmult(tmp, current_acceleration);
         system_rhs -= tmp;
 
         // Solve linear system
         const std::pair<unsigned int, double> lin_solver_output =
-          this->solve(system_matrix, newton_update, system_rhs);
+          this->solve(system_matrix_updated, newton_update, system_rhs);
 
         // Error evaluation
         {
@@ -195,6 +229,8 @@ namespace Solid
               << "Force: \t\t" << normalized_error_residual << std::endl;
 
     update_strain_and_stress();
+
+    calculate_KE();
 
     if (time.time_to_output())
       {
@@ -334,6 +370,7 @@ namespace Solid
       }
     system_matrix = 0.0;
     system_rhs = 0.0;
+    nodal_forces_traction = 0.0;
 
     FEValues<dim> fe_values(fe,
                             volume_quad_formula,
@@ -354,6 +391,7 @@ namespace Solid
     FullMatrix<double> local_matrix(dofs_per_cell, dofs_per_cell);
     FullMatrix<double> local_mass(dofs_per_cell, dofs_per_cell);
     Vector<double> local_rhs(dofs_per_cell);
+    Vector<double> local_nodal_forces_traction(dofs_per_cell);
     std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
     Tensor<1, dim> gravity;
@@ -374,10 +412,78 @@ namespace Solid
         local_mass = 0;
         local_matrix = 0;
         local_rhs = 0;
+        local_nodal_forces_traction = 0;
 
         const std::vector<std::shared_ptr<Internal::PointHistory<dim>>> lqph =
           quad_point_history.get_data(cell);
         Assert(lqph.size() == n_q_points, ExcInternalError());
+
+        // assemble mass matrix
+        for (unsigned int q = 0; q < n_q_points; ++q)
+          {
+            for (unsigned int k = 0; k < dofs_per_cell; ++k)
+              {
+                phi[q][k] = fe_values[displacement].value(k, q);
+              }
+
+            const double rho = lqph[q]->get_density();
+            const double dt = time.get_delta_t();
+            const double JxW = fe_values.JxW(q);
+
+            for (unsigned int i = 0; i < dofs_per_cell; ++i)
+              {
+                for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                  {
+                    if (initial_step)
+                      {
+                        local_mass(i, j) += rho * phi[q][i] * phi[q][j] * JxW;
+                      }
+                    else
+                      {
+                        local_matrix(i, j) += (rho * phi[q][i] * phi[q][j]) /
+                                              (beta * dt * dt) * JxW;
+                      }
+                  }
+              }
+          }
+
+        // create lumped mass matrix
+        for (unsigned int i = 0; i < dofs_per_cell; ++i)
+          {
+            double sum = 0;
+            for (unsigned int j = 0; j < dofs_per_cell; ++j)
+              {
+                if (initial_step)
+                  sum = sum + local_mass(i, j);
+                else
+                  sum = sum + local_matrix(i, j);
+              }
+            for (unsigned int j = 0; j < dofs_per_cell; ++j)
+              {
+                if (initial_step)
+                  {
+                    if (i == j)
+                      {
+                        local_mass(i, j) = sum;
+                      }
+                    else
+                      {
+                        local_mass(i, j) = 0;
+                      }
+                  }
+                else
+                  {
+                    if (i == j)
+                      {
+                        local_matrix(i, j) = sum;
+                      }
+                    else
+                      {
+                        local_matrix(i, j) = 0;
+                      }
+                  }
+              }
+          }
 
         for (unsigned int q = 0; q < n_q_points; ++q)
           {
@@ -401,18 +507,13 @@ namespace Solid
                   fe.system_to_component_index(i).first;
                 for (unsigned int j = 0; j <= i; ++j)
                   {
-                    if (initial_step)
-                      {
-                        local_mass(i, j) += rho * phi[q][i] * phi[q][j] * JxW;
-                      }
-                    else
+
+                    if (!initial_step)
                       {
                         const unsigned int component_j =
                           fe.system_to_component_index(j).first;
                         local_matrix(i, j) +=
-                          (phi[q][i] * phi[q][j] * rho / (beta * dt * dt) +
-                           sym_grad_phi[q][i] * Jc * sym_grad_phi[q][j]) *
-                          JxW;
+                          (sym_grad_phi[q][i] * Jc * sym_grad_phi[q][j]) * JxW;
                         if (component_i == component_j)
                           {
                             local_matrix(i, j) +=
@@ -495,7 +596,7 @@ namespace Solid
                   }
                 else if (parameters.simulation_type == "FSI")
                   {
-                    traction = p[face]->fsi_traction;
+                    traction = p[face]->fsi_traction[q];
                   }
 
                 for (unsigned int j = 0; j < dofs_per_cell; ++j)
@@ -506,6 +607,9 @@ namespace Solid
                     local_rhs(j) += fe_face_values.shape_value(j, q) *
                                     traction[component_j] *
                                     fe_face_values.JxW(q);
+                    local_nodal_forces_traction(j) +=
+                      fe_face_values.shape_value(j, q) * traction[component_j] *
+                      fe_face_values.JxW(q);
                   }
               }
           }
@@ -517,6 +621,9 @@ namespace Solid
                                                    local_dof_indices,
                                                    mass_matrix,
                                                    system_rhs);
+            constraints.distribute_local_to_global(local_nodal_forces_traction,
+                                                   local_dof_indices,
+                                                   nodal_forces_traction);
           }
         else
           {
@@ -525,6 +632,9 @@ namespace Solid
                                                    local_dof_indices,
                                                    system_matrix,
                                                    system_rhs);
+            constraints.distribute_local_to_global(local_nodal_forces_traction,
+                                                   local_dof_indices,
+                                                   nodal_forces_traction);
           }
       }
 

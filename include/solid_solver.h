@@ -50,6 +50,8 @@
 
 template <int>
 class FSI;
+template <int>
+class OpenIFEM_Sable_FSI;
 
 namespace Solid
 {
@@ -61,12 +63,19 @@ namespace Solid
   {
   public:
     friend FSI<spacedim>;
-
+    friend OpenIFEM_Sable_FSI<spacedim>;
     SolidSolver(Triangulation<dim, spacedim> &,
                 const Parameters::AllParameters &);
     ~SolidSolver();
     void run();
     Vector<double> get_current_solution() const;
+
+    /**
+     * Store user's input of the coordinates of the points
+     * and the direction to be constrained.
+     */
+    void constrain_points(const std::vector<Point<dim>> &,
+                          const std::vector<unsigned int> &);
 
   protected:
     struct CellProperty;
@@ -134,9 +143,18 @@ namespace Solid
 
     SparsityPattern pattern;
     SparseMatrix<double> system_matrix; //!< \f$ M + \beta{\Delta{t}}^2K \f$.
-    SparseMatrix<double> mass_matrix;   //!< Required by hyperelastic solver.
+    SparseMatrix<double>
+      system_matrix_updated; //!< updated system matrix with
+                             //!< added mass effect (OpenIFEM-SABLE coupling)$.
+    SparseMatrix<double> mass_matrix; //!< Required by hyperelastic solver.
+    SparseMatrix<double>
+      mass_matrix_updated; //!< updated mass matrix with
+                           //!< added mass effect (OpenIFEM-SABLE coupling)$.
     SparseMatrix<double>
       stiffness_matrix; //!< The stiffness is used in the rhs.
+    SparseMatrix<double>
+      damping_matrix; //!< The damping matrix used for implict Lagrangian
+                      //!< penalty calculation ((OpenIFEM-SABLE coupling)$.
     Vector<double> system_rhs;
 
     /**
@@ -154,6 +172,48 @@ namespace Solid
     Vector<double> previous_acceleration;
     Vector<double> previous_velocity;
     Vector<double> previous_displacement;
+    /**
+     * Vector stores nodal mass which is used for calculation of toal solid KE
+     * and momentum
+     */
+    Vector<double> nodal_mass;
+    /**
+     * Nodal force calculated from surface traction
+     */
+    Vector<double> nodal_forces_traction;
+
+    /**
+     * output Nodal penalty force for debug purpose on the OpenIFEM-sable
+     * coupling
+     */
+    Vector<double> nodal_forces_penalty;
+
+    /**
+     * Store added mass from the Eulerian material
+     */
+    Vector<double> added_mass_effect;
+
+    /**
+     * Vector to store difference between Lagrangian solid velocity and
+     * artificial velocity calculated at Lagrangian mesh
+     */
+    Vector<double> fsi_vel_diff_lag;
+
+    /**
+     * function to calculate total KE of the solid
+     */
+    void calculate_KE();
+
+    /**
+     * flag to choose explicit or implict Lagrangian penalty (OpenIFEM-SABLE
+     * coupling)
+     */
+    bool is_lag_penalty_explicit;
+
+    /** a pair container to store the user specified points and directions
+     */
+    std::pair<std::vector<Point<dim>>, std::vector<unsigned int>>
+      point_boundary_values;
 
     /**
      * Nodal strain and stress obtained by taking the average of surrounding
@@ -175,7 +235,7 @@ namespace Solid
      */
     struct CellProperty
     {
-      Tensor<1, spacedim> fsi_traction;
+      std::vector<Tensor<1, spacedim>> fsi_traction;
     };
   };
 } // namespace Solid

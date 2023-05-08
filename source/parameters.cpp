@@ -34,6 +34,52 @@ namespace Parameters
         "",
         Patterns::List(dealii::Patterns::Double()),
         "Gravity acceleration that applies to both fluid and solid");
+      prm.declare_entry("Initial velocity",
+                        "",
+                        Patterns::List(dealii::Patterns::Double()),
+                        "Initial velocity that only applies to solid");
+      prm.declare_entry(
+        "Indicator field condition",
+        "CompletelyInsideSolid",
+        Patterns::Selection("CompletelyInsideSolid|PartiallyInsideSolid"),
+        "Set condition for calculating indicator field");
+
+      prm.declare_entry("SABLE stress option for calculating FSI force",
+                        "CellBased",
+                        Patterns::Selection("CellBased|NodeBased"),
+                        "Set an option for calculation of FSI force: use cell "
+                        "based or node based SABLE Stresses");
+
+      prm.declare_entry(
+        "SABLE stress option for calculating solid traction",
+        "CellBased",
+        Patterns::Selection("CellBased|NodeBased"),
+        "Set an option for calculation of traction on Lagrangian solid: use "
+        "cell based or node based SABLE Stresses");
+
+      prm.declare_entry(
+        "scale for solid traction extension along the face normal",
+        "0.0",
+        Patterns::Double(0.0),
+        "Extend the solid boundary quadrature points along the normal by given "
+        "scale");
+
+      prm.declare_entry(
+        "FSI force criteria",
+        "Nodes",
+        Patterns::Selection("Nodes|QuadraturePoints"),
+        "Set cirteria for calculating indicator field and FSI force");
+
+      prm.declare_entry("use added mass",
+                        "yes",
+                        Patterns::Selection("yes|no"),
+                        "Set use added mass");
+
+      prm.declare_entry(
+        "penalty scale factor",
+        "0.0, 0.0",
+        Patterns::List(dealii::Patterns::Double()),
+        "Set penalty scale factor for Lagrangian and Eulerian respectively");
     }
     prm.leave_subsection();
   }
@@ -60,6 +106,36 @@ namespace Parameters
       gravity = Utilities::string_to_double(parsed_input);
       AssertThrow(static_cast<int>(gravity.size()) == dimension,
                   ExcMessage("Inconsistent dimension of gravity!"));
+      raw_input = prm.get("Initial velocity");
+      parsed_input = Utilities::split_string_list(raw_input);
+      initial_velocity = Utilities::string_to_double(parsed_input);
+      AssertThrow(static_cast<int>(initial_velocity.size()) == dimension,
+                  ExcMessage("Inconsistent dimension of initial velocity!"));
+      indicator_field_condition = prm.get("Indicator field condition");
+      fsi_force_calculation_option =
+        prm.get("SABLE stress option for calculating FSI force");
+      traction_calculation_option =
+        prm.get("SABLE stress option for calculating solid traction");
+      solid_traction_extension_scale = prm.get_double(
+        "scale for solid traction extension along the face normal");
+      AssertThrow((solid_traction_extension_scale < 1) &&
+                    (solid_traction_extension_scale >= 0),
+                  ExcMessage("Choose extension scale value less than 1!"));
+      fsi_force_criteria = prm.get("FSI force criteria");
+      use_added_mass = prm.get("use added mass");
+      raw_input = prm.get("penalty scale factor");
+      parsed_input = Utilities::split_string_list(raw_input);
+      penalty_scale_factor = Utilities::string_to_double(parsed_input);
+      AssertThrow(penalty_scale_factor.size() == 2.0,
+                  ExcMessage("Inconsistent side for penalty scale factors!"));
+      AssertThrow(
+        (penalty_scale_factor[0] >= 0.0),
+        ExcMessage(
+          "Lagrangian penalty scale must be grater than or equal to 0.0!"));
+      AssertThrow(
+        penalty_scale_factor[1] >= 0.0,
+        ExcMessage(
+          "Eulerian penalty scale must be grater than or equal to 0.0!"));
     }
     prm.leave_subsection();
   }

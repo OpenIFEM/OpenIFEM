@@ -72,6 +72,8 @@ namespace MPI
   class FSI;
   template <int dim>
   class ControlVolumeFSI;
+  template <int dim>
+  class OpenIFEM_Sable_FSI;
 } // namespace MPI
 
 namespace Fluid
@@ -93,6 +95,7 @@ namespace Fluid
       //! FSI solver need access to the private members of this solver.
       friend ::MPI::FSI<dim>;
       friend ::MPI::ControlVolumeFSI<dim>;
+      friend ::MPI::OpenIFEM_Sable_FSI<dim>;
       friend FluidSolverExtractor<dim>;
 
       //! Constructor.
@@ -171,7 +174,7 @@ namespace Fluid
       void refine_mesh(const unsigned int, const unsigned int);
 
       /// Output in vtu format.
-      void output_results(const unsigned int) const;
+      virtual void output_results(const unsigned int) const;
 
       /// Update the viscous stress to output
       virtual void update_stress();
@@ -271,6 +274,9 @@ namespace Fluid
         std::function<double(const Point<dim> &, const unsigned int)>>
         initial_condition_field;
 
+      /// The vector to store vtu filenames that will be written into pvd file.
+      mutable std::vector<std::pair<double, std::string>> times_and_names;
+
       /// A data structure that caches the real/artificial fluid indicator,
       /// FSI stress, and FSI acceleration terms at quadrature points, that
       /// will only be used in FSI simulations.
@@ -278,6 +284,8 @@ namespace Fluid
       {
         int indicator; //!< Domain indicator: 1 for artificial fluid 0 for real
                        //! fluid.
+        double exact_indicator; //!< accurate estimation of the indicator:
+                                //!< can take value between 0 and 1.
         Tensor<1, dim>
           fsi_acceleration; //!< The acceleration term in FSI force.
         SymmetricTensor<2, dim> fsi_stress; //!< The stress term in FSI force.

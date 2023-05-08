@@ -37,6 +37,11 @@ namespace Solid
     class SharedLinearElasticity : public SharedSolidSolver<dim>
     {
       MPISharedSolidSolverInheritanceMacro();
+      using SharedSolidSolver<dim>::cell_property;
+      using SharedSolidSolver<dim>::added_mass_effect;
+      using SharedSolidSolver<dim>::fsi_vel_diff_lag;
+      using SharedSolidSolver<dim>::nodal_mass;
+      using SharedSolidSolver<dim>::calculate_KE_and_momemtum;
 
     public:
       /*! \brief Constructor.
@@ -65,6 +70,12 @@ namespace Solid
       void run_one_step(bool first_step);
 
       std::vector<LinearElasticMaterial<dim>> material;
+
+      /**
+       * Save diagonal of the system matrix, used in application of added mass
+       * effect, only used for OpenIFEM-SABLE coupling
+       */
+      std::vector<double> system_matrix_diagonal;
     };
   } // namespace MPI
 } // namespace Solid

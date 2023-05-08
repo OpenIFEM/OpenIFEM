@@ -70,6 +70,15 @@ namespace Solid
     using SolidSolver<dim>::time;
     using SolidSolver<dim>::timer;
     using SolidSolver<dim>::cell_property;
+    using SolidSolver<dim>::nodal_mass;
+    using SolidSolver<dim>::calculate_KE;
+    using SolidSolver<dim>::nodal_forces_traction;
+    using SolidSolver<dim>::nodal_forces_penalty;
+    using SolidSolver<dim>::system_matrix_updated;
+    using SolidSolver<dim>::added_mass_effect;
+    using SolidSolver<dim>::fsi_vel_diff_lag;
+    using SolidSolver<dim>::damping_matrix;
+    using SolidSolver<dim>::is_lag_penalty_explicit;
 
     /**
      * Assembles lhs and rhs. At time step 0, the lhs is the mass matrix;

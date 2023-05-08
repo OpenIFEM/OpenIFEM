@@ -10,11 +10,29 @@ set(serial_tests acoustic_duct_wave
                  fsi_cavity
                  fsi_gravity
                  fsi_leaflet
+                 openifem-sable_block_linearelastic
+                 openifem-sable_hollow_circle_hyperelastic
+                 openifem-sable_circle_blast_hyperelastic
+                 openifem-sable_circle_hyperelastic
+                 openifem-sable_circle_linearelastic
+                 openifem-sable_ogival_proj_linearelastic
+                 openifem-sable_ogival_proj_linearelastic_mpi
+		 openifem-sable_projectile_linearelastic
+                 openifem-sable_projectile_linearelastic_mpi
+                 openifem-sable_rigid_body
+                 openifem-sable_rigid_body_3d
+                 openifem-sable_rod_linearelastic
+                 openifem-sable_sphere_linearelastic
+                 openifem-sable_sphere_linearelastic_mpi                
+                 openifem-sable_square_hyperelastic
+                 sable_wrapper_test
+                 sable_wrapper_test_3d
+                 sable_wrapper_test_mpi
                  solid_beam_bending_linearelastic
                  solid_beam_bending_NeoHookean
                  solid_gravity_hyperelastic
                  solid_gravity_linearelastic
-		 solid_rotation_Kirchhoff)
+                 solid_rotation_Kirchhoff)
 
 # mpi tests
 set(mpi_tests acoustic_duct_wave_mpi

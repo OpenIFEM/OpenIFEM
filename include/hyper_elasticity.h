@@ -128,6 +128,12 @@ namespace Solid
     using SolidSolver<dim>::time;
     using SolidSolver<dim>::timer;
     using SolidSolver<dim>::cell_property;
+    using SolidSolver<dim>::nodal_mass;
+    using SolidSolver<dim>::calculate_KE;
+    using SolidSolver<dim>::nodal_forces_traction;
+    using SolidSolver<dim>::added_mass_effect;
+    using SolidSolver<dim>::system_matrix_updated;
+    using SolidSolver<dim>::mass_matrix_updated;
 
     void initialize_system();
 
