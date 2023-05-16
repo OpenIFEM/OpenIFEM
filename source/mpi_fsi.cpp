@@ -2,6 +2,9 @@
 #include "mpi_spalart_allmaras.h"
 #include <iostream>
 
+// for building in some systems
+#include <optional>
+
 namespace MPI
 {
   template <int dim>
