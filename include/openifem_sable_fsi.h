@@ -144,6 +144,14 @@ private:
   std::map<int, std::vector<int>> cell_nodes_inside_solid;
   std::map<int, std::vector<int>> cell_nodes_outside_solid;
 
+  /* compute interfacial work on solid boundary
+   */
+  void compute_solid_interface_work();
+
+  /*compute interfacial work on artificial fluid boudary
+   */
+  void compute_fluid_interface_work();
+
   // Cell storage that stores hints of cell searching from last time step.
   CellDataStorage<typename Triangulation<dim>::active_cell_iterator,
                   typename DoFHandler<dim>::active_cell_iterator>
