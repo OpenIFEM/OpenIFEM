@@ -74,6 +74,10 @@ namespace Fluid
 
       void Max(double &send_biffer);
 
+      void Min(int &send_buffer);
+
+      void Min(double &send_biffer);
+
       // Vectors to store non ghost nodes and cells ids
       std::vector<int> non_ghost_cells;
       std::vector<int> non_ghost_nodes;
