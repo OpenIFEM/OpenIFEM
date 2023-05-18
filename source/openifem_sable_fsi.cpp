@@ -2469,6 +2469,310 @@ void OpenIFEM_Sable_FSI<dim>::output_vel_diff(bool first_step)
 }
 
 template <int dim>
+void OpenIFEM_Sable_FSI<dim>::compute_solid_interface_work()
+{
+
+  // file output
+
+  std::ofstream file_solid_interface_work;
+
+  if (time.current() == 0.0)
+    {
+
+      file_solid_interface_work.open("solid_interface_work.txt");
+      file_solid_interface_work << "Time"
+                                << "\t"
+                                << "solid interface work"
+                                << "\n";
+    }
+  else
+    {
+      file_solid_interface_work.open("solid_interface_work.txt",
+                                     std::ios_base::app);
+    }
+
+  // for now, use all solid boundary faces, in future may consider ignore
+  // fixed BC faces
+
+  // Must use the updated solid coordinates
+  move_solid_mesh(true);
+
+  FEFaceValues<dim> fe_face_values(solid_solver.fe,
+                                   solid_solver.face_quad_formula,
+                                   update_values | update_quadrature_points |
+                                     update_normal_vectors | update_JxW_values);
+
+  FEFaceValues<dim> scalar_fe_face_values(
+    solid_solver.scalar_fe,
+    solid_solver.face_quad_formula,
+    update_values | update_quadrature_points | update_normal_vectors |
+      update_JxW_values);
+
+  // std::vector<types::global_dof_index> scalar_dof_indices(
+  // solid_solver.scalar_fe.dofs_per_cell);
+
+  const unsigned int n_f_q_points = solid_solver.face_quad_formula.size();
+
+  std::vector<Tensor<1, dim>> v(n_f_q_points);
+
+  std::vector<double> s_stress_component(n_f_q_points);
+
+  const FEValuesExtractors::Vector velocities(0);
+
+  int stress_vec_size = dim + dim * (dim - 1) * 0.5;
+
+  std::vector<std::vector<double>> s_cell_stress =
+    std::vector<std::vector<double>>(stress_vec_size,
+                                     std::vector<double>(n_f_q_points));
+
+  double total_interface_work = 0.0;
+
+  auto scalar_s_cell = solid_solver.scalar_dof_handler.begin_active();
+
+  for (auto s_cell = solid_solver.dof_handler.begin_active();
+       s_cell != solid_solver.dof_handler.end(),
+            scalar_s_cell != solid_solver.scalar_dof_handler.end();
+       ++s_cell, ++scalar_s_cell)
+    {
+
+      if (!s_cell->is_locally_owned())
+        continue;
+
+      double work_cell = 0.0;
+
+      for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+        {
+          double work_face = 0.0;
+
+          if (s_cell->face(f)->at_boundary())
+            {
+
+              fe_face_values.reinit(s_cell, f);
+
+              fe_face_values[velocities].get_function_values(
+                solid_solver.current_velocity, v);
+
+              // scalar_s_cell->get_dof_indices(scalar_dof_indices);
+
+              scalar_fe_face_values.reinit(scalar_s_cell, f);
+
+              int stress_index = 0;
+
+              for (unsigned int i = 0; i < dim; i++)
+                {
+                  for (unsigned int j = 0; j < i + 1; j++)
+                    {
+                      scalar_fe_face_values.get_function_values(
+                        solid_solver.stress[i][j], s_stress_component);
+                      s_cell_stress[stress_index] = s_stress_component;
+                      stress_index++;
+                    }
+                }
+
+              for (unsigned int q = 0; q < n_f_q_points; ++q)
+                {
+
+                  Tensor<1, dim> normal = fe_face_values.normal_vector(q);
+
+                  Tensor<1, dim> vs = v[q];
+
+                  SymmetricTensor<2, dim> stress_tensor;
+
+                  int stress_index = 0;
+
+                  for (unsigned int k = 0; k < dim; k++)
+                    {
+                      for (unsigned int m = 0; m < k + 1; m++)
+                        {
+                          stress_tensor[k][m] = s_cell_stress[stress_index][q];
+                          stress_index++;
+                        }
+                    }
+
+                  work_face +=
+                    (vs * stress_tensor * normal * fe_face_values.JxW(q));
+
+                } // end loop quad points
+            }
+
+          work_cell += work_face;
+
+        } // end loop cell faces
+
+      total_interface_work += work_cell;
+
+    } // end loop solid cells
+
+  move_solid_mesh(false);
+
+  file_solid_interface_work << time.current() << "\t" << total_interface_work
+                            << "\n";
+  file_solid_interface_work.close();
+}
+
+template <int dim>
+void OpenIFEM_Sable_FSI<dim>::compute_fluid_interface_work()
+{
+
+  // file output
+
+  std::ofstream file_fluid_interface_work;
+
+  if (time.current() == 0.0)
+    {
+
+      file_fluid_interface_work.open("fluid_interface_work.txt");
+      file_fluid_interface_work << "Time"
+                                << "\t"
+                                << "fluid interface work"
+                                << "\n";
+    }
+  else
+    {
+      file_fluid_interface_work.open("fluid_interface_work.txt",
+                                     std::ios_base::app);
+    }
+
+  FEFaceValues<dim> fe_face_values(
+    sable_solver.fe,
+    sable_solver.face_quad_formula,
+    update_values | update_gradients | update_normal_vectors |
+      update_quadrature_points | update_JxW_values);
+
+  FEFaceValues<dim> scalar_fe_face_values(
+    sable_solver.scalar_fe,
+    sable_solver.face_quad_formula,
+    update_values | update_quadrature_points | update_normal_vectors |
+      update_JxW_values);
+
+  const unsigned int n_f_q_points = sable_solver.face_quad_formula.size();
+
+  std::vector<Tensor<1, dim>> v(n_f_q_points);
+
+  std::vector<double> f_stress_component(n_f_q_points);
+
+  const FEValuesExtractors::Vector velocities(0);
+
+  int stress_vec_size = dim + dim * (dim - 1) * 0.5;
+
+  std::vector<std::vector<double>> f_cell_stress =
+    std::vector<std::vector<double>>(stress_vec_size,
+                                     std::vector<double>(n_f_q_points));
+
+  double total_interface_work = 0.0;
+
+  auto scalar_f_cell = sable_solver.scalar_dof_handler.begin_active();
+
+  for (auto f_cell = sable_solver.dof_handler.begin_active();
+       f_cell != sable_solver.dof_handler.end(),
+            scalar_f_cell != sable_solver.scalar_dof_handler.end();
+       ++f_cell, ++scalar_f_cell)
+    {
+
+      /*
+      if (!f_cell->is_locally_owned())
+       continue;
+      */
+
+      auto ptr = sable_solver.cell_property.get_data(f_cell);
+      if (ptr[0]->indicator == 0)
+        continue;
+
+      double work_cell = 0.0;
+
+      for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+        {
+          double work_face = 0.0;
+
+          bool face_state = false;
+
+          auto neighbour_cell = f_cell->neighbor(f);
+
+          // if the cell state is invalid, the face is the boudanry of the
+          // indicator field, which is a valid face if the cell state is
+          // valid, the neighbour indicator is equal to 0.
+
+          if (!neighbour_cell.state() == IteratorState::IteratorStates::valid)
+            {
+              face_state = true;
+            }
+
+          if (neighbour_cell.state() == IteratorState::IteratorStates::valid)
+
+            {
+              auto ptr = fluid_solver.cell_property.get_data(neighbour_cell);
+
+              if (ptr[0]->indicator == 0)
+                {
+                  face_state = true;
+                }
+            }
+
+          if (face_state == true)
+            {
+              fe_face_values.reinit(f_cell, f);
+
+              fe_face_values[velocities].get_function_values(
+                sable_solver.present_solution, v);
+
+              scalar_fe_face_values.reinit(scalar_f_cell, f);
+
+              int stress_index = 0;
+
+              for (unsigned int i = 0; i < dim; i++)
+                {
+                  for (unsigned int j = 0; j < i + 1; j++)
+                    {
+                      scalar_fe_face_values.get_function_values(
+                        sable_solver.stress[i][j], f_stress_component);
+
+                      f_cell_stress[stress_index] = f_stress_component;
+
+                      stress_index++;
+                    }
+                }
+
+              for (unsigned int q = 0; q < n_f_q_points; ++q)
+                {
+                  Tensor<1, dim> normal = fe_face_values.normal_vector(q);
+
+                  Tensor<1, dim> fluid_velocity = v[q];
+
+                  SymmetricTensor<2, dim> stress_tensor;
+
+                  int stress_index = 0;
+
+                  for (unsigned int k = 0; k < dim; k++)
+                    {
+                      for (unsigned int m = 0; m < k + 1; m++)
+                        {
+
+                          stress_tensor[k][m] = f_cell_stress[stress_index][q];
+
+                          stress_index++;
+                        }
+                    }
+
+                  work_face += (fluid_velocity * stress_tensor * normal *
+                                fe_face_values.JxW(q));
+
+                } // end looping q points
+            }
+
+          work_cell += work_face;
+
+        } // end looping cell faces
+
+      total_interface_work += work_cell;
+
+    } // end looping fluid cell
+
+  file_fluid_interface_work << time.current() << "\t" << total_interface_work
+                            << "\n";
+  file_fluid_interface_work.close();
+}
+
+template <int dim>
 void OpenIFEM_Sable_FSI<dim>::run()
 {
   // global refinement in sable solver is not possible as it would change the
@@ -2512,6 +2816,7 @@ void OpenIFEM_Sable_FSI<dim>::run()
           compute_added_mass();
         }
       solid_solver.run_one_step(first_step);
+      compute_solid_interface_work();
       // indicator field
       update_solid_box();
 
@@ -2532,6 +2837,7 @@ void OpenIFEM_Sable_FSI<dim>::run()
       sable_solver.send_indicator(sable_solver.sable_no_ele,
                                   sable_solver.sable_no_nodes);
       sable_solver.run_one_step();
+      compute_fluid_interface_work();
       output_vel_diff(first_step);
       first_step = false;
     }
