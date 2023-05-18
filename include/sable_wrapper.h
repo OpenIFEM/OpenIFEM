@@ -132,6 +132,10 @@ namespace Fluid
 
     void Max(double &send_biffer);
 
+    void Min(int &send_buffer);
+
+    void Min(double &send_biffer);
+
     bool is_comm_active = true;
 
     // Send solution to Sable

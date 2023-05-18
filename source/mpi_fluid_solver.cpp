@@ -1,5 +1,6 @@
 #include "mpi_fluid_solver.h"
 #include "mpi_turbulence_model.h"
+#include <optional>
 
 namespace Fluid
 {

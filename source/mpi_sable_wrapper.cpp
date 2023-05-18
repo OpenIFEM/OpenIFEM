@@ -148,8 +148,8 @@ namespace Fluid
     template <int dim>
     void SableWrap<dim>::get_dt_sable()
     {
-      double dt = 0;
-      Max(dt);
+      double dt = std::numeric_limits<double>::max();
+      Min(dt);
       time.set_delta_t(dt);
       time.increment();
     }
@@ -168,6 +168,23 @@ namespace Fluid
       double temp;
       MPI_Allreduce(
         &send_buffer, &temp, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+      send_buffer = temp;
+    }
+
+    template <int dim>
+    void SableWrap<dim>::Min(int &send_buffer)
+    {
+      int temp;
+      MPI_Allreduce(&send_buffer, &temp, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+      send_buffer = temp;
+    }
+
+    template <int dim>
+    void SableWrap<dim>::Min(double &send_buffer)
+    {
+      double temp;
+      MPI_Allreduce(
+        &send_buffer, &temp, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
       send_buffer = temp;
     }
 
