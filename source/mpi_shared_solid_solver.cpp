@@ -221,23 +221,21 @@ namespace Solid
       std::vector<DataComponentInterpretation::DataComponentInterpretation>
         data_component_interpretation(
           spacedim, DataComponentInterpretation::component_is_part_of_vector);
-      DataOut<dim, DoFHandler<dim, spacedim>> data_out;
+      DataOut<dim, spacedim> data_out;
       data_out.attach_dof_handler(dof_handler);
 
       // displacements
-      data_out.add_data_vector(
-        displacement,
-        solution_names,
-        DataOut<dim, DoFHandler<dim, spacedim>>::type_dof_data,
-        data_component_interpretation);
+      data_out.add_data_vector(displacement,
+                               solution_names,
+                               DataOut<dim, spacedim>::type_dof_data,
+                               data_component_interpretation);
 
       // velocity
       solution_names = std::vector<std::string>(spacedim, "velocities");
-      data_out.add_data_vector(
-        velocity,
-        solution_names,
-        DataOut<dim, DoFHandler<dim, spacedim>>::type_dof_data,
-        data_component_interpretation);
+      data_out.add_data_vector(velocity,
+                               solution_names,
+                               DataOut<dim, spacedim>::type_dof_data,
+                               data_component_interpretation);
 
       std::vector<unsigned int> subdomain_int(triangulation.n_active_cells());
       GridTools::get_subdomain_association(triangulation, subdomain_int);
@@ -341,16 +339,12 @@ namespace Solid
         }
 
       // Prepare to transfer previous solutions
-      std::vector<
-        parallel::distributed::SolutionTransfer<dim,
-                                                PETScWrappers::MPI::Vector,
-                                                DoFHandler<dim, spacedim>>>
-        trans(
-          3,
-          parallel::distributed::SolutionTransfer<dim,
-                                                  PETScWrappers::MPI::Vector,
-                                                  DoFHandler<dim, spacedim>>(
-            dof_handler));
+      std::vector<parallel::distributed::
+                    SolutionTransfer<dim, PETScWrappers::MPI::Vector, spacedim>>
+        trans(3,
+              parallel::distributed::
+                SolutionTransfer<dim, PETScWrappers::MPI::Vector, spacedim>(
+                  dof_handler));
       std::vector<PETScWrappers::MPI::Vector> buffers(
         3,
         PETScWrappers::MPI::Vector(

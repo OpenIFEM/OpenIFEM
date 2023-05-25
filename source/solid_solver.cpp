@@ -148,7 +148,7 @@ namespace Solid
     std::vector<DataComponentInterpretation::DataComponentInterpretation>
       data_component_interpretation(
         spacedim, DataComponentInterpretation::component_is_part_of_vector);
-    DataOut<dim, DoFHandler<dim, spacedim>> data_out;
+    DataOut<dim, spacedim> data_out;
     data_out.attach_dof_handler(dof_handler);
 
     // displacements
@@ -239,12 +239,9 @@ namespace Solid
         cell->clear_coarsen_flag();
       }
 
-    std::vector<
-      SolutionTransfer<dim, Vector<double>, DoFHandler<dim, spacedim>>>
-      solution_trans(
-        3,
-        SolutionTransfer<dim, Vector<double>, DoFHandler<dim, spacedim>>(
-          dof_handler));
+    std::vector<SolutionTransfer<dim, Vector<double>, spacedim>> solution_trans(
+      3, SolutionTransfer<dim, Vector<double>, spacedim>(dof_handler));
+
     std::vector<Vector<double>> buffer{
       previous_displacement, previous_velocity, previous_acceleration};
 
