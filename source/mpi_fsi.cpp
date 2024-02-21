@@ -213,6 +213,7 @@ namespace MPI
           return false;
         return true;
       }
+      
     for (auto cell = df.begin_active(); cell != df.end(); ++cell)
       {
         if (cell->point_inside(point))
@@ -221,7 +222,91 @@ namespace MPI
           }
       }
     return false;
-  }
+}
+
+  template <int dim>
+  std::pair<bool, const typename DoFHandler<dim>::active_cell_iterator>
+  FSI<dim>::point_in_solid_new(const DoFHandler<dim> &df,
+                                const Point<dim> &point)
+  {
+    // Check whether the point is in the solid box first.
+    for (unsigned int i = 0; i < dim; ++i)
+      {
+        if (point(i) < solid_box(2 * i) || point(i) > solid_box(2 * i + 1))
+          return {false, {}};
+      }
+
+   //NEWWAY: use a projection with tolerence for both 2-D and 3-D
+
+     for (auto cell = df.begin_active(); cell != df.end(); ++cell)
+    {
+
+      Point<dim> maxp = cell->vertex(0);
+      Point<dim> minp = cell->vertex(0);
+
+      for (unsigned int v = 1; v < cell->n_vertices(); ++v)
+        for (unsigned int d = 0; d < dim; ++d)
+          {
+            maxp[d] = std::max(maxp[d], cell->vertex(v)[d]);
+            minp[d] = std::min(minp[d], cell->vertex(v)[d]);
+          }
+
+      // rule out points outside the
+      // bounding box of this cell
+      bool inside_box = true;
+      for (unsigned int d = 0; d < dim; ++d)
+        {
+          if ((point[d] < minp[d]) || (point[d] > maxp[d]))
+            {
+              inside_box = false;
+              break;
+            }
+        }
+
+      if (!inside_box)
+        continue;
+
+      if (point_in_cell(cell, point))
+        return {true, cell};
+    }
+  return {false, {}};
+
+}
+
+template <int dim>
+bool FSI<dim>::point_in_cell(
+  const typename DoFHandler<dim>::active_cell_iterator &cell,
+  const Point<dim> &p)
+{
+  /*
+  if (dim == 2)
+    {
+      return (cell->point_inside(p));
+    }
+  else
+    {
+  */
+      // we need to check more carefully: transform to the
+      // unit cube and check there. unfortunately, this isn't
+      // completely trivial since the transform_real_to_unit_cell
+      // function may throw an exception that indicates that the
+      // point given could not be inverted. we take this as a sign
+      // that the point actually lies outside, as also documented
+      // for that function
+      double tolerence = 1e-10;
+      MappingQ1<dim> mapping;
+      try
+        {
+          auto p_unit = mapping.transform_real_to_unit_cell(cell, p);
+          return GeometryInfo<dim>::is_inside_unit_cell(p_unit, tolerence);
+        }
+      catch (const Mapping<3, 3>::ExcTransformationFailed &)
+        {
+          return false;
+        }
+    //}
+}
+
 
   template <int dim>
   void FSI<dim>::setup_cell_hints()
@@ -292,7 +377,233 @@ namespace MPI
   void FSI<dim>::update_indicator()
   {
     TimerOutput::Scope timer_section(timer, "Update indicator");
-    move_solid_mesh(true);
+
+     move_solid_mesh(true);
+
+  // initialize vertex_indicator_data
+  vertex_indicator_data.clear();
+  cell_partially_inside_solid.clear();
+  cell_nodes_inside_solid.clear();
+  cell_nodes_inside_solid.clear();
+
+ unsigned int min_nodes_inside = GeometryInfo<dim>::vertices_per_cell - 1;
+  if (parameters.indicator_field_condition == "CompletelyInsideSolid")
+    {
+      min_nodes_inside = GeometryInfo<dim>::vertices_per_cell - 1;
+    }
+
+  else if (parameters.indicator_field_condition == "PartiallyInsideSolid")
+    min_nodes_inside = 0;
+  
+  int cell_count = 0;
+
+  for (auto f_cell = fluid_solver.dof_handler.begin_active();
+       f_cell != fluid_solver.dof_handler.end();
+       ++f_cell)
+    {
+
+       if (!f_cell->is_locally_owned())
+          {
+            continue;
+          }
+
+      cell_partially_inside_solid.push_back(false);
+      auto p = fluid_solver.cell_property.get_data(f_cell);
+      unsigned int inside_count = 0;
+      std::vector<int> inside_nodes;
+      std::vector<int> outside_nodes;
+
+      for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
+        {
+          auto is_inside_solid =
+            point_in_solid_new(solid_solver.dof_handler, f_cell->vertex(v));
+
+          if (is_inside_solid.first)
+            {
+              ++inside_count;
+              inside_nodes.push_back(v);
+              vertex_indicator_data.insert(
+                {f_cell->vertex_index(v), is_inside_solid.second});
+            }
+          else
+            outside_nodes.push_back(v);
+        }
+      p[0]->indicator = (inside_count > min_nodes_inside ? 1 : 0);
+
+       // cell is partially inside the solid
+      if ((inside_count > min_nodes_inside) &&
+          (inside_count < GeometryInfo<dim>::vertices_per_cell))
+        {
+          // modify indicator for partially convered cells
+          p[0]->indicator =
+            double(inside_count) / double(GeometryInfo<dim>::vertices_per_cell);
+          cell_partially_inside_solid[cell_count] = true;
+          // store local node ids which are inside and outside the solid
+          cell_nodes_inside_solid.insert({cell_count, inside_nodes});
+          cell_nodes_outside_solid.insert({cell_count, outside_nodes});
+        }
+      cell_count += 1;
+
+      if (inside_count == 0)
+        {
+          p[0]->indicator = 0;
+          p[0]->exact_indicator = 0;
+          continue;
+        }
+
+      if (inside_count == GeometryInfo<dim>::vertices_per_cell)
+        {
+          p[0]->indicator = 1;
+          p[0]->exact_indicator = 1;
+          continue;
+        }
+
+      // update exact indicator field
+      // initialize it to zero
+      p[0]->exact_indicator = 0;
+
+      Point<dim> l_eu = f_cell->vertex(0);
+      Point<dim> u_eu;
+      if (dim == 2)
+        u_eu = f_cell->vertex(3);
+      else
+        u_eu = f_cell->vertex(7);
+      // get eulerian cell size
+      double h = abs(f_cell->vertex(0)(0) - f_cell->vertex(1)(0));
+      // check if cell intersects with solid box
+      bool intersection = true;
+      for (unsigned int i = 0; i < dim; i++)
+        {
+          if ((solid_box(2 * i) >= u_eu(i)) ||
+              (l_eu(i) >= solid_box(2 * i + 1)))
+            {
+              intersection = false;
+              break;
+            }
+        }
+      if (!intersection)
+        continue;
+      // sample points
+      int n = 10;
+      int sample_count = pow((n + 1), dim);
+      double dh = h / double(n);
+      std::vector<Point<dim>> sample_points;
+
+      for (int i = 0; i < n + 1; i++)
+        {
+          for (int j = 0; j < n + 1; j++)
+            {
+              Point<dim> sample;
+              sample[0] = l_eu[0] + dh * i;
+              sample[1] = l_eu[1] + dh * j;
+
+              if (dim == 2)
+                {
+                  bool inside_box = true;
+                  for (unsigned int d = 0; d < dim; d++)
+                    {
+                      if ((sample[d] < solid_box[2 * d]) ||
+                          (sample[d] > solid_box[2 * d + 1]))
+                        {
+                          inside_box = false;
+                          break;
+                        }
+                    }
+                  if (!inside_box)
+                    continue;
+                  sample_points.push_back(sample);
+                }
+              else
+                {
+                  for (int k = 0; k < n + 1; k++)
+                    {
+                      sample[2] = l_eu[2] + dh * k;
+                      bool inside_box = true;
+                      for (unsigned int d = 0; d < 1; d++)
+                        {
+                          if ((sample[d] < solid_box[2 * d]) ||
+                              (sample[d] > solid_box[2 * d + 1]))
+                            {
+                              inside_box = false;
+                              break;
+                            }
+                        }
+                      if (!inside_box)
+                        continue;
+                      sample_points.push_back(sample);
+                    }
+                }
+            }
+        }
+
+         for (auto s_cell = solid_solver.dof_handler.begin_active();
+           s_cell != solid_solver.dof_handler.end();
+           ++s_cell)
+        {
+          // create bounding box for the Lagrangian element
+          Point<dim> l_lag = s_cell->vertex(0);
+          Point<dim> u_lag = s_cell->vertex(0);
+          for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
+               ++v)
+            {
+              for (unsigned int i = 0; i < dim; i++)
+                {
+                  if (s_cell->vertex(v)(i) < l_lag(i))
+                    l_lag(i) = s_cell->vertex(v)(i);
+                  else if (s_cell->vertex(v)(i) > u_lag(i))
+                    u_lag(i) = s_cell->vertex(v)(i);
+                }
+            }
+
+          bool intersection = true;
+          for (unsigned int i = 0; i < dim; i++)
+            {
+              if ((l_lag(i) >= u_eu(i)) || (l_eu(i) >= u_lag(i)))
+                {
+                  intersection = false;
+                  break;
+                }
+            }
+          if (!intersection)
+            continue;
+
+          Point<dim> l_int;
+          Point<dim> u_int;
+          for (unsigned int i = 0; i < dim; i++)
+            {
+              l_int(i) = std::max(l_eu(i), l_lag(i));
+              u_int(i) = std::min(u_eu(i), u_lag(i));
+            }
+
+          int sample_inside = 0;
+          for (unsigned int s = 0; s < sample_points.size(); s++)
+            {
+              auto sample = sample_points[s];
+              bool inside_box = true;
+              for (unsigned int d = 0; d < dim; d++)
+                {
+                  if ((sample[d] < l_int[d]) || (sample[d] > u_int[d]))
+                    {
+                      inside_box = false;
+                      break;
+                    }
+                }
+              if (!inside_box)
+                continue;
+              if (point_in_cell(s_cell, sample))
+                sample_inside += 1;
+            }
+
+          p[0]->exact_indicator +=
+            (double(sample_inside) / double(sample_count));
+        }
+
+      if (p[0]->exact_indicator > 1.0)
+        p[0]->exact_indicator = 1.0;
+
+    }
+
+    /* OLDWAY
     for (auto f_cell = fluid_solver.dof_handler.begin_active();
          f_cell != fluid_solver.dof_handler.end();
          ++f_cell)
@@ -306,7 +617,7 @@ namespace MPI
         int inside_count = 0;
         for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
           {
-            if (!point_in_solid(solid_solver.dof_handler, f_cell->vertex(v)))
+            if (!point_in_solid_new(solid_solver.dof_handler, f_cell->vertex(v)))
               {
                 break;
               }
@@ -315,9 +626,272 @@ namespace MPI
         p[0]->indicator =
           (inside_count == GeometryInfo<dim>::vertices_per_cell ? 1 : 0);
       }
+    
+    */
+
+   move_solid_mesh(false);
+  }
+
+
+//compute total KE in artificial fluid domain
+  template <int dim>
+  void FSI<dim>::calculate_artificial_KE()
+  {
+     move_solid_mesh(true);
+
+     FEValues<dim> fe_values(fluid_solver.fe,
+                            fluid_solver.volume_quad_formula,
+                            update_values | update_gradients |
+                              update_quadrature_points | update_JxW_values);
+ 
+    //Vector<double> localized_solid_velocity(solid_solver.current_velocity);
+
+    const unsigned int n_q_points = fluid_solver.volume_quad_formula.size();
+
+    const FEValuesExtractors::Vector velocities(0);
+    const FEValuesExtractors::Scalar pressure(dim);
+
+    //std::vector<Tensor<2, dim>> grad_v(n_q_points);
+    std::vector<Tensor<1, dim>> vel(n_q_points);
+    std::vector<Tensor<1, dim>> pre_vel(n_q_points);
+
+    double ke = 0;
+
+     for (auto f_cell = fluid_solver.dof_handler.begin_active();
+         f_cell != fluid_solver.dof_handler.end();
+         ++f_cell)
+      {
+          if (!f_cell->is_locally_owned())
+          {
+            continue;
+          }
+
+        auto ptr = fluid_solver.cell_property.get_data(f_cell);
+        const double ind = ptr[0]->indicator;
+        const double ind_exact = ptr[0]->exact_indicator;
+        double rho_bar = parameters.solid_rho * ind_exact +
+                               parameters.fluid_rho * (1 - ind_exact);
+
+        if (ind == 0)
+          continue;
+
+        fe_values.reinit(f_cell);
+
+        fe_values[velocities].get_function_values(fluid_solver.present_solution,vel);
+
+        fe_values[velocities].get_function_values(fluid_solver.fluid_previous_solution,pre_vel);
+        
+        //fe_values[velocities].get_function_gradients(
+          //fluid_solver.present_solution, grad_v);  
+
+        //auto q_points = fe_values.get_quadrature_points();
+
+         for (unsigned int q = 0; q < n_q_points; q++)
+          {
+              
+              /*
+              if (!point_in_solid(solid_solver.dof_handler,
+                                    q_points[q]))
+                  continue;
+     
+              Utils::GridInterpolator<dim, Vector<double>> interpolator(
+              solid_solver.dof_handler, q_points[q]);
+            
+            if (!interpolator.found_cell())
+              {
+                std::stringstream message;
+                message << "Cannot find point in solid: " << q_points[q]
+                        << std::endl;
+                AssertThrow(interpolator.found_cell(),
+                            ExcMessage(message.str()));
+              }
+
+             Vector<double> solid_vel(dim);
+            interpolator.point_value(localized_solid_velocity, solid_vel);
+            
+            Tensor<1, dim> vs;
+            for (int j = 0; j < dim; ++j)
+              {
+                vs[j] = solid_vel[j];
+              }
+              */  
+            
+            Tensor<1, dim> fluid_acc_tensor =
+              (vel[q] - pre_vel[q]) / time.get_delta_t();
+
+               // ke += parameters.solid_rho
+               ke += rho_bar
+              * scalar_product(fluid_acc_tensor,vel[q])
+              * fe_values.JxW(q);
+          }                            
+
+      }
+        ke = Utilities::MPI::sum(ke, fluid_solver.mpi_communicator);
+          
+        if ( Utilities::MPI::this_mpi_process(mpi_communicator)== 0)
+        {
+
+          std::ofstream file_ke;
+
+          if (time.current() == 0.0)
+            {
+              file_ke.open("artificial_ke_rate.txt");
+              file_ke << "Time"
+                      << "\t"
+                      << "Artificial KE"
+                      << "\t"
+                      << "\n";
+            }
+
+          else
+
+            {
+              file_ke.open("artificial_ke_rate.txt", std::ios_base::app);
+            }
+
+          file_ke << time.current() << "\t" << ke << "\t" << "\n";
+          file_ke.close();
+        }
+
+         move_solid_mesh(false);
+  }
+
+  template <int dim>
+  void FSI<dim>::calculate_artificial_PE()
+  {
+
+    move_solid_mesh(true);
+
+    double pe_rate = 0;
+
+    FEValues<dim> fe_values( fluid_solver.fe, fluid_solver.volume_quad_formula, 
+             update_values | update_quadrature_points| update_JxW_values
+             |update_gradients);
+
+    
+    FEValues<dim> scalar_fe_values(
+      fluid_solver.scalar_fe,
+      fluid_solver.volume_quad_formula,
+      update_values | update_quadrature_points| update_JxW_values
+             |update_gradients);
+
+
+    FEFaceValues<dim> fe_face_values(fluid_solver.fe,
+                                     fluid_solver.face_quad_formula,
+                                     update_values | update_quadrature_points |
+                                       update_normal_vectors |
+                                       update_JxW_values);
+
+    FEFaceValues<dim> scalar_fe_face_values(
+      fluid_solver.scalar_fe,
+      fluid_solver.face_quad_formula,
+      update_values);
+
+
+    std::vector<std::vector<PETScWrappers::MPI::Vector>>
+      relevant_partition_stress =
+        std::vector<std::vector<PETScWrappers::MPI::Vector>>(
+          dim,
+          std::vector<PETScWrappers::MPI::Vector>(
+            dim,
+            PETScWrappers::MPI::Vector(
+              fluid_solver.locally_owned_scalar_dofs,
+              fluid_solver.locally_relevant_scalar_dofs,
+              mpi_communicator)));
+    relevant_partition_stress = fluid_solver.stress;
+
+    const unsigned int n_q_points = fluid_solver.volume_quad_formula.size();
+
+
+    std::vector<Tensor<1, dim>> vel(n_q_points);
+    std::vector<std::vector<std::vector<Tensor<1, dim>>>> stress_grad(
+      dim,
+      std::vector<std::vector<Tensor<1, dim>>>(
+        dim, std::vector<Tensor<1, dim>>(fe_values.n_quadrature_points)));
+    std::vector<Tensor<1, dim>> stress_div(fe_values.n_quadrature_points);
+
+
+    
+    const FEValuesExtractors::Vector velocities(0);
+    const FEValuesExtractors::Scalar pressure(dim);
+
+    auto cell = fluid_solver.dof_handler.begin_active();
+    auto scalar_cell = fluid_solver.scalar_dof_handler.begin_active();
+
+      for (; cell != fluid_solver.dof_handler.end(), scalar_cell != fluid_solver.scalar_dof_handler.end(); ++cell, ++scalar_cell)
+      {
+
+        if (!cell->is_locally_owned())
+         continue;
+
+
+        auto ptr = fluid_solver.cell_property.get_data(cell);
+        if (ptr[0]->indicator == 0)
+          continue;
+
+        fe_values.reinit(cell);
+        scalar_fe_values.reinit(scalar_cell);
+
+        fe_values[velocities].get_function_values(
+                 fluid_solver.present_solution, vel);
+
+
+        for (unsigned i = 0; i < dim; ++i)
+          {
+            for (unsigned j = 0; j < dim; ++j)
+              {
+                scalar_fe_values.get_function_gradients(
+                  relevant_partition_stress[i][j], stress_grad[i][j]);
+              }
+          }
+
+           for (unsigned int q = 0; q < n_q_points; ++q)
+           {
+              for (unsigned i = 0; i < dim; ++i)
+              {
+                stress_div[q][i] = 0.0;
+                for (unsigned j = 0; j < dim; ++j)
+                  {
+                    stress_div[q][i] += stress_grad[i][j][q][j];
+                  }
+              }
+
+              pe_rate += scalar_product(vel[q],stress_div[q])* fe_values.JxW(q);
+           }
+      }  // end loop fluid cells
+
+      pe_rate = Utilities::MPI::sum(pe_rate, fluid_solver.mpi_communicator);
+
+    // file output
+     if ( Utilities::MPI::this_mpi_process(mpi_communicator)== 0)
+     {
+      std::ofstream file_artificial_PE_rate;
+
+      if (time.current() == 0.0)
+    {
+
+      file_artificial_PE_rate.open("artificial_pe_rate.txt");
+      file_artificial_PE_rate << "Time"
+                << "\t"
+                << "artificial PE rate"
+                << "\t"
+                << "\n";
+    }
+    
+    else
+    {
+      file_artificial_PE_rate.open("artificial_pe_rate.txt", std::ios_base::app);
+    }
+
+
+    file_artificial_PE_rate << time.current() << "\t" << pe_rate << "\t" << "\n";
+    file_artificial_PE_rate.close();
+     }
+
     move_solid_mesh(false);
   }
 
+  
   // This function interpolates the solid velocity into the fluid solver,
   // as the Dirichlet boundary conditions for artificial fluid vertices
   template <int dim>
@@ -325,6 +899,24 @@ namespace MPI
   {
     TimerOutput::Scope timer_section(timer, "Find fluid BC");
     move_solid_mesh(true);
+     
+    /*
+    // inspired by cv_fsi.cpp, seems to be less accurate than using fluid_sovler.stress directly
+    
+      std::vector<std::vector<PETScWrappers::MPI::Vector>>
+      relevant_partition_stress =
+        std::vector<std::vector<PETScWrappers::MPI::Vector>>(
+          dim,
+          std::vector<PETScWrappers::MPI::Vector>(
+            dim,
+            PETScWrappers::MPI::Vector(
+              fluid_solver.locally_owned_scalar_dofs,
+              fluid_solver.locally_relevant_scalar_dofs,
+              mpi_communicator)));
+    relevant_partition_stress = fluid_solver.stress;
+    */
+    
+    
 
     // The nonzero Dirichlet BCs (to set the velocity) and zero Dirichlet
     // BCs (to set the velocity increment) for the artificial fluid domain.
@@ -370,6 +962,105 @@ namespace MPI
     std::vector<types::global_dof_index> dof_indices(
       fluid_solver.fe.dofs_per_cell);
     std::vector<unsigned int> dof_touched(fluid_solver.dof_handler.n_dofs(), 0);
+
+   
+    // implementing the stress part for fsi force
+    // this version is based on find_fluid_bc() in openifem_sable_fsi.cpp
+    
+    const std::vector<Point<dim>> &scalar_unit_points =
+      fluid_solver.scalar_fe.get_unit_support_points();
+
+    Quadrature<dim> scalar_dummy_q(scalar_unit_points);
+
+    FEValues<dim> scalar_dummy_fe_values(fluid_solver.scalar_fe,
+                                   scalar_dummy_q,
+                                   update_values | update_quadrature_points |
+                                     update_JxW_values | update_gradients);
+  
+    std::vector<types::global_dof_index> scalar_dof_indices(
+      fluid_solver.scalar_fe.dofs_per_cell);
+
+    
+    std::vector<unsigned int> scalar_dof_touched(
+      fluid_solver.scalar_dof_handler.n_dofs(), 0);
+
+    
+    std::vector<double> f_stress_component(scalar_unit_points.size());
+
+    std::vector<std::vector<double>> f_cell_stress =
+      std::vector<std::vector<double>>(
+        fluid_solver.fsi_stress.size(),
+        std::vector<double>(scalar_unit_points.size()));
+
+    for (auto scalar_cell = fluid_solver.scalar_dof_handler.begin_active();
+         scalar_cell != fluid_solver.scalar_dof_handler.end();
+         ++scalar_cell)
+      {
+
+        if (!scalar_cell->is_locally_owned())
+          continue;
+
+        auto ptr = fluid_solver.cell_property.get_data(scalar_cell);
+        if (ptr[0]->indicator == 0)
+          continue;
+
+        scalar_cell->get_dof_indices(scalar_dof_indices);
+
+        scalar_dummy_fe_values.reinit(scalar_cell);
+
+        int stress_index = 0;
+
+        // get fluid stress at support points
+        for (unsigned int i = 0; i < dim; i++)
+          {
+            for (unsigned int j = 0; j < i + 1; j++)
+              {
+                
+                scalar_dummy_fe_values.get_function_values(fluid_solver.stress[i][j],
+                                                     f_stress_component);
+
+                //scalar_dummy_fe_values.get_function_values(relevant_partition_stress[i][j],
+                                                     //f_stress_component);                            
+
+                f_cell_stress[stress_index] = f_stress_component;
+
+                stress_index++;
+              }
+          }
+
+        for (unsigned int i = 0; i < scalar_unit_points.size(); ++i)
+          {
+            // Skip the already-set dofs.
+            if (scalar_dof_touched[scalar_dof_indices[i]] != 0)
+              continue;
+            auto scalar_support_points =
+              scalar_dummy_fe_values.get_quadrature_points();
+            scalar_dof_touched[scalar_dof_indices[i]] = 1;
+            if (!point_in_solid(solid_solver.scalar_dof_handler,
+                                scalar_support_points[i]))
+              continue;
+
+            Utils::GridInterpolator<dim, Vector<double>> scalar_interpolator(
+              solid_solver.scalar_dof_handler, scalar_support_points[i]);
+
+            stress_index = 0;
+
+            for (unsigned int j = 0; j < dim; j++)
+              {
+                for (unsigned int k = 0; k < j + 1; k++)
+                  {
+                    Vector<double> s_stress_component(1);
+
+                    scalar_interpolator.point_value(localized_stress[j][k],
+                                                    s_stress_component);
+                    fluid_solver
+                      .fsi_stress[stress_index][scalar_dof_indices[i]] =
+                      f_cell_stress[stress_index][i] - s_stress_component[0];
+                       stress_index++;
+                  }
+              }
+          }
+      }
 
     for (auto f_cell = fluid_solver.dof_handler.begin_active();
          f_cell != fluid_solver.dof_handler.end();
@@ -1035,7 +1726,11 @@ namespace MPI
           parameters.global_refinements[0]);
         fluid_solver.setup_dofs();
         fluid_solver.make_constraints();
-        fluid_solver.initialize_system();
+        fluid_solver.initialize_system(); 
+        calculate_artificial_KE();
+        calculate_artificial_PE();
+        fluid_solver.calculate_fluid_KE();
+        fluid_solver.calculate_fluid_PE();
       }
     else
       {
@@ -1043,6 +1738,8 @@ namespace MPI
           {
             time.increment();
           }
+          
+          fluid_solver.fluid_previous_solution = fluid_solver.present_solution;
       }
 
     collect_solid_boundaries();
@@ -1098,6 +1795,7 @@ namespace MPI
               first_step);
           }
         find_fluid_bc();
+
         {
           TimerOutput::Scope timer_section(timer, "Run fluid solver");
           if (fluid_solver.turbulence_model)
@@ -1106,8 +1804,13 @@ namespace MPI
             }
           fluid_solver.run_one_step(true);
         }
+
         first_step = false;
         time.increment();
+        calculate_artificial_KE();
+        calculate_artificial_PE();
+        fluid_solver.fluid_previous_solution = fluid_solver.present_solution;
+
         if (time.time_to_refine())
           {
             refine_mesh(parameters.global_refinements[0],

@@ -19,6 +19,8 @@ protected:                                                                     \
   using FluidSolver<dim>::save_checkpoint;                                     \
   using FluidSolver<dim>::load_checkpoint;                                     \
   using FluidSolver<dim>::update_stress;                                       \
+  using FluidSolver<dim>::calculate_fluid_KE;                                  \
+  using FluidSolver<dim>::calculate_fluid_PE;                                  \
                                                                                \
   using FluidSolver<dim>::dofs_per_block;                                      \
   using FluidSolver<dim>::triangulation;                                       \
@@ -38,6 +40,7 @@ protected:                                                                     \
   using FluidSolver<dim>::solution_increment;                                  \
   using FluidSolver<dim>::system_rhs;                                          \
   using FluidSolver<dim>::fsi_acceleration;                                    \
+  using FluidSolver<dim>::fsi_stress;                                          \
   using FluidSolver<dim>::stress;                                              \
   using FluidSolver<dim>::parameters;                                          \
   using FluidSolver<dim>::mpi_communicator;                                    \
@@ -56,7 +59,8 @@ protected:                                                                     \
   using FluidSolver<dim>::hard_coded_boundary_values;                          \
   using FluidSolver<dim>::body_force;                                          \
   using FluidSolver<dim>::sigma_pml_field;                                     \
-  using FluidSolver<dim>::initial_condition_field
+  using FluidSolver<dim>::initial_condition_field;                             \
+  using FluidSolver<dim>::fluid_previous_solution
 
 #define MPISUPGFluidSolverInheritanceMacro()                                   \
 protected:                                                                     \

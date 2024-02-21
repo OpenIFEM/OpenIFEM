@@ -253,6 +253,10 @@ namespace Fluid
         owned_partitioning, relevant_partitioning, mpi_communicator);
       solution_increment.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
+      
+      fluid_previous_solution.reinit(owned_partitioning,
+                                       relevant_partitioning,
+                                       mpi_communicator);
       // newton_update is non-ghosted because the linear solver needs
       // a completely distributed vector.
       newton_update.reinit(owned_partitioning, mpi_communicator);
@@ -265,6 +269,11 @@ namespace Fluid
 
       fsi_acceleration.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
+
+
+      int stress_vec_size = dim + dim * (dim - 1) * 0.5;
+      fsi_stress = std::vector<Vector<double>>(
+      stress_vec_size, Vector<double>(scalar_dof_handler.n_dofs()));
 
       // Cell property
       setup_cell_property();
@@ -363,6 +372,19 @@ namespace Fluid
           auto state = solve(apply_nonzero_constraints && outer_iteration == 0);
           current_residual = system_rhs.l2_norm();
 
+           //output for MPI testing
+           /*
+                if ( Utilities::MPI::this_mpi_process(mpi_communicator)== 0)
+                {
+                  std::ofstream file_rhs("rhs.txt",std::ios_base::app);
+
+                  file_rhs << time.current() << "\t" << current_residual << std::endl;
+                  
+                  file_rhs.close();
+
+                }
+          */
+
           // Update evaluation_point. Since newton_update has been set to
           // the correct bc values, there is no need to distribute the
           // evaluation_point again. Note we have to use a non-ghosted
@@ -400,6 +422,12 @@ namespace Fluid
       present_solution = evaluation_point;
       // Update stress for output
       update_stress();
+
+      calculate_fluid_KE();
+      calculate_fluid_PE();
+       
+      //fluid_previous_solution = present_solution;
+      
       // Output
       if (time.time_to_output())
         {

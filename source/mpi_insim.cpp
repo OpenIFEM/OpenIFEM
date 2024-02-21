@@ -168,6 +168,11 @@ namespace Fluid
                               volume_quad_formula,
                               update_values | update_quadrature_points |
                                 update_JxW_values | update_gradients);
+      FEValues<dim> scalar_fe_values(scalar_fe,
+                                     volume_quad_formula,
+                                     update_values | update_quadrature_points |
+                                       update_JxW_values | update_gradients);
+
       FEFaceValues<dim> fe_face_values(fe,
                                        face_quad_formula,
                                        update_values | update_normal_vectors |
@@ -198,19 +203,29 @@ namespace Fluid
       std::vector<Tensor<1, dim>> present_velocity_values(n_q_points);
       std::vector<Tensor<1, dim>> fsi_acc_values(n_q_points);
 
+      std::vector<double> fsi_stress_value(n_q_points);
+
+      std::vector<std::vector<double>> fsi_cell_stress =
+      std::vector<std::vector<double>>(fsi_stress.size(),
+                                       std::vector<double>(n_q_points));
+
       std::vector<double> div_phi_u(dofs_per_cell);
       std::vector<Tensor<1, dim>> phi_u(dofs_per_cell);
       std::vector<Tensor<2, dim>> grad_phi_u(dofs_per_cell);
       std::vector<double> phi_p(dofs_per_cell);
+      
+      auto cell = dof_handler.begin_active();
+      auto scalar_cell = scalar_dof_handler.begin_active();
 
-      for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
-           ++cell)
+      for (; cell != dof_handler.end(), scalar_cell != scalar_dof_handler.end();
+      ++cell, ++scalar_cell)
         {
           if (cell->is_locally_owned())
             {
               auto p = cell_property.get_data(cell);
 
               fe_values.reinit(cell);
+              scalar_fe_values.reinit(scalar_cell);
 
               local_matrix = 0;
               local_mass_matrix = 0;
@@ -230,6 +245,16 @@ namespace Fluid
 
               fe_values[velocities].get_function_values(fsi_acceleration,
                                                         fsi_acc_values);
+              
+
+              for (unsigned int i = 0; i < fsi_stress.size(); i++)
+              {
+                scalar_fe_values.get_function_values(fsi_stress[i],
+                                                     fsi_stress_value);
+
+                fsi_cell_stress[i] = fsi_stress_value;
+              }
+
 
               // Assemble the system matrix and mass matrix simultaneouly.
               // The mass matrix only uses the (0, 0) and (1, 1) blocks.
@@ -237,7 +262,13 @@ namespace Fluid
               for (unsigned int q = 0; q < n_q_points; ++q)
                 {
                   const int ind = p[0]->indicator;
+                  const double ind_exact = p[0]->exact_indicator;
+
                   const double rho = parameters.fluid_rho;
+
+                  const double rho_bar = parameters.solid_rho * ind_exact +
+                               parameters.fluid_rho * (1 - ind_exact);
+
                   for (unsigned int k = 0; k < dofs_per_cell; ++k)
                     {
                       div_phi_u[k] = fe_values[velocities].divergence(k, q);
@@ -245,6 +276,24 @@ namespace Fluid
                       phi_u[k] = fe_values[velocities].value(k, q);
                       phi_p[k] = fe_values[pressure].value(k, q);
                     }
+                    SymmetricTensor<2, dim> fsi_stress_tensor;
+
+                      if (ind != 0)
+                      {
+                        int stress_index = 0;
+                        for (unsigned int k = 0; k < dim; k++)
+                          {
+                            for (unsigned int m = 0; m < k + 1; m++)
+                              {
+                                fsi_stress_tensor[k][m] =
+                                  fsi_cell_stress[stress_index][q];
+                                stress_index++;
+                              }
+                          }
+
+                      }
+               
+                   
 
                   for (unsigned int i = 0; i < dofs_per_cell; ++i)
                     {
@@ -295,11 +344,13 @@ namespace Fluid
                            phi_u[i] / time.get_delta_t() * rho +
                          gravity * phi_u[i] * rho) *
                         fe_values.JxW(q);
-                      if (ind == 1)
+                      //if (ind == 1)
+                      if (ind != 0)
                         {
                           local_rhs(i) +=
-                            (scalar_product(grad_phi_u[i], p[0]->fsi_stress) +
-                             (fsi_acc_values[q] * rho * phi_u[i])) *
+                           (scalar_product(grad_phi_u[i], fsi_stress_tensor) +
+                           //(scalar_product(grad_phi_u[i], p[0]->fsi_stress) +
+                             (fsi_acc_values[q] * rho_bar * phi_u[i])) *
                             fe_values.JxW(q);
                         }
                     }

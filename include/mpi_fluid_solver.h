@@ -182,6 +182,10 @@ namespace Fluid
       /// Load from checkpoint to restart.
       bool load_checkpoint();
 
+      void calculate_fluid_KE();
+
+      void calculate_fluid_PE();
+
       std::vector<types::global_dof_index> dofs_per_block;
 
       parallel::distributed::Triangulation<dim> &triangulation;
@@ -208,6 +212,7 @@ namespace Fluid
       /// FSI acceleration vector, which is attached on the solution dof
       /// handloer
       PETScWrappers::MPI::BlockVector fsi_acceleration;
+      std::vector<Vector<double>> fsi_stress;
 
       /**
        * Nodal strain and stress obtained by taking the average of surrounding
@@ -271,13 +276,17 @@ namespace Fluid
         std::function<double(const Point<dim> &, const unsigned int)>>
         initial_condition_field;
 
+      PETScWrappers::MPI::BlockVector fluid_previous_solution;
+
       /// A data structure that caches the real/artificial fluid indicator,
       /// FSI stress, and FSI acceleration terms at quadrature points, that
       /// will only be used in FSI simulations.
       struct CellProperty
       {
         int indicator; //!< Domain indicator: 1 for artificial fluid 0 for real
-                       //! fluid.
+                       //! fluid. 
+        double exact_indicator; //!< accurate estimation of the indicator:
+                                //!< can take value between 0 and 1.
         Tensor<1, dim>
           fsi_acceleration; //!< The acceleration term in FSI force.
         SymmetricTensor<2, dim> fsi_stress; //!< The stress term in FSI force.

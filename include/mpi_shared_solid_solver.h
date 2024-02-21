@@ -94,6 +94,13 @@ namespace Solid
       void run();
       PETScWrappers::MPI::Vector get_current_solution() const;
 
+       /**
+       * Store user's input of the coordinates of the points
+       * and the direction to be constrained.
+       */
+      void constrain_points(const std::vector<Point<dim>> &,
+                            const std::vector<unsigned int> &);
+
     protected:
       struct CellProperty;
       /**
@@ -194,6 +201,9 @@ namespace Solid
       PETScWrappers::MPI::Vector previous_acceleration;
       PETScWrappers::MPI::Vector previous_velocity;
       PETScWrappers::MPI::Vector previous_displacement;
+      void calculate_KE();
+      void compute_PE_rate();
+      PETScWrappers::MPI::Vector nodal_mass;
 
       /**
        * Arrays to store the fsi-related quantities. fsi_stress_rows has dim
@@ -206,6 +216,12 @@ namespace Solid
       std::vector<Vector<double>> fsi_stress_rows;
       Vector<double> fluid_velocity;
       Vector<double> fluid_pressure;
+
+
+      /** a pair container to store the user specified points and directions
+       */
+      std::pair<std::vector<Point<dim>>, std::vector<unsigned int>>
+        point_boundary_values;
 
       /**
        * Nodal strain and stress obtained by taking the average of surrounding

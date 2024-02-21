@@ -294,6 +294,7 @@ namespace Fluid
               const std::vector<std::shared_ptr<CellProperty>> p =
                 cell_property.get_data(cell);
               p[0]->indicator = 0;
+              p[0]->exact_indicator = 0;
               p[0]->fsi_acceleration = 0;
               p[0]->fsi_stress = 0;
               p[0]->material_id = 1;
@@ -336,6 +337,14 @@ namespace Fluid
         owned_partitioning, relevant_partitioning, mpi_communicator);
       fsi_acceleration.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
+      
+      fluid_previous_solution.reinit(owned_partitioning,
+                                       relevant_partitioning,
+                                       mpi_communicator);
+        
+      int stress_vec_size = dim + dim * (dim - 1) * 0.5;
+      fsi_stress = std::vector<Vector<double>>(
+      stress_vec_size, Vector<double>(scalar_dof_handler.n_dofs()));
       // system_rhs is non-ghosted because it is only used in the linear
       // solver and residual evaluation.
       system_rhs.reinit(owned_partitioning, mpi_communicator);
@@ -529,6 +538,8 @@ namespace Fluid
 
       // Indicator
       Vector<float> ind(triangulation.n_active_cells());
+      Vector<double> exact_ind(triangulation.n_active_cells());
+
       for (auto cell = triangulation.begin_active();
            cell != triangulation.end();
            ++cell)
@@ -537,9 +548,11 @@ namespace Fluid
             {
               auto p = cell_property.get_data(cell);
               ind[cell->active_cell_index()] = p[0]->indicator;
+              exact_ind[cell->active_cell_index()] = p[0]->exact_indicator;
             }
         }
       data_out.add_data_vector(ind, "Indicator");
+      data_out.add_data_vector(exact_ind, "exact_indicator");
 
       // viscous stress
       data_out.add_data_vector(scalar_dof_handler, tmp_stress[0][0], "Txx");
@@ -802,6 +815,206 @@ namespace Fluid
             }
         }
     }
+
+template <int dim>
+  void FluidSolver<dim>::calculate_fluid_KE(){
+    
+    FEValues<dim> fe_values(fe,
+                            volume_quad_formula,
+                            update_values | update_gradients |
+                              update_quadrature_points | update_JxW_values);
+
+   const unsigned int n_q_points = volume_quad_formula.size();
+
+    const FEValuesExtractors::Vector velocities(0);
+    const FEValuesExtractors::Scalar pressure(dim);
+
+    
+    std::vector<Tensor<1, dim>> vel(n_q_points);
+    std::vector<Tensor<1, dim>> pre_vel(n_q_points);
+
+    double ke = 0;
+
+     for (auto f_cell = dof_handler.begin_active();
+         f_cell != dof_handler.end();
+         ++f_cell)
+         {
+           if (!f_cell->is_locally_owned())
+          {
+            continue;
+          }
+
+         auto ptr = cell_property.get_data(f_cell);
+         const double ind = ptr[0]->indicator;
+
+        if (ind != 0)
+          continue;
+
+         fe_values.reinit(f_cell);
+
+         fe_values[velocities].get_function_values(present_solution,vel);
+         fe_values[velocities].get_function_values(fluid_previous_solution,pre_vel);
+
+          for (unsigned int q = 0; q < n_q_points; q++)
+          {
+            ke += parameters.fluid_rho * scalar_product((vel[q] - pre_vel[q]) / time.get_delta_t(),
+                                  vel[q]) * fe_values.JxW(q);
+          }
+
+         }
+
+         ke = Utilities::MPI::sum(ke, mpi_communicator);
+          
+        if ( Utilities::MPI::this_mpi_process(mpi_communicator)== 0)
+        {
+
+          std::ofstream file_ke;
+
+          if (time.current() == 0.0)
+            {
+              file_ke.open("fluid_ke_rate.txt");
+              file_ke << "Time"
+                      << "\t"
+                      << "Fluid KE Rate"
+                      << "\t"
+                      << "\n";
+            }
+
+          else
+
+            {
+              file_ke.open("fluid_ke_rate.txt", std::ios_base::app);
+            }
+
+          file_ke << time.current() << "\t" << ke << "\t"<< "\n";
+          file_ke.close();
+        }
+
+
+  }
+
+
+  template <int dim>
+  void FluidSolver<dim>::calculate_fluid_PE()
+
+  {
+    double pe_rate = 0;
+
+    std::vector<std::vector<PETScWrappers::MPI::Vector>>
+      relevant_partition_stress =
+        std::vector<std::vector<PETScWrappers::MPI::Vector>>(
+          dim,
+          std::vector<PETScWrappers::MPI::Vector>(
+            dim,
+            PETScWrappers::MPI::Vector(
+              locally_owned_scalar_dofs,
+              locally_relevant_scalar_dofs,
+              mpi_communicator)));
+    relevant_partition_stress = stress;
+
+
+FEValues<dim> fe_values(fe, volume_quad_formula, 
+             update_values | update_quadrature_points| update_JxW_values
+             |update_gradients);
+
+  FEValues<dim> scalar_fe_values(
+      scalar_fe,
+      volume_quad_formula,
+      update_values | update_quadrature_points| update_JxW_values
+             |update_gradients);
+
+    const unsigned int n_q_points = volume_quad_formula.size();
+
+
+    std::vector<Tensor<1, dim>> vel(n_q_points);
+    std::vector<std::vector<std::vector<Tensor<1, dim>>>> stress_grad(
+      dim,
+      std::vector<std::vector<Tensor<1, dim>>>(
+        dim, std::vector<Tensor<1, dim>>(fe_values.n_quadrature_points)));
+    std::vector<Tensor<1, dim>> stress_div(fe_values.n_quadrature_points);
+
+  
+
+   const FEValuesExtractors::Vector velocities(0);
+   const FEValuesExtractors::Scalar pressure(dim);
+
+
+   auto cell = dof_handler.begin_active();
+   auto scalar_cell = scalar_dof_handler.begin_active();
+
+      for (; cell != dof_handler.end(), scalar_cell != scalar_dof_handler.end(); ++cell, ++scalar_cell)
+      {
+
+        if (!cell->is_locally_owned())
+         continue;
+
+
+        auto ptr = cell_property.get_data(cell);
+        
+        if (ptr[0]->indicator !=0)
+          continue;
+        
+        
+        fe_values.reinit(cell);
+        scalar_fe_values.reinit(scalar_cell);
+
+        fe_values[velocities].get_function_values(present_solution, vel);
+
+
+        for (unsigned i = 0; i < dim; ++i)
+          {
+            for (unsigned j = 0; j < dim; ++j)
+              {
+                scalar_fe_values.get_function_gradients(
+                  relevant_partition_stress[i][j], stress_grad[i][j]);
+              }
+          }
+
+           for (unsigned int q = 0; q < n_q_points; ++q)
+           {
+              for (unsigned i = 0; i < dim; ++i)
+              {
+                stress_div[q][i] = 0.0;
+                for (unsigned j = 0; j < dim; ++j)
+                  {
+                    stress_div[q][i] += stress_grad[i][j][q][j];
+                  }
+              }
+
+              pe_rate += scalar_product(vel[q],stress_div[q])* fe_values.JxW(q);
+           }
+
+      }
+
+  pe_rate = Utilities::MPI::sum(pe_rate, mpi_communicator);
+
+  // file output
+     if ( Utilities::MPI::this_mpi_process(mpi_communicator)== 0)
+     {
+      std::ofstream file_fluid_PE_rate;
+
+      if (time.current() == 0.0)
+    {
+
+      file_fluid_PE_rate.open("fluid_pe_rate.txt");
+      file_fluid_PE_rate << "Time"
+                << "\t"
+                << "Fluid PE rate"
+                << "\t"
+                << "\n";
+    }
+    
+    else
+    {
+      file_fluid_PE_rate.open("fluid_pe_rate.txt", std::ios_base::app);
+    }
+
+
+    file_fluid_PE_rate << time.current() << "\t" << pe_rate << "\t"<< "\n";
+    file_fluid_PE_rate.close();
+    }
+  }
+
 
     template <int dim>
     FluidSolver<dim>::Field::Field(const Field &source)

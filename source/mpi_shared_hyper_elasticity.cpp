@@ -89,7 +89,24 @@ namespace Solid
         {
           // Solve for the initial acceleration
           assemble_system(true);
+
+          // Save nodal mass in a vector
+          std::pair<int, int> range = mass_matrix.local_range();
+          for (int i = range.first; i < range.second; i++)
+            {
+              nodal_mass[i] = mass_matrix.el(i, i);
+            }
+          nodal_mass.compress(VectorOperation::insert);
+
+          //calculate_KE();
+          //compute_PE_rate();
+
           this->solve(mass_matrix, previous_acceleration, system_rhs);
+
+
+          calculate_KE();
+          compute_PE_rate();
+
           this->output_results(time.get_timestep());
         }
 
@@ -191,6 +208,10 @@ namespace Solid
                            previous_acceleration,
                            dt * gamma,
                            current_acceleration);
+
+      calculate_KE();
+      compute_PE_rate();
+
       // Update the previous values
       previous_acceleration = current_acceleration;
       previous_velocity = current_velocity;
@@ -203,6 +224,9 @@ namespace Solid
 
       // strain and stress
       update_strain_and_stress();
+
+      //calculate_KE();
+      //compute_PE_rate();
 
       if (time.time_to_output())
         {
@@ -564,6 +588,32 @@ namespace Solid
                     }
                 }
             }
+
+            // lump mass matrix
+            
+            for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                {
+                  double sum = 0;
+                  for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                    {
+                      sum = sum + local_mass[i][j];
+                    }
+                  for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                    {
+                      if (i == j)
+                        {
+                          local_mass[i][j] = sum;
+                        }
+                      else
+                        {
+                          local_mass[i][j] = 0;
+                        }
+                    }
+                }
+
+              local_matrix.add(1, local_mass);
+
+
 
           if (initial_step)
             {
