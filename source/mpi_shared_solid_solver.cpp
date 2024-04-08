@@ -152,7 +152,48 @@ namespace Solid
         }
       fluid_velocity.reinit(dof_handler.n_dofs());
       fluid_pressure.reinit(scalar_dof_handler.n_dofs());
+      // Add initial velocity
+      if (time.current() == 0.0)
+        {
+          const std::vector<Point<dim>> &unit_points =
+            fe.get_unit_support_points();
+          std::vector<types::global_dof_index> dof_indices(fe.dofs_per_cell);
+          std::vector<unsigned int> dof_touched(dof_handler.n_dofs(), 0);
 
+          for (auto cell = dof_handler.begin_active();
+               cell != dof_handler.end();
+               ++cell)
+            {
+
+              if (cell->subdomain_id() == this_mpi_process)
+                {
+
+                  cell->get_dof_indices(dof_indices);
+
+                  for (unsigned int i = 0; i < unit_points.size(); ++i)
+                    {
+                      if (dof_touched[dof_indices[i]] == 0)
+                        {
+                          dof_touched[dof_indices[i]] = 1;
+
+                          auto component_index =
+                            fe.system_to_component_index(i).first;
+
+                          auto line = dof_indices[i];
+
+                          previous_velocity[line] =
+                            parameters.initial_velocity[component_index];
+                        }
+                    }
+                }
+            }
+
+          previous_velocity.compress(VectorOperation::insert);
+
+          constraints.distribute(previous_velocity);
+
+          current_velocity = previous_velocity;
+        }
       strain = std::vector<std::vector<PETScWrappers::MPI::Vector>>(
         spacedim,
         std::vector<PETScWrappers::MPI::Vector>(

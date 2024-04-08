@@ -381,27 +381,26 @@ namespace MPI
     std::vector<types::global_dof_index> dof_indices(
       fluid_solver.fe.dofs_per_cell);
     std::vector<unsigned int> dof_touched(fluid_solver.dof_handler.n_dofs(), 0);
-    
+
     // implementing the stress part for fsi force
-    
+
     const std::vector<Point<dim>> &scalar_unit_points =
       fluid_solver.scalar_fe.get_unit_support_points();
 
     Quadrature<dim> scalar_dummy_q(scalar_unit_points);
 
-    FEValues<dim> scalar_dummy_fe_values(fluid_solver.scalar_fe,
-                                   scalar_dummy_q,
-                                   update_values | update_quadrature_points |
-                                     update_JxW_values | update_gradients);
-  
+    FEValues<dim> scalar_dummy_fe_values(
+      fluid_solver.scalar_fe,
+      scalar_dummy_q,
+      update_values | update_quadrature_points | update_JxW_values |
+        update_gradients);
+
     std::vector<types::global_dof_index> scalar_dof_indices(
       fluid_solver.scalar_fe.dofs_per_cell);
 
-    
     std::vector<unsigned int> scalar_dof_touched(
       fluid_solver.scalar_dof_handler.n_dofs(), 0);
 
-    
     std::vector<double> f_stress_component(scalar_unit_points.size());
 
     std::vector<std::vector<double>> f_cell_stress =
@@ -432,10 +431,9 @@ namespace MPI
           {
             for (unsigned int j = 0; j < i + 1; j++)
               {
-                
-               
-                scalar_dummy_fe_values.get_function_values(relevant_partition_stress[i][j],
-                                                     f_stress_component);                                                     
+
+                scalar_dummy_fe_values.get_function_values(
+                  relevant_partition_stress[i][j], f_stress_component);
 
                 f_cell_stress[stress_index] = f_stress_component;
 
@@ -471,12 +469,11 @@ namespace MPI
                     fluid_solver
                       .fsi_stress[stress_index][scalar_dof_indices[i]] =
                       f_cell_stress[stress_index][i] - s_stress_component[0];
-                       stress_index++;
+                    stress_index++;
                   }
               }
           }
       }
-
 
     for (auto f_cell = fluid_solver.dof_handler.begin_active();
          f_cell != fluid_solver.dof_handler.end();
