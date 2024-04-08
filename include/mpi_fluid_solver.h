@@ -206,8 +206,10 @@ namespace Fluid
       PETScWrappers::MPI::BlockVector system_rhs;
 
       /// FSI acceleration vector, which is attached on the solution dof
-      /// handloer
+      /// handler
       PETScWrappers::MPI::BlockVector fsi_acceleration;
+
+      mutable std::vector<PETScWrappers::MPI::Vector> fsi_stress;
 
       /**
        * Nodal strain and stress obtained by taking the average of surrounding

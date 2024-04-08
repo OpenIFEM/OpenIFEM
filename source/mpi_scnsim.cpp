@@ -90,6 +90,10 @@ namespace Fluid
       std::vector<double> sigma_pml(n_q_points);
       std::vector<Tensor<1, dim>> artificial_bf(n_q_points);
       std::vector<Tensor<1, dim>> fsi_acc_values(n_q_points);
+      std::vector<double> fsi_stress_value(n_q_points);
+      std::vector<std::vector<double>> fsi_cell_stress =
+        std::vector<std::vector<double>>(fsi_stress.size(),
+                                         std::vector<double>(n_q_points));
       /**
        * Nodal stress gradients obtained by taking the average of surrounding
        * cell-averaged stresses. Their sizes are
@@ -163,6 +167,14 @@ namespace Fluid
               fe_values[pressure].get_function_values(present_solution,
                                                       present_pressure_values);
 
+              for (unsigned int i = 0; i < fsi_stress.size(); i++)
+                {
+                  scalar_fe_values.get_function_values(fsi_stress[i],
+                                                       fsi_stress_value);
+
+                  fsi_cell_stress[i] = fsi_stress_value;
+                }
+
               for (unsigned i = 0; i < dim; ++i)
                 {
                   for (unsigned j = 0; j < dim; ++j)
@@ -210,6 +222,22 @@ namespace Fluid
                       phi_u[k] = fe_values[velocities].value(k, q);
                       phi_p[k] = fe_values[pressure].value(k, q);
                       grad_phi_p[k] = fe_values[pressure].gradient(k, q);
+                    }
+
+                  SymmetricTensor<2, dim> fsi_stress_tensor;
+
+                  if (ind != 0)
+                    {
+                      int stress_index = 0;
+                      for (unsigned int k = 0; k < dim; k++)
+                        {
+                          for (unsigned int m = 0; m < k + 1; m++)
+                            {
+                              fsi_stress_tensor[k][m] =
+                                fsi_cell_stress[stress_index][q];
+                              stress_index++;
+                            }
+                        }
                     }
 
                   // Define the UGN based SUPG parameters (Tezduyar):
@@ -475,7 +503,7 @@ namespace Fluid
                       if (ind == 1)
                         {
                           local_rhs(i) +=
-                            (scalar_product(grad_phi_u[i], p[0]->fsi_stress) +
+                            (scalar_product(grad_phi_u[i], fsi_stress_tensor) +
                              (fsi_acc_values[q] * rho) *
                                (phi_u[i] + tau_PSPG * grad_phi_p[i] +
                                 tau_SUPG * current_velocity_values[q] *

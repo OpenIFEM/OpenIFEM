@@ -336,6 +336,13 @@ namespace Fluid
         owned_partitioning, relevant_partitioning, mpi_communicator);
       fsi_acceleration.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
+
+      int stress_vec_size = dim + dim * (dim - 1) * 0.5;
+      fsi_stress = std::vector<PETScWrappers::MPI::Vector>(
+        stress_vec_size,
+        PETScWrappers::MPI::Vector(locally_owned_scalar_dofs,
+                                   locally_relevant_scalar_dofs,
+                                   mpi_communicator));
       // system_rhs is non-ghosted because it is only used in the linear
       // solver and residual evaluation.
       system_rhs.reinit(owned_partitioning, mpi_communicator);
