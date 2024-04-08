@@ -19,9 +19,7 @@ protected:                                                                     \
   using FluidSolver<dim>::save_checkpoint;                                     \
   using FluidSolver<dim>::load_checkpoint;                                     \
   using FluidSolver<dim>::update_stress;                                       \
-  using FluidSolver<dim>::calculate_fluid_KE;                                  \
-  using FluidSolver<dim>::calculate_fluid_PE;                                  \
-                                                                               \
+  using FluidSolver<dim>::compute_fluid_energy;                                \
   using FluidSolver<dim>::dofs_per_block;                                      \
   using FluidSolver<dim>::triangulation;                                       \
   using FluidSolver<dim>::fe;                                                  \

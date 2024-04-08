@@ -520,7 +520,6 @@ namespace Fluid
       present_solution = evaluation_point;
       // Update stress for output
       update_stress();
-      calculate_fluid_KE();
       fluid_previous_solution = present_solution;
       // Output
       if (parameters.simulation_type == "Fluid" && time.time_to_save())
@@ -553,7 +552,6 @@ namespace Fluid
           setup_dofs();
           make_constraints();
           initialize_system();
-          calculate_fluid_KE();
           fluid_previous_solution = present_solution;
         }
 

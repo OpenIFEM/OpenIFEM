@@ -182,9 +182,7 @@ namespace Fluid
       /// Load from checkpoint to restart.
       bool load_checkpoint();
 
-      void calculate_fluid_KE();
-
-      void calculate_fluid_PE();
+      void compute_fluid_energy();
 
       std::vector<types::global_dof_index> dofs_per_block;
 

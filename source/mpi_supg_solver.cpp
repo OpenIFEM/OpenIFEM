@@ -468,9 +468,7 @@ namespace Fluid
 
       */
 
-      // calculate_fluid_KE();
-      // calculate_fluid_PE();
-
+      compute_fluid_energy();
       fluid_previous_solution = present_solution;
 
       // Output
@@ -512,8 +510,7 @@ namespace Fluid
           setup_dofs();
           make_constraints();
           initialize_system();
-          // calculate_fluid_KE();
-          // calculate_fluid_PE();
+          compute_fluid_energy();
         }
 
       // Time loop.
