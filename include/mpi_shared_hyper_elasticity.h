@@ -97,7 +97,7 @@ namespace Solid
       using SharedSolidSolver<dim>::nodal_mass;
       using SharedSolidSolver<dim>::calculate_KE;
       using SharedSolidSolver<dim>::compute_PE_rate;
-      
+
     public:
       SharedHyperElasticity(Triangulation<dim> &,
                             const Parameters::AllParameters &);

@@ -98,11 +98,10 @@ namespace Solid
             }
           nodal_mass.compress(VectorOperation::insert);
 
-          //calculate_KE();
-          //compute_PE_rate();
+          // calculate_KE();
+          // compute_PE_rate();
 
           this->solve(mass_matrix, previous_acceleration, system_rhs);
-
 
           calculate_KE();
           compute_PE_rate();
@@ -225,8 +224,8 @@ namespace Solid
       // strain and stress
       update_strain_and_stress();
 
-      //calculate_KE();
-      //compute_PE_rate();
+      // calculate_KE();
+      // compute_PE_rate();
 
       if (time.time_to_output())
         {
@@ -589,31 +588,29 @@ namespace Solid
                 }
             }
 
-            // lump mass matrix
-            
-            for (unsigned int i = 0; i < dofs_per_cell; ++i)
+          // lump mass matrix
+
+          for (unsigned int i = 0; i < dofs_per_cell; ++i)
+            {
+              double sum = 0;
+              for (unsigned int j = 0; j < dofs_per_cell; ++j)
                 {
-                  double sum = 0;
-                  for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                  sum = sum + local_mass[i][j];
+                }
+              for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                {
+                  if (i == j)
                     {
-                      sum = sum + local_mass[i][j];
+                      local_mass[i][j] = sum;
                     }
-                  for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                  else
                     {
-                      if (i == j)
-                        {
-                          local_mass[i][j] = sum;
-                        }
-                      else
-                        {
-                          local_mass[i][j] = 0;
-                        }
+                      local_mass[i][j] = 0;
                     }
                 }
+            }
 
-              local_matrix.add(1, local_mass);
-
-
+          local_matrix.add(1, local_mass);
 
           if (initial_step)
             {

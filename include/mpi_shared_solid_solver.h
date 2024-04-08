@@ -94,7 +94,7 @@ namespace Solid
       void run();
       PETScWrappers::MPI::Vector get_current_solution() const;
 
-       /**
+      /**
        * Store user's input of the coordinates of the points
        * and the direction to be constrained.
        */
@@ -216,7 +216,6 @@ namespace Solid
       std::vector<Vector<double>> fsi_stress_rows;
       Vector<double> fluid_velocity;
       Vector<double> fluid_pressure;
-
 
       /** a pair container to store the user specified points and directions
        */

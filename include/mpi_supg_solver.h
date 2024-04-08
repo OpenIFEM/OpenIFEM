@@ -184,7 +184,7 @@ namespace Fluid
             TimerOutput &timer2,
             const std::vector<IndexSet> &owned_partitioning,
             const PETScWrappers::MPI::BlockSparseMatrix &system,
-            const PETScWrappers::PreconditionerBase &Pvvinv);
+            const PETScWrappers::PreconditionBase &Pvvinv);
           void vmult(PETScWrappers::MPI::Vector &dst,
                      const PETScWrappers::MPI::Vector &src) const;
 
@@ -192,7 +192,7 @@ namespace Fluid
           TimerOutput &timer2;
           const SmartPointer<const PETScWrappers::MPI::BlockSparseMatrix>
             system_matrix;
-          const PETScWrappers::PreconditionerBase *Pvv_inverse;
+          const PETScWrappers::PreconditionBase *Pvv_inverse;
           PETScWrappers::MPI::BlockVector dumb_vector;
         };
       };

@@ -253,10 +253,9 @@ namespace Fluid
         owned_partitioning, relevant_partitioning, mpi_communicator);
       solution_increment.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
-      
-      fluid_previous_solution.reinit(owned_partitioning,
-                                       relevant_partitioning,
-                                       mpi_communicator);
+
+      fluid_previous_solution.reinit(
+        owned_partitioning, relevant_partitioning, mpi_communicator);
       // newton_update is non-ghosted because the linear solver needs
       // a completely distributed vector.
       newton_update.reinit(owned_partitioning, mpi_communicator);
@@ -270,10 +269,16 @@ namespace Fluid
       fsi_acceleration.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
 
-
       int stress_vec_size = dim + dim * (dim - 1) * 0.5;
-      fsi_stress = std::vector<Vector<double>>(
-      stress_vec_size, Vector<double>(scalar_dof_handler.n_dofs()));
+
+      fsi_stress = std::vector<PETScWrappers::MPI::Vector>(
+        stress_vec_size,
+        PETScWrappers::MPI::Vector(locally_owned_scalar_dofs,
+                                   locally_relevant_scalar_dofs,
+                                   mpi_communicator));
+
+      // fsi_stress = std::vector<Vector<double>>(
+      // stress_vec_size, Vector<double>(scalar_dof_handler.n_dofs()));
 
       // Cell property
       setup_cell_property();
@@ -372,19 +377,6 @@ namespace Fluid
           auto state = solve(apply_nonzero_constraints && outer_iteration == 0);
           current_residual = system_rhs.l2_norm();
 
-           //output for MPI testing
-           /*
-                if ( Utilities::MPI::this_mpi_process(mpi_communicator)== 0)
-                {
-                  std::ofstream file_rhs("rhs.txt",std::ios_base::app);
-
-                  file_rhs << time.current() << "\t" << current_residual << std::endl;
-                  
-                  file_rhs.close();
-
-                }
-          */
-
           // Update evaluation_point. Since newton_update has been set to
           // the correct bc values, there is no need to distribute the
           // evaluation_point again. Note we have to use a non-ghosted
@@ -420,14 +412,67 @@ namespace Fluid
       solution_increment = tmp2;
       // Newton iteration converges, update time and solution
       present_solution = evaluation_point;
+
+      // for the 1-D wave-demo problem, manually set all vy to zero, DELETE in
+      // the future!
+
+      auto cell = dof_handler.begin_active();
+      auto scalar_cell = scalar_dof_handler.begin_active();
+
+      std::set<unsigned int> touched_vertices;
+      for (; cell != dof_handler.end(); ++cell, ++scalar_cell)
+        {
+          if (cell->is_locally_owned())
+            {
+              std::vector<types::global_dof_index> local_dof_indices(
+                fe.dofs_per_cell);
+              cell->get_dof_indices(local_dof_indices);
+
+              for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
+                   ++v)
+                {
+                  unsigned int vertex_index = cell->vertex_index(v);
+                  if (touched_vertices.find(vertex_index) ==
+                      touched_vertices.end())
+                    {
+
+                      unsigned int vy_index =
+                        local_dof_indices[v * fe.dofs_per_vertex + 1];
+
+                      present_solution(vy_index) = 0.0;
+
+                      touched_vertices.insert(vertex_index);
+                    }
+                }
+            }
+        }
+
+      present_solution.compress(VectorOperation::insert);
+
       // Update stress for output
       update_stress();
 
-      calculate_fluid_KE();
-      calculate_fluid_PE();
-       
-      //fluid_previous_solution = present_solution;
-      
+      /*
+                 //output for MPI testing
+
+                if ( Utilities::MPI::this_mpi_process(mpi_communicator)== 0)
+                {
+                  std::ofstream file_rhs("rhs.txt",std::ios_base::app);
+
+                  file_rhs << time.current() << "\t" << current_residual <<
+         std::endl;
+
+                  file_rhs.close();
+
+                }
+
+      */
+
+      // calculate_fluid_KE();
+      // calculate_fluid_PE();
+
+      fluid_previous_solution = present_solution;
+
       // Output
       if (time.time_to_output())
         {
@@ -467,6 +512,8 @@ namespace Fluid
           setup_dofs();
           make_constraints();
           initialize_system();
+          // calculate_fluid_KE();
+          // calculate_fluid_PE();
         }
 
       // Time loop.

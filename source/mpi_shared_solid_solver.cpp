@@ -104,12 +104,10 @@ namespace Solid
             ComponentMask(mask));
         }
 
-
       // compute bc map input from user-specified points and directions
 
       std::vector<Point<dim>> points = point_boundary_values.first;
       std::vector<unsigned int> directions = point_boundary_values.second;
-
 
       if (!points.empty() && !directions.empty())
         {
@@ -206,7 +204,7 @@ namespace Solid
         }
       fluid_velocity.reinit(dof_handler.n_dofs());
       fluid_pressure.reinit(scalar_dof_handler.n_dofs());
-           
+
       // Add initial velocity
       if (time.current() == 0.0)
         {
@@ -331,26 +329,23 @@ namespace Solid
                     {
                       dof_touched[index] = 1;
 
-                      
-                      //ke_rate += current_velocity[index] 
-                          //  * nodal_mass[index]
-                          // *current_acceleration[index];
+                      // ke_rate += current_velocity[index]
+                      //  * nodal_mass[index]
+                      // *current_acceleration[index];
 
-                      
                       // add initial effect at t=dt
 
                       if (time.current() == time.get_delta_t())
-                      {
-                        ke_rate += current_velocity[index] 
-                                * nodal_mass[index]
-                                *previous_velocity[index]/time.get_delta_t();
-                      }
-                      
-                      
-                      ke_rate += current_velocity[index] 
-                            * nodal_mass[index]
-                           *(current_velocity[index]-previous_velocity[index])/time.get_delta_t();
+                        {
+                          ke_rate +=
+                            current_velocity[index] * nodal_mass[index] *
+                            previous_velocity[index] / time.get_delta_t();
+                        }
 
+                      ke_rate +=
+                        current_velocity[index] * nodal_mass[index] *
+                        (current_velocity[index] - previous_velocity[index]) /
+                        time.get_delta_t();
 
                       ke += 0.5 * current_velocity[index] *
                             current_velocity[index] * nodal_mass[index];
@@ -362,7 +357,7 @@ namespace Solid
       // add up all KE and KE rate for all processors
 
       ke = Utilities::MPI::sum(ke, mpi_communicator);
-      ke_rate= Utilities::MPI::sum(ke_rate, mpi_communicator);
+      ke_rate = Utilities::MPI::sum(ke_rate, mpi_communicator);
 
       if (this_mpi_process == 0)
         {
@@ -387,266 +382,262 @@ namespace Solid
               file_ke.open("solid_ke.txt", std::ios_base::app);
             }
 
-          file_ke << time.current() << "\t" << ke_rate << "\t" << ke << "\t" << "\n";
+          file_ke << time.current() << "\t" << ke_rate << "\t" << ke << "\t"
+                  << "\n";
           file_ke.close();
         }
     }
 
+    template <int dim, int spacedim>
+    void SharedSolidSolver<dim, spacedim>::compute_PE_rate()
+    {
+      double pe_rate = 0;
+      // double boundary_part = 0;
+      // double volume_part = 0;
 
-  template <int dim, int spacedim>
-  void SharedSolidSolver<dim, spacedim>::compute_PE_rate()
-  {
-    double pe_rate = 0;
-    //double boundary_part = 0;
-    //double volume_part = 0;
+      FEValues<dim, spacedim> fe_values(fe,
+                                        volume_quad_formula,
+                                        update_values |
+                                          update_quadrature_points |
+                                          update_JxW_values | update_gradients);
 
-    FEValues<dim, spacedim> fe_values(fe, volume_quad_formula, 
-             update_values | update_quadrature_points| update_JxW_values
-             |update_gradients);
+      FEValues<dim, spacedim> scalar_fe_values(
+        scalar_fe, volume_quad_formula, update_values | update_gradients);
 
-    
-    FEValues<dim, spacedim> scalar_fe_values(
-      scalar_fe,
-      volume_quad_formula,
-      update_values|update_gradients);
+      /*
+        FEFaceValues<dim, spacedim> fe_face_values(fe,
+                                         face_quad_formula,
+                                         update_values |
+        update_quadrature_points | update_normal_vectors | update_JxW_values);
 
+        FEFaceValues<dim, spacedim> scalar_fe_face_values(
+          scalar_fe,
+          face_quad_formula,
+          update_values);
+      */
 
-  /*
-    FEFaceValues<dim, spacedim> fe_face_values(fe,
-                                     face_quad_formula,
-                                     update_values | update_quadrature_points |
-                                       update_normal_vectors |
-                                       update_JxW_values);
+      // const unsigned int n_f_q_points = face_quad_formula.size();
+      const unsigned int n_q_points = volume_quad_formula.size();
 
-    FEFaceValues<dim, spacedim> scalar_fe_face_values(
-      scalar_fe,
-      face_quad_formula,
-      update_values);
-  */
+      Vector<double> localized_velocity(current_velocity);
 
-    //const unsigned int n_f_q_points = face_quad_formula.size();
-    const unsigned int n_q_points = volume_quad_formula.size();
+      // std::vector<Tensor<1, spacedim>> vel(n_f_q_points);
 
+      std::vector<Tensor<1, spacedim>> vel(n_q_points);
 
-    Vector<double> localized_velocity(current_velocity);
+      std::vector<std::vector<std::vector<Tensor<1, spacedim>>>> stress_grad(
+        dim,
+        std::vector<std::vector<Tensor<1, spacedim>>>(
+          dim,
+          std::vector<Tensor<1, spacedim>>(fe_values.n_quadrature_points)));
 
+      std::vector<Tensor<1, spacedim>> stress_div(
+        fe_values.n_quadrature_points);
 
-    //std::vector<Tensor<1, spacedim>> vel(n_f_q_points);
+      // std::vector<double> face_stress_component(n_f_q_points);
+      // std::vector<double> volume_stress_component(n_q_points);
+      // std::vector<Tensor<2, spacedim>> grad_v(n_q_points);
 
-    std::vector<Tensor<1, spacedim>> vel(n_q_points);
+      std::vector<std::vector<Vector<double>>> localized_stress(
+        dim, std::vector<Vector<double>>(dim));
+      for (unsigned int i = 0; i < dim; ++i)
+        {
+          for (unsigned int j = 0; j < dim; ++j)
+            {
+              localized_stress[i][j] = stress[i][j];
+            }
+        }
 
-     std::vector<std::vector<std::vector<Tensor<1, spacedim>>>> stress_grad(
-      dim,
-      std::vector<std::vector<Tensor<1, spacedim>>>(
-        dim, std::vector<Tensor<1, spacedim>>(fe_values.n_quadrature_points)));
+      const FEValuesExtractors::Vector displacements(0);
 
-    std::vector<Tensor<1, spacedim>> stress_div(fe_values.n_quadrature_points);
-    
-    //std::vector<double> face_stress_component(n_f_q_points);
-    //std::vector<double> volume_stress_component(n_q_points);
-   // std::vector<Tensor<2, spacedim>> grad_v(n_q_points);
+      /*
+      int stress_vec_size = dim + dim * (dim - 1) * 0.5;
 
-    std::vector<std::vector<Vector<double>>> localized_stress(
-      dim, std::vector<Vector<double>>(dim));
-    for (unsigned int i = 0; i < dim; ++i)
-      {
-        for (unsigned int j = 0; j < dim; ++j)
-          {
-            localized_stress[i][j] = stress[i][j];
-          }
-      }
+      std::vector<std::vector<double>> face_cell_stress =
+        std::vector<std::vector<double>>(stress_vec_size,
+                                         std::vector<double>(n_f_q_points));
 
+      std::vector<std::vector<double>> volume_cell_stress =
+        std::vector<std::vector<double>>(stress_vec_size,
+                                         std::vector<double>(n_q_points));
 
-    const FEValuesExtractors::Vector displacements(0);
+      */
 
-    
-    /*
-    int stress_vec_size = dim + dim * (dim - 1) * 0.5;
+      auto cell = dof_handler.begin_active();
+      auto scalar_cell = scalar_dof_handler.begin_active();
 
-    std::vector<std::vector<double>> face_cell_stress =
-      std::vector<std::vector<double>>(stress_vec_size,
-                                       std::vector<double>(n_f_q_points));
-
-    std::vector<std::vector<double>> volume_cell_stress =
-      std::vector<std::vector<double>>(stress_vec_size,
-                                       std::vector<double>(n_q_points));
-
-    */
-
-    auto cell = dof_handler.begin_active();
-    auto scalar_cell = scalar_dof_handler.begin_active();
-
-     for (; cell != dof_handler.end(), scalar_cell != scalar_dof_handler.end(); ++cell, ++scalar_cell)
-      {
+      for (; cell != dof_handler.end(), scalar_cell != scalar_dof_handler.end();
+           ++cell, ++scalar_cell)
+        {
 
           if (cell->subdomain_id() != this_mpi_process)
-          {
-            continue;
-          }
+            {
+              continue;
+            }
 
-        fe_values.reinit(cell);
-        scalar_fe_values.reinit(scalar_cell);
+          fe_values.reinit(cell);
+          scalar_fe_values.reinit(scalar_cell);
 
-        fe_values[displacements].get_function_values(
-          localized_velocity, vel);
+          fe_values[displacements].get_function_values(localized_velocity, vel);
 
-        for (unsigned i = 0; i < dim; ++i)
-          {
-            for (unsigned j = 0; j < dim; ++j)
-              {
-                scalar_fe_values.get_function_gradients(
-                  localized_stress[i][j], stress_grad[i][j]);
-              }
-          }
-
+          for (unsigned i = 0; i < dim; ++i)
+            {
+              for (unsigned j = 0; j < dim; ++j)
+                {
+                  scalar_fe_values.get_function_gradients(
+                    localized_stress[i][j], stress_grad[i][j]);
+                }
+            }
 
           for (unsigned int q = 0; q < n_q_points; ++q)
-           {
+            {
               for (unsigned i = 0; i < dim; ++i)
-              {
-                stress_div[q][i] = 0.0;
-                for (unsigned j = 0; j < dim; ++j)
-                  {
-                    stress_div[q][i] += stress_grad[i][j][q][j];
-                  }
-              }
+                {
+                  stress_div[q][i] = 0.0;
+                  for (unsigned j = 0; j < dim; ++j)
+                    {
+                      stress_div[q][i] += stress_grad[i][j][q][j];
+                    }
+                }
 
-              pe_rate += scalar_product(vel[q],stress_div[q])* fe_values.JxW(q);
-           }
+              pe_rate +=
+                scalar_product(vel[q], stress_div[q]) * fe_values.JxW(q);
+            }
 
-        
-        
-     /*OLDWAY
-        // the volumetric part, computed in all solid cells
-        
-        fe_values.reinit(cell);
-        scalar_fe_values.reinit(scalar_cell);
+          /*OLDWAY
+             // the volumetric part, computed in all solid cells
 
-        fe_values[displacements].get_function_gradients(
-          localized_velocity, grad_v);
+             fe_values.reinit(cell);
+             scalar_fe_values.reinit(scalar_cell);
 
-          int stress_index = 0;
+             fe_values[displacements].get_function_gradients(
+               localized_velocity, grad_v);
 
-          for (unsigned int i = 0; i < dim; i++)
-                  {
-                    for (unsigned int j = 0; j < i + 1; j++)
-                      {
-                        scalar_fe_values.get_function_values(
-                          localized_stress[i][j], volume_stress_component);
-                        volume_cell_stress[stress_index] = volume_stress_component;
-                        stress_index++;
-                      }
-                  }
+               int stress_index = 0;
 
-          for (unsigned int q = 0; q < n_q_points; ++q)
-          {
-             SymmetricTensor<2, spacedim> stress_tensor;
+               for (unsigned int i = 0; i < dim; i++)
+                       {
+                         for (unsigned int j = 0; j < i + 1; j++)
+                           {
+                             scalar_fe_values.get_function_values(
+                               localized_stress[i][j], volume_stress_component);
+                             volume_cell_stress[stress_index] =
+             volume_stress_component; stress_index++;
+                           }
+                       }
 
-                    int stress_index = 0;
+               for (unsigned int q = 0; q < n_q_points; ++q)
+               {
+                  SymmetricTensor<2, spacedim> stress_tensor;
 
-                    for (unsigned int k = 0; k < dim; k++)
-                      {
-                        for (unsigned int m = 0; m < k + 1; m++)
-                          {
-                            stress_tensor[k][m] =
-                              volume_cell_stress[stress_index][q];
-                            stress_index++;
-                          }
-                      }
+                         int stress_index = 0;
 
-                      volume_part += scalar_product(grad_v[q],stress_tensor)* fe_values.JxW(q);
-          }
+                         for (unsigned int k = 0; k < dim; k++)
+                           {
+                             for (unsigned int m = 0; m < k + 1; m++)
+                               {
+                                 stress_tensor[k][m] =
+                                   volume_cell_stress[stress_index][q];
+                                 stress_index++;
+                               }
+                           }
 
-        // the interfacial integral of the work, only computed at the solid boundary
-        for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
-          {
+                           volume_part +=
+             scalar_product(grad_v[q],stress_tensor)* fe_values.JxW(q);
+               }
 
-            if (cell->face(f)->at_boundary())
-              {
+             // the interfacial integral of the work, only computed at the solid
+             boundary for (unsigned int f = 0; f <
+             GeometryInfo<dim>::faces_per_cell; ++f)
+               {
 
-                fe_face_values.reinit(cell, f);
+                 if (cell->face(f)->at_boundary())
+                   {
 
-                fe_face_values[displacements].get_function_values(
-                  localized_velocity, v);
+                     fe_face_values.reinit(cell, f);
 
-                scalar_fe_face_values.reinit(scalar_cell, f);
+                     fe_face_values[displacements].get_function_values(
+                       localized_velocity, v);
 
-                stress_index = 0;
+                     scalar_fe_face_values.reinit(scalar_cell, f);
 
-                for (unsigned int i = 0; i < dim; i++)
-                  {
-                    for (unsigned int j = 0; j < i + 1; j++)
-                      {
-                        scalar_fe_face_values.get_function_values(
-                          localized_stress[i][j], face_stress_component);
-                        face_cell_stress[stress_index] = face_stress_component;
-                        stress_index++;
-                      }
-                  }
+                     stress_index = 0;
 
-                for (unsigned int q = 0; q < n_f_q_points; ++q)
-                  {
+                     for (unsigned int i = 0; i < dim; i++)
+                       {
+                         for (unsigned int j = 0; j < i + 1; j++)
+                           {
+                             scalar_fe_face_values.get_function_values(
+                               localized_stress[i][j], face_stress_component);
+                             face_cell_stress[stress_index] =
+             face_stress_component; stress_index++;
+                           }
+                       }
 
-                    Tensor<1, spacedim> normal = fe_face_values.normal_vector(q);
+                     for (unsigned int q = 0; q < n_f_q_points; ++q)
+                       {
 
-                    Tensor<1, spacedim> vs = v[q];
+                         Tensor<1, spacedim> normal =
+             fe_face_values.normal_vector(q);
 
-                    SymmetricTensor<2, spacedim> stress_tensor;
+                         Tensor<1, spacedim> vs = v[q];
 
-                    int stress_index = 0;
+                         SymmetricTensor<2, spacedim> stress_tensor;
 
-                    for (unsigned int k = 0; k < dim; k++)
-                      {
-                        for (unsigned int m = 0; m < k + 1; m++)
-                          {
-                            stress_tensor[k][m] =
-                              face_cell_stress[stress_index][q];
-                            stress_index++;
-                          }
-                      }
+                         int stress_index = 0;
 
-                  boundary_part  += (vs * stress_tensor * normal * fe_face_values.JxW(q));
+                         for (unsigned int k = 0; k < dim; k++)
+                           {
+                             for (unsigned int m = 0; m < k + 1; m++)
+                               {
+                                 stress_tensor[k][m] =
+                                   face_cell_stress[stress_index][q];
+                                 stress_index++;
+                               }
+                           }
 
-                  } // end loop quad points
-              }
+                       boundary_part  += (vs * stress_tensor * normal *
+             fe_face_values.JxW(q));
 
-          } // end loop cell faces
+                       } // end loop quad points
+                   }
 
-          */
+               } // end loop cell faces
 
-      }  // end loop solid cells
+               */
 
-      //total_pe_rate =  boundary_part - volume_part;
+        } // end loop solid cells
+
+      // total_pe_rate =  boundary_part - volume_part;
 
       pe_rate = Utilities::MPI::sum(pe_rate, mpi_communicator);
 
-    // file output
-     if (this_mpi_process == 0)
-     {
-      std::ofstream file_solid_PE_rate;
+      // file output
+      if (this_mpi_process == 0)
+        {
+          std::ofstream file_solid_PE_rate;
 
-      if (time.current() == 0.0)
-    {
+          if (time.current() == 0.0)
+            {
 
-      file_solid_PE_rate.open("solid_pe_rate.txt");
-      file_solid_PE_rate << "Time"
-                << "\t"
-                << "Solid PE Rate"
-                << "\t"
-                << "\n";
+              file_solid_PE_rate.open("solid_pe_rate.txt");
+              file_solid_PE_rate << "Time"
+                                 << "\t"
+                                 << "Solid PE Rate"
+                                 << "\t"
+                                 << "\n";
+            }
+
+          else
+            {
+              file_solid_PE_rate.open("solid_pe_rate.txt", std::ios_base::app);
+            }
+
+          file_solid_PE_rate << time.current() << "\t" << pe_rate << "\t"
+                             << "\n";
+          file_solid_PE_rate.close();
+        }
     }
-    
-    else
-    {
-      file_solid_PE_rate.open("solid_pe_rate.txt", std::ios_base::app);
-    }
-
-    file_solid_PE_rate << time.current() << "\t" << pe_rate << "\t" << "\n";
-    file_solid_PE_rate.close();
-    }
-
-  
-  }
 
     template <int dim, int spacedim>
     void SharedSolidSolver<dim, spacedim>::output_results(

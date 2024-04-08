@@ -69,39 +69,37 @@ namespace MPI
     /// Find the vertices that are owned by the local process.
     void update_vertices_mask();
 
-     /*! checks if the point is inside Lagrangian solid, if inside then returns the
-    * iteratore of corresponding cell */
+    /*! checks if the point is inside Lagrangian solid, if inside then returns
+     * the iteratore of corresponding cell */
     std::pair<bool, const typename DoFHandler<dim>::active_cell_iterator>
     point_in_solid_new(const DoFHandler<dim> &, const Point<dim> &);
 
-
     /// OLDVERSION Check if a point is inside a mesh.
     bool point_in_solid(const DoFHandler<dim> &, const Point<dim> &);
-
 
     /*! check if the point is in the given cell, including a tolerence
      value. Note: for faster results, check if the point is inside the
      cell's bounding box before calling this function */
     bool point_in_cell(const typename DoFHandler<dim>::active_cell_iterator &,
-                     const Point<dim> &);
+                       const Point<dim> &);
 
-/*! if an Eulerian vertex is inside the solid, stores vertex id and the
-   * corresponding solid cell iterator*/
-  std::unordered_map<int, const typename DoFHandler<dim>::active_cell_iterator>
-    vertex_indicator_data;
+    /*! if an Eulerian vertex is inside the solid, stores vertex id and the
+     * corresponding solid cell iterator*/
+    std::unordered_map<int,
+                       const typename DoFHandler<dim>::active_cell_iterator>
+      vertex_indicator_data;
 
-  /* value is set to true if the cell is partially inside solid
-     value is false if the cell is completely inside or outside solid
-  */
-  std::vector<bool> cell_partially_inside_solid;
+    /* value is set to true if the cell is partially inside solid
+       value is false if the cell is completely inside or outside solid
+    */
+    std::vector<bool> cell_partially_inside_solid;
 
-  /*map key: id of the cell which is partially inside the solid
-    map objects: vectors store local node ids which are inside and outside the
-    solid
-  */
-  std::map<int, std::vector<int>> cell_nodes_inside_solid;
-  std::map<int, std::vector<int>> cell_nodes_outside_solid;
-
+    /*map key: id of the cell which is partially inside the solid
+      map objects: vectors store local node ids which are inside and outside the
+      solid
+    */
+    std::map<int, std::vector<int>> cell_nodes_inside_solid;
+    std::map<int, std::vector<int>> cell_nodes_outside_solid;
 
     /*! \brief Update the indicator field of the fluid solver.
      *

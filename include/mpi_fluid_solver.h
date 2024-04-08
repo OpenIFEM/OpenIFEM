@@ -210,9 +210,11 @@ namespace Fluid
       PETScWrappers::MPI::BlockVector system_rhs;
 
       /// FSI acceleration vector, which is attached on the solution dof
-      /// handloer
+      /// handler
       PETScWrappers::MPI::BlockVector fsi_acceleration;
-      std::vector<Vector<double>> fsi_stress;
+
+      // std::vector<Vector<double>> fsi_stress;
+      mutable std::vector<PETScWrappers::MPI::Vector> fsi_stress;
 
       /**
        * Nodal strain and stress obtained by taking the average of surrounding
@@ -284,7 +286,7 @@ namespace Fluid
       struct CellProperty
       {
         int indicator; //!< Domain indicator: 1 for artificial fluid 0 for real
-                       //! fluid. 
+                       //! fluid.
         double exact_indicator; //!< accurate estimation of the indicator:
                                 //!< can take value between 0 and 1.
         Tensor<1, dim>

@@ -94,8 +94,8 @@ namespace Fluid
       std::vector<double> fsi_stress_value(n_q_points);
 
       std::vector<std::vector<double>> fsi_cell_stress =
-      std::vector<std::vector<double>>(fsi_stress.size(),
-                                       std::vector<double>(n_q_points));
+        std::vector<std::vector<double>>(fsi_stress.size(),
+                                         std::vector<double>(n_q_points));
       /**
        * Nodal stress gradients obtained by taking the average of surrounding
        * cell-averaged stresses. Their sizes are
@@ -143,10 +143,10 @@ namespace Fluid
           if (cell->is_locally_owned())
             {
               auto p = cell_property.get_data(cell);
-              
-              //const int ind = p[0]->indicator;
+
+              // const int ind = p[0]->indicator;
               const int ind = p[0]->exact_indicator;
-              
+
               fe_values.reinit(cell);
               scalar_fe_values.reinit(scalar_cell);
 
@@ -171,15 +171,13 @@ namespace Fluid
               fe_values[pressure].get_function_values(present_solution,
                                                       present_pressure_values);
 
+              for (unsigned int i = 0; i < fsi_stress.size(); i++)
+                {
+                  scalar_fe_values.get_function_values(fsi_stress[i],
+                                                       fsi_stress_value);
 
-             for (unsigned int i = 0; i < fsi_stress.size(); i++)
-              {
-                scalar_fe_values.get_function_values(fsi_stress[i],
-                                                     fsi_stress_value);
-
-                fsi_cell_stress[i] = fsi_stress_value;
-              }
-
+                  fsi_cell_stress[i] = fsi_stress_value;
+                }
 
               for (unsigned i = 0; i < dim; ++i)
                 {
@@ -215,15 +213,15 @@ namespace Fluid
                 {
                   const double rho = parameters.fluid_rho *
                                        (1 + present_pressure_values[q] / atm) *
-                                      // (1 - ind_exact) +
-                                      // ind_exact * parameters.solid_rho;
-                                        (1 - ind) +
+                                       // (1 - ind_exact) +
+                                       // ind_exact * parameters.solid_rho;
+                                       (1 - ind) +
                                      ind * parameters.solid_rho;
-                  
+
                   const double viscosity =
-                   //(ind == 1 ? 1 : parameters.viscosity) +
-                    
-                  (ind !=0 ? ind : parameters.viscosity) +
+                    //(ind == 1 ? 1 : parameters.viscosity) +
+
+                    (ind != 0 ? ind : parameters.viscosity) +
 
                     (eddy_viscosity[q] > 0.0 ? eddy_viscosity[q] : 0.0);
 
@@ -235,25 +233,22 @@ namespace Fluid
                       phi_p[k] = fe_values[pressure].value(k, q);
                       grad_phi_p[k] = fe_values[pressure].gradient(k, q);
                     }
-                     
-                     
-                     SymmetricTensor<2, dim> fsi_stress_tensor;
 
-                      if (ind != 0)
-                      {
-                        int stress_index = 0;
-                        for (unsigned int k = 0; k < dim; k++)
-                          {
-                            for (unsigned int m = 0; m < k + 1; m++)
-                              {
-                                fsi_stress_tensor[k][m] =
-                                  fsi_cell_stress[stress_index][q];
-                                stress_index++;
-                              }
-                          }
+                  SymmetricTensor<2, dim> fsi_stress_tensor;
 
-                      }
-                      
+                  if (ind != 0)
+                    {
+                      int stress_index = 0;
+                      for (unsigned int k = 0; k < dim; k++)
+                        {
+                          for (unsigned int m = 0; m < k + 1; m++)
+                            {
+                              fsi_stress_tensor[k][m] =
+                                fsi_cell_stress[stress_index][q];
+                              stress_index++;
+                            }
+                        }
+                    }
 
                   // Define the UGN based SUPG parameters (Tezduyar):
                   // tau_SUPG and tau_PSPG. They are
@@ -426,10 +421,10 @@ namespace Fluid
                               atm * fe_values.JxW(q) +
                             1 / kappa_s * phi_p[i] * phi_p[j] * ind /
                               time.get_delta_t() * fe_values.JxW(q);
-                          
-                          //if (ind == 1)
 
-                           if (ind != 0 )
+                          // if (ind == 1)
+
+                          if (ind != 0)
                             {
                               local_matrix(i, j) +=
                                 -(tau_SUPG * phi_u[j] * grad_phi_u[i] *
@@ -437,8 +432,6 @@ namespace Fluid
                                 fe_values.JxW(q);
                             }
                         }
-
-                        
 
                       // RHS is \f$-(A_{current} + C_{current}) -
                       // M_{present-current}/\Delta{t}\f$.
@@ -520,13 +513,13 @@ namespace Fluid
                              time.get_delta_t()) *
                             ind) *
                         fe_values.JxW(q);
-                      
-                       // if (ind == 1)
-                          if (ind != 0)
+
+                      // if (ind == 1)
+                      if (ind != 0)
                         {
                           local_rhs(i) +=
-                           // (scalar_product(grad_phi_u[i], p[0]->fsi_stress) +
-                           (scalar_product(grad_phi_u[i], fsi_stress_tensor) +
+                            //(scalar_product(grad_phi_u[i], p[0]->fsi_stress) +
+                            (scalar_product(grad_phi_u[i], fsi_stress_tensor) +
                              (fsi_acc_values[q] * rho) *
                                (phi_u[i] + tau_PSPG * grad_phi_p[i] +
                                 tau_SUPG * current_velocity_values[q] *
