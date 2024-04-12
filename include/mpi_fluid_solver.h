@@ -276,7 +276,7 @@ namespace Fluid
         std::function<double(const Point<dim> &, const unsigned int)>>
         initial_condition_field;
 
-      PETScWrappers::MPI::BlockVector fluid_previous_solution;
+      PETScWrappers::MPI::BlockVector previous_solution;
 
       /// A data structure that caches the real/artificial fluid indicator,
       /// FSI stress, and FSI acceleration terms at quadrature points, that

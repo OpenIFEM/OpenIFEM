@@ -202,7 +202,8 @@ namespace Solid
       PETScWrappers::MPI::Vector previous_velocity;
       PETScWrappers::MPI::Vector previous_displacement;
       void calculate_KE();
-      void compute_PE_rate();
+
+      void compute_solid_energy();
       PETScWrappers::MPI::Vector nodal_mass;
 
       /**

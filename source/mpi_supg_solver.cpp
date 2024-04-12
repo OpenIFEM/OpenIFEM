@@ -254,7 +254,7 @@ namespace Fluid
       solution_increment.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
 
-      fluid_previous_solution.reinit(
+      previous_solution.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
       // newton_update is non-ghosted because the linear solver needs
       // a completely distributed vector.
@@ -416,6 +416,7 @@ namespace Fluid
       // for the 1-D wave-demo problem, manually set all vy to zero, DELETE in
       // the future!
 
+      /*
       auto cell = dof_handler.begin_active();
       auto scalar_cell = scalar_dof_handler.begin_active();
 
@@ -447,7 +448,10 @@ namespace Fluid
             }
         }
 
+
       present_solution.compress(VectorOperation::insert);
+
+      */
 
       // Update stress for output
       update_stress();
@@ -469,7 +473,7 @@ namespace Fluid
       */
 
       compute_fluid_energy();
-      fluid_previous_solution = present_solution;
+      previous_solution = present_solution;
 
       // Output
       if (time.time_to_output())

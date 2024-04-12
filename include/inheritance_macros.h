@@ -58,7 +58,7 @@ protected:                                                                     \
   using FluidSolver<dim>::body_force;                                          \
   using FluidSolver<dim>::sigma_pml_field;                                     \
   using FluidSolver<dim>::initial_condition_field;                             \
-  using FluidSolver<dim>::fluid_previous_solution
+  using FluidSolver<dim>::previous_solution
 
 #define MPISUPGFluidSolverInheritanceMacro()                                   \
 protected:                                                                     \

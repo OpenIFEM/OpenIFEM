@@ -130,8 +130,9 @@ namespace Solid
                               local_mass[i][j] +=
                                 rho * phi[i] * phi[j] * fe_values.JxW(q);
                               local_matrix[i][j] +=
-                                (rho * phi[i] * phi[j] +
-                                 symmetric_grad_phi[i] * viscosity *
+                                // comment out the next line to allow lumped
+                                // mass matrix (rho * phi[i] * phi[j] +
+                                (symmetric_grad_phi[i] * viscosity *
                                    symmetric_grad_phi[j] * gamma * dt *
                                    (1 + alpha) +
                                  symmetric_grad_phi[i] * elasticity *
@@ -268,6 +269,30 @@ namespace Solid
                     }
                 }
 
+              // create lumped mass matrix
+
+              for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                {
+                  double sum = 0;
+                  for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                    {
+                      sum = sum + local_mass[i][j];
+                    }
+                  for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                    {
+                      if (i == j)
+                        {
+                          local_mass[i][j] = sum;
+                        }
+                      else
+                        {
+                          local_mass[i][j] = 0;
+                        }
+                    }
+                }
+
+              local_matrix.add(1, local_mass);
+
               // Now distribute local data to the system, and apply the
               // hanging node constraints at the same time.
               if (is_initial)
@@ -312,6 +337,17 @@ namespace Solid
           // \f$ and the system matrices. This is only done once even in FSI
           // mode.
           assemble_system(true);
+
+          // Save nodal mass in a vector
+          std::pair<int, int> range = mass_matrix.local_range();
+          for (int i = range.first; i < range.second; i++)
+            {
+              nodal_mass[i] = mass_matrix.el(i, i);
+            }
+          nodal_mass.compress(VectorOperation::insert);
+
+          // calculate_KE();
+          compute_solid_energy();
           this->solve(mass_matrix, previous_acceleration, system_rhs);
           this->output_results(time.get_timestep());
         }
@@ -376,6 +412,9 @@ namespace Solid
 
       // strain and stress
       update_strain_and_stress();
+
+      // calculate_KE();
+      compute_solid_energy();
 
       if (time.time_to_output())
         {
@@ -453,6 +492,10 @@ namespace Solid
       Vector<double> local_sorrounding_cells(scalar_fe.dofs_per_cell);
       local_sorrounding_cells = 1.0;
 
+      // compute strain energy with the stress and the strain, to be implemented
+      // somewhere else later
+      double strain_energy = 0;
+
       Vector<double> localized_current_displacement(current_displacement);
 
       for (; cell != dof_handler.end(); ++cell, ++scalar_cell)
@@ -489,6 +532,10 @@ namespace Solid
                           quad_stress[i][j][q] = tmp_stress[i][j];
                         }
                     }
+
+                  strain_energy += 0.5 *
+                                   scalar_product(tmp_stress, tmp_strain) *
+                                   fe_values.JxW(q);
                 }
 
               for (unsigned int i = 0; i < dim; ++i)
@@ -508,6 +555,34 @@ namespace Solid
             }
         }
       surrounding_cells.compress(VectorOperation::add);
+
+      strain_energy = Utilities::MPI::sum(strain_energy, mpi_communicator);
+
+      if (this_mpi_process == 0)
+        {
+          std::ofstream file_strain_energy;
+
+          if (time.current() == 0.0)
+            {
+              file_strain_energy.open("solid_strain_energy.txt");
+              file_strain_energy << "Time"
+                                 << "\t"
+                                 << "Solid Strain Energy"
+                                 << "\t"
+                                 << "\n";
+            }
+
+          else
+
+            {
+              file_strain_energy.open("solid_strain_energy.txt",
+                                      std::ios_base::app);
+            }
+
+          file_strain_energy << time.current() << "\t" << strain_energy << "\t"
+                             << "\n";
+          file_strain_energy.close();
+        }
 
       for (unsigned int i = 0; i < dim; ++i)
         {

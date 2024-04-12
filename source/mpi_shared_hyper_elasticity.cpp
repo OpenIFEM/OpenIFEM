@@ -98,13 +98,9 @@ namespace Solid
             }
           nodal_mass.compress(VectorOperation::insert);
 
-          // calculate_KE();
-          // compute_PE_rate();
-
           this->solve(mass_matrix, previous_acceleration, system_rhs);
 
-          calculate_KE();
-          compute_PE_rate();
+          // calculate_KE();
 
           this->output_results(time.get_timestep());
         }
@@ -208,8 +204,7 @@ namespace Solid
                            dt * gamma,
                            current_acceleration);
 
-      calculate_KE();
-      compute_PE_rate();
+      // calculate_KE();
 
       // Update the previous values
       previous_acceleration = current_acceleration;
@@ -223,9 +218,6 @@ namespace Solid
 
       // strain and stress
       update_strain_and_stress();
-
-      // calculate_KE();
-      // compute_PE_rate();
 
       if (time.time_to_output())
         {

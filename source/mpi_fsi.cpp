@@ -678,7 +678,7 @@ namespace MPI
                                                   vel);
 
         fe_values[velocities].get_function_values(
-          fluid_solver.fluid_previous_solution, pre_vel);
+          fluid_solver.previous_solution, pre_vel);
 
         // fe_values[velocities].get_function_gradients(
         // fluid_solver.present_solution, grad_v);
@@ -1724,7 +1724,7 @@ namespace MPI
             time.increment();
           }
 
-        fluid_solver.fluid_previous_solution = fluid_solver.present_solution;
+        // fluid_solver.previous_solution = fluid_solver.present_solution;
       }
 
     collect_solid_boundaries();

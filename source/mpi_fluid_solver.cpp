@@ -338,7 +338,7 @@ namespace Fluid
       fsi_acceleration.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
 
-      fluid_previous_solution.reinit(
+      previous_solution.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
 
       int stress_vec_size = dim + dim * (dim - 1) * 0.5;
@@ -847,6 +847,9 @@ namespace Fluid
 
       std::vector<Tensor<1, dim>> vel(n_q_points);
       std::vector<double> present_pressure_values(n_q_points);
+      std::vector<double> previous_pressure_values(
+        n_q_points); // to compute the previous fluid density
+
       std::vector<SymmetricTensor<2, dim>> sym_grad_v(n_q_points);
 
       std::vector<Tensor<1, dim>> vel_face(n_q_points_face);
@@ -856,6 +859,7 @@ namespace Fluid
       double ke_flux = 0;
       double pre_flux = 0;
       double dissipation = 0;
+      double elastic = 0;
 
       const double atm = 1013250; // this is only for SCNSIM solver
 
@@ -883,86 +887,117 @@ namespace Fluid
           fe_values[pressure].get_function_values(present_solution,
                                                   present_pressure_values);
 
+          fe_values[pressure].get_function_values(previous_solution,
+                                                  previous_pressure_values);
+
           fe_values[velocities].get_function_symmetric_gradients(
             present_solution, sym_grad_v);
 
           for (unsigned int q = 0; q < n_q_points; q++)
             {
-
               // calulations of rho is adopted from scnsim solver
               const double rho = parameters.fluid_rho *
                                    (1 + present_pressure_values[q] / atm) *
                                    (1 - ind) +
                                  ind * parameters.solid_rho;
 
+              const double pre_rho = parameters.fluid_rho *
+                                       (1 + previous_pressure_values[q] / atm) *
+                                       (1 - ind) +
+                                     ind * parameters.solid_rho;
+
               ke += 0.5 * rho * vel[q] * vel[q] * fe_values.JxW(q);
 
-              dissipation +=
-                2 * viscosity * scalar_product(sym_grad_v[q], sym_grad_v[q]);
+              dissipation += 2 * viscosity *
+                             scalar_product(sym_grad_v[q], sym_grad_v[q]) *
+                             fe_values.JxW(q);
+
+              elastic += (present_pressure_values[q] / rho) *
+                         ((rho - pre_rho) / time.get_timestep()) *
+                         fe_values.JxW(q);
             }
 
-          // at the boundary
+          // at the inlet and outlet boundary, for 2-D ID is 0 and 1, improve
+          // the code for 3-D in the future
 
           for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
                ++face)
             {
+
               if (f_cell->face(face)->at_boundary() &&
                   (f_cell->face(face)->boundary_id() == 0 ||
                    f_cell->face(face)->boundary_id() == 1))
 
-                {
-                  fe_face_values.reinit(f_cell, face);
+                if (f_cell->face(face)->at_boundary())
 
-                  fe_face_values[velocities].get_function_values(
-                    present_solution, vel_face);
+                  {
+                    fe_face_values.reinit(f_cell, face);
 
-                  fe_face_values[pressure].get_function_values(
-                    present_solution, present_pressure_values_face);
+                    fe_face_values[velocities].get_function_values(
+                      present_solution, vel_face);
 
-                  for (unsigned int q = 0; q < n_q_points_face; q++)
-                    {
-                      const Tensor<1, dim> normal =
-                        fe_face_values.normal_vector(q);
+                    fe_face_values[pressure].get_function_values(
+                      present_solution, present_pressure_values_face);
 
-                      ke_flux += 0.5 * parameters.fluid_rho * vel_face[q] *
-                                 vel_face[q] * fe_face_values.JxW(q) *
-                                 (vel_face[q] * normal);
+                    for (unsigned int q = 0; q < n_q_points_face; q++)
+                      {
+                        const Tensor<1, dim> normal =
+                          fe_face_values.normal_vector(q);
 
-                      pre_flux += (present_pressure_values_face[q] + atm) *
-                                  (vel_face[q] * normal) *
-                                  fe_face_values.JxW(q);
-                    }
-                }
+                        ke_flux += 0.5 * parameters.fluid_rho * vel_face[q] *
+                                   vel_face[q] * fe_face_values.JxW(q) *
+                                   (vel_face[q] * normal);
+
+                        pre_flux += (present_pressure_values_face[q] + atm) *
+                                    (vel_face[q] * normal) *
+                                    fe_face_values.JxW(q);
+                      }
+                  }
             }
         }
 
       ke = Utilities::MPI::sum(ke, mpi_communicator);
+      dissipation = Utilities::MPI::sum(dissipation, mpi_communicator);
+      elastic = Utilities::MPI::sum(elastic, mpi_communicator);
       ke_flux = Utilities::MPI::sum(ke_flux, mpi_communicator);
+      pre_flux = Utilities::MPI::sum(pre_flux, mpi_communicator);
 
       if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
         {
 
-          std::ofstream file_ke;
+          std::ofstream file_fluid_eng;
 
           if (time.current() == 0.0)
             {
-              file_ke.open("fluid_ke_rate.txt");
-              file_ke << "Time"
-                      << "\t"
-                      << "Volume Fluid KE"
-                      << "\t"
-                      << "Fluid KE Flux"
-                      << "\n";
+              file_fluid_eng.open("fluid_energy.txt");
+
+              file_fluid_eng << "Time"
+                             << "\t"
+                             << "KE"
+                             << "\t"
+                             << "elastic"
+                             << "\t"
+                             << "dissipation"
+                             << "\t"
+                             << "KE flux"
+                             << "\t"
+                             << "pre flux"
+                             << "\t"
+                             << "\n";
             }
 
           else
 
             {
-              file_ke.open("fluid_ke_rate.txt", std::ios_base::app);
+              file_fluid_eng.open("fluid_energy.txt", std::ios_base::app);
             }
 
-          file_ke << time.current() << "\t" << ke << "\t" << ke_flux << "\n";
-          file_ke.close();
+          file_fluid_eng << time.current() << "\t" << ke << "\t" << elastic
+                         << "\t" << dissipation << "\t" << ke_flux << "\t"
+                         << pre_flux << "\t"
+                         << "\n";
+
+          file_fluid_eng.close();
         }
     }
 
