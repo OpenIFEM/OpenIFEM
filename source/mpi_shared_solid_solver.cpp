@@ -383,21 +383,36 @@ namespace Solid
                                           update_quadrature_points |
                                           update_JxW_values);
 
+      FEFaceValues<dim, spacedim> fe_face_values(
+        fe,
+        face_quad_formula,
+        update_values | update_quadrature_points | update_normal_vectors |
+          update_JxW_values);
+
       const unsigned int n_q_points = volume_quad_formula.size();
 
+      const unsigned int n_q_points_face = face_quad_formula.size();
+
       Vector<double> localized_velocity(current_velocity);
-      Vector<double> localized_current_displacement(current_displacement);
+
+      Vector<double> localized_previous_velocity(previous_velocity);
 
       std::vector<Tensor<1, spacedim>> vel(n_q_points);
-      std::vector<Tensor<1, spacedim>> disp(n_q_points);
+
+      std::vector<Tensor<1, spacedim>> pre_vel(n_q_points);
+
+      std::vector<Tensor<1, spacedim>> vel_face(n_q_points_face);
 
       const FEValuesExtractors::Vector displacements(0);
 
       auto cell = dof_handler.begin_active();
       auto scalar_cell = scalar_dof_handler.begin_active();
 
+      // energy and work terms
       double ke = 0.0;
-      double pe = 0.0;
+      double previous_ke = 0.0;
+      double body = 0.0;
+      double traction_power = 0.0;
 
       Tensor<1, spacedim> gravity;
       for (unsigned int i = 0; i < dim; ++i)
@@ -413,36 +428,78 @@ namespace Solid
               fe_values.reinit(cell);
               fe_values[displacements].get_function_values(localized_velocity,
                                                            vel);
-
               fe_values[displacements].get_function_values(
-                localized_current_displacement, disp);
-
-              auto q_points = fe_values.get_quadrature_points();
+                localized_previous_velocity, pre_vel);
 
               for (unsigned int q = 0; q < n_q_points; ++q)
                 {
 
-                  Tensor<1, spacedim> position_vector;
-
-                  for (unsigned int i = 0; i < dim; ++i)
-                    {
-                      position_vector[i] = q_points[q][i];
-                    }
-
-                  position_vector += disp[q];
-
                   ke += 0.5 * parameters.solid_rho * vel[q] * vel[q] *
                         fe_values.JxW(q);
 
-                  pe += parameters.solid_rho *
-                        scalar_product(gravity, position_vector) *
-                        fe_values.JxW(q);
+                  previous_ke += 0.5 * parameters.solid_rho * pre_vel[q] *
+                                 pre_vel[q] * fe_values.JxW(q);
+
+                  body += parameters.solid_rho *
+                          scalar_product(gravity, vel[q]) * fe_values.JxW(q);
+                }
+
+              // compute work done by external tracion
+              for (unsigned int face = 0;
+                   face < GeometryInfo<dim>::faces_per_cell;
+                   ++face)
+                {
+                  if (cell->face(face)->at_boundary())
+                    {
+                      unsigned int id = cell->face(face)->boundary_id();
+
+                      if (parameters.simulation_type != "FSI" &&
+                          parameters.solid_neumann_bcs.find(id) ==
+                            parameters.solid_neumann_bcs.end())
+                        {
+                          // Traction-free boundary, do nothing
+                          continue;
+                        }
+
+                      std::vector<double> value;
+                      if (parameters.simulation_type != "FSI")
+                        {
+                          // In stand-alone simulation, the boundary value
+                          // is prescribed by the user.
+                          value = parameters.solid_neumann_bcs[id];
+                        }
+                      Tensor<1, spacedim> traction;
+                      if (parameters.simulation_type != "FSI" &&
+                          parameters.solid_neumann_bc_type == "Traction")
+                        {
+                          for (unsigned int i = 0; i < dim; ++i)
+                            {
+                              traction[i] = value[i];
+                            }
+                        }
+
+                      fe_face_values.reinit(cell, face);
+
+                      fe_face_values[displacements].get_function_values(
+                        localized_velocity, vel_face);
+
+                      for (unsigned int q = 0; q < n_q_points_face; q++)
+                        {
+                          traction_power +=
+                            traction * vel_face[q] * fe_face_values.JxW(q);
+                        }
+                    }
                 }
             }
         }
 
       ke = Utilities::MPI::sum(ke, mpi_communicator);
-      pe = Utilities::MPI::sum(pe, mpi_communicator);
+      previous_ke = Utilities::MPI::sum(previous_ke, mpi_communicator);
+      traction_power = Utilities::MPI::sum(traction_power, mpi_communicator);
+
+      // double ke_rate = (ke - previous_ke) / time.get_delta_t();
+
+      body = Utilities::MPI::sum(body, mpi_communicator);
 
       if (this_mpi_process == 0)
         {
@@ -450,22 +507,28 @@ namespace Solid
 
           if (time.current() == 0.0)
             {
-              file_ke.open("solid_ke_quad.txt");
+              file_ke.open("solid_energy.txt");
               file_ke << "Time"
                       << "\t"
-                      << "Solid KE"
+                      << "ke"
                       << "\t"
-                      << "Solid PE"
+                      << "ke previous"
+                      << "\t"
+                      << "body force power"
+                      << "\t"
+                      << "traction_power"
+                      << "\t"
                       << "\n";
             }
 
           else
 
             {
-              file_ke.open("solid_ke_quad.txt", std::ios_base::app);
+              file_ke.open("solid_energy.txt", std::ios_base::app);
             }
 
-          file_ke << time.current() << "\t" << ke << "\t" << pe << "\t"
+          file_ke << time.current() << "\t" << ke << "\t" << previous_ke << "\t"
+                  << body << "\t" << traction_power << "\t"
                   << "\n";
           file_ke.close();
         }

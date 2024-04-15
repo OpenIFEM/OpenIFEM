@@ -346,7 +346,6 @@ namespace Solid
             }
           nodal_mass.compress(VectorOperation::insert);
 
-          // calculate_KE();
           compute_solid_energy();
           this->solve(mass_matrix, previous_acceleration, system_rhs);
           this->output_results(time.get_timestep());
@@ -404,6 +403,9 @@ namespace Solid
 
       // update the previous values
       previous_acceleration = current_acceleration;
+
+      compute_solid_energy();
+
       previous_velocity = current_velocity;
       previous_displacement = current_displacement;
 
@@ -412,9 +414,6 @@ namespace Solid
 
       // strain and stress
       update_strain_and_stress();
-
-      // calculate_KE();
-      compute_solid_energy();
 
       if (time.time_to_output())
         {
@@ -492,8 +491,7 @@ namespace Solid
       Vector<double> local_sorrounding_cells(scalar_fe.dofs_per_cell);
       local_sorrounding_cells = 1.0;
 
-      // compute strain energy with the stress and the strain, to be implemented
-      // somewhere else later
+      // compute strain energy rate that is \int (\sigma_ij * \eplsion_ij)
       double strain_energy = 0;
 
       Vector<double> localized_current_displacement(current_displacement);
@@ -533,9 +531,8 @@ namespace Solid
                         }
                     }
 
-                  strain_energy += 0.5 *
-                                   scalar_product(tmp_stress, tmp_strain) *
-                                   fe_values.JxW(q);
+                  strain_energy +=
+                    scalar_product(tmp_stress, tmp_strain) * fe_values.JxW(q);
                 }
 
               for (unsigned int i = 0; i < dim; ++i)
