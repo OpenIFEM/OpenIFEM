@@ -531,8 +531,9 @@ namespace Solid
                         }
                     }
 
-                  strain_energy +=
-                    scalar_product(tmp_stress, tmp_strain) * fe_values.JxW(q);
+                  strain_energy += 0.5 *
+                                   scalar_product(tmp_stress, tmp_strain) *
+                                   fe_values.JxW(q);
                 }
 
               for (unsigned int i = 0; i < dim; ++i)
