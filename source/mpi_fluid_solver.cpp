@@ -907,8 +907,8 @@ namespace Fluid
           for (unsigned int q = 0; q < n_q_points; q++)
             {
               // calulations of rho is adopted from scnsim solver
-              // const double rho = parameters.fluid_rho *
-              // (1 + present_pressure_values[q] / atm) *
+              const double rho = parameters.fluid_rho;
+              // * (1 + present_pressure_values[q] / atm) *
               //(1 - ind) +
               // ind * parameters.solid_rho;
 
@@ -917,8 +917,7 @@ namespace Fluid
               // (1 - ind) +
               // ind * parameters.solid_rho;
 
-              ke += 0.5 * parameters.fluid_rho * vel[q].norm_square() *
-                    fe_values.JxW(q);
+              ke += 0.5 * rho * vel[q].norm_square() * fe_values.JxW(q);
 
               // compute velocity gradient part of the stress at each quad
               // points
@@ -928,13 +927,22 @@ namespace Fluid
 
               // add fluid pressure into the stress
               SymmetricTensor<2, dim> pressure_tensor =
-                -present_pressure_values[q] *
+                (-present_pressure_values[q] + atm) *
                 Physics::Elasticity::StandardTensors<dim>::I;
 
-              stress_tensor += pressure_tensor;
+              // stress_tensor += pressure_tensor;
 
-              stress_volumetric +=
-                scalar_product(stress_tensor, grad_vel[q]) * fe_values.JxW(q);
+              // stress_volumetric +=
+              // scalar_product(stress_tensor, grad_vel[q]) * fe_values.JxW(q);
+
+              for (int i = 0; i < dim; i++)
+                {
+                  for (int j = 0; j < dim; j++)
+                    {
+                      stress_volumetric += stress_tensor[i][j] *
+                                           grad_vel[q][i][j] * fe_values.JxW(q);
+                    }
+                }
 
               // pre_ke += 0.5 * pre_rho * pre_vel[q] * pre_vel[q] *
               // fe_values.JxW(q);
@@ -950,8 +958,6 @@ namespace Fluid
               */
             }
         }
-
-      ke = Utilities::MPI::sum(ke, mpi_communicator);
 
       for (auto f_cell = dof_handler.begin_active();
            f_cell != dof_handler.end();
@@ -974,64 +980,67 @@ namespace Fluid
           for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
                ++face)
             {
-              // if (f_cell->face(face)->at_boundary() &&
-              // (f_cell->face(face)->boundary_id() == 0 ||
-              // f_cell->face(face)->boundary_id() == 1))
-              {
+              if (f_cell->face(face)->at_boundary())
 
-                fe_face_values.reinit(f_cell, face);
+                {
 
-                fe_face_values[velocities].get_function_values(present_solution,
-                                                               vel_face);
+                  fe_face_values.reinit(f_cell, face);
 
-                fe_face_values[pressure].get_function_values(
-                  present_solution, present_pressure_values_face);
+                  fe_face_values[velocities].get_function_values(
+                    present_solution, vel_face);
 
-                fe_face_values[velocities].get_function_symmetric_gradients(
-                  present_solution, sym_grad_v_face);
+                  fe_face_values[pressure].get_function_values(
+                    present_solution, present_pressure_values_face);
 
-                for (unsigned int q = 0; q < n_q_points_face; q++)
-                  {
+                  fe_face_values[velocities].get_function_symmetric_gradients(
+                    present_solution, sym_grad_v_face);
 
-                    for (unsigned int j = 0; j < dim; ++j)
-                      {
+                  for (unsigned int q = 0; q < n_q_points_face; q++)
+                    {
 
-                        ke_flux += ke *
-                                   (vel_face[q][j] *
-                                    fe_face_values.normal_vector(q)[j]) *
-                                   fe_face_values.JxW(q);
-                      }
+                      for (unsigned int i = 0; i < dim; ++i)
+                        {
+                          for (unsigned int j = 0; j < dim; ++j)
+                            {
 
-                    SymmetricTensor<2, dim> stress_tensor =
-                      2 * parameters.viscosity * sym_grad_v_face[q];
+                              ke_flux += 0.5 * parameters.fluid_rho *
+                                         vel_face[q][i] * vel_face[q][i] *
+                                         (vel_face[q][j] *
+                                          fe_face_values.normal_vector(q)[j]) *
+                                         fe_face_values.JxW(q);
+                            }
+                        }
 
-                    // add fluid pressure into the stress
-                    SymmetricTensor<2, dim> pressure_tensor =
-                      -present_pressure_values_face[q] *
-                      Physics::Elasticity::StandardTensors<dim>::I;
+                      SymmetricTensor<2, dim> stress_tensor =
+                        2 * parameters.viscosity * sym_grad_v_face[q];
 
-                    stress_tensor += pressure_tensor;
+                      // add fluid pressure into the stress
+                      SymmetricTensor<2, dim> pressure_tensor =
+                        -(present_pressure_values_face[q]) *
+                        Physics::Elasticity::StandardTensors<dim>::I;
 
-                    for (int u = 0; u < dim; u++)
-                      {
-                        for (int v = 0; v < dim; v++)
-                          {
-                            stress_flux += stress_tensor[u][v] *
-                                           vel_face[q][u] *
-                                           fe_face_values.normal_vector(q)[v] *
-                                           fe_face_values.JxW(q);
-                          }
-                      }
+                      stress_tensor += pressure_tensor;
 
-                    // pre_flux += (present_pressure_values_face[q] + atm) *
-                    //  (vel_face[q] * normal) *
-                    // fe_face_values.JxW(q);
-                  }
-              }
+                      for (int i = 0; i < dim; i++)
+                        {
+                          for (int j = 0; j < dim; j++)
+                            {
+                              stress_flux +=
+                                stress_tensor[i][j] * vel_face[q][i] *
+                                fe_face_values.normal_vector(q)[j] *
+                                fe_face_values.JxW(q);
+                            }
+                        }
+
+                      // pre_flux += (present_pressure_values_face[q] + atm) *
+                      //  (vel_face[q] * normal) *
+                      // fe_face_values.JxW(q);
+                    }
+                }
             }
         }
 
-      // pre_ke = Utilities::MPI::sum(pre_ke, mpi_communicator);
+      ke = Utilities::MPI::sum(ke, mpi_communicator);
       // dissipation = Utilities::MPI::sum(dissipation, mpi_communicator);
       // elastic = Utilities::MPI::sum(elastic, mpi_communicator);
       ke_flux = Utilities::MPI::sum(ke_flux, mpi_communicator);
