@@ -632,7 +632,7 @@ namespace MPI
 
   // compute total KE in artificial fluid domain
   template <int dim>
-  void FSI<dim>::calculate_artificial_KE()
+  void FSI<dim>::compute_fsi_energy_artificial()
   {
     move_solid_mesh(true);
 
@@ -641,18 +641,32 @@ namespace MPI
                             update_values | update_gradients |
                               update_quadrature_points | update_JxW_values);
 
-    // Vector<double> localized_solid_velocity(solid_solver.current_velocity);
+    FEFaceValues<dim> fe_face_values(
+      fluid_solver.fe,
+      fluid_solver.face_quad_formula,
+      update_values | update_gradients | update_quadrature_points |
+        update_normal_vectors | update_JxW_values);
 
     const unsigned int n_q_points = fluid_solver.volume_quad_formula.size();
+
+    const unsigned int n_q_points_face = fluid_solver.face_quad_formula.size();
 
     const FEValuesExtractors::Vector velocities(0);
     const FEValuesExtractors::Scalar pressure(dim);
 
-    // std::vector<Tensor<2, dim>> grad_v(n_q_points);
+    std::vector<Tensor<2, dim>> grad_vel(n_q_points);
     std::vector<Tensor<1, dim>> vel(n_q_points);
-    std::vector<Tensor<1, dim>> pre_vel(n_q_points);
+
+    std::vector<SymmetricTensor<2, dim>> sym_grad_v(n_q_points);
+    std::vector<SymmetricTensor<2, dim>> sym_grad_v_face(n_q_points_face);
+
+    std::vector<Tensor<1, dim>> vel_face(n_q_points_face);
+    std::vector<double> present_pressure_values_face(n_q_points_face);
 
     double ke = 0;
+    double ke_flux = 0;
+    double stress_volumetric = 0;
+    double stress_flux = 0;
 
     for (auto f_cell = fluid_solver.dof_handler.begin_active();
          f_cell != fluid_solver.dof_handler.end();
@@ -665,65 +679,126 @@ namespace MPI
 
         auto ptr = fluid_solver.cell_property.get_data(f_cell);
         const double ind = ptr[0]->indicator;
-        const double ind_exact = ptr[0]->exact_indicator;
-        double rho_bar = parameters.solid_rho * ind_exact +
-                         parameters.fluid_rho * (1 - ind_exact);
 
         if (ind == 0)
           continue;
+
+        for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+          {
+
+            bool face_state = false;
+
+            auto neighbour_cell = f_cell->neighbor(f);
+
+            // if the cell state is invalid, the face is the boudanry of the
+            // indicator field, which is a valid face; if the cell state is
+            // valid, the neighbour indicator is equal to 0.
+
+            if (!neighbour_cell.state() == IteratorState::IteratorStates::valid)
+              {
+                face_state = true;
+              }
+
+            if (neighbour_cell.state() == IteratorState::IteratorStates::valid)
+
+              {
+                auto ptr = fluid_solver.cell_property.get_data(neighbour_cell);
+
+                if (ptr[0]->indicator == 0)
+                  {
+                    face_state = true;
+                  }
+              }
+
+            if (face_state == true)
+              {
+                fe_face_values.reinit(f_cell, f);
+
+                fe_face_values[velocities].get_function_values(
+                  fluid_solver.present_solution, vel_face);
+
+                fe_face_values[pressure].get_function_values(
+                  fluid_solver.present_solution, present_pressure_values_face);
+
+                fe_face_values[velocities].get_function_symmetric_gradients(
+                  fluid_solver.present_solution, sym_grad_v_face);
+
+                for (unsigned int q = 0; q < n_q_points_face; q++)
+                  {
+                    for (unsigned int i = 0; i < dim; ++i)
+                      {
+                        for (unsigned int j = 0; j < dim; ++j)
+                          {
+
+                            ke_flux += 0.5 * parameters.solid_rho *
+                                       vel_face[q][i] * vel_face[q][i] *
+                                       (vel_face[q][j] *
+                                        fe_face_values.normal_vector(q)[j]) *
+                                       fe_face_values.JxW(q);
+                          }
+                      }
+
+                    SymmetricTensor<2, dim> stress_tensor =
+                      2 * parameters.viscosity * sym_grad_v_face[q];
+
+                    // add fluid pressure into the stress
+                    SymmetricTensor<2, dim> pressure_tensor =
+                      -(present_pressure_values_face[q]) *
+                      Physics::Elasticity::StandardTensors<dim>::I;
+
+                    stress_tensor += pressure_tensor;
+
+                    for (int i = 0; i < dim; i++)
+                      {
+                        for (int j = 0; j < dim; j++)
+                          {
+                            stress_flux += stress_tensor[i][j] *
+                                           vel_face[q][i] *
+                                           fe_face_values.normal_vector(q)[j] *
+                                           fe_face_values.JxW(q);
+                          }
+                      }
+                  }
+              }
+          } // end looping face
 
         fe_values.reinit(f_cell);
 
         fe_values[velocities].get_function_values(fluid_solver.present_solution,
                                                   vel);
 
-        fe_values[velocities].get_function_values(
-          fluid_solver.previous_solution, pre_vel);
+        fe_values[velocities].get_function_gradients(
+          fluid_solver.present_solution, grad_vel);
 
-        // fe_values[velocities].get_function_gradients(
-        // fluid_solver.present_solution, grad_v);
-
-        // auto q_points = fe_values.get_quadrature_points();
+        fe_values[velocities].get_function_symmetric_gradients(
+          fluid_solver.present_solution, sym_grad_v);
 
         for (unsigned int q = 0; q < n_q_points; q++)
           {
 
-            /*
-            if (!point_in_solid(solid_solver.dof_handler,
-                                  q_points[q]))
-                continue;
-
-            Utils::GridInterpolator<dim, Vector<double>> interpolator(
-            solid_solver.dof_handler, q_points[q]);
-
-          if (!interpolator.found_cell())
-            {
-              std::stringstream message;
-              message << "Cannot find point in solid: " << q_points[q]
-                      << std::endl;
-              AssertThrow(interpolator.found_cell(),
-                          ExcMessage(message.str()));
-            }
-
-           Vector<double> solid_vel(dim);
-          interpolator.point_value(localized_solid_velocity, solid_vel);
-
-          Tensor<1, dim> vs;
-          for (int j = 0; j < dim; ++j)
-            {
-              vs[j] = solid_vel[j];
-            }
-            */
-
-            Tensor<1, dim> fluid_acc_tensor =
-              (vel[q] - pre_vel[q]) / time.get_delta_t();
-
-            // ke += parameters.solid_rho
-            ke += rho_bar * scalar_product(fluid_acc_tensor, vel[q]) *
+            ke += 0.5 * parameters.solid_rho * vel[q].norm_square() *
                   fe_values.JxW(q);
+
+            SymmetricTensor<2, dim> stress_tensor =
+              2 * parameters.viscosity * sym_grad_v[q];
+
+            for (int i = 0; i < dim; i++)
+              {
+                for (int j = 0; j < dim; j++)
+                  {
+                    stress_volumetric += stress_tensor[i][j] *
+                                         grad_vel[q][i][j] * fe_values.JxW(q);
+                  }
+              }
           }
       }
+
     ke = Utilities::MPI::sum(ke, fluid_solver.mpi_communicator);
+    stress_volumetric =
+      Utilities::MPI::sum(stress_volumetric, fluid_solver.mpi_communicator);
+    ke_flux = Utilities::MPI::sum(ke_flux, fluid_solver.mpi_communicator);
+    stress_flux =
+      Utilities::MPI::sum(stress_flux, fluid_solver.mpi_communicator);
 
     if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
       {
@@ -732,54 +807,70 @@ namespace MPI
 
         if (time.current() == 0.0)
           {
-            file_ke.open("artificial_ke_rate.txt");
+            file_ke.open("artificial_fsi_energy.txt");
             file_ke << "Time"
                     << "\t"
-                    << "Artificial KE"
+                    << "KE"
                     << "\t"
+                    << "KE flux"
+                    << "\t"
+                    << "stress volumetric"
+                    << "\t"
+                    << "stress flux"
                     << "\n";
           }
 
         else
 
           {
-            file_ke.open("artificial_ke_rate.txt", std::ios_base::app);
+            file_ke.open("artificial_fsi_energy.txt", std::ios_base::app);
           }
 
-        file_ke << time.current() << "\t" << ke << "\t"
-                << "\n";
+        file_ke << time.current() << "\t" << ke << "\t" << ke_flux << "\t"
+                << stress_volumetric << "\t" << stress_flux << "\n";
         file_ke.close();
       }
 
     move_solid_mesh(false);
   }
 
+  // compute the fsi energy residuals on the solid side
   template <int dim>
-  void FSI<dim>::calculate_artificial_PE()
+  void FSI<dim>::compute_fsi_energy_solid()
   {
-
     move_solid_mesh(true);
 
-    double pe_rate = 0;
+    const FEValuesExtractors::Vector displacements(0);
 
-    FEValues<dim> fe_values(fluid_solver.fe,
-                            fluid_solver.volume_quad_formula,
-                            update_values | update_quadrature_points |
-                              update_JxW_values | update_gradients);
+    FEValues<dim> fe_values(solid_solver.fe,
+                            solid_solver.volume_quad_formula,
+                            update_values | update_gradients |
+                              update_quadrature_points | update_normal_vectors |
+                              update_JxW_values);
 
-    FEValues<dim> scalar_fe_values(fluid_solver.scalar_fe,
-                                   fluid_solver.volume_quad_formula,
-                                   update_values | update_quadrature_points |
-                                     update_JxW_values | update_gradients);
-
-    FEFaceValues<dim> fe_face_values(fluid_solver.fe,
-                                     fluid_solver.face_quad_formula,
+    FEFaceValues<dim> fe_face_values(solid_solver.fe,
+                                     solid_solver.face_quad_formula,
                                      update_values | update_quadrature_points |
                                        update_normal_vectors |
                                        update_JxW_values);
 
-    FEFaceValues<dim> scalar_fe_face_values(
-      fluid_solver.scalar_fe, fluid_solver.face_quad_formula, update_values);
+    const unsigned int n_q_points = solid_solver.volume_quad_formula.size();
+
+    const unsigned int n_f_q_points = solid_solver.face_quad_formula.size();
+
+    Vector<double> localized_displacement(solid_solver.current_displacement);
+    Vector<double> localized_velocity(solid_solver.current_velocity);
+
+    std::vector<std::vector<Tensor<1, dim>>> fsi_stress_rows_values(dim);
+    std::vector<Tensor<1, dim>> solid_velocity_face(n_f_q_points);
+    std::vector<Tensor<1, dim>> solid_velocity(n_q_points);
+
+    std::vector<Tensor<2, dim>> solid_velocity_gradients(n_q_points);
+
+    for (unsigned int d = 0; d < dim; ++d)
+      {
+        fsi_stress_rows_values[d].resize(n_f_q_points);
+      }
 
     std::vector<std::vector<PETScWrappers::MPI::Vector>>
       relevant_partition_stress =
@@ -793,90 +884,200 @@ namespace MPI
               mpi_communicator)));
     relevant_partition_stress = fluid_solver.stress;
 
-    const unsigned int n_q_points = fluid_solver.volume_quad_formula.size();
+    double stress_power = 0.0;
 
-    std::vector<Tensor<1, dim>> vel(n_q_points);
-    std::vector<std::vector<std::vector<Tensor<1, dim>>>> stress_grad(
-      dim,
-      std::vector<std::vector<Tensor<1, dim>>>(
-        dim, std::vector<Tensor<1, dim>>(fe_values.n_quadrature_points)));
-    std::vector<Tensor<1, dim>> stress_div(fe_values.n_quadrature_points);
+    double ke = 0.0;
 
-    const FEValuesExtractors::Vector velocities(0);
-    const FEValuesExtractors::Scalar pressure(dim);
+    double traction_power = 0.0;
 
-    auto cell = fluid_solver.dof_handler.begin_active();
-    auto scalar_cell = fluid_solver.scalar_dof_handler.begin_active();
-
-    for (; cell != fluid_solver.dof_handler.end(),
-           scalar_cell != fluid_solver.scalar_dof_handler.end();
-         ++cell, ++scalar_cell)
+    for (auto s_cell = solid_solver.dof_handler.begin_active(),
+              scalar_s_cell = solid_solver.scalar_dof_handler.begin_active();
+         s_cell != solid_solver.dof_handler.end(),
+              scalar_s_cell != solid_solver.scalar_dof_handler.end();
+         ++s_cell, ++scalar_s_cell)
       {
 
-        if (!cell->is_locally_owned())
-          continue;
-
-        auto ptr = fluid_solver.cell_property.get_data(cell);
-        if (ptr[0]->indicator == 0)
-          continue;
-
-        fe_values.reinit(cell);
-        scalar_fe_values.reinit(scalar_cell);
-
-        fe_values[velocities].get_function_values(fluid_solver.present_solution,
-                                                  vel);
-
-        for (unsigned i = 0; i < dim; ++i)
+        if (s_cell->subdomain_id() == solid_solver.this_mpi_process)
           {
-            for (unsigned j = 0; j < dim; ++j)
+            continue;
+          }
+
+        for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
+             ++face)
+          {
+            if (s_cell->face(face)->at_boundary() &&
+                parameters.solid_dirichlet_bcs.find(
+                  s_cell->face(face)->boundary_id()) ==
+                  parameters.solid_dirichlet_bcs.end())
               {
-                scalar_fe_values.get_function_gradients(
-                  relevant_partition_stress[i][j], stress_grad[i][j]);
+                if (!s_cell->face(face)->at_boundary())
+                  {
+                    continue;
+                  }
+
+                // Get FSI stress values on face quadrature points
+                std::vector<SymmetricTensor<2, dim>> fsi_stress(n_f_q_points);
+
+                fe_face_values.reinit(s_cell, face);
+
+                for (unsigned int d = 0; d < dim; ++d)
+                  {
+                    fe_face_values[displacements].get_function_values(
+                      solid_solver.fsi_stress_rows[d],
+                      fsi_stress_rows_values[d]);
+                  }
+
+                fe_face_values[displacements].get_function_values(
+                  localized_velocity, solid_velocity_face);
+
+                for (unsigned int q = 0; q < n_f_q_points; ++q)
+                  {
+                    for (unsigned int d1 = 0; d1 < dim; ++d1)
+                      {
+                        for (unsigned int d2 = 0; d2 < dim; ++d2)
+                          {
+                            fsi_stress[q][d1][d2] =
+                              fsi_stress_rows_values[d1][q][d2];
+
+                            traction_power +=
+                              solid_velocity_face[q][d1] *
+                              fsi_stress[q][d1][d2] *
+                              fe_face_values.normal_vector(q)[d2] *
+                              fe_face_values.JxW(q);
+                          }
+                      }
+                  } // End looping face quadrature points
               }
           }
 
-        for (unsigned int q = 0; q < n_q_points; ++q)
+        fe_values.reinit(s_cell);
+
+        fe_values[displacements].get_function_gradients(
+          localized_velocity, solid_velocity_gradients);
+
+        fe_values[displacements].get_function_values(localized_velocity,
+                                                     solid_velocity);
+
+        auto q_points = fe_values.get_quadrature_points();
+
+        for (unsigned int q = 0; q < n_q_points; q++)
           {
-            for (unsigned i = 0; i < dim; ++i)
+
+            Vector<double> value(dim + 1);
+
+            Vector<double> previous_value(dim + 1);
+
+            Utils::GridInterpolator<dim, PETScWrappers::MPI::BlockVector>
+              interpolator(fluid_solver.dof_handler, q_points[q]);
+            interpolator.point_value(fluid_solver.present_solution, value);
+            interpolator.point_value(fluid_solver.previous_solution,
+                                     previous_value);
+
+            SymmetricTensor<2, dim> viscous_stress;
+
+            Tensor<2, dim> velocity_gradient;
+
+            for (unsigned int i = 0; i < dim; ++i)
               {
-                stress_div[q][i] = 0.0;
-                for (unsigned j = 0; j < dim; ++j)
+                for (unsigned int j = 0; j < dim; ++j)
                   {
-                    stress_div[q][i] += stress_grad[i][j][q][j];
+                    viscous_stress[i][j] = 0;
+                    velocity_gradient[i][j] = 0;
                   }
               }
 
-            pe_rate += scalar_product(vel[q], stress_div[q]) * fe_values.JxW(q);
+            auto f_cell = interpolator.get_cell();
+
+            if (f_cell.state() == IteratorState::IteratorStates::valid)
+              {
+
+                // ignoring the pressure gradient
+                std::vector<Tensor<1, dim>> temp_gradient(dim);
+
+                interpolator.point_gradient(fluid_solver.present_solution,
+                                            temp_gradient);
+
+                TriaActiveIterator<DoFCellAccessor<dim, dim, false>>
+                  scalar_f_cell(&fluid_solver.triangulation,
+                                f_cell->level(),
+                                f_cell->index(),
+                                &fluid_solver.scalar_dof_handler);
+
+                Utils::GridInterpolator<dim, PETScWrappers::MPI::Vector>
+                  scalar_interpolator(fluid_solver.scalar_dof_handler,
+                                      q_points[q],
+                                      {},
+                                      scalar_f_cell);
+
+                for (unsigned int i = 0; i < dim; i++)
+                  {
+                    for (unsigned int j = i; j < dim; j++)
+                      {
+                        Vector<double> stress_component(1);
+                        scalar_interpolator.point_value(
+                          relevant_partition_stress[i][j], stress_component);
+                        viscous_stress[i][j] = stress_component[0];
+                        velocity_gradient[i][j] = temp_gradient[i][j];
+                      }
+                  }
+              }
+            // \f$ \sigma = -p\bold{I} + \mu\nabla^S v\f$
+            SymmetricTensor<2, dim> fluid_stress =
+              -value[dim] * Physics::Elasticity::StandardTensors<dim>::I +
+              viscous_stress;
+
+            for (int i = 0; i < dim; i++)
+              {
+                for (int j = 0; j < dim; j++)
+                  {
+                    stress_power += fluid_stress[i][j] *
+                                    solid_velocity_gradients[q][i][j] *
+                                    fe_values.JxW(q);
+
+                    ke +=
+                      parameters.solid_rho * solid_velocity[q][i] *
+                      (((value[i] - previous_value[i]) / time.get_delta_t()) +
+                       (value[j] * velocity_gradient[i][j])) *
+                      fe_values.JxW(q);
+                    ;
+                  }
+              }
           }
-      } // end loop fluid cells
+      }
 
-    pe_rate = Utilities::MPI::sum(pe_rate, fluid_solver.mpi_communicator);
+    stress_power =
+      Utilities::MPI::sum(stress_power, solid_solver.mpi_communicator);
+    ke = Utilities::MPI::sum(ke, solid_solver.mpi_communicator);
+    traction_power =
+      Utilities::MPI::sum(traction_power, solid_solver.mpi_communicator);
 
-    // file output
     if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
       {
-        std::ofstream file_artificial_PE_rate;
+
+        std::ofstream file_fsi_solid;
 
         if (time.current() == 0.0)
           {
-
-            file_artificial_PE_rate.open("artificial_pe_rate.txt");
-            file_artificial_PE_rate << "Time"
-                                    << "\t"
-                                    << "artificial PE rate"
-                                    << "\t"
-                                    << "\n";
+            file_fsi_solid.open("solid_fsi_energy.txt");
+            file_fsi_solid << "Time"
+                           << "\t"
+                           << "KE power"
+                           << "\t"
+                           << "stress power"
+                           << "\t"
+                           << "traction_power"
+                           << "\n";
           }
 
         else
+
           {
-            file_artificial_PE_rate.open("artificial_pe_rate.txt",
-                                         std::ios_base::app);
+            file_fsi_solid.open("solid_fsi_energy.txt", std::ios_base::app);
           }
 
-        file_artificial_PE_rate << time.current() << "\t" << pe_rate << "\t"
-                                << "\n";
-        file_artificial_PE_rate.close();
+        file_fsi_solid << time.current() << "\t" << ke << "\t" << stress_power
+                       << "\t" << traction_power << "\n";
+        file_fsi_solid.close();
       }
 
     move_solid_mesh(false);
@@ -1712,10 +1913,8 @@ namespace MPI
         fluid_solver.setup_dofs();
         fluid_solver.make_constraints();
         fluid_solver.initialize_system();
-        // calculate_artificial_KE();
-        // calculate_artificial_PE();
-        // fluid_solver.calculate_fluid_KE();
-        // fluid_solver.calculate_fluid_PE();
+        compute_fsi_energy_solid();
+        compute_fsi_energy_artificial();
       }
     else
       {
@@ -1723,8 +1922,6 @@ namespace MPI
           {
             time.increment();
           }
-
-        // fluid_solver.previous_solution = fluid_solver.present_solution;
       }
 
     collect_solid_boundaries();
@@ -1792,9 +1989,9 @@ namespace MPI
 
         first_step = false;
         time.increment();
-        // calculate_artificial_KE();
-        // calculate_artificial_PE();
-        // fluid_solver.fluid_previous_solution = fluid_solver.present_solution;
+
+        compute_fsi_energy_solid();
+        compute_fsi_energy_artificial();
 
         if (time.time_to_refine())
           {

@@ -347,6 +347,7 @@ namespace Solid
           nodal_mass.compress(VectorOperation::insert);
 
           compute_solid_energy();
+          update_strain_and_stress();
           this->solve(mass_matrix, previous_acceleration, system_rhs);
           this->output_results(time.get_timestep());
         }
@@ -492,9 +493,17 @@ namespace Solid
       local_sorrounding_cells = 1.0;
 
       // compute strain energy rate that is \int (\sigma_ij * \eplsion_ij)
-      double strain_energy = 0;
+      double strain_energy_rate = 0;
 
       Vector<double> localized_current_displacement(current_displacement);
+
+      Vector<double> localized_velocity(current_velocity);
+
+      std::vector<Tensor<2, dim>> current_velocity_gradients(
+        volume_quad_formula.size());
+
+      std::vector<SymmetricTensor<2, dim>> sym_grad_v(
+        volume_quad_formula.size());
 
       for (; cell != dof_handler.end(); ++cell, ++scalar_cell)
         {
@@ -503,6 +512,13 @@ namespace Solid
               fe_values.reinit(cell);
               fe_values[displacements].get_function_gradients(
                 localized_current_displacement, current_displacement_gradients);
+
+              fe_values[displacements].get_function_gradients(
+                localized_velocity, current_velocity_gradients);
+
+              fe_values[displacements].get_function_symmetric_gradients(
+                localized_velocity, sym_grad_v);
+
               int mat_id = cell->material_id();
               if (parameters.n_solid_parts == 1)
                 mat_id = 1;
@@ -531,9 +547,12 @@ namespace Solid
                         }
                     }
 
-                  strain_energy += 0.5 *
-                                   scalar_product(tmp_stress, tmp_strain) *
-                                   fe_values.JxW(q);
+                  strain_energy_rate +=
+                    scalar_product(tmp_stress, current_velocity_gradients[q]) *
+                    fe_values.JxW(q);
+
+                  // strain_energy_rate += scalar_product(tmp_stress,
+                  // sym_grad_v[q]) * fe_values.JxW(q);
                 }
 
               for (unsigned int i = 0; i < dim; ++i)
@@ -554,7 +573,8 @@ namespace Solid
         }
       surrounding_cells.compress(VectorOperation::add);
 
-      strain_energy = Utilities::MPI::sum(strain_energy, mpi_communicator);
+      strain_energy_rate =
+        Utilities::MPI::sum(strain_energy_rate, mpi_communicator);
 
       if (this_mpi_process == 0)
         {
@@ -562,22 +582,21 @@ namespace Solid
 
           if (time.current() == 0.0)
             {
-              file_strain_energy.open("solid_strain_energy.txt");
+              file_strain_energy.open("solid_strain_energy_rate.txt");
               file_strain_energy << "Time"
                                  << "\t"
-                                 << "Solid Strain Energy"
-                                 << "\t"
+                                 << "Solid strain energy rate"
                                  << "\n";
             }
 
           else
 
             {
-              file_strain_energy.open("solid_strain_energy.txt",
+              file_strain_energy.open("solid_strain_energy_rate.txt",
                                       std::ios_base::app);
             }
 
-          file_strain_energy << time.current() << "\t" << strain_energy << "\t"
+          file_strain_energy << time.current() << "\t" << strain_energy_rate
                              << "\n";
           file_strain_energy.close();
         }

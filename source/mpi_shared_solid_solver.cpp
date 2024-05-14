@@ -377,11 +377,11 @@ namespace Solid
     void SharedSolidSolver<dim, spacedim>::compute_solid_energy()
     {
 
-      FEValues<dim, spacedim> fe_values(fe,
-                                        volume_quad_formula,
-                                        update_values | update_gradients |
-                                          update_quadrature_points |
-                                          update_JxW_values);
+      FEValues<dim, spacedim> fe_values(
+        fe,
+        volume_quad_formula,
+        update_values | update_gradients | update_quadrature_points |
+          update_normal_vectors | update_JxW_values);
 
       FEFaceValues<dim, spacedim> fe_face_values(
         fe,
@@ -395,7 +395,7 @@ namespace Solid
 
       Vector<double> localized_velocity(current_velocity);
 
-      Vector<double> localized_previous_velocity(previous_velocity);
+      // Vector<double> localized_previous_velocity(previous_velocity);
 
       std::vector<Tensor<1, spacedim>> vel(n_q_points);
 
@@ -410,8 +410,8 @@ namespace Solid
 
       // energy and work terms
       double ke = 0.0;
-      double previous_ke = 0.0;
-      double body = 0.0;
+      // double previous_ke = 0.0;
+      // double body = 0.0;
       double traction_power = 0.0;
 
       Tensor<1, spacedim> gravity;
@@ -428,20 +428,22 @@ namespace Solid
               fe_values.reinit(cell);
               fe_values[displacements].get_function_values(localized_velocity,
                                                            vel);
-              fe_values[displacements].get_function_values(
-                localized_previous_velocity, pre_vel);
+              // fe_values[displacements].get_function_values(
+              // localized_previous_velocity, pre_vel);
+
+              // get FSI stress values at quad points
 
               for (unsigned int q = 0; q < n_q_points; ++q)
                 {
 
-                  ke += 0.5 * parameters.solid_rho * vel[q] * vel[q] *
+                  ke += 0.5 * parameters.solid_rho * vel[q].norm_square() *
                         fe_values.JxW(q);
 
-                  previous_ke += 0.5 * parameters.solid_rho * pre_vel[q] *
-                                 pre_vel[q] * fe_values.JxW(q);
+                  // previous_ke += 0.5 * parameters.solid_rho * pre_vel[q] *
+                  // pre_vel[q] * fe_values.JxW(q);
 
-                  body += parameters.solid_rho *
-                          scalar_product(gravity, vel[q]) * fe_values.JxW(q);
+                  // body += parameters.solid_rho *
+                  // scalar_product(gravity, vel[q]) * fe_values.JxW(q);
                 }
 
               // compute work done by external tracion
@@ -485,6 +487,14 @@ namespace Solid
 
                       for (unsigned int q = 0; q < n_q_points_face; q++)
                         {
+
+                          if (parameters.simulation_type != "FSI" &&
+                              parameters.solid_neumann_bc_type == "Pressure")
+                            {
+                              // The normal is w.r.t. reference configuration!
+                              traction = fe_face_values.normal_vector(q);
+                              traction *= value[0];
+                            }
                           traction_power +=
                             traction * vel_face[q] * fe_face_values.JxW(q);
                         }
@@ -494,12 +504,12 @@ namespace Solid
         }
 
       ke = Utilities::MPI::sum(ke, mpi_communicator);
-      previous_ke = Utilities::MPI::sum(previous_ke, mpi_communicator);
+      // previous_ke = Utilities::MPI::sum(previous_ke, mpi_communicator);
       traction_power = Utilities::MPI::sum(traction_power, mpi_communicator);
 
       // double ke_rate = (ke - previous_ke) / time.get_delta_t();
 
-      body = Utilities::MPI::sum(body, mpi_communicator);
+      // body = Utilities::MPI::sum(body, mpi_communicator);
 
       if (this_mpi_process == 0)
         {
@@ -512,12 +522,7 @@ namespace Solid
                       << "\t"
                       << "ke"
                       << "\t"
-                      << "ke previous"
-                      << "\t"
-                      << "body force power"
-                      << "\t"
                       << "traction_power"
-                      << "\t"
                       << "\n";
             }
 
@@ -527,8 +532,7 @@ namespace Solid
               file_ke.open("solid_energy.txt", std::ios_base::app);
             }
 
-          file_ke << time.current() << "\t" << ke << "\t" << previous_ke << "\t"
-                  << body << "\t" << traction_power << "\t"
+          file_ke << time.current() << "\t" << ke << "\t" << traction_power
                   << "\n";
           file_ke.close();
         }

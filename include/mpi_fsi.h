@@ -159,9 +159,9 @@ namespace MPI
     /// Mesh adaption.
     void refine_mesh(const unsigned int, const unsigned int);
 
-    void calculate_artificial_KE();
+    void compute_fsi_energy_artificial();
 
-    void calculate_artificial_PE();
+    void compute_fsi_energy_solid();
 
     // For MPI FSI, the solid solver uses shared trianulation. i.e.,
     // each process has the entire graph, for the ease of looping.

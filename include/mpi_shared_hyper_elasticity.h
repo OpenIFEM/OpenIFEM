@@ -95,7 +95,6 @@ namespace Solid
       MPISharedSolidSolverInheritanceMacro();
 
       using SharedSolidSolver<dim>::nodal_mass;
-      using SharedSolidSolver<dim>::calculate_KE;
 
     public:
       SharedHyperElasticity(Triangulation<dim> &,

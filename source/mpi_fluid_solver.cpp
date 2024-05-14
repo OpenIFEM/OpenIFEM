@@ -881,7 +881,7 @@ namespace Fluid
             }
 
           auto ptr = cell_property.get_data(f_cell);
-          const double ind = ptr[0]->exact_indicator;
+          const double ind = ptr[0]->indicator;
 
           if (ind != 0)
             continue;
@@ -927,7 +927,7 @@ namespace Fluid
 
               // add fluid pressure into the stress
               SymmetricTensor<2, dim> pressure_tensor =
-                (-present_pressure_values[q] + atm) *
+                (-present_pressure_values[q]) *
                 Physics::Elasticity::StandardTensors<dim>::I;
 
               // stress_tensor += pressure_tensor;
