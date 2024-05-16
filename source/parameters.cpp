@@ -34,6 +34,10 @@ namespace Parameters
         "",
         Patterns::List(dealii::Patterns::Double()),
         "Gravity acceleration that applies to both fluid and solid");
+      prm.declare_entry("Initial velocity",
+                        "",
+                        Patterns::List(dealii::Patterns::Double()),
+                        "Initial velocity that only applies to solid");
     }
     prm.leave_subsection();
   }
@@ -60,6 +64,11 @@ namespace Parameters
       gravity = Utilities::string_to_double(parsed_input);
       AssertThrow(static_cast<int>(gravity.size()) == dimension,
                   ExcMessage("Inconsistent dimension of gravity!"));
+      raw_input = prm.get("Initial velocity");
+      parsed_input = Utilities::split_string_list(raw_input);
+      initial_velocity = Utilities::string_to_double(parsed_input);
+      AssertThrow(static_cast<int>(initial_velocity.size()) == dimension,
+                  ExcMessage("Inconsistent dimension of initial velocity!"));
     }
     prm.leave_subsection();
   }

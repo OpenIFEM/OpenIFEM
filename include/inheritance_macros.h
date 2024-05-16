@@ -38,6 +38,7 @@ protected:                                                                     \
   using FluidSolver<dim>::solution_increment;                                  \
   using FluidSolver<dim>::system_rhs;                                          \
   using FluidSolver<dim>::fsi_acceleration;                                    \
+  using FluidSolver<dim>::fsi_stress;                                          \
   using FluidSolver<dim>::stress;                                              \
   using FluidSolver<dim>::parameters;                                          \
   using FluidSolver<dim>::mpi_communicator;                                    \
