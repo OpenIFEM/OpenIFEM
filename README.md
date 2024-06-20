@@ -9,6 +9,7 @@ An implementation of the Immersed Finite Element Method based on [deal.II](https
 5. [deal.II](https://www.dealii.org/) greater than v9.1 with 1-4
 
 ## Install
+Refer to the [wiki](https://github.com/OpenIFEM/OpenIFEM/wiki) for detailed installation instructions. 
 
 ## References
 1. @article{cheng2019openifem,
