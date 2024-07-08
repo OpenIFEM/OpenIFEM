@@ -18,7 +18,7 @@ subsection Simulation
   set Global refinements = 5, 4
 
   # The end time of the simulation in second
-  set End time = 1e1
+  set End time = 6.21e0
 
   # The time step in second
   set Time step size = 1e-2
