@@ -18,7 +18,7 @@ subsection Simulation
   set Global refinements = 1, 0
 
   # The end time of the simulation in second
-  set End time = 2e0
+  set End time = 1.3e0
 
   # The time step in second
   set Time step size = 1e-1
@@ -85,11 +85,11 @@ subsection Fluid Dirichlet BCs
   # One decimal number indicates one set of constrained components:
   # 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
   # To make sense of the numbering, convert decimals to binaries (zyx)
-  set Dirichlet boundary components = 3, 2, 3
+  set Dirichlet boundary components = 3, 3, 3
 
   # Specify the values of the Dirichlet BCs, including both homogeneous and
   # inhomogeneous ones.
-  set Dirichlet boundary values = 1, 0, 0, 0, 0
+  set Dirichlet boundary values = 1, 0, 0, 0, 0, 0
 end
 
 subsection Fluid Neumann BCs

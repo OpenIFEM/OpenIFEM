@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
         {
           Triangulation<2> tria;
           dealii::GridGenerator::subdivided_hyper_rectangle(
-            tria, {100, 5}, Point<2>(0, 0), Point<2>(L, D / 2), true);
+            tria, {100, 10}, Point<2>(0, 0), Point<2>(L, D), true);
           Fluid::InsIM<2> flow(tria, params);
           flow.run();
           auto solution = flow.get_current_solution();
