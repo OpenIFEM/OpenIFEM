@@ -38,9 +38,9 @@ int main(int argc, char *argv[])
           dealii::GridGenerator::subdivided_hyper_rectangle(
             tria,
             {static_cast<unsigned int>(L / h),
-             static_cast<unsigned int>(D / (2 * h))},
+             static_cast<unsigned int>(D / h)},
             Point<2>(0, 0),
-            Point<2>(L, D / 2),
+            Point<2>(L, D),
             true);
           Fluid::MPI::InsIM<2> flow(tria, params);
           flow.run();
