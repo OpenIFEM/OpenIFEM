@@ -500,7 +500,7 @@ namespace Utils
               {
                 if (std::abs(cell->face(f)->center()[0] - 2.2) < 1e-12)
                   {
-                    cell->face(f)->set_all_boundary_ids(1);
+                    // cell->face(f)->set_all_boundary_ids(1);
                   }
                 else if (std::abs(cell->face(f)->center()[0] - 0.0) < 1e-12)
                   {
@@ -514,7 +514,7 @@ namespace Utils
                   {
                     cell->face(f)->set_all_boundary_ids(2);
                   }
-                else
+                else if (std::abs(cell->face(f)->center()[0] - 2.2) > 1e-12)
                   {
                     cell->face(f)->set_all_boundary_ids(4);
                   }

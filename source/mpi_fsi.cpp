@@ -1913,6 +1913,7 @@ namespace MPI
         fluid_solver.setup_dofs();
         fluid_solver.make_constraints();
         fluid_solver.initialize_system();
+        fluid_solver.compute_fluid_energy();
         compute_fsi_energy_solid();
         compute_fsi_energy_artificial();
       }
