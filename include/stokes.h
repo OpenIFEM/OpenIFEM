@@ -79,7 +79,7 @@ namespace Fluid
     using FluidSolver<dim>::cell_property;
     using FluidSolver<dim>::boundary_values;
     using FluidSolver<dim>::stress;
-    using FluidSolver<dim>::run_one_step;
+    // using FluidSolver<dim>::run_one_step;
 
     // override the following functions to folow step 22, these needs to be
     // fixed to follow openIFEM in the future
@@ -98,8 +98,8 @@ namespace Fluid
 
     std::pair<unsigned int, double> solve();
 
-    // void run_one_step(bool apply_nonzero_constraints,
-    //  bool assemble_system = true) override;
+    void run_one_step(bool apply_nonzero_constraints,
+                      bool assemble_system = true) override;
 
     void run_one_step();
 

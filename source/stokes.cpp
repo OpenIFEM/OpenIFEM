@@ -3,22 +3,14 @@
 namespace Fluid
 {
 
-  namespace BoundaryIDs
-  {
-    constexpr types::boundary_id inlet = 0;
-    constexpr types::boundary_id bottom = 2;
-    constexpr types::boundary_id top = 3;
-    constexpr types::boundary_id cylinder = 4;
-  } // namespace BoundaryIDs
-
   // Define numerical constants to replace magic numbers
   namespace NumericalConstants
   {
     constexpr double DOMAIN_HEIGHT = 0.41; // Height of the domain
-    constexpr double DOMAIN_LENGTH = 2.2;  // X-position of the cylinder
-    constexpr double INLET_U_MAX = 100.0;  // Maximum inlet velocity
-    constexpr double TOLERANCE = 1e-10;    // Tolerance for boundary checks
-  }                                        // namespace NumericalConstants
+    constexpr double DOMAIN_LENGTH = 2.2; // X-position of the cylinder
+    constexpr double INLET_U_MAX = 100;   // Maximum inlet velocity
+    constexpr double TOLERANCE = 1e-10;   // Tolerance for boundary checks
+  }                                       // namespace NumericalConstants
 
   template <class MatrixType, class PreconditionerType>
   class InverseMatrix : public Subscriptor
@@ -171,9 +163,9 @@ namespace Fluid
       const double H =
         NumericalConstants::DOMAIN_HEIGHT; // Height of the domain
 
-      values(0) = NumericalConstants::INLET_U_MAX *
-                  (1.0 - std::pow((2.0 * y / H - 1), 2));
-      // values(0) = U_max; uniform inlet velocity
+       values(0) = NumericalConstants::INLET_U_MAX *
+         (1.0 - std::pow((2.0 * y / H - 1), 2));
+      //values(0) = NumericalConstants::INLET_U_MAX; // uniform inlet velocity
 
       for (unsigned int i = 1; i < dim + 1; ++i)
         values(i) = 0.0; // No velocity in other components
@@ -267,22 +259,22 @@ namespace Fluid
 
     */
 
-    Functions::ZeroFunction<dim> zero_velocity(dim + 1);
+    Functions::ZeroFunction<dim> zero_velocity(dim);
 
     VectorTools::interpolate_boundary_values(dof_handler,
-                                             BoundaryIDs::bottom, // Bottom Wall
+                                             4,
                                              zero_velocity,
                                              constraints,
                                              fe.component_mask(velocities));
 
     VectorTools::interpolate_boundary_values(dof_handler,
-                                             BoundaryIDs::top, // Top Wall
+                                             2,
                                              zero_velocity,
                                              constraints,
                                              fe.component_mask(velocities));
 
     VectorTools::interpolate_boundary_values(dof_handler,
-                                             BoundaryIDs::cylinder, // cylinder
+                                             3,
                                              zero_velocity,
                                              constraints,
                                              fe.component_mask(velocities));
@@ -290,7 +282,7 @@ namespace Fluid
     // Inlet (Left Boundary) with Parabolic Velocity Profile
     InletVelocity<dim> inlet_velocity; // Set U_max as needed
     VectorTools::interpolate_boundary_values(dof_handler,
-                                             BoundaryIDs::inlet, // Inlet
+                                             0,
                                              inlet_velocity,
                                              constraints,
                                              fe.component_mask(velocities));
@@ -360,7 +352,7 @@ namespace Fluid
     //
 
     DoFTools::make_sparsity_pattern(
-      dof_handler, coupling, dsp, nonzero_constraints, false);
+      dof_handler, coupling, dsp, constraints, false);
 
     sparsity_pattern.copy_from(dsp);
 
@@ -381,7 +373,7 @@ namespace Fluid
     DoFTools::make_sparsity_pattern(dof_handler,
                                     preconditioner_coupling,
                                     preconditioner_dsp,
-                                    nonzero_constraints,
+                                    constraints,
                                     false);
 
     preconditioner_sparsity_pattern.copy_from(preconditioner_dsp);
@@ -737,6 +729,15 @@ namespace Fluid
     DataOutBase::write_pvd_record(pvd_output, times_and_names);
   }
 
+  // override the run_one_step function to aviod compilation error
+  template <int dim>
+  void Stokes<dim>::run_one_step(bool apply_nonzero_constraints,
+                                 bool assemble_system)
+  {
+    (void)assemble_system;
+    (void)apply_nonzero_constraints;
+  }
+
   template <int dim>
 
   void Stokes<dim>::run_one_step()
@@ -804,10 +805,9 @@ namespace Fluid
                 const double y = center[1];
                 const double tol = NumericalConstants::TOLERANCE;
 
-                if (std::abs(x - 0.0) < tol)
+                if (std::abs(y - 0.41) < tol)
                   {
-                    cell->face(face)->set_all_boundary_ids(
-                      BoundaryIDs::inlet); // Inlet
+                    cell->face(face)->set_all_boundary_ids(3); // Top
                   }
 
                 //   else if (std::abs(x - 2.2) < tol)
@@ -820,20 +820,23 @@ namespace Fluid
 
                 else if (std::abs(y - 0.0) < tol)
                   {
-                    cell->face(face)->set_all_boundary_ids(
-                      BoundaryIDs::bottom); // Bottom
+                    cell->face(face)->set_all_boundary_ids(2); // Bottom
                   }
 
-                else if (std::abs(y - 0.41) < tol)
+                else if (std::abs(x - 0) < tol)
                   {
-                    cell->face(face)->set_all_boundary_ids(
-                      BoundaryIDs::top); // Top
+                    cell->face(face)->set_all_boundary_ids(0); // Left
                   }
 
-                // else if (std::abs(x - 2.2) > tol)
-                // {
-                // cell->face(face)->set_all_boundary_ids(4); // cylinder
+             //   else if (std::abs(x - 1) < tol)
+                //  {
+                //    cell->face(face)->set_all_boundary_ids(3); // right
                 //  }
+
+                 else if (std::abs(x - 2.2) > tol)
+                 {
+                cell->face(face)->set_all_boundary_ids(4); // cylinder
+                  }
               }
           }
       }
