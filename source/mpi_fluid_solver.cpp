@@ -378,6 +378,8 @@ namespace Fluid
     {
       AssertThrow(initial_condition_field != nullptr,
                   ExcMessage("No initial condition specified!"));
+
+      // old method uses a point-wise interpolation for initial velocity
       AffineConstraints<double> initial_condition;
       initial_condition.reinit(locally_relevant_dofs);
 
@@ -761,7 +763,11 @@ namespace Fluid
                                 update_quadrature_points | update_JxW_values);
       const unsigned int n_q_points = volume_quad_formula.size();
       const FEValuesExtractors::Vector velocities(0);
+
+      const FEValuesExtractors::Scalar pressure(dim);
+
       std::vector<SymmetricTensor<2, dim>> sym_grad_v(n_q_points);
+      std::vector<double> p_values(n_q_points);
 
       auto cell = dof_handler.begin_active();
       auto scalar_cell = scalar_dof_handler.begin_active();
@@ -777,11 +783,19 @@ namespace Fluid
           fe_values[velocities].get_function_symmetric_gradients(
             present_solution, sym_grad_v);
 
+          fe_values[pressure].get_function_values(present_solution, p_values);
+
           // Loop over all quadrature points to set FSI forces.
           for (unsigned int q = 0; q < volume_quad_formula.size(); ++q)
             {
               SymmetricTensor<2, dim> tau =
                 2 * parameters.viscosity * sym_grad_v[q];
+
+              tau -= p_values[q] * Physics::Elasticity::StandardTensors<dim>::I;
+
+              // for (unsigned int d = 0; d < dim; ++d)
+              // tau[d][d] -= p_values[q];
+
               for (unsigned int i = 0; i < dim; ++i)
                 {
                   for (unsigned int j = 0; j < dim; ++j)
@@ -823,265 +837,271 @@ namespace Fluid
         }
     }
 
-    template <int dim>
-    void FluidSolver<dim>::compute_fluid_energy()
-    {
-      FEValues<dim> fe_values(fe,
-                              volume_quad_formula,
-                              update_values | update_gradients |
-                                update_quadrature_points | update_JxW_values);
-
-      FEFaceValues<dim> fe_face_values(
-        fe,
-        face_quad_formula,
-        update_values | update_gradients | update_quadrature_points |
-          update_normal_vectors | update_JxW_values);
-
-      const unsigned int n_q_points = volume_quad_formula.size();
-
-      const unsigned int n_q_points_face = face_quad_formula.size();
-
-      const FEValuesExtractors::Vector velocities(0);
-      const FEValuesExtractors::Scalar pressure(dim);
-
-      std::vector<Tensor<1, dim>> vel(n_q_points);
-      std::vector<Tensor<2, dim>> grad_vel(n_q_points);
-
-      // std::vector<Tensor<1, dim>> pre_vel(n_q_points);
-      std::vector<double> present_pressure_values(n_q_points);
-
-      // std::vector<double> previous_pressure_values(
-      // n_q_points); // to compute the previous fluid density
-
-      std::vector<SymmetricTensor<2, dim>> sym_grad_v(n_q_points);
-      std::vector<SymmetricTensor<2, dim>> sym_grad_v_face(n_q_points_face);
-
-      std::vector<Tensor<1, dim>> vel_face(n_q_points_face);
-      std::vector<double> present_pressure_values_face(n_q_points_face);
-
-      double ke = 0;
-      // double pre_ke = 0;
-      double ke_flux = 0;
-
-      double stress_volumetric = 0;
-      double stress_flux = 0;
-      // double pre_flux = 0;
-      // double dissipation = 0;
-      // double elastic = 0;
-      // const double atm = 1013250; // this is only for SCNSIM solver
-      // const double viscosity = parameters.viscosity;
-
-      for (auto f_cell = dof_handler.begin_active();
-           f_cell != dof_handler.end();
-           ++f_cell)
+    /*
+        template <int dim>
+        void FluidSolver<dim>::compute_fluid_energy()
         {
-          if (!f_cell->is_locally_owned())
+          FEValues<dim> fe_values(fe,
+                                  volume_quad_formula,
+                                  update_values | update_gradients |
+                                    update_quadrature_points |
+       update_JxW_values);
+
+          FEFaceValues<dim> fe_face_values(
+            fe,
+            face_quad_formula,
+            update_values | update_gradients | update_quadrature_points |
+              update_normal_vectors | update_JxW_values);
+
+          const unsigned int n_q_points = volume_quad_formula.size();
+
+          const unsigned int n_q_points_face = face_quad_formula.size();
+
+          const FEValuesExtractors::Vector velocities(0);
+          const FEValuesExtractors::Scalar pressure(dim);
+
+          std::vector<Tensor<1, dim>> vel(n_q_points);
+          std::vector<Tensor<2, dim>> grad_vel(n_q_points);
+
+          // std::vector<Tensor<1, dim>> pre_vel(n_q_points);
+          std::vector<double> present_pressure_values(n_q_points);
+
+          // std::vector<double> previous_pressure_values(
+          // n_q_points); // to compute the previous fluid density
+
+          std::vector<SymmetricTensor<2, dim>> sym_grad_v(n_q_points);
+          std::vector<SymmetricTensor<2, dim>> sym_grad_v_face(n_q_points_face);
+
+          std::vector<Tensor<1, dim>> vel_face(n_q_points_face);
+          std::vector<double> present_pressure_values_face(n_q_points_face);
+
+          double ke = 0;
+          // double pre_ke = 0;
+          double ke_flux = 0;
+
+          double stress_volumetric = 0;
+          double stress_flux = 0;
+          // double pre_flux = 0;
+          // double dissipation = 0;
+          // double elastic = 0;
+          // const double atm = 1013250; // this is only for SCNSIM solver
+          // const double viscosity = parameters.viscosity;
+
+          for (auto f_cell = dof_handler.begin_active();
+               f_cell != dof_handler.end();
+               ++f_cell)
             {
-              continue;
-            }
-
-          auto ptr = cell_property.get_data(f_cell);
-          const double ind = ptr[0]->indicator;
-
-          if (ind != 0)
-            continue;
-
-          fe_values.reinit(f_cell);
-          fe_values[velocities].get_function_values(present_solution, vel);
-
-          // fe_values[velocities].get_function_values(previous_solution,
-          // pre_vel);
-
-          fe_values[pressure].get_function_values(present_solution,
-                                                  present_pressure_values);
-
-          fe_values[velocities].get_function_gradients(present_solution,
-                                                       grad_vel);
-
-          // fe_values[pressure].get_function_values(previous_solution,
-          // previous_pressure_values);
-
-          fe_values[velocities].get_function_symmetric_gradients(
-            present_solution, sym_grad_v);
-
-          for (unsigned int q = 0; q < n_q_points; q++)
-            {
-              // calulations of rho is adopted from scnsim solver
-              const double rho = parameters.fluid_rho;
-              // * (1 + present_pressure_values[q] / atm) *
-              //(1 - ind) +
-              // ind * parameters.solid_rho;
-
-              // const double pre_rho = parameters.fluid_rho *
-              // (1 + previous_pressure_values[q] / atm) *
-              // (1 - ind) +
-              // ind * parameters.solid_rho;
-
-              ke += 0.5 * rho * vel[q].norm_square() * fe_values.JxW(q);
-
-              // compute velocity gradient part of the stress at each quad
-              // points
-
-              SymmetricTensor<2, dim> stress_tensor =
-                2 * parameters.viscosity * sym_grad_v[q];
-
-              // add fluid pressure into the stress
-              SymmetricTensor<2, dim> pressure_tensor =
-                (-present_pressure_values[q]) *
-                Physics::Elasticity::StandardTensors<dim>::I;
-
-              // stress_tensor += pressure_tensor;
-
-              // stress_volumetric +=
-              // scalar_product(stress_tensor, grad_vel[q]) * fe_values.JxW(q);
-
-              for (int i = 0; i < dim; i++)
+              if (!f_cell->is_locally_owned())
                 {
-                  for (int j = 0; j < dim; j++)
-                    {
-                      stress_volumetric += stress_tensor[i][j] *
-                                           grad_vel[q][i][j] * fe_values.JxW(q);
-                    }
+                  continue;
                 }
 
-              // pre_ke += 0.5 * pre_rho * pre_vel[q] * pre_vel[q] *
-              // fe_values.JxW(q);
+              auto ptr = cell_property.get_data(f_cell);
+              const double ind = ptr[0]->indicator;
 
-              /*
-              dissipation += 2 * viscosity *
-                             scalar_product(sym_grad_v[q], sym_grad_v[q]) *
+              if (ind != 0)
+                continue;
+
+              fe_values.reinit(f_cell);
+              fe_values[velocities].get_function_values(present_solution, vel);
+
+              // fe_values[velocities].get_function_values(previous_solution,
+              // pre_vel);
+
+              fe_values[pressure].get_function_values(present_solution,
+                                                      present_pressure_values);
+
+              fe_values[velocities].get_function_gradients(present_solution,
+                                                           grad_vel);
+
+              // fe_values[pressure].get_function_values(previous_solution,
+              // previous_pressure_values);
+
+              fe_values[velocities].get_function_symmetric_gradients(
+                present_solution, sym_grad_v);
+
+              for (unsigned int q = 0; q < n_q_points; q++)
+                {
+                  // calulations of rho is adopted from scnsim solver
+                  const double rho = parameters.fluid_rho;
+                  // * (1 + present_pressure_values[q] / atm) *
+                  //(1 - ind) +
+                  // ind * parameters.solid_rho;
+
+                  // const double pre_rho = parameters.fluid_rho *
+                  // (1 + previous_pressure_values[q] / atm) *
+                  // (1 - ind) +
+                  // ind * parameters.solid_rho;
+
+                  ke += 0.5 * rho * vel[q].norm_square() * fe_values.JxW(q);
+
+                  // compute velocity gradient part of the stress at each quad
+                  // points
+
+                  SymmetricTensor<2, dim> stress_tensor =
+                    2 * parameters.viscosity * sym_grad_v[q];
+
+                  // add fluid pressure into the stress
+                  SymmetricTensor<2, dim> pressure_tensor =
+                    (-present_pressure_values[q]) *
+                    Physics::Elasticity::StandardTensors<dim>::I;
+
+                  // stress_tensor += pressure_tensor;
+
+                  // stress_volumetric +=
+                  // scalar_product(stress_tensor, grad_vel[q]) *
+       fe_values.JxW(q);
+
+                  for (int i = 0; i < dim; i++)
+                    {
+                      for (int j = 0; j < dim; j++)
+                        {
+                          stress_volumetric += stress_tensor[i][j] *
+                                               grad_vel[q][i][j] *
+       fe_values.JxW(q);
+                        }
+                    }
+
+                  // pre_ke += 0.5 * pre_rho * pre_vel[q] * pre_vel[q] *
+                  // fe_values.JxW(q);
+
+                  dissipation += 2 * viscosity *
+                                 scalar_product(sym_grad_v[q], sym_grad_v[q]) *
+                                 fe_values.JxW(q);
+
+                  elastic += (present_pressure_values[q] / rho) *
+                             ((rho - pre_rho) / time.get_timestep()) *
                              fe_values.JxW(q);
 
-              elastic += (present_pressure_values[q] / rho) *
-                         ((rho - pre_rho) / time.get_timestep()) *
-                         fe_values.JxW(q);
-              */
-            }
-        }
-
-      for (auto f_cell = dof_handler.begin_active();
-           f_cell != dof_handler.end();
-           ++f_cell)
-
-        {
-          if (!f_cell->is_locally_owned())
-            {
-              continue;
+                }
             }
 
-          auto ptr = cell_property.get_data(f_cell);
-          const double ind = ptr[0]->exact_indicator;
+          for (auto f_cell = dof_handler.begin_active();
+               f_cell != dof_handler.end();
+               ++f_cell)
 
-          if (ind != 0)
-            continue;
-
-          fe_values.reinit(f_cell);
-
-          for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
-               ++face)
             {
-              if (f_cell->face(face)->at_boundary())
-
+              if (!f_cell->is_locally_owned())
                 {
+                  continue;
+                }
 
-                  fe_face_values.reinit(f_cell, face);
+              auto ptr = cell_property.get_data(f_cell);
+              const double ind = ptr[0]->exact_indicator;
 
-                  fe_face_values[velocities].get_function_values(
-                    present_solution, vel_face);
+              if (ind != 0)
+                continue;
 
-                  fe_face_values[pressure].get_function_values(
-                    present_solution, present_pressure_values_face);
+              fe_values.reinit(f_cell);
 
-                  fe_face_values[velocities].get_function_symmetric_gradients(
-                    present_solution, sym_grad_v_face);
+              for (unsigned int face = 0; face <
+       GeometryInfo<dim>::faces_per_cell;
+                   ++face)
+                {
+                  if (f_cell->face(face)->at_boundary())
 
-                  for (unsigned int q = 0; q < n_q_points_face; q++)
                     {
 
-                      for (unsigned int i = 0; i < dim; ++i)
+                      fe_face_values.reinit(f_cell, face);
+
+                      fe_face_values[velocities].get_function_values(
+                        present_solution, vel_face);
+
+                      fe_face_values[pressure].get_function_values(
+                        present_solution, present_pressure_values_face);
+
+                      fe_face_values[velocities].get_function_symmetric_gradients(
+                        present_solution, sym_grad_v_face);
+
+                      for (unsigned int q = 0; q < n_q_points_face; q++)
                         {
-                          for (unsigned int j = 0; j < dim; ++j)
+
+                          for (unsigned int i = 0; i < dim; ++i)
                             {
+                              for (unsigned int j = 0; j < dim; ++j)
+                                {
 
-                              ke_flux += 0.5 * parameters.fluid_rho *
-                                         vel_face[q][i] * vel_face[q][i] *
-                                         (vel_face[q][j] *
-                                          fe_face_values.normal_vector(q)[j]) *
-                                         fe_face_values.JxW(q);
+                                  ke_flux += 0.5 * parameters.fluid_rho *
+                                             vel_face[q][i] * vel_face[q][i] *
+                                             (vel_face[q][j] *
+                                              fe_face_values.normal_vector(q)[j])
+       * fe_face_values.JxW(q);
+                                }
                             }
-                        }
 
-                      SymmetricTensor<2, dim> stress_tensor =
-                        2 * parameters.viscosity * sym_grad_v_face[q];
+                          SymmetricTensor<2, dim> stress_tensor =
+                            2 * parameters.viscosity * sym_grad_v_face[q];
 
-                      // add fluid pressure into the stress
-                      SymmetricTensor<2, dim> pressure_tensor =
-                        -(present_pressure_values_face[q]) *
-                        Physics::Elasticity::StandardTensors<dim>::I;
+                          // add fluid pressure into the stress
+                          SymmetricTensor<2, dim> pressure_tensor =
+                            -(present_pressure_values_face[q]) *
+                            Physics::Elasticity::StandardTensors<dim>::I;
 
-                      stress_tensor += pressure_tensor;
+                          stress_tensor += pressure_tensor;
 
-                      for (int i = 0; i < dim; i++)
-                        {
-                          for (int j = 0; j < dim; j++)
+                          for (int i = 0; i < dim; i++)
                             {
-                              stress_flux +=
-                                stress_tensor[i][j] * vel_face[q][i] *
-                                fe_face_values.normal_vector(q)[j] *
-                                fe_face_values.JxW(q);
+                              for (int j = 0; j < dim; j++)
+                                {
+                                  stress_flux +=
+                                    stress_tensor[i][j] * vel_face[q][i] *
+                                    fe_face_values.normal_vector(q)[j] *
+                                    fe_face_values.JxW(q);
+                                }
                             }
-                        }
 
-                      // pre_flux += (present_pressure_values_face[q] + atm) *
-                      //  (vel_face[q] * normal) *
-                      // fe_face_values.JxW(q);
+                          // pre_flux += (present_pressure_values_face[q] + atm)
+       *
+                          //  (vel_face[q] * normal) *
+                          // fe_face_values.JxW(q);
+                        }
                     }
                 }
             }
-        }
 
-      ke = Utilities::MPI::sum(ke, mpi_communicator);
-      // dissipation = Utilities::MPI::sum(dissipation, mpi_communicator);
-      // elastic = Utilities::MPI::sum(elastic, mpi_communicator);
-      ke_flux = Utilities::MPI::sum(ke_flux, mpi_communicator);
-      stress_volumetric =
-        Utilities::MPI::sum(stress_volumetric, mpi_communicator);
-      stress_flux = Utilities::MPI::sum(stress_flux, mpi_communicator);
-      // pre_flux = Utilities::MPI::sum(pre_flux, mpi_communicator);
+          ke = Utilities::MPI::sum(ke, mpi_communicator);
+          // dissipation = Utilities::MPI::sum(dissipation, mpi_communicator);
+          // elastic = Utilities::MPI::sum(elastic, mpi_communicator);
+          ke_flux = Utilities::MPI::sum(ke_flux, mpi_communicator);
+          stress_volumetric =
+            Utilities::MPI::sum(stress_volumetric, mpi_communicator);
+          stress_flux = Utilities::MPI::sum(stress_flux, mpi_communicator);
+          // pre_flux = Utilities::MPI::sum(pre_flux, mpi_communicator);
 
-      if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
-        {
-
-          std::ofstream file_fluid_eng;
-
-          if (time.current() == 0.0)
+          if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
             {
-              file_fluid_eng.open("fluid_energy.txt");
 
-              file_fluid_eng << "Time"
-                             << "\t"
-                             << "KE"
-                             << "\t"
-                             << "KE flux"
-                             << "\t"
-                             << "stress volumetric"
-                             << "\t"
-                             << "stress flux"
+              std::ofstream file_fluid_eng;
+
+              if (time.current() == 0.0)
+                {
+                  file_fluid_eng.open("fluid_energy.txt");
+
+                  file_fluid_eng << "Time"
+                                 << "\t"
+                                 << "KE"
+                                 << "\t"
+                                 << "KE flux"
+                                 << "\t"
+                                 << "stress volumetric"
+                                 << "\t"
+                                 << "stress flux"
+                                 << "\n";
+                }
+
+              else
+
+                {
+                  file_fluid_eng.open("fluid_energy.txt", std::ios_base::app);
+                }
+
+              file_fluid_eng << time.current() << "\t" << ke << "\t" << ke_flux
+                             << "\t" << stress_volumetric << "\t" << stress_flux
                              << "\n";
+              file_fluid_eng.close();
             }
-
-          else
-
-            {
-              file_fluid_eng.open("fluid_energy.txt", std::ios_base::app);
-            }
-
-          file_fluid_eng << time.current() << "\t" << ke << "\t" << ke_flux
-                         << "\t" << stress_volumetric << "\t" << stress_flux
-                         << "\n";
-          file_fluid_eng.close();
         }
-    }
+        */
 
     template <int dim>
     FluidSolver<dim>::Field::Field(const Field &source)

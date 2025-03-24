@@ -490,6 +490,7 @@ namespace Utils
     flow_around_cylinder_2d(tria);
     // Set the left boundary (inflow) to 0, the right boundary (outflow) to 1,
     // upper to 2, lower to 3 and the cylindrical surface to 4.
+
     for (Triangulation<2>::active_cell_iterator cell = tria.begin();
          cell != tria.end();
          ++cell)
@@ -498,23 +499,23 @@ namespace Utils
           {
             if (cell->face(f)->at_boundary())
               {
-                if (std::abs(cell->face(f)->center()[0] - 2.2) < 1e-12)
+                if (std::abs(cell->face(f)->center()[0] - 2.2) < 1e-10)
                   {
-                    // cell->face(f)->set_all_boundary_ids(1);
+                    cell->face(f)->set_all_boundary_ids(1);
                   }
-                else if (std::abs(cell->face(f)->center()[0] - 0.0) < 1e-12)
+                else if (std::abs(cell->face(f)->center()[0] - 0.0) < 1e-10)
                   {
                     cell->face(f)->set_all_boundary_ids(0);
                   }
-                else if (std::abs(cell->face(f)->center()[1] - 0.41) < 1e-12)
+                else if (std::abs(cell->face(f)->center()[1] - 0.41) < 1e-10)
                   {
                     cell->face(f)->set_all_boundary_ids(3);
                   }
-                else if (std::abs(cell->face(f)->center()[1]) < 1e-12)
+                else if (std::abs(cell->face(f)->center()[1]) < 1e-10)
                   {
                     cell->face(f)->set_all_boundary_ids(2);
                   }
-                else if (std::abs(cell->face(f)->center()[0] - 2.2) > 1e-12)
+                else if (std::abs(cell->face(f)->center()[0] - 2.2) > 1e-10)
                   {
                     cell->face(f)->set_all_boundary_ids(4);
                   }
@@ -578,12 +579,32 @@ namespace Utils
                                 const Point<dim> &center,
                                 double radius)
   {
-    SphericalManifold<dim> spherical_manifold(center);
-    TransfiniteInterpolationManifold<dim> inner_manifold;
-    GridGenerator::hyper_ball(tria, center, radius);
+
+    /*
     tria.set_all_manifold_ids(1);
     tria.set_all_manifold_ids_on_boundary(0);
+    SphericalManifold<dim> spherical_manifold(center);
     tria.set_manifold(0, spherical_manifold);
+
+    TransfiniteInterpolationManifold<dim> inner_manifold;
+    inner_manifold.initialize(tria);
+    tria.set_manifold(1, inner_manifold);
+    //GridGenerator::hyper_ball(tria, center, radius);
+    //GridGenerator::hyper_ball_balanced(tria, center, radius);
+    */
+
+    const double inner_radius = 1e-6;
+    const unsigned int n_sectors = 8;
+
+    GridGenerator::hyper_shell(
+      tria, center, inner_radius, radius, n_sectors /* # sectors */);
+
+    tria.set_all_manifold_ids(1);
+    tria.set_all_manifold_ids_on_boundary(0);
+
+    SphericalManifold<dim> spherical_manifold(center);
+    tria.set_manifold(0, spherical_manifold);
+    TransfiniteInterpolationManifold<dim> inner_manifold;
     inner_manifold.initialize(tria);
     tria.set_manifold(1, inner_manifold);
   }

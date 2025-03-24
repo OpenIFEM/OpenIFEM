@@ -472,7 +472,7 @@ namespace Fluid
 
       */
 
-      compute_fluid_energy();
+      // compute_fluid_energy();
       previous_solution = present_solution;
 
       // Output
@@ -514,7 +514,7 @@ namespace Fluid
           setup_dofs();
           make_constraints();
           initialize_system();
-          compute_fluid_energy();
+          // compute_fluid_energy();
         }
 
       // Time loop.

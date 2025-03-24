@@ -52,6 +52,10 @@ namespace Fluid
       /// the dofs and constraints.
       void initialize_system() override;
 
+      void compute_fluid_norms();
+
+      void compute_energy_estimates();
+
       /*! \brief Assemble the system matrix, mass mass matrix, and the RHS.
        *
        *  Since backward Euler method is used, the linear system must be

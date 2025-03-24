@@ -68,6 +68,12 @@ namespace Solid
       void run_one_step(bool first_step);
 
       std::vector<LinearElasticMaterial<dim>> material;
+
+      void compute_and_write_energy();
+
+      double total_external_work = 0.0;
+
+      double total_external_work_v = 0.0;
     };
   } // namespace MPI
 } // namespace Solid

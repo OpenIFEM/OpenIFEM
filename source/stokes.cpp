@@ -7,10 +7,10 @@ namespace Fluid
   namespace NumericalConstants
   {
     constexpr double DOMAIN_HEIGHT = 0.41; // Height of the domain
-    constexpr double DOMAIN_LENGTH = 2.2; // X-position of the cylinder
-    constexpr double INLET_U_MAX = 100;   // Maximum inlet velocity
-    constexpr double TOLERANCE = 1e-10;   // Tolerance for boundary checks
-  }                                       // namespace NumericalConstants
+    constexpr double DOMAIN_LENGTH = 2.2;  // X-position of the cylinder
+    constexpr double INLET_U_MAX = 100;    // Maximum inlet velocity
+    constexpr double TOLERANCE = 1e-10;    // Tolerance for boundary checks
+  }                                        // namespace NumericalConstants
 
   template <class MatrixType, class PreconditionerType>
   class InverseMatrix : public Subscriptor
@@ -163,9 +163,9 @@ namespace Fluid
       const double H =
         NumericalConstants::DOMAIN_HEIGHT; // Height of the domain
 
-       values(0) = NumericalConstants::INLET_U_MAX *
-         (1.0 - std::pow((2.0 * y / H - 1), 2));
-      //values(0) = NumericalConstants::INLET_U_MAX; // uniform inlet velocity
+      values(0) = NumericalConstants::INLET_U_MAX *
+                  (1.0 - std::pow((2.0 * y / H - 1), 2));
+      // values(0) = NumericalConstants::INLET_U_MAX; // uniform inlet velocity
 
       for (unsigned int i = 1; i < dim + 1; ++i)
         values(i) = 0.0; // No velocity in other components
@@ -828,14 +828,14 @@ namespace Fluid
                     cell->face(face)->set_all_boundary_ids(0); // Left
                   }
 
-             //   else if (std::abs(x - 1) < tol)
+                //   else if (std::abs(x - 1) < tol)
                 //  {
                 //    cell->face(face)->set_all_boundary_ids(3); // right
                 //  }
 
-                 else if (std::abs(x - 2.2) > tol)
-                 {
-                cell->face(face)->set_all_boundary_ids(4); // cylinder
+                else if (std::abs(x - 2.2) > tol)
+                  {
+                    cell->face(face)->set_all_boundary_ids(4); // cylinder
                   }
               }
           }

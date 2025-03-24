@@ -143,6 +143,7 @@ namespace Fluid
     void InsIM<dim>::initialize_system()
     {
       FluidSolver<dim>::initialize_system();
+      zero_constraints.distribute(present_solution);
       preconditioner.reset();
       newton_update.reinit(owned_partitioning, mpi_communicator);
       evaluation_point.reinit(
@@ -343,9 +344,9 @@ namespace Fluid
                       if (ind != 0)
                         {
                           local_rhs(i) +=
-                            (scalar_product(grad_phi_u[i], fsi_stress_tensor) +
-                             //(scalar_product(grad_phi_u[i], p[0]->fsi_stress)
-                             //+
+                            //(scalar_product(grad_phi_u[i], fsi_stress_tensor)
+                            //+
+                            (scalar_product(grad_phi_u[i], p[0]->fsi_stress) +
                              (fsi_acc_values[q] * rho_bar * phi_u[i])) *
                             fe_values.JxW(q);
                         }
@@ -518,9 +519,12 @@ namespace Fluid
       solution_increment = tmp2;
       // Newton iteration converges, update time and solution
       present_solution = evaluation_point;
+
+      compute_fluid_norms();
+      compute_energy_estimates();
       // Update stress for output
       update_stress();
-      compute_fluid_energy();
+      // compute_fluid_energy();
       previous_solution = present_solution;
       // Output
       if (parameters.simulation_type == "Fluid" && time.time_to_save())
@@ -553,8 +557,9 @@ namespace Fluid
           setup_dofs();
           make_constraints();
           initialize_system();
-          compute_fluid_energy();
           previous_solution = present_solution;
+          compute_fluid_norms();
+          compute_energy_estimates();
         }
 
       // Time loop.
@@ -566,6 +571,326 @@ namespace Fluid
       while (time.end() - time.current() > 1e-12)
         {
           run_one_step(false);
+        }
+    }
+
+    template <int dim>
+    void InsIM<dim>::compute_fluid_norms()
+    {
+      // Set up FEValues with necessary update flags
+      FEValues<dim> fe_values(fe,
+                              volume_quad_formula,
+                              update_values | update_gradients |
+                                update_JxW_values);
+
+      const FEValuesExtractors::Vector velocities(0);
+      const unsigned int n_q_points = volume_quad_formula.size();
+
+      // Local sums for velocity and divergence norms
+      double local_sum_vel = 0.0;
+      double local_sum_div = 0.0;
+
+      // Vectors to store velocity and divergence values at quadrature points
+      std::vector<Tensor<1, dim>> velocity_values(n_q_points);
+      std::vector<double> divergence_values(n_q_points);
+
+      // Loop over all locally owned cells
+      for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+           ++cell)
+        {
+          if (cell->is_locally_owned())
+            {
+
+              auto p = cell_property.get_data(cell);
+
+              if (p[0]->indicator == 1)
+                {
+                  continue;
+                }
+
+              fe_values.reinit(cell);
+
+              // Get velocity and divergence values from the solution
+              fe_values[velocities].get_function_values(present_solution,
+                                                        velocity_values);
+              fe_values[velocities].get_function_divergences(present_solution,
+                                                             divergence_values);
+
+              // Compute contributions to the integrals
+              for (unsigned int q = 0; q < n_q_points; ++q)
+                {
+                  // Velocity L2 norm: integrate |u|^2
+                  double vel_norm_sq = velocity_values[q].norm_square();
+                  local_sum_vel += vel_norm_sq * fe_values.JxW(q);
+
+                  // Divergence L2 norm: integrate (div u)^2
+                  double div_u = divergence_values[q];
+                  local_sum_div += div_u * div_u * fe_values.JxW(q);
+                }
+            }
+        }
+
+      // Global reduction to sum contributions across all processes
+      double global_sum_vel = 0.0;
+      double global_sum_div = 0.0;
+      MPI_Allreduce(&local_sum_vel,
+                    &global_sum_vel,
+                    1,
+                    MPI_DOUBLE,
+                    MPI_SUM,
+                    mpi_communicator);
+      MPI_Allreduce(&local_sum_div,
+                    &global_sum_div,
+                    1,
+                    MPI_DOUBLE,
+                    MPI_SUM,
+                    mpi_communicator);
+
+      // Compute the L2 norms
+      double L2_norm_vel = std::sqrt(global_sum_vel);
+      double L2_norm_div = std::sqrt(global_sum_div);
+
+      // Write results to files from process 0
+      if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+        {
+          std::ofstream file_vel, file_div;
+
+          // If first time step, write headers
+          if (time.current() == 0)
+            {
+              file_vel.open("velocity_L2_norm.txt");
+              file_vel << "Time\tL2_norm_velocity\n";
+              file_div.open("divergence_L2_norm.txt");
+              file_div << "Time\tL2_norm_divergence\n";
+            }
+          else
+            {
+              file_vel.open("velocity_L2_norm.txt", std::ios_base::app);
+              file_div.open("divergence_L2_norm.txt", std::ios_base::app);
+            }
+
+          // Write current time and norms
+          file_vel << time.current() << "\t" << L2_norm_vel << "\n";
+          file_div << time.current() << "\t" << L2_norm_div << "\n";
+
+          file_vel.close();
+          file_div.close();
+        }
+    }
+
+    template <int dim>
+    void InsIM<dim>::compute_energy_estimates()
+    {
+      TimerOutput::Scope timer_section(timer, "Compute energy estimates");
+
+      // Set up FEValues
+      FEValues<dim> fe_values(fe,
+                              volume_quad_formula,
+                              update_values | update_gradients |
+                                update_JxW_values);
+
+      FEFaceValues<dim> fe_face_values(fe,
+                                       face_quad_formula,
+                                       update_values | update_gradients |
+                                         update_normal_vectors |
+                                         update_JxW_values);
+
+      const FEValuesExtractors::Vector velocities(0);
+      const FEValuesExtractors::Scalar pressure(dim);
+      const unsigned int n_q_points = volume_quad_formula.size();
+      const unsigned int n_face_q_points = face_quad_formula.size();
+
+      // Local accumulators
+      double local_ke = 0.0;      // Kinetic energy
+      double local_visc = 0.0;    // Viscous dissipation
+      double local_p_div_u = 0.0; // Pressure-divergence term
+      // double local_boundary_work = 0.0;
+      double local_boundary_work_inlet = 0.0;
+      double local_boundary_work_outlet = 0.0;
+
+      // Quadrature point data
+      std::vector<Tensor<1, dim>> velocity_values(n_q_points);
+      std::vector<SymmetricTensor<2, dim>> sym_grad_u(n_q_points);
+      std::vector<double> pressure_values(n_q_points);
+      std::vector<double> div_u_values(n_q_points);
+
+      // Loop over cells
+      for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+           ++cell)
+        {
+          if (!cell->is_locally_owned())
+            continue;
+
+          auto p = cell_property.get_data(cell);
+          if (p[0]->indicator == 1) // Skip solid regions if applicable
+            continue;
+
+          fe_values.reinit(cell);
+
+          // Extract field values
+          fe_values[velocities].get_function_values(present_solution,
+                                                    velocity_values);
+          fe_values[velocities].get_function_symmetric_gradients(
+            present_solution, sym_grad_u);
+          fe_values[pressure].get_function_values(present_solution,
+                                                  pressure_values);
+          fe_values[velocities].get_function_divergences(present_solution,
+                                                         div_u_values);
+
+          // Quadrature loop
+          for (unsigned int q = 0; q < n_q_points; ++q)
+            {
+              // Kinetic energy: 1/2 * rho * |u|^2
+              double u_sq = velocity_values[q].norm_square();
+              local_ke += 0.5 * parameters.fluid_rho * u_sq * fe_values.JxW(q);
+
+              // Viscous dissipation: 2 * mu * eps:eps
+              double eps_eps =
+                sym_grad_u[q] * sym_grad_u[q]; // Double contraction
+              local_visc +=
+                2.0 * parameters.viscosity * eps_eps * fe_values.JxW(q);
+
+              // Pressure-divergence term (diagnostic)
+              local_p_div_u +=
+                pressure_values[q] * div_u_values[q] * fe_values.JxW(q);
+            }
+
+          for (unsigned int face_no = 0;
+               face_no < GeometryInfo<dim>::faces_per_cell;
+               ++face_no)
+            {
+              if (cell->at_boundary(face_no))
+                {
+                  fe_face_values.reinit(cell, face_no);
+
+                  // We need the velocity, gradient(velocity), and pressure on
+                  // the face
+                  std::vector<Tensor<1, dim>> face_velocity(n_face_q_points);
+                  std::vector<Tensor<2, dim>> face_grad_u(n_face_q_points);
+                  std::vector<double> face_pressure(n_face_q_points);
+
+                  fe_face_values[velocities].get_function_values(
+                    present_solution, face_velocity);
+                  fe_face_values[velocities].get_function_gradients(
+                    present_solution, face_grad_u);
+                  fe_face_values[pressure].get_function_values(present_solution,
+                                                               face_pressure);
+
+                  for (unsigned int qf = 0; qf < n_face_q_points; ++qf)
+                    {
+                      const Tensor<1, dim> &u_face = face_velocity[qf];
+                      const Tensor<1, dim> &n_face =
+                        fe_face_values.normal_vector(qf);
+
+                      SymmetricTensor<2, dim> symgrad_u_face;
+
+                      for (unsigned int i = 0; i < dim; ++i)
+                        {
+                          for (unsigned int j = 0; j < dim; ++j)
+                            {
+                              symgrad_u_face[i][j] =
+                                0.5 *
+                                (face_grad_u[qf][i][j] + face_grad_u[qf][j][i]);
+                            }
+                        }
+
+                      SymmetricTensor<2, dim> stress_face =
+                        -face_pressure[qf] *
+                          Physics::Elasticity::StandardTensors<dim>::I +
+                        2.0 * parameters.viscosity * symgrad_u_face;
+
+                      Tensor<1, dim> traction = stress_face * n_face;
+
+                      double integrand = u_face * traction;
+
+                      // record inlet and outlet seperately
+                      const types::boundary_id b_id =
+                        cell->face(face_no)->boundary_id();
+
+                      if (b_id == 0) // Inlet boundary
+                        {
+                          local_boundary_work_inlet +=
+                            integrand * fe_face_values.JxW(qf);
+                        }
+                      else if (b_id == 1)
+                        {
+                          local_boundary_work_outlet +=
+                            integrand * fe_face_values.JxW(qf);
+                        }
+                      // local_boundary_work += integrand *
+                      // fe_face_values.JxW(qf);
+                    }
+                }
+            }
+        }
+
+      // Global reduction
+      double global_kinetic_energy = 0.0;
+      double global_viscous_energy = 0.0;
+      double global_divergence_residual = 0.0;
+      // double global_boundary_work = 0.0;
+      double global_boundary_work_inlet = 0.0;
+      double global_boundary_work_outlet = 0.0;
+
+      MPI_Allreduce(&local_ke,
+                    &global_kinetic_energy,
+                    1,
+                    MPI_DOUBLE,
+                    MPI_SUM,
+                    mpi_communicator);
+
+      MPI_Allreduce(&local_visc,
+                    &global_viscous_energy,
+                    1,
+                    MPI_DOUBLE,
+                    MPI_SUM,
+                    mpi_communicator);
+
+      MPI_Allreduce(&local_p_div_u,
+                    &global_divergence_residual,
+                    1,
+                    MPI_DOUBLE,
+                    MPI_SUM,
+                    mpi_communicator);
+
+      MPI_Allreduce(&local_boundary_work_inlet,
+                    &global_boundary_work_inlet,
+                    1,
+                    MPI_DOUBLE,
+                    MPI_SUM,
+                    mpi_communicator);
+
+      MPI_Allreduce(&local_boundary_work_outlet,
+                    &global_boundary_work_outlet,
+                    1,
+                    MPI_DOUBLE,
+                    MPI_SUM,
+                    mpi_communicator);
+
+      // Output results
+      if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+        {
+          // --- BEGIN CHANGES ---
+          // Modify the output columns to include inlet and outlet separately
+          std::ofstream file("energy_estimates.txt",
+                             time.current() == 0 ? std::ios::out
+                                                 : std::ios::app);
+
+          if (time.current() == 0)
+            {
+              file
+                << "Time\tKinetic_Energy\tViscous_Dissipation\tPressure_Div_"
+                   "Term"
+                << "\tBoundary_Work_Inlet\tBoundary_Work_Outlet\n"; // <<<
+                                                                    // CHANGED
+            }
+
+          file << time.current() << "\t" << global_kinetic_energy << "\t"
+               << global_viscous_energy << "\t" << global_divergence_residual
+               << "\t" << global_boundary_work_inlet << "\t" // <<< CHANGED
+               << global_boundary_work_outlet << "\n";       // <<< CHANGED
+
+          file.close();
         }
     }
 

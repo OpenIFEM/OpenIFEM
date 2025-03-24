@@ -1,4 +1,4 @@
-#include "mpi_fsi.h"
+#include "mpi_fsi_stokes.h"
 #include "mpi_spalart_allmaras.h"
 #include <iostream>
 
@@ -8,16 +8,16 @@
 namespace MPI
 {
   template <int dim>
-  FSI<dim>::~FSI()
+  FSI_stokes<dim>::~FSI_stokes()
   {
     timer.print_summary();
   }
 
   template <int dim>
-  FSI<dim>::FSI(Fluid::MPI::FluidSolver<dim> &f,
-                Solid::MPI::SharedSolidSolver<dim> &s,
-                const Parameters::AllParameters &p,
-                bool use_dirichlet_bc)
+  FSI_stokes<dim>::FSI_stokes(Fluid::MPI::FluidSolver<dim> &f,
+                              Solid::MPI::SharedSolidSolver<dim> &s,
+                              const Parameters::AllParameters &p,
+                              bool use_dirichlet_bc)
     : fluid_solver(f),
       solid_solver(s),
       parameters(p),
@@ -37,7 +37,7 @@ namespace MPI
   }
 
   template <int dim>
-  void FSI<dim>::move_solid_mesh(bool move_forward)
+  void FSI_stokes<dim>::move_solid_mesh(bool move_forward)
   {
     TimerOutput::Scope timer_section(timer, "Move solid mesh");
     // All gather the information so each process has the entire solution.
@@ -75,7 +75,7 @@ namespace MPI
   }
 
   template <int dim>
-  void FSI<dim>::collect_solid_boundaries()
+  void FSI_stokes<dim>::collect_solid_boundaries()
   {
     for (auto cell = solid_solver.triangulation.begin_active();
          cell != solid_solver.triangulation.end();
@@ -92,7 +92,7 @@ namespace MPI
   }
 
   template <int dim>
-  void FSI<dim>::update_solid_box()
+  void FSI_stokes<dim>::update_solid_box()
   {
     move_solid_mesh(true);
     solid_box = 0;
@@ -119,7 +119,7 @@ namespace MPI
   }
 
   template <int dim>
-  void FSI<dim>::update_vertices_mask()
+  void FSI_stokes<dim>::update_vertices_mask()
   {
     // Initialize vertices mask
     vertices_mask.clear();
@@ -140,8 +140,8 @@ namespace MPI
   }
 
   template <int dim>
-  bool FSI<dim>::point_in_solid(const DoFHandler<dim> &df,
-                                const Point<dim> &point)
+  bool FSI_stokes<dim>::point_in_solid(const DoFHandler<dim> &df,
+                                       const Point<dim> &point)
   {
     // Check whether the point is in the solid box first.
     for (unsigned int i = 0; i < dim; ++i)
@@ -224,7 +224,7 @@ namespace MPI
   }
 
   template <int dim>
-  void FSI<dim>::setup_cell_hints()
+  void FSI_stokes<dim>::setup_cell_hints()
   {
     unsigned int n_unit_points =
       fluid_solver.fe.get_unit_support_points().size();
@@ -250,7 +250,7 @@ namespace MPI
   }
 
   template <int dim>
-  void FSI<dim>::update_solid_displacement()
+  void FSI_stokes<dim>::update_solid_displacement()
   {
     move_solid_mesh(true);
     Vector<double> localized_solid_displacement(
@@ -289,7 +289,7 @@ namespace MPI
   // of the vertices of a fluid cell are found to be in solid domain,
   // set the indicators at all quadrature points to be 1.
   template <int dim>
-  void FSI<dim>::update_indicator()
+  void FSI_stokes<dim>::update_indicator()
   {
     TimerOutput::Scope timer_section(timer, "Update indicator");
     move_solid_mesh(true);
@@ -318,13 +318,12 @@ namespace MPI
     move_solid_mesh(false);
   }
 
-  // This function interpolates the solid velocity into the fluid solver,
-  // as the Dirichlet boundary conditions for artificial fluid vertices
   template <int dim>
-  void FSI<dim>::find_fluid_bc()
+  void FSI_stokes<dim>::find_fluid_bc()
   {
     TimerOutput::Scope timer_section(timer, "Find fluid BC");
     move_solid_mesh(true);
+
     std::vector<std::vector<PETScWrappers::MPI::Vector>>
       relevant_partition_stress =
         std::vector<std::vector<PETScWrappers::MPI::Vector>>(
@@ -335,6 +334,7 @@ namespace MPI
               fluid_solver.locally_owned_scalar_dofs,
               fluid_solver.locally_relevant_scalar_dofs,
               mpi_communicator)));
+
     relevant_partition_stress = fluid_solver.stress;
 
     // The nonzero Dirichlet BCs (to set the velocity) and zero Dirichlet
@@ -347,6 +347,16 @@ namespace MPI
     PETScWrappers::MPI::BlockVector tmp_fsi_acceleration;
     tmp_fsi_acceleration.reinit(fluid_solver.owned_partitioning,
                                 fluid_solver.mpi_communicator);
+
+    std::vector<PETScWrappers::MPI::Vector> tmp_fsi_stress;
+
+    int stress_vec_size = dim + dim * (dim - 1) * 0.5;
+
+    tmp_fsi_stress = std::vector<PETScWrappers::MPI::Vector>(
+      stress_vec_size,
+      PETScWrappers::MPI::Vector(fluid_solver.locally_owned_scalar_dofs,
+                                 fluid_solver.locally_relevant_scalar_dofs,
+                                 fluid_solver.mpi_communicator));
 
     Vector<double> localized_solid_velocity(solid_solver.current_velocity);
     Vector<double> localized_solid_acceleration(
@@ -370,6 +380,7 @@ namespace MPI
     std::vector<double> p(unit_points.size());
     std::vector<Tensor<2, dim>> grad_v(unit_points.size());
     std::vector<Tensor<1, dim>> v(unit_points.size());
+    std::vector<Tensor<1, dim>> previous_vel(unit_points.size());
 
     MappingQGeneric<dim> mapping(parameters.fluid_velocity_degree);
     Quadrature<dim> dummy_q(unit_points);
@@ -466,14 +477,153 @@ namespace MPI
 
                     scalar_interpolator.point_value(localized_stress[j][k],
                                                     s_stress_component);
-                    fluid_solver
-                      .fsi_stress[stress_index][scalar_dof_indices[i]] =
+
+                    tmp_fsi_stress[stress_index][scalar_dof_indices[i]] =
                       f_cell_stress[stress_index][i] - s_stress_component[0];
                     stress_index++;
                   }
               }
           }
       }
+
+    /* add fluid pressure into viscous stress and compute fsi_stress
+    auto scalar_cell = fluid_solver.scalar_dof_handler.begin_active();
+    auto end_scalar  = fluid_solver.scalar_dof_handler.end();
+    auto fluid_cell  = fluid_solver.dof_handler.begin_active();
+    auto end_fluid   = fluid_solver.dof_handler.end();
+
+    for (; scalar_cell != end_scalar; ++scalar_cell)
+          {
+
+            if (!scalar_cell->is_locally_owned())
+              continue;
+
+            auto ptr = fluid_solver.cell_property.get_data(scalar_cell);
+            if (ptr[0]->indicator == 0)
+              continue;
+
+             while (fluid_cell != end_fluid &&
+               (fluid_cell->level() < scalar_cell->level() ||
+                (fluid_cell->level() == scalar_cell->level() &&
+                 fluid_cell->index() < scalar_cell->index())))
+                 {
+                    ++fluid_cell;
+                 }
+
+          // If we've run out of fluid cells, break
+           if (fluid_cell == end_fluid)
+          break;
+
+         // If fluid_cell matches scalar_cell, we can reinit properly:
+       if (fluid_cell->level() == scalar_cell->level() &&
+          fluid_cell->index() == scalar_cell->index())
+           {
+
+            scalar_cell->get_dof_indices(scalar_dof_indices);
+
+            scalar_dummy_fe_values.reinit(scalar_cell);
+
+            int stress_index = 0;
+
+
+             // get fluid stress at support points
+            for (unsigned int i = 0; i < dim; i++)
+              {
+                for (unsigned int j = 0; j < i + 1; j++)
+                  {
+
+                    scalar_dummy_fe_values.get_function_values(
+                     relevant_partition_stress[i][j], f_stress_component);
+                     //fluid_solver.stress[i][j], f_stress_component);
+
+                    f_cell_stress[stress_index] = f_stress_component;
+
+                    stress_index++;
+                  }
+              }
+
+               // try to add pressure
+             dummy_fe_values.reinit(fluid_cell);
+
+              dummy_fe_values[pressure].get_function_values(fluid_solver.present_solution,
+    p);
+
+               for (unsigned int i = 0; i < scalar_unit_points.size(); ++i)
+              {
+                // Skip the already-set dofs.
+                if (scalar_dof_touched[scalar_dof_indices[i]] != 0)
+                  continue;
+                auto scalar_support_points =
+                  scalar_dummy_fe_values.get_quadrature_points();
+                scalar_dof_touched[scalar_dof_indices[i]] = 1;
+                if (!point_in_solid(solid_solver.scalar_dof_handler,
+                                    scalar_support_points[i]))
+                  continue;
+
+                Utils::GridInterpolator<dim, Vector<double>>
+    scalar_interpolator( solid_solver.scalar_dof_handler,
+    scalar_support_points[i]);
+
+             SymmetricTensor<2, dim> viscous_stress;
+        {
+          int vs_idx = 0;
+          for (unsigned int jj = 0; jj < dim; ++jj)
+            {
+              for (unsigned int kk = 0; kk < jj + 1; ++kk)
+                {
+                  viscous_stress[jj][kk] = f_cell_stress[vs_idx][i];
+                  vs_idx++;
+                }
+            }
+        }
+
+           SymmetricTensor<2, dim> fluid_stress =
+          -p[i] * Physics::Elasticity::StandardTensors<dim>::I
+          + viscous_stress;
+
+
+                stress_index = 0;
+
+                for (unsigned int j = 0; j < dim; j++)
+                  {
+                    for (unsigned int k = 0; k < j + 1; k++)
+                      {
+                        Vector<double> s_stress_component(1);
+
+                        scalar_interpolator.point_value(localized_stress[j][k],
+                                                        s_stress_component);
+
+                       // double fluid_stress_value =
+    f_cell_stress[stress_index][i];
+
+
+                        //if (j == k)
+                       // {
+                         //  fluid_stress_value -= p[i];
+                       // }
+
+
+                        //fluid_solver
+                          //.fsi_stress[stress_index][scalar_dof_indices[i]] =
+                          // f_cell_stress[stress_index][i] -
+    s_stress_component[0];
+
+                        //tmp_fsi_stress[stress_index][scalar_dof_indices[i]] =
+                        // f_cell_stress[stress_index][i] -
+    s_stress_component[0];
+                        // fluid_stress_value - s_stress_component[0];
+
+                         tmp_fsi_stress[stress_index][scalar_dof_indices[i]] =
+                       fluid_stress[j][k] - s_stress_component[0];
+                        stress_index++;
+                      }
+                  }
+              }
+
+            }
+
+
+          } */
 
     for (auto f_cell = fluid_solver.dof_handler.begin_active();
          f_cell != fluid_solver.dof_handler.end();
@@ -499,6 +649,10 @@ namespace MPI
             // Fluid velocity at support points
             dummy_fe_values[velocities].get_function_values(
               fluid_solver.present_solution, v);
+
+            dummy_fe_values[velocities].get_function_values(
+              fluid_solver.previous_solution, previous_vel);
+
             // Fluid velocity gradient at support points
             dummy_fe_values[velocities].get_function_gradients(
               fluid_solver.present_solution, grad_v);
@@ -557,7 +711,10 @@ namespace MPI
                   }
                 // Fluid total acceleration at support points
                 Tensor<1, dim> fluid_acc =
-                  (vs - v[i]) / time.get_delta_t() + grad_v[i] * v[i];
+                  // (vs - v[i]) / time.get_delta_t() + grad_v[i] * v[i];
+                  (vs - v[i]) / time.get_delta_t();
+                // (previous_vel[i]-v[i]) / time.get_delta_t();
+
                 auto line = dof_indices[i];
                 // Note that we are setting the value of the constraint to the
                 // velocity delta!
@@ -638,6 +795,18 @@ namespace MPI
       }
     tmp_fsi_acceleration.compress(VectorOperation::insert);
     fluid_solver.fsi_acceleration = tmp_fsi_acceleration;
+
+    // for (auto &stress_vector : fluid_solver.fsi_stress)
+    for (auto &stress_vector : tmp_fsi_stress)
+      {
+        stress_vector.compress(VectorOperation::insert);
+      }
+
+    for (unsigned int s = 0; s < fluid_solver.fsi_stress.size(); ++s)
+      {
+        fluid_solver.fsi_stress[s] = tmp_fsi_stress[s];
+      }
+
     if (use_dirichlet_bc)
       {
         inner_nonzero.close();
@@ -661,9 +830,8 @@ namespace MPI
 
     move_solid_mesh(false);
   }
-
   template <int dim>
-  void FSI<dim>::find_solid_bc()
+  void FSI_stokes<dim>::find_solid_bc()
   {
     TimerOutput::Scope timer_section(timer, "Find solid BC");
     // Must use the updated solid coordinates
@@ -867,7 +1035,7 @@ namespace MPI
   }
 
   template <int dim>
-  void FSI<dim>::apply_contact_model(bool first_step)
+  void FSI_stokes<dim>::apply_contact_model(bool first_step)
   {
     AssertThrow(penetration_criterion != nullptr,
                 ExcMessage("No penetration criterion specified!"));
@@ -969,7 +1137,7 @@ namespace MPI
   }
 
   template <int dim>
-  void FSI<dim>::collect_solid_boundary_vertices()
+  void FSI_stokes<dim>::collect_solid_boundary_vertices()
   {
     unsigned fixed_bc_flag = (1 << dim) - 1;
 
@@ -1021,8 +1189,8 @@ namespace MPI
   }
 
   template <int dim>
-  void FSI<dim>::refine_mesh(const unsigned int min_grid_level,
-                             const unsigned int max_grid_level)
+  void FSI_stokes<dim>::refine_mesh(const unsigned int min_grid_level,
+                                    const unsigned int max_grid_level)
   {
     TimerOutput::Scope timer_section(timer, "Refine mesh");
     move_solid_mesh(true);
@@ -1117,7 +1285,7 @@ namespace MPI
   }
 
   template <int dim>
-  void FSI<dim>::run()
+  void FSI_stokes<dim>::run()
   {
     pcout << "Running with PETSc on "
           << Utilities::MPI::n_mpi_processes(mpi_communicator)
@@ -1131,15 +1299,29 @@ namespace MPI
       solid_solver.time.current() == fluid_solver.time.current(),
       ExcMessage("Solid and fluid restart files have different time steps. "
                  "Check and remove inconsistent restart files!"));
+
     if (!success_load)
       {
         solid_solver.setup_dofs();
         solid_solver.initialize_system();
         fluid_solver.triangulation.refine_global(
           parameters.global_refinements[0]);
-        fluid_solver.setup_dofs();
-        fluid_solver.make_constraints();
-        fluid_solver.initialize_system();
+
+        Fluid::MPI::Stokes<dim> *stokes_solver =
+          dynamic_cast<Fluid::MPI::Stokes<dim> *>(&fluid_solver);
+        if (stokes_solver)
+          {
+            stokes_solver->initialize_bcs();
+            fluid_previous_solution.reinit(fluid_solver.owned_partitioning,
+                                           fluid_solver.relevant_partitioning,
+                                           mpi_communicator);
+          }
+        else
+          {
+            fluid_solver.setup_dofs();
+            fluid_solver.make_constraints();
+            fluid_solver.initialize_system();
+          }
       }
     else
       {
@@ -1147,6 +1329,10 @@ namespace MPI
           {
             time.increment();
           }
+        fluid_previous_solution.reinit(fluid_solver.owned_partitioning,
+                                       fluid_solver.relevant_partitioning,
+                                       mpi_communicator);
+        fluid_previous_solution = fluid_solver.present_solution;
       }
 
     collect_solid_boundaries();
@@ -1189,7 +1375,19 @@ namespace MPI
         }
         update_solid_box();
         update_indicator();
-        fluid_solver.make_constraints();
+
+        Fluid::MPI::Stokes<dim> *stokes_solver =
+          dynamic_cast<Fluid::MPI::Stokes<dim> *>(&fluid_solver);
+        if (stokes_solver)
+          {
+            stokes_solver->set_up_boundary_values();
+          }
+        else
+          {
+            fluid_solver.make_constraints();
+          }
+        // fluid_solver.make_constraints();
+
         if (!first_step)
           {
             fluid_solver.nonzero_constraints.clear();
@@ -1212,6 +1410,9 @@ namespace MPI
         }
         first_step = false;
         time.increment();
+
+        fluid_previous_solution = fluid_solver.present_solution;
+
         if (time.time_to_refine())
           {
             refine_mesh(parameters.global_refinements[0],
@@ -1227,7 +1428,7 @@ namespace MPI
   }
 
   template <int dim>
-  void FSI<dim>::set_penetration_criterion(
+  void FSI_stokes<dim>::set_penetration_criterion(
     const std::function<double(const Point<dim> &)> &criterion,
     Tensor<1, dim> direction)
   {
@@ -1236,6 +1437,6 @@ namespace MPI
     penetration_direction = direction;
   }
 
-  template class FSI<2>;
-  template class FSI<3>;
+  template class FSI_stokes<2>;
+  template class FSI_stokes<3>;
 } // namespace MPI

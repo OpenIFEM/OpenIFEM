@@ -29,7 +29,7 @@ namespace Solid
 
       double alpha = -parameters.damping;
       double gamma = 0.5 - alpha;
-      double beta = pow((1 + alpha), 2) / 4;
+      double beta = pow((1 - alpha), 2) / 4;
 
       if (is_initial)
         {
@@ -130,9 +130,8 @@ namespace Solid
                               local_mass[i][j] +=
                                 rho * phi[i] * phi[j] * fe_values.JxW(q);
                               local_matrix[i][j] +=
-                                // comment out the next line to allow lumped
-                                // mass matrix (rho * phi[i] * phi[j] +
-                                (symmetric_grad_phi[i] * viscosity *
+                                (rho * phi[i] * phi[j] + // mass matrix part
+                                 symmetric_grad_phi[i] * viscosity *
                                    symmetric_grad_phi[j] * gamma * dt *
                                    (1 + alpha) +
                                  symmetric_grad_phi[i] * elasticity *
@@ -159,9 +158,13 @@ namespace Solid
                    ++face)
                 {
                   if (cell->face(face)->at_boundary())
+                    // if (cell->face(face)->at_boundary() &&
+                    // cell->neighbor_index(face) == -1)
                     {
                       unsigned int id = cell->face(face)->boundary_id();
                       if (!cell->face(face)->at_boundary())
+                        // if (parameters.solid_neumann_bcs.find(id) ==
+                        // parameters.solid_neumann_bcs.end())
                         {
                           // Not a Neumann boundary
                           continue;
@@ -270,7 +273,7 @@ namespace Solid
                 }
 
               // create lumped mass matrix
-
+              /*
               for (unsigned int i = 0; i < dofs_per_cell; ++i)
                 {
                   double sum = 0;
@@ -291,7 +294,9 @@ namespace Solid
                     }
                 }
 
+
               local_matrix.add(1, local_mass);
+              */
 
               // Now distribute local data to the system, and apply the
               // hanging node constraints at the same time.
@@ -346,10 +351,30 @@ namespace Solid
             }
           nodal_mass.compress(VectorOperation::insert);
 
-          compute_solid_energy();
           update_strain_and_stress();
           this->solve(mass_matrix, previous_acceleration, system_rhs);
           this->output_results(time.get_timestep());
+
+          // compute KE
+          PETScWrappers::MPI::Vector tmp(locally_owned_dofs, mpi_communicator);
+          mass_matrix.vmult(tmp, current_velocity);
+          double K = 0.5 * (current_velocity * tmp);
+
+          stiffness_matrix.vmult(tmp, current_displacement);
+          double U = 0.5 * (current_displacement * tmp);
+
+          total_external_work = 0.0; // Initialize at t=0
+          total_external_work_v = 0.0;
+
+          if (this_mpi_process == 0)
+            {
+              std::ofstream out("energy_estimates.csv");
+              out << "time,kinetic_energy,strain_energy,external_work\n";
+              out << time.current() << "," << K << "," << U << ","
+                  << total_external_work << "\n";
+            }
+
+          compute_and_write_energy();
         }
 
       else if (parameters.simulation_type == "FSI")
@@ -402,12 +427,20 @@ namespace Solid
                                dt * dt * beta,
                                current_acceleration);
 
+      // Compute external work increment
+      PETScWrappers::MPI::Vector delta_u = current_displacement;
+      delta_u -= previous_displacement;
+      double delta_W = system_rhs * delta_u;
+      total_external_work += delta_W;
+      compute_and_write_energy();
+
       // update the previous values
       previous_acceleration = current_acceleration;
 
-      compute_solid_energy();
+      // compute_solid_energy();
 
       previous_velocity = current_velocity;
+
       previous_displacement = current_displacement;
 
       pcout << std::scientific << std::left << " CG iteration: " << std::setw(3)
@@ -419,6 +452,20 @@ namespace Solid
       if (time.time_to_output())
         {
           this->output_results(time.get_timestep());
+
+          // compute KE
+          PETScWrappers::MPI::Vector tmp(locally_owned_dofs, mpi_communicator);
+          mass_matrix.vmult(tmp, current_velocity);
+          double K = 0.5 * (current_velocity * tmp);
+          stiffness_matrix.vmult(tmp, current_displacement);
+          double U = 0.5 * (current_displacement * tmp);
+
+          if (this_mpi_process == 0)
+            {
+              std::ofstream out("energy_estimates.csv", std::ios::app);
+              out << time.current() << "," << K << "," << U << ","
+                  << total_external_work << "\n";
+            }
         }
 
       if (parameters.simulation_type == "Solid" && time.time_to_refine())
@@ -492,9 +539,6 @@ namespace Solid
       Vector<double> local_sorrounding_cells(scalar_fe.dofs_per_cell);
       local_sorrounding_cells = 1.0;
 
-      // compute strain energy rate that is \int (\sigma_ij * \eplsion_ij)
-      double strain_energy_rate = 0;
-
       Vector<double> localized_current_displacement(current_displacement);
 
       Vector<double> localized_velocity(current_velocity);
@@ -512,12 +556,6 @@ namespace Solid
               fe_values.reinit(cell);
               fe_values[displacements].get_function_gradients(
                 localized_current_displacement, current_displacement_gradients);
-
-              fe_values[displacements].get_function_gradients(
-                localized_velocity, current_velocity_gradients);
-
-              fe_values[displacements].get_function_symmetric_gradients(
-                localized_velocity, sym_grad_v);
 
               int mat_id = cell->material_id();
               if (parameters.n_solid_parts == 1)
@@ -546,13 +584,6 @@ namespace Solid
                           quad_stress[i][j][q] = tmp_stress[i][j];
                         }
                     }
-
-                  strain_energy_rate +=
-                    scalar_product(tmp_stress, current_velocity_gradients[q]) *
-                    fe_values.JxW(q);
-
-                  // strain_energy_rate += scalar_product(tmp_stress,
-                  // sym_grad_v[q]) * fe_values.JxW(q);
                 }
 
               for (unsigned int i = 0; i < dim; ++i)
@@ -573,34 +604,6 @@ namespace Solid
         }
       surrounding_cells.compress(VectorOperation::add);
 
-      strain_energy_rate =
-        Utilities::MPI::sum(strain_energy_rate, mpi_communicator);
-
-      if (this_mpi_process == 0)
-        {
-          std::ofstream file_strain_energy;
-
-          if (time.current() == 0.0)
-            {
-              file_strain_energy.open("solid_strain_energy_rate.txt");
-              file_strain_energy << "Time"
-                                 << "\t"
-                                 << "Solid strain energy rate"
-                                 << "\n";
-            }
-
-          else
-
-            {
-              file_strain_energy.open("solid_strain_energy_rate.txt",
-                                      std::ios_base::app);
-            }
-
-          file_strain_energy << time.current() << "\t" << strain_energy_rate
-                             << "\n";
-          file_strain_energy.close();
-        }
-
       for (unsigned int i = 0; i < dim; ++i)
         {
           for (unsigned int j = 0; j < dim; ++j)
@@ -619,6 +622,205 @@ namespace Solid
               strain[i][j].compress(VectorOperation::insert);
               stress[i][j].compress(VectorOperation::insert);
             }
+        }
+    }
+
+    template <int dim>
+    void SharedLinearElasticity<dim>::compute_and_write_energy()
+    {
+      FEValues<dim> fe_values(fe,
+                              volume_quad_formula,
+                              update_values | update_gradients |
+                                update_quadrature_points |
+                                update_normal_vectors | update_JxW_values);
+
+      // const unsigned int dofs_per_cell = fe.dofs_per_cell;
+
+      const unsigned int n_q_points = volume_quad_formula.size();
+
+      Vector<double> localized_velocity(current_velocity);
+      std::vector<Tensor<2, dim>> grad_u(n_q_points);
+      std::vector<SymmetricTensor<2, dim>> sym_grad_u(n_q_points);
+      std::vector<Tensor<1, dim>> vel(n_q_points);
+
+      const FEValuesExtractors::Vector displacements(0);
+
+      SymmetricTensor<4, dim> elasticity;
+
+      Vector<double> local_disp(current_displacement);
+
+      auto cell = dof_handler.begin_active();
+
+      double local_ke = 0.0;
+      double ke = 0.0;
+      double total_strain_energy = 0.0;
+      double local_strain_energy = 0.0;
+
+      for (; cell != dof_handler.end(); ++cell)
+        {
+          if (cell->subdomain_id() == this_mpi_process)
+            {
+              fe_values.reinit(cell);
+              fe_values[displacements].get_function_values(localized_velocity,
+                                                           vel);
+
+              fe_values[displacements].get_function_gradients(local_disp,
+                                                              grad_u);
+
+              // Material parameters
+              int mat_id = cell->material_id();
+              if (parameters.n_solid_parts == 1)
+                mat_id = 1; // single material fallback
+              elasticity = material[mat_id - 1].get_elasticity();
+
+              for (unsigned int q = 0; q < n_q_points; ++q)
+                {
+                  local_ke += 0.5 * parameters.solid_rho *
+                              vel[q].norm_square() * fe_values.JxW(q);
+                  SymmetricTensor<2, dim> eps_q;
+                  for (unsigned int i = 0; i < dim; ++i)
+                    for (unsigned int j = 0; j < dim; ++j)
+                      eps_q[i][j] = 0.5 * (grad_u[q][i][j] + grad_u[q][j][i]);
+                  // stress at quadrature point
+                  const SymmetricTensor<2, dim> sigma_q = elasticity * eps_q;
+
+                  // (1/2) sigma : eps
+                  double w_q = 0.5 * (sigma_q * eps_q);
+
+                  // multiply by volume element
+                  w_q *= fe_values.JxW(q);
+
+                  local_strain_energy += w_q;
+                }
+            }
+        }
+
+      MPI_Allreduce(&local_strain_energy,
+                    &total_strain_energy,
+                    1,
+                    MPI_DOUBLE,
+                    MPI_SUM,
+                    mpi_communicator);
+
+      MPI_Allreduce(&local_ke, &ke, 1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
+
+      double local_incremental_work = 0.0;
+      double incremental_work = 0.0;
+
+      FEFaceValues<dim> fe_face_values(
+        fe,
+        face_quad_formula,
+        update_values | update_quadrature_points | update_normal_vectors |
+          update_JxW_values);
+
+      const unsigned int n_face_q_points = face_quad_formula.size();
+
+      // Copy old and new displacements to CPU vectors:
+      Vector<double> disp_old(previous_displacement);
+      Vector<double> disp_new(current_displacement);
+      std::vector<Tensor<1, dim>> vals_old(n_face_q_points),
+        vals_new(n_face_q_points);
+
+      for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+           ++cell)
+        {
+          if (cell->subdomain_id() == this_mpi_process)
+            {
+              for (unsigned int face_n = 0;
+                   face_n < GeometryInfo<dim>::faces_per_cell;
+                   ++face_n)
+                {
+                  if (cell->face(face_n)->at_boundary())
+                    {
+                      const unsigned int id = cell->face(face_n)->boundary_id();
+                      if (parameters.solid_neumann_bcs.find(id) ==
+                          parameters.solid_neumann_bcs.end())
+                        {
+                          continue;
+                        }
+                      fe_face_values.reinit(cell, face_n);
+                      fe_face_values[displacements].get_function_values(
+                        disp_old, vals_old);
+                      fe_face_values[displacements].get_function_values(
+                        disp_new, vals_new);
+
+                      const std::vector<double> &val =
+                        parameters.solid_neumann_bcs[id];
+
+                      for (unsigned int q = 0; q < n_face_q_points; ++q)
+                        {
+
+                          Tensor<1, dim> traction;
+
+                          if (parameters.simulation_type != "FSI")
+                            {
+                              if (parameters.solid_neumann_bc_type ==
+                                  "Pressure")
+                                {
+                                  traction = fe_face_values.normal_vector(q);
+                                  traction *=
+                                    val[0]; // assume val[0] is the scalar
+                                }
+
+                              else if (parameters.solid_neumann_bc_type ==
+                                       "Traction")
+                                {
+                                  for (unsigned int d = 0; d < dim; ++d)
+                                    traction[d] = val[d];
+                                }
+                            }
+
+                          Tensor<1, dim> delta_u;
+                          for (unsigned int d = 0; d < dim; ++d)
+                            {
+                              delta_u[d] = vals_new[q][d] - vals_old[q][d];
+                            }
+
+                          const double t_dot_delta_u =
+                            (traction[0] * delta_u[0] +
+                             (dim > 1 ? traction[1] * delta_u[1] : 0.0) +
+                             (dim > 2 ? traction[2] * delta_u[2] : 0.0));
+
+                          local_incremental_work +=
+                            t_dot_delta_u * fe_face_values.JxW(q);
+                        }
+                    }
+                }
+            }
+        }
+
+      MPI_Allreduce(&local_incremental_work,
+                    &incremental_work,
+                    1,
+                    MPI_DOUBLE,
+                    MPI_SUM,
+                    mpi_communicator);
+
+      total_external_work_v += incremental_work;
+
+      if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+        {
+          std::ofstream energy_csv;
+
+          if (time.current() == 0)
+            {
+              energy_csv.open("energy_verify.csv");
+              energy_csv << "time"
+                         << "kinetic_energy"
+                         << "potential_energy"
+                         << "external_work"
+                         << "\n";
+            }
+          else
+            {
+              energy_csv.open("energy_verify.csv", std::ios_base::app);
+            }
+
+          energy_csv << std::scientific << time.current() << "," << ke << ","
+                     << total_strain_energy << "," << total_external_work_v
+                     << ","
+                     << "\n";
+          energy_csv.close();
         }
     }
 

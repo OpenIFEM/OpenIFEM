@@ -31,7 +31,8 @@ set(TARGET_SRC fluid_solver.cpp
                utilities.cpp
                cv_fsi.cpp
                stokes.cpp
-               mpi_stokes.cpp)
+               mpi_stokes.cpp
+               mpi_fsi_stokes.cpp)
 
 # List all the header files here
 set(headers fluid_solver.h
@@ -70,7 +71,8 @@ set(headers fluid_solver.h
             cv_fsi.h
 	    kirchhoff_elastic_material.h
       stokes.h
-      mpi_stokes.h)
+      mpi_stokes.h
+      mpi_fsi_stokes.h)
 
 if(OPENIFEM_WITH_rkpm-rk4)
   list(APPEND TARGET_SRC "hypo_elasticity.cpp")

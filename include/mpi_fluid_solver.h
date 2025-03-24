@@ -72,6 +72,8 @@ namespace MPI
   class FSI;
   template <int dim>
   class ControlVolumeFSI;
+  template <int dim>
+  class FSI_stokes;
 } // namespace MPI
 
 namespace Fluid
@@ -94,6 +96,7 @@ namespace Fluid
       friend ::MPI::FSI<dim>;
       friend ::MPI::ControlVolumeFSI<dim>;
       friend FluidSolverExtractor<dim>;
+      friend ::MPI::FSI_stokes<dim>;
 
       //! Constructor.
       FluidSolver(parallel::distributed::Triangulation<dim> &,
@@ -165,7 +168,7 @@ namespace Fluid
       virtual void initialize_system();
 
       /// Apply the initial condition passed to the solver.
-      void apply_initial_condition();
+      virtual void apply_initial_condition();
 
       /// Mesh adaption.
       void refine_mesh(const unsigned int, const unsigned int);
@@ -182,7 +185,7 @@ namespace Fluid
       /// Load from checkpoint to restart.
       bool load_checkpoint();
 
-      void compute_fluid_energy();
+      // void compute_fluid_energy();
 
       std::vector<types::global_dof_index> dofs_per_block;
 
