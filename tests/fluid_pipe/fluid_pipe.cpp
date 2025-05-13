@@ -37,6 +37,11 @@ int main(int argc, char *argv[])
             Point<2>(0, 0),
             Point<2>(L, D),
             true);
+          // Assign material ids to fluid cells
+          for (auto cell : tria.active_cell_iterators())
+            {
+              cell->set_material_id(cell->center()[0] < L / 2 ? 0 : 1);
+            }
           Fluid::InsIM<2> flow(tria, params);
           flow.run();
           auto solution = flow.get_current_solution();
@@ -53,6 +58,11 @@ int main(int argc, char *argv[])
         {
           Triangulation<3> tria;
           Utils::GridCreator<3>::cylinder(tria, D / 2, L / 2);
+          // Assign material ids to fluid cells
+          for (auto cell : tria.active_cell_iterators())
+            {
+              cell->set_material_id(cell->center()[0] < L / 2 ? 0 : 1);
+            }
           Fluid::InsIM<3> flow(tria, params);
           flow.run();
         }

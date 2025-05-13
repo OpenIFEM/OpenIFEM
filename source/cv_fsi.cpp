@@ -626,11 +626,11 @@ namespace MPI
     // Quantities to be integrated
     auto int_x_velocity = [&vel](int q) { return vel[q][0]; };
     auto int_pressure = [&pre](int q) { return pre[q]; };
-    auto int_momentum = [&vel, this](int q) {
-      return parameters.fluid_rho * vel[q][0] * vel[q][0];
+    auto int_momentum = [&vel, this](int q, int material_id) {
+      return parameters.fluid_materials.at(material_id).density * vel[q][0] * vel[q][0];
     };
-    auto int_KE = [&vel, this](int q) {
-      return 0.5 * parameters.fluid_rho * vel[q][0] * vel[q].norm_square();
+    auto int_KE = [&vel, this](int q, int material_id) {
+      return 0.5 * parameters.fluid_materials.at(material_id).density * vel[q][0] * vel[q].norm_square();
     };
     auto int_pressure_work = [&vel, &pre](int q) { return pre[q] * vel[q][0]; };
     auto int_turbulence_efflux = [&vel, &vel_grad, &eddy_vis](int q) {
@@ -642,11 +642,11 @@ namespace MPI
       return retval;
     };
     auto int_friction_work =
-      [&vel, &vel_grad, mu = parameters.viscosity](int q) {
+      [&vel, &vel_grad, fluid_materials = parameters.fluid_materials](int q, int material_id) {
         double retval = 0.0;
         for (unsigned d = 0; d < dim; ++d)
           {
-            retval += mu * vel_grad[q][d][0] * vel[q][d];
+            retval += fluid_materials.at(material_id).viscosity * vel_grad[q][d][0] * vel[q][d];
           }
         return retval;
       };
@@ -708,12 +708,25 @@ namespace MPI
             }
           return results;
         };
+
+        // Integrate the fluxes on the cutter with material id
+        auto integrate_cell_mat = [&cutter, &vel, &pre, &cutter_fe_values](
+                           const std::function<double(int, int)> &quant) {
+          double results = 0;
+          int material_id = cutter_fe_values.get_cell()->material_id();
+          for (unsigned q = 0; q < cutter[0]->interpolate_q.size(); ++q)
+            {
+              results += quant(q, material_id) * cutter_fe_values.JxW(q);
+            }
+          return results;
+        };
+
         volume_flow += integrate(int_x_velocity);
         pressure_force += integrate(int_pressure);
-        momentum_flux += integrate(int_momentum);
-        KE_flux += integrate(int_KE);
+        momentum_flux += integrate_cell_mat(int_momentum);
+        KE_flux += integrate_cell_mat(int_KE);
         rate_pressure_work += integrate(int_pressure_work);
-        rate_friction_work += integrate(int_friction_work);
+        rate_friction_work += integrate_cell_mat(int_friction_work);
         rate_turbulence_efflux += integrate(int_turbulence_efflux);
         return std::make_tuple(volume_flow,
                                pressure_force,
@@ -796,28 +809,28 @@ namespace MPI
     // Quantities to be integrated
     auto int_rate_momentum = [&present_vel,
                               &previous_vel,
-                              rho = parameters.fluid_rho,
-                              dt = time.get_delta_t()](int q) {
-      return rho * (present_vel[q][0] - previous_vel[q][0]) / dt;
+                              fluid_materials = parameters.fluid_materials,
+                              dt = time.get_delta_t()](int q, int material_id) {
+      return fluid_materials.at(material_id).density * (present_vel[q][0] - previous_vel[q][0]) / dt;
     };
-    auto int_previous_kinetic_energy = [rho = parameters.fluid_rho,
-                                        &previous_vel](int q) {
-      return 0.5 * rho * previous_vel[q].norm_square();
+    auto int_previous_kinetic_energy = [fluid_materials = parameters.fluid_materials,
+                                        &previous_vel](int q, int material_id) {
+      return 0.5 * fluid_materials.at(material_id).density * previous_vel[q].norm_square();
     };
-    auto int_present_kinetic_energy = [rho = parameters.fluid_rho,
-                                       &present_vel](int q) {
-      return 0.5 * rho * present_vel[q].norm_square();
+    auto int_present_kinetic_energy = [fluid_materials = parameters.fluid_materials,
+                                       &present_vel](int q, int material_id) {
+      return 0.5 * fluid_materials.at(material_id).density * present_vel[q].norm_square();
     };
-    auto int_rate_kinetic_energy = [&rho = parameters.fluid_rho,
+    auto int_rate_kinetic_energy = [&fluid_materials = parameters.fluid_materials,
                                     dt = time.get_delta_t(),
                                     &previous_vel,
-                                    &present_vel](int q) {
-      return rho * scalar_product((present_vel[q] - previous_vel[q]) / dt,
+                                    &present_vel](int q, int material_id) {
+      return fluid_materials.at(material_id).density * scalar_product((present_vel[q] - previous_vel[q]) / dt,
                                   present_vel[q]);
     };
     auto int_convective_kinetive_energy =
-      [&rho = parameters.fluid_rho, &present_vel, &vel_grad](int q) {
-        return rho * vel_grad[q] * present_vel[q] * present_vel[q];
+      [&fluid_materials = parameters.fluid_materials, &present_vel, &vel_grad](int q, int material_id) {
+        return fluid_materials.at(material_id).density * vel_grad[q] * present_vel[q] * present_vel[q];
       };
     auto int_pressure_convection = [&present_vel, &pre_grad](int q) {
       double retval = 0.0;
@@ -828,8 +841,8 @@ namespace MPI
       return retval;
     };
     auto int_rate_dissipation =
-      [&vel_grad, &eddy_vis, mu = parameters.viscosity](int q) {
-        return mu * scalar_product(vel_grad[q], vel_grad[q]);
+      [&vel_grad, &eddy_vis, fluid_materials = parameters.fluid_materials](int q, int material_id) {
+        return fluid_materials.at(material_id).viscosity * scalar_product(vel_grad[q], vel_grad[q]);
       };
     auto int_rate_compression = [&present_pre, &vel_grad](int q) {
       double retval = 0.0;
@@ -841,8 +854,9 @@ namespace MPI
     };
 
     auto int_rate_stabilization = [&,
-                                   rho = parameters.fluid_rho,
-                                   mu = parameters.viscosity](int q) {
+                                   fluid_materials = parameters.fluid_materials](int q, int material_id) {
+	  double mu = fluid_materials.at(material_id).viscosity;
+	  double rho = fluid_materials.at(material_id).density;
       double vel_div = trace(vel_grad[q]);
       double nu = (mu + eddy_vis[q]) / rho;
       double v_norm = present_vel[q].norm();
@@ -903,6 +917,17 @@ namespace MPI
       return results;
     };
 
+    // The integrate function with material id
+    auto integrate_cell_mat = [&fe_values](const std::function<double(int, int)> &quant) {
+      double results = 0.0;
+      int material_id = fe_values.get_cell()->material_id();
+      for (unsigned q = 0; q < fe_values.n_quadrature_points; ++q)
+        {
+          results += quant(q, material_id) * fe_values.JxW(q);
+        }
+      return results;
+    };
+
     // Internal volume integral function
     auto compute_volume_integral_internal =
       [&](typename DoFHandler<dim>::active_cell_iterator f_cell,
@@ -955,29 +980,29 @@ namespace MPI
                     stress_div[q][i] += stress_grad[i][j][q][j];
                   }
                 stress_div[q][i] *=
-                  (parameters.viscosity + eddy_vis[q]) / parameters.viscosity;
+                  (parameters.fluid_materials.at(f_cell->material_id()).viscosity + eddy_vis[q]) / parameters.fluid_materials.at(f_cell->material_id()).viscosity;
               }
           }
 
         // Integrate the quantities on the cells
         cv_values.momentum.rate_momentum +=
-          integrate(int_rate_momentum) * volume_fraction;
+          integrate_cell_mat(int_rate_momentum) * volume_fraction;
         cv_values.energy.previous_KE +=
-          integrate(int_previous_kinetic_energy) * volume_fraction;
+          integrate_cell_mat(int_previous_kinetic_energy) * volume_fraction;
         cv_values.energy.present_KE +=
-          integrate(int_present_kinetic_energy) * volume_fraction;
+          integrate_cell_mat(int_present_kinetic_energy) * volume_fraction;
         cv_values.energy.rate_kinetic_energy_direct +=
-          integrate(int_rate_kinetic_energy) * volume_fraction;
+          integrate_cell_mat(int_rate_kinetic_energy) * volume_fraction;
         cv_values.energy.convective_KE +=
-          integrate(int_convective_kinetive_energy) * volume_fraction;
+          integrate_cell_mat(int_convective_kinetive_energy) * volume_fraction;
         cv_values.energy.pressure_convection +=
           integrate(int_pressure_convection) * volume_fraction;
         cv_values.energy.rate_dissipation +=
-          integrate(int_rate_dissipation) * volume_fraction;
+          integrate_cell_mat(int_rate_dissipation) * volume_fraction;
         cv_values.energy.rate_compression_work +=
           integrate(int_rate_compression) * volume_fraction;
         cv_values.energy.rate_stabilization +=
-          integrate(int_rate_stabilization) * volume_fraction;
+          integrate_cell_mat(int_rate_stabilization) * volume_fraction;
         cv_values.energy.rate_turbulence +=
           integrate(int_rate_turbulence) * volume_fraction;
         // Compute the gap volume flow
@@ -1360,23 +1385,24 @@ namespace MPI
       [dt = time.get_delta_t(), &present_vel, &previous_vel](int q) {
         return (present_vel[q][0] - previous_vel[q][0]) / dt;
       };
-    auto int_pressure_head = [&pre_grad, rho = parameters.fluid_rho](int q) {
-      return pre_grad[q][0] / rho;
+    auto int_pressure_head = [&pre_grad, fluid_materials = parameters.fluid_materials](int q, int material_id) {
+      return pre_grad[q][0] / fluid_materials.at(material_id).density;
     };
     auto int_convection_head = [&present_vel, &vel_grad](int q) {
       return present_vel[q] * vel_grad[q][0];
     };
     auto int_density_head = [&present_pre,
                              &pre_grad,
-                             rho = parameters.fluid_rho](int q) {
+                             fluid_materials = parameters.fluid_materials](int q, int material_id) {
       double atm = 1013250;
-      return present_pre[q] / rho / (atm + 2 * present_pre[q]) * pre_grad[q][0];
+      return present_pre[q] / fluid_materials.at(material_id).density / (atm + 2 * present_pre[q]) * pre_grad[q][0];
     };
     auto int_friction_head = [&stress_grad,
                               &eddy_vis,
-                              mu = parameters.viscosity,
-                              rho = parameters.fluid_rho](int q) {
+                              fluid_materials = parameters.fluid_materials](int q, int material_id) {
       double retval = 0.0;
+	  double mu = fluid_materials.at(material_id).viscosity;
+	  double rho = fluid_materials.at(material_id).density;
       // For 2d this is (Sxx_grad[q][0] + Sxy_grad[q][1] - Syy_grad[q][0]) / rho
       // For 3d this is (Sxx_grad[q][0] + Sxy_grad[q][1] + Sxz_grad[q][2] -
       // Syy_grad[q][0] - Szz_grad[q][0]) / rho
@@ -1401,6 +1427,16 @@ namespace MPI
       for (unsigned q = 0; q < fe_values.n_quadrature_points; ++q)
         {
           results += quant(q) * fe_values.JxW(q);
+        }
+      return results;
+    };
+
+    auto integrate_cell_mat = [&fe_values](const std::function<double(int, int)> &quant) {
+      double results = 0;
+	  int material_id = fe_values.get_cell()->material_id();
+      for (unsigned q = 0; q < fe_values.n_quadrature_points; ++q)
+        {
+          results += quant(q, material_id) * fe_values.JxW(q);
         }
       return results;
     };
@@ -1495,10 +1531,10 @@ namespace MPI
           {
             // Compute integral for Bernoulli equation
             convection_head = integrate(int_convection_head);
-            pressure_head = integrate(int_pressure_head);
+            pressure_head = integrate_cell_mat(int_pressure_head);
             acceleration = integrate(int_acceleration_head);
-            rate_density = integrate(int_density_head);
-            rate_friction_head = integrate(int_friction_head);
+            rate_density = integrate_cell_mat(int_density_head);
+            rate_friction_head = integrate_cell_mat(int_friction_head);
           }
         if (region & in_contraction)
           {
@@ -1566,10 +1602,10 @@ namespace MPI
             double area_fraction = fraction * get_area_fraction(cell);
             convection_head_int +=
               integrate(int_convection_head) * area_fraction;
-            pressure_head_int += integrate(int_pressure_head) * area_fraction;
+            pressure_head_int += integrate_cell_mat(int_pressure_head) * area_fraction;
             acc_int += integrate(int_acceleration_head) * area_fraction;
-            density_int += integrate(int_density_head) * area_fraction;
-            friction_head_int += integrate(int_friction_head) * area_fraction;
+            density_int += integrate_cell_mat(int_density_head) * area_fraction;
+            friction_head_int += integrate_cell_mat(int_friction_head) * area_fraction;
           }
       };
     get_start_end_quantities(cv_values.bernoulli.rate_convection_contraction,

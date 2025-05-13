@@ -7,6 +7,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <map>
 
 namespace Parameters
 {
@@ -36,10 +37,15 @@ namespace Parameters
     void parseParameters(ParameterHandler &);
   };
 
-  struct FluidMaterial
+  struct FluidMaterialData
   {
     double viscosity;
-    double fluid_rho;
+    double density;
+  };
+
+  struct FluidMaterial
+  {
+    std::map<unsigned, FluidMaterialData> fluid_materials;
     static void declareParameters(ParameterHandler &);
     void parseParameters(ParameterHandler &);
   };

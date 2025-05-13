@@ -173,6 +173,10 @@ namespace Fluid
         p[0]->indicator = 0;
         p[0]->fsi_acceleration = 0;
         p[0]->fsi_stress = 0;
+        // debug print the material id
+        //std::cout << "cell material id: " << cell->material_id() << "; cell density value: " << parameters.fluid_materials.at(cell->material_id()).density << "; cell viscosity value: " << parameters.fluid_materials.at(cell->material_id()).viscosity << "; cell location: " << cell->center()[0] << ", " << cell->center()[1] << std::endl;
+		p[0]->density = parameters.fluid_materials.at(cell->material_id()).density;
+		p[0]->viscosity = parameters.fluid_materials.at(cell->material_id()).viscosity;
       }
   }
 
@@ -371,8 +375,8 @@ namespace Fluid
         // Loop over all quadrature points to set FSI forces.
         for (unsigned int q = 0; q < volume_quad_formula.size(); ++q)
           {
-            SymmetricTensor<2, dim> tau =
-              2 * parameters.viscosity * sym_grad_v[q];
+            SymmetricTensor<2, dim> tau = 
+              2 * parameters.fluid_materials.at(cell->material_id()).viscosity * sym_grad_v[q];
             for (unsigned int i = 0; i < dim; ++i)
               {
                 for (unsigned int j = 0; j < dim; ++j)

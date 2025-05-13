@@ -632,6 +632,32 @@ namespace Utils
     tria.set_manifold(0, CylindricalManifold<3>(2));
   }
 
+  template<int dim>
+  double avg_density(const DoFHandler<dim> &dof_handler, const Parameters::AllParameters &parameters)
+  {
+    double density_sum = 0;
+    unsigned n = 0;
+    for (auto cell = dof_handler.begin_active(); cell != dof_handler.end(); ++cell)
+    {
+      density_sum += parameters.fluid_materials.at(cell->material_id()).density;
+      ++n;
+    }
+    return density_sum / n;
+  }
+
+  template<int dim>
+  double avg_viscosity(const DoFHandler<dim> &dof_handler, const Parameters::AllParameters &parameters)
+  {
+    double viscosity_sum = 0;
+    unsigned n = 0;
+    for (auto cell = dof_handler.begin_active(); cell != dof_handler.end(); ++cell)
+    {
+      viscosity_sum += parameters.fluid_materials.at(cell->material_id()).viscosity;
+      ++n;
+    }
+    return viscosity_sum / n;
+  }
+
   double PETScVectorMax(const PETScWrappers::MPI::Vector &vec)
   {
     PetscReal max;
@@ -666,4 +692,8 @@ namespace Utils
   template class SPHInterpolator<3, PETScWrappers::MPI::BlockVector>;
   template class Utils::CellLocator<2, DoFHandler<2, 2>>;
   template class Utils::CellLocator<3, DoFHandler<3, 3>>;
+  template double avg_viscosity<2>(const DoFHandler<2> &, const Parameters::AllParameters &);
+  template double avg_viscosity<3>(const DoFHandler<3> &, const Parameters::AllParameters &);
+  template double avg_density<2>(const DoFHandler<2> &, const Parameters::AllParameters &);
+  template double avg_density<3>(const DoFHandler<3> &, const Parameters::AllParameters &);
 } // namespace Utils

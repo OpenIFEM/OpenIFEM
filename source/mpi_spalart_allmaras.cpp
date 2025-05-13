@@ -50,9 +50,9 @@ namespace Fluid
         };
 
       auto compute_y_plus = [&](const double shear_velocity,
-                                const double dist) {
+                                const double dist, int material_id) {
         return dist * shear_velocity /
-               (parameters->viscosity / parameters->fluid_rho);
+               (parameters->fluid_materials.at(material_id).viscosity / parameters->fluid_materials.at(material_id).density);
       };
 
       // Loop over fluid cells
@@ -102,7 +102,7 @@ namespace Fluid
                                   min_dist = current_dist;
                                   // Update y_plus
                                   p[v]->y_plus = compute_y_plus(
-                                    intersection_shear_velocity, min_dist);
+                                    intersection_shear_velocity, min_dist, f_cell->material_id());
                                 }
                             }
                         }
@@ -117,7 +117,7 @@ namespace Fluid
                           min_dist = current_dist;
                           // Update y_plus
                           p[v]->y_plus = compute_y_plus(
-                            get_shear_velocity(s_vert), min_dist);
+                            get_shear_velocity(s_vert), min_dist, f_cell->material_id());
                         }
                     }
                   p[v]->moving_wall_distance.emplace(min_dist);
@@ -198,8 +198,8 @@ namespace Fluid
                   touched_dofs[line] = true;
                   inner_nonzero.set_inhomogeneity(line,
                                                   kappa * p[v]->y_plus *
-                                                      parameters->viscosity /
-                                                      parameters->fluid_rho -
+                                                      parameters->fluid_materials.at(cell->material_id()).viscosity /
+                                                      parameters->fluid_materials.at(cell->material_id()).density -
                                                     present_solution(line));
                 }
             }
@@ -223,8 +223,12 @@ namespace Fluid
         {
           return 0.0;
         }
+      // Average viscosity
+      const double avg_viscosity = Utils::avg_viscosity(*dof_handler, *parameters);
+      // Average density
+      const double avg_density = Utils::avg_density(*dof_handler, *parameters);
       // Kinematic viscosity
-      const double nu{parameters->viscosity / parameters->fluid_rho};
+      const double nu{avg_viscosity / avg_density};
       // Image distance
       const double dist{parameters->spalart_allmaras_image_distance};
       // If it's in viscous sublayer (y+ < 5, u+ = y+)
@@ -380,7 +384,7 @@ namespace Fluid
                 break;
               case 1:
                 augmented_value =
-                  5.0 * parameters->viscosity / parameters->fluid_rho;
+                  5.0 * Utils::avg_viscosity(*dof_handler, *parameters) / Utils::avg_density(*dof_handler, *parameters);
                 break;
               default:
                 AssertThrow(
@@ -557,10 +561,13 @@ namespace Fluid
       // a completely distributed vector.
       newton_update.reinit(*locally_owned_scalar_dofs, mpi_communicator);
 
+      const double avg_viscosity = Utils::avg_viscosity(*dof_handler, *parameters);
+      const double avg_density = Utils::avg_density(*dof_handler, *parameters);
+
       // Apply the initial condition
       newton_update.add(
         parameters->spalart_allmaras_initial_condition_coefficient *
-        parameters->viscosity / parameters->fluid_rho);
+        avg_viscosity / avg_density);
       zero_constraints.distribute(newton_update);
       present_solution = newton_update;
       setup_cell_property();
@@ -657,9 +664,6 @@ namespace Fluid
 
       std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
-      // The laminar dynamic viscosity (mu) and laminar kinematic viscosity (nu)
-      const double laminar_viscosity = parameters->viscosity;
-
       // A vector to store nodal values of nearest wall distance d.
       std::vector<double> nodal_d(scalar_fe->get_unit_support_points().size());
 
@@ -721,11 +725,11 @@ namespace Fluid
               if (indicator_function.has_value() &&
                   (*indicator_function)(cell) == 1)
                 {
-                  laminar_nu = 1 / parameters->fluid_rho;
+                  laminar_nu = 1 / parameters->fluid_materials.at(cell->material_id()).density;
                 }
               else
                 {
-                  laminar_nu = laminar_viscosity / parameters->fluid_rho;
+                  laminar_nu = parameters->fluid_materials.at(cell->material_id()).viscosity / parameters->fluid_materials.at(cell->material_id()).density;
                 }
 
               for (unsigned int q = 0; q < n_q_points; ++q)
@@ -897,7 +901,11 @@ namespace Fluid
       constexpr double cv1{7.1};
       // The 3rd power of cv1
       constexpr double cv1_3 = cv1 * cv1 * cv1;
-      const double laminar_nu = parameters->viscosity / parameters->fluid_rho;
+      // Average viscosity
+      const double avg_viscosity = Utils::avg_viscosity(*dof_handler, *parameters);
+      // Average density
+      const double avg_density = Utils::avg_density(*dof_handler, *parameters);
+      const double laminar_nu = avg_viscosity / avg_density;
       // Cache for the eddy viscosity because the original vector is ghosted.
       PETScWrappers::MPI::Vector tmp_eddy_viscosity(*locally_owned_scalar_dofs,
                                                     mpi_communicator);
@@ -907,7 +915,7 @@ namespace Fluid
         {
           const double chi = present_solution[r] / laminar_nu;
           tmp_eddy_viscosity[r] = chi * chi * chi / (chi * chi * chi + cv1_3) *
-                                  present_solution[r] * parameters->fluid_rho;
+                                  present_solution[r] * avg_density;
         }
       tmp_eddy_viscosity.compress(VectorOperation::insert);
       eddy_viscosity = tmp_eddy_viscosity;

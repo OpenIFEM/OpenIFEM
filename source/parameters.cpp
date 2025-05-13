@@ -103,12 +103,22 @@ namespace Parameters
   {
     prm.enter_subsection("Fluid material properties");
     {
+      prm.declare_entry("Number of fluid material properties",
+                        "1",
+                        Patterns::Integer(1),
+                        "Number of different material properties");
+      prm.declare_entry("Material property id",
+                        "",
+                        Patterns::List(Patterns::Integer()),
+                        "IDs of the materials");
       prm.declare_entry("Dynamic viscosity",
-                        "1e-3",
-                        Patterns::Double(0.0),
+                        "",
+                        Patterns::List(Patterns::Double()),
                         "Dynamic viscosity");
-      prm.declare_entry(
-        "Fluid density", "1.0", Patterns::Double(0.0), "Dynamic viscosity");
+      prm.declare_entry("Fluid density",
+                        "",
+                        Patterns::List(Patterns::Double()),
+                        "Fluid density");
     }
     prm.leave_subsection();
   }
@@ -117,8 +127,22 @@ namespace Parameters
   {
     prm.enter_subsection("Fluid material properties");
     {
-      viscosity = prm.get_double("Dynamic viscosity");
-      fluid_rho = prm.get_double("Fluid density");
+      unsigned num_materials = prm.get_integer("Number of fluid material properties");
+      std::vector<int> material_ids = Utilities::string_to_int(Utilities::split_string_list(prm.get("Material property id")));
+      std::vector<double> viscosity_values = Utilities::string_to_double(Utilities::split_string_list(prm.get("Dynamic viscosity")));
+      std::vector<double> density_values = Utilities::string_to_double(Utilities::split_string_list(prm.get("Fluid density")));
+
+      AssertThrow(material_ids.size() == num_materials, ExcMessage("Mismatch between number of material IDs and specified number of materials"));
+      AssertThrow(viscosity_values.size() == num_materials, ExcMessage("Mismatch between number of viscosity values and specified number of materials"));
+      AssertThrow(density_values.size() == num_materials, ExcMessage("Mismatch between number of density values and specified number of materials"));
+      AssertThrow(std::find(material_ids.begin(), material_ids.end(), 0) != material_ids.end(), ExcMessage("Material ID 0 is required"));
+
+      for (unsigned i = 0; i < num_materials; ++i) {
+        FluidMaterialData data;
+        data.viscosity = viscosity_values[i];
+        data.density = density_values[i];
+        fluid_materials[material_ids[i]] = data;
+      }
     }
     prm.leave_subsection();
   }

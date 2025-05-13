@@ -143,7 +143,6 @@ namespace Fluid
   {
     TimerOutput::Scope timer_section(timer, "Assemble system");
 
-    const double viscosity = parameters.viscosity;
     const double gamma = parameters.grad_div;
     Tensor<1, dim> gravity;
     for (unsigned int i = 0; i < dim; ++i)
@@ -196,7 +195,6 @@ namespace Fluid
       {
         auto p = cell_property.get_data(cell);
         const int ind = p[0]->indicator;
-        const double rho = parameters.fluid_rho;
 
         fe_values.reinit(cell);
 
@@ -243,15 +241,15 @@ namespace Fluid
                     // \f$M = m(\delta{u}, \delta{v})$, then LHS is: $(A +
                     // C) + M/{\Delta{t}}\f$
                     local_matrix(i, j) +=
-                      (viscosity *
+                      (p[0]->viscosity *
                          scalar_product(grad_phi_u[j], grad_phi_u[i]) +
                        current_velocity_gradients[q] * phi_u[j] * phi_u[i] *
-                         rho +
+                         p[0]->density +
                        grad_phi_u[j] * current_velocity_values[q] * phi_u[i] *
-                         rho -
+                         p[0]->density -
                        div_phi_u[i] * phi_p[j] - phi_p[i] * div_phi_u[j] +
-                       gamma * div_phi_u[j] * div_phi_u[i] * rho +
-                       phi_u[i] * phi_u[j] / time.get_delta_t() * rho) *
+                       gamma * div_phi_u[j] * div_phi_u[i] * p[0]->density +
+                       phi_u[i] * phi_u[j] / time.get_delta_t() * p[0]->density) *
                       fe_values.JxW(q);
                     local_mass_matrix(i, j) +=
                       (phi_u[i] * phi_u[j] + phi_p[i] * phi_p[j]) *
@@ -263,16 +261,16 @@ namespace Fluid
                 double current_velocity_divergence =
                   trace(current_velocity_gradients[q]);
                 local_rhs(i) +=
-                  ((-viscosity * scalar_product(current_velocity_gradients[q],
+                  ((-p[0]->viscosity * scalar_product(current_velocity_gradients[q],
                                                 grad_phi_u[i]) -
                     current_velocity_gradients[q] * current_velocity_values[q] *
-                      phi_u[i] * rho +
+                      phi_u[i] * p[0]->density +
                     current_pressure_values[q] * div_phi_u[i] +
                     current_velocity_divergence * phi_p[i] -
-                    gamma * current_velocity_divergence * div_phi_u[i] * rho) -
+                    gamma * current_velocity_divergence * div_phi_u[i] * p[0]->density) -
                    (current_velocity_values[q] - present_velocity_values[q]) *
-                     phi_u[i] / time.get_delta_t() * rho +
-                   gravity * phi_u[i] * rho) *
+                     phi_u[i] / time.get_delta_t() * p[0]->density +
+                   gravity * phi_u[i] * p[0]->density) *
                   fe_values.JxW(q);
                 if (ind == 1)
                   {
@@ -337,11 +335,13 @@ namespace Fluid
   InsIM<dim>::solve(const bool use_nonzero_constraints)
   {
     TimerOutput::Scope timer_section(timer, "Solve linear system");
+    //double avg_viscosity = Utils::avg_viscosity(dof_handler, parameters);
+    //double avg_density = Utils::avg_density(dof_handler, parameters);
 
     preconditioner.reset(new BlockSchurPreconditioner(timer,
                                                       parameters.grad_div,
-                                                      parameters.viscosity,
-                                                      parameters.fluid_rho,
+                                                      avg_fluid_material_data.viscosity,
+                                                      avg_fluid_material_data.density,
                                                       time.get_delta_t(),
                                                       system_matrix,
                                                       mass_matrix,
@@ -452,6 +452,12 @@ namespace Fluid
     setup_dofs();
     make_constraints();
     initialize_system();
+
+    // Compute the average viscosity and density
+    avg_fluid_material_data.viscosity = Utils::avg_viscosity(dof_handler, parameters);
+    avg_fluid_material_data.density = Utils::avg_density(dof_handler, parameters);
+
+    std::cout << "INITIAL COMPUTATION OF AVERAGE VISCOSITY AND DENSITY" << std::endl;
 
     // Time loop.
     // use_nonzero_constraints is set to true only at the first time step,

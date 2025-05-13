@@ -50,11 +50,17 @@ subsection Fluid finite element system
 end
 
 subsection Fluid material properties
-  # The dynamic viscosity
-  set Dynamic viscosity = 0.002
+  # the number of fluid material properties
+  set Number of fluid material properties = 2
 
-  # Fluid density
-  set Fluid density = 1
+  # The ids that govern the fluid material properties
+  set Material property id = 0, 1
+
+  # The Dynamic viscosity of the fluid cells per material id
+  set Dynamic viscosity = 0.002, 0.002
+
+  # The density of the fluid cells per material id
+  set Fluid density = 1, 1
 end
 
 subsection Fluid solver control

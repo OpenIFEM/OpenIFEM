@@ -207,12 +207,12 @@ namespace Fluid
 
               for (unsigned int q = 0; q < n_q_points; ++q)
                 {
-                  const double rho = parameters.fluid_rho *
+                  const double rho = parameters.fluid_materials.at(cell->material_id()).density *
                                        (1 + present_pressure_values[q] / atm) *
                                        (1 - ind) +
                                      ind * parameters.solid_rho;
                   const double viscosity =
-                    (ind == 1 ? 1 : parameters.viscosity) +
+                    (ind == 1 ? 1 : parameters.fluid_materials.at(cell->material_id()).viscosity) +
                     (eddy_viscosity[q] > 0.0 ? eddy_viscosity[q] : 0.0);
 
                   for (unsigned int k = 0; k < dofs_per_cell; ++k)
@@ -285,7 +285,7 @@ namespace Fluid
                         }
                       // Modify the stress
                       current_stress_divergence[q][i] *=
-                        viscosity / parameters.viscosity;
+                        viscosity / parameters.fluid_materials.at(cell->material_id()).viscosity;
                     }
 
                   for (unsigned int i = 0; i < dofs_per_cell; ++i)

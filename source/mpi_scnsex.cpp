@@ -233,8 +233,8 @@ namespace Fluid
 
               for (unsigned int q = 0; q < n_q_points; ++q)
                 {
-                  const double rho = parameters.fluid_rho;
-                  const double viscosity = parameters.viscosity;
+                  const double viscosity = parameters.fluid_materials.at(cell->material_id()).viscosity;
+                  const double rho = parameters.fluid_materials.at(cell->material_id()).density;
 
                   for (unsigned int k = 0; k < dofs_per_cell; ++k)
                     {

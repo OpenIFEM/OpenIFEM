@@ -83,6 +83,7 @@ namespace Fluid
     using FluidSolver<dim>::cell_property;
     using FluidSolver<dim>::boundary_values;
     using FluidSolver<dim>::stress;
+	Parameters::FluidMaterialData avg_fluid_material_data;
 
     /// Specify the sparsity pattern and reinit matrices and vectors based on
     /// the dofs and constraints.

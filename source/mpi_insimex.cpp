@@ -152,7 +152,6 @@ namespace Fluid
     {
       TimerOutput::Scope timer_section(timer, "Assemble system");
 
-      const double viscosity = parameters.viscosity;
       const double gamma = parameters.grad_div;
       Tensor<1, dim> gravity;
       for (unsigned int i = 0; i < dim; ++i)
@@ -206,7 +205,8 @@ namespace Fluid
             {
               auto p = cell_property.get_data(cell);
               const int ind = p[0]->indicator;
-              const double rho = parameters.fluid_rho;
+              const double viscosity = parameters.fluid_materials.at(cell->material_id()).viscosity;
+              const double rho = parameters.fluid_materials.at(cell->material_id()).density;
 
               fe_values.reinit(cell);
 
@@ -361,11 +361,14 @@ namespace Fluid
       TimerOutput::Scope timer_section(timer, "Solve linear system");
       if (assemble_system)
         {
+          double avg_viscosity = Utils::avg_viscosity(dof_handler, parameters);
+          double avg_density = Utils::avg_density(dof_handler, parameters);
+
           preconditioner.reset(
             new BlockSchurPreconditioner(timer2,
                                          parameters.grad_div,
-                                         parameters.viscosity,
-                                         parameters.fluid_rho,
+                                         avg_viscosity,
+                                         avg_density,
                                          time.get_delta_t(),
                                          owned_partitioning,
                                          system_matrix,

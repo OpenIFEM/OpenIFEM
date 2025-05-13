@@ -768,7 +768,7 @@ namespace Fluid
           for (unsigned int q = 0; q < volume_quad_formula.size(); ++q)
             {
               SymmetricTensor<2, dim> tau =
-                2 * parameters.viscosity * sym_grad_v[q];
+                2 * parameters.fluid_materials.at(cell->material_id()).viscosity * sym_grad_v[q];
               for (unsigned int i = 0; i < dim; ++i)
                 {
                   for (unsigned int j = 0; j < dim; ++j)

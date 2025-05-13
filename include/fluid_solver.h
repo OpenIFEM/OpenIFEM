@@ -167,6 +167,9 @@ namespace Fluid
                      //! fluid.
       Tensor<1, dim> fsi_acceleration; //!< The acceleration term in FSI force.
       SymmetricTensor<2, dim> fsi_stress; //!< The stress term in FSI force.
+
+	  double density; //!< The density of the fluid.
+	  double viscosity; //!< The viscosity of the fluid.
     };
   };
 } // namespace Fluid

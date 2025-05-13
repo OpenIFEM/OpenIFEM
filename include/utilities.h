@@ -19,6 +19,8 @@
 #include <queue>
 #include <unordered_set>
 
+#include "parameters.h"
+
 namespace Utils
 {
   using namespace dealii;
@@ -213,6 +215,16 @@ namespace Utils
     const typename MeshType::active_cell_iterator hint;
     bool cell_found;
   };
+
+  /*! \brief Helper function to evaluate the average density over all cells.
+   */
+  template <int dim>
+  double avg_density(const DoFHandler<dim> &, const Parameters::AllParameters &);
+
+  /*! \brief Helper function to evaluate the average viscosity over all cells.
+   */
+  template <int dim>
+  double avg_viscosity(const DoFHandler<dim> &, const Parameters::AllParameters &);
 
   /*! \brief Helper function to evaluate the maximum value of a PETSc vector.
    */

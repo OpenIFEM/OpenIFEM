@@ -244,7 +244,7 @@ void FSI<dim>::find_fluid_bc()
           for (unsigned int i = 0; i < dim; ++i)
             {
               ptr[0]->fsi_acceleration[i] =
-                (parameters.solid_rho - parameters.fluid_rho) *
+                (parameters.solid_rho - parameters.fluid_materials.at(f_cell->material_id()).density) *
                 (parameters.gravity[i] - solid_acc[i]);
             }
         }
