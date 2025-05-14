@@ -74,6 +74,18 @@ namespace Solid
       double total_external_work = 0.0;
 
       double total_external_work_v = 0.0;
+
+      double total_external_power = 0.0;
+
+      double total_external_powe_v = 0.0;
+
+      void compute_velocity_L2();
+
+      void compute_stress_power ();
+
+      void compute_traction_power();
+
+      void compute_ke_rate();
     };
   } // namespace MPI
 } // namespace Solid

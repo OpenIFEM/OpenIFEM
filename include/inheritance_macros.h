@@ -83,6 +83,7 @@ private:                                                                       \
   using SharedSolidSolver<dim>::stiffness_matrix;                              \
   using SharedSolidSolver<dim>::damping_matrix;                                \
   using SharedSolidSolver<dim>::system_rhs;                                    \
+  using SharedSolidSolver<dim>::rhs_prev;                                      \
   using SharedSolidSolver<dim>::current_acceleration;                          \
   using SharedSolidSolver<dim>::current_velocity;                              \
   using SharedSolidSolver<dim>::current_displacement;                          \
@@ -90,6 +91,7 @@ private:                                                                       \
   using SharedSolidSolver<dim>::previous_velocity;                             \
   using SharedSolidSolver<dim>::previous_displacement;                         \
   using SharedSolidSolver<dim>::fsi_stress_rows;                               \
+  using SharedSolidSolver<dim>::fsi_traction_rows;                             \
   using SharedSolidSolver<dim>::fluid_velocity;                                \
   using SharedSolidSolver<dim>::fluid_pressure;                                \
   using SharedSolidSolver<dim>::strain;                                        \

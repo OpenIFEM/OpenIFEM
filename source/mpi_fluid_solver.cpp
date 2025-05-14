@@ -791,7 +791,7 @@ namespace Fluid
               SymmetricTensor<2, dim> tau =
                 2 * parameters.viscosity * sym_grad_v[q];
 
-              tau -= p_values[q] * Physics::Elasticity::StandardTensors<dim>::I;
+              //tau -= p_values[q] * Physics::Elasticity::StandardTensors<dim>::I;
 
               // for (unsigned int d = 0; d < dim; ++d)
               // tau[d][d] -= p_values[q];

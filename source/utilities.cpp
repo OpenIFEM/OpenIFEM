@@ -580,33 +580,17 @@ namespace Utils
                                 double radius)
   {
 
-    /*
-    tria.set_all_manifold_ids(1);
-    tria.set_all_manifold_ids_on_boundary(0);
     SphericalManifold<dim> spherical_manifold(center);
-    tria.set_manifold(0, spherical_manifold);
-
     TransfiniteInterpolationManifold<dim> inner_manifold;
-    inner_manifold.initialize(tria);
-    tria.set_manifold(1, inner_manifold);
+    GridGenerator::hyper_ball_balanced(tria, center, radius);
     //GridGenerator::hyper_ball(tria, center, radius);
-    //GridGenerator::hyper_ball_balanced(tria, center, radius);
-    */
-
-    const double inner_radius = 1e-6;
-    const unsigned int n_sectors = 8;
-
-    GridGenerator::hyper_shell(
-      tria, center, inner_radius, radius, n_sectors /* # sectors */);
-
     tria.set_all_manifold_ids(1);
     tria.set_all_manifold_ids_on_boundary(0);
-
-    SphericalManifold<dim> spherical_manifold(center);
     tria.set_manifold(0, spherical_manifold);
-    TransfiniteInterpolationManifold<dim> inner_manifold;
     inner_manifold.initialize(tria);
     tria.set_manifold(1, inner_manifold);
+ 
+  
   }
 
   template <>

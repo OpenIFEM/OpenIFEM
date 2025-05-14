@@ -25,6 +25,7 @@ namespace Parameters
     std::vector<double> gravity;
     std::vector<double> initial_velocity;
     std::string indicator_field_condition;
+    double penalty_scale_factor;
     static void declareParameters(ParameterHandler &);
     void parseParameters(ParameterHandler &);
   };

@@ -133,6 +133,9 @@ namespace Solid
        */
       virtual void run_one_step(bool) = 0;
 
+      
+      void fix_nodes_on_axes(const double tolerance = 1e-12);
+
       /**
        * Solve the linear system. Returns the number of
        * CG iterations and the final residual.
@@ -191,6 +194,8 @@ namespace Solid
         damping_matrix; //!< The damping matrix for visco-linearelastic solver.
       PETScWrappers::MPI::Vector system_rhs;
 
+      PETScWrappers::MPI::Vector rhs_prev; // to compute the external work correctly in FSI case
+
       /**
        * In the Newmark-beta method, acceleration is the variable to solve at
        * every
@@ -219,6 +224,10 @@ namespace Solid
       std::vector<Vector<double>> fsi_stress_rows;
       Vector<double> fluid_velocity;
       Vector<double> fluid_pressure;
+
+
+      // test with a new container for L-2 projected fsi traction
+      std::vector<Vector<double>> fsi_traction_rows;
 
       /** a pair container to store the user specified points and directions
        */

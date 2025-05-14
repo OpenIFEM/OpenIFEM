@@ -4,17 +4,6 @@ namespace Fluid
 {
   namespace MPI
   {
-
-    // Define numerical constants to replace magic numbers
-    /*
-    namespace NumericalConstants
-    {
-      constexpr double DOMAIN_HEIGHT = 0.41; // Height of the domain
-      constexpr double DOMAIN_LENGTH = 2.2;  // Length of the domain
-      constexpr double INLET_U_MAX = 1;    // Maximum inlet velocity
-      //constexpr double TOLERANCE = 1e-12;    // Tolerance for boundary checks
-    } */                                      // namespace NumericalConstants
-                                             // namespace NumericalConstants
     namespace LinearSolvers
     {
       template <class Matrix, class Preconditioner>
@@ -97,49 +86,10 @@ namespace Fluid
 
     } // namespace LinearSolvers
 
-    /*
-    template <int dim>
-    class InletVelocity : public Function<dim>
-    {
-    public:
-      InletVelocity(const double ramp_time)
-        : Function<dim>(dim)
-        , ramp_time(ramp_time)
-        {
-        } // in serial code I used dim+1, only one is correct; check in the
-    future
-
-      virtual void vector_value(const Point<dim> &p,
-                                Vector<double> &values) const override
-      {
-        const double t = this->get_time();
-
-        const double alpha = (ramp_time > 1e-14)
-        ? std::min(1.0, t / ramp_time)
-        : 1.0;
-
-
-        const double y = p[1];
-        const double H =
-          NumericalConstants::DOMAIN_HEIGHT; // Height of the domain
-
-        values(0) = alpha* 4.0 * NumericalConstants::INLET_U_MAX *
-                    (y/H) *
-                    (1-y/H);
-        //values(0) = NumericalConstants::INLET_U_MAX ; //uniform inlet velocity
-
-        for (unsigned int i = 1; i < dim + 1; ++i)
-          values(i) = 0.0; // No velocity in other components
-      }
-
-    private:
-           const double ramp_time;
-    };*/
-
     template <int dim>
     Stokes<dim>::Stokes(parallel::distributed::Triangulation<dim> &tria,
                         const Parameters::AllParameters &parameters)
-      : FluidSolver<dim>(tria, parameters), inlet_velocity(0.1)
+      : FluidSolver<dim>(tria, parameters), inlet_velocity(1e-3) // set the ramp time here
     {
       Assert(
         parameters.fluid_velocity_degree - parameters.fluid_pressure_degree ==
@@ -167,23 +117,24 @@ namespace Fluid
         dim); // in serial code I used dim+1, only one is correct; check in the
               // future
 
-      // Inlet (Left Boundary) with Parabolic Velocity Profile
-      // InletVelocity<dim> inlet_velocity;
+       //Inlet (Left Boundary) with Parabolic Velocity Profile
+      //InletVelocity<dim> inlet_velocity;
       inlet_velocity.set_time(time.current());
-
+      
+      
       VectorTools::interpolate_boundary_values(dof_handler,
-                                               0,
-                                               inlet_velocity,
-                                               constraints,
-                                               fe.component_mask(velocities));
-      /*
-      VectorTools::interpolate_boundary_values(dof_handler,
-                                               1,
-                                               zero_velocity,
-                                               constraints,
-                                               fe.component_mask(velocities));
-    */
-
+                                              0,
+                                              inlet_velocity,
+                                              constraints,
+                                              fe.component_mask(velocities));
+      
+      //VectorTools::interpolate_boundary_values(dof_handler,
+                                            //   1,
+                                            //   zero_velocity,
+                                            //   constraints,
+                                            //  fe.component_mask(velocities));
+    
+   
       VectorTools::interpolate_boundary_values(dof_handler,
                                                2,
                                                zero_velocity,
@@ -230,8 +181,7 @@ namespace Fluid
         }
       locally_owned_pressure_dofs.compress();
 
-      //  Point<dim> target_point(NumericalConstants::DOMAIN_LENGTH, 0.0);
-      Point<dim> target_point(2.2, 0.0);
+      Point<dim> target_point(1.5, 0.0);
 
       types::global_dof_index local_fixed_pressure_dof =
         numbers::invalid_dof_index;
@@ -315,16 +265,88 @@ namespace Fluid
               constraints.set_inhomogeneity(global_fixed_pressure_dof,
                                             0.0); // Set pressure to zero
 
-              std::cout << "Process "
-                        << Utilities::MPI::this_mpi_process(MPI_COMM_WORLD)
-                        << " constrains pressure DoF at: "
-                        << support_points[global_fixed_pressure_dof]
-                        << std::endl;
             }
         }
 
       constraints.close();
     }
+
+    /*
+    template <int dim>
+    void Stokes<dim>::build_velocity_constraints(AffineConstraints<double> &velocity_constraints)
+    {
+
+      AffineConstraints<double> temp;
+      temp.clear();
+      temp.reinit(this->locally_relevant_dofs);
+      DoFTools::make_hanging_node_constraints(this->dof_handler, temp);
+      temp.close(); // now 'temp' has the full set of constraints for velocity + pressure
+
+      const FEValuesExtractors::Vector velocities(0);
+      ComponentMask velocity_mask = this->fe.component_mask(velocities);
+
+      IndexSet velocity_dof_indices = DoFTools::extract_dofs(this->dof_handler,
+        velocity_mask);
+
+      velocity_constraints.clear();
+      velocity_constraints.reinit(this->locally_relevant_dofs);
+
+      for (auto &line : temp.get_lines())
+      {
+        const types::global_dof_index line_index = line.index;
+        if (velocity_dof_indices.is_element(line_index))
+        {
+          velocity_constraints.add_line(line_index);
+          for (auto &entry : line.entries)
+          {
+            const types::global_dof_index entry_index = entry.first;
+            const double multiplier = entry.second;
+            if (velocity_dof_indices.is_element(entry_index))
+            {
+              velocity_constraints.add_entry(line_index, entry_index, multiplier);
+            }
+          }
+        }
+
+      }
+      velocity_constraints.close();
+
+      // same code as the full constriants except for pressure constraints
+      Functions::ZeroFunction<dim> zero_velocity(
+        dim); // in serial code I used dim+1, only one is correct; check in the
+              // future
+
+      // Inlet (Left Boundary) with Parabolic Velocity Profile
+      // InletVelocity<dim> inlet_velocity;
+      inlet_velocity.set_time(time.current());
+
+      VectorTools::interpolate_boundary_values(dof_handler,
+        0,
+        inlet_velocity,
+        velocity_constraints,
+        fe.component_mask(velocities));
+
+VectorTools::interpolate_boundary_values(dof_handler,
+        1,
+        zero_velocity,
+        velocity_constraints,
+        fe.component_mask(velocities));
+
+
+VectorTools::interpolate_boundary_values(dof_handler,
+        2,
+        zero_velocity,
+        velocity_constraints,
+        fe.component_mask(velocities));
+
+VectorTools::interpolate_boundary_values(dof_handler,
+        3,
+        zero_velocity,
+        velocity_constraints,
+        fe.component_mask(velocities));
+
+        velocity_constraints.close();
+    }*/
 
     template <int dim>
     void Stokes<dim>::initialize_system()
@@ -375,6 +397,9 @@ namespace Fluid
 
       present_solution.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
+
+      previous_solution.reinit(
+          owned_partitioning, relevant_partitioning, mpi_communicator);
 
       fsi_acceleration.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
@@ -448,9 +473,9 @@ namespace Fluid
      constraints.distribute(projection);
      present_solution = projection;
 
-    }
+    }*/
 
-    */
+    
 
     template <int dim>
     void Stokes<dim>::assemble()
@@ -459,6 +484,12 @@ namespace Fluid
       const double viscosity = parameters.viscosity;
 
       const double rho = parameters.fluid_rho;
+      const double rho_s = parameters.solid_rho;
+      const double dt_inv       = 1.0 / time.get_delta_t();
+      const double theta        = parameters.penalty_scale_factor;
+
+      const double mass_coef_s  = (1.0 + theta) * rho_s * dt_inv;
+      const double mass_coef_f  =  rho * dt_inv; 
 
       Tensor<1, dim> gravity;
       for (unsigned int i = 0; i < dim; ++i)
@@ -602,10 +633,30 @@ namespace Fluid
                       // for (unsigned int j = 0; j <= i; ++j)
                       for (unsigned int j = 0; j < dofs_per_cell; ++j)
                         {
+                          if (ind == 0)
+                          {
+                            local_matrix(i,j) += mass_coef_f * (phi_u[i]*phi_u[j]) * fe_values.JxW(q);
+                          }
+                          else
+                          {
+                            local_matrix(i,j) += mass_coef_s * (phi_u[i]*phi_u[j]) * fe_values.JxW(q);
+                          }
 
-                          local_matrix(i, j) +=
+                          /*
+                          if(ind == 0)
+                          {
+                            local_matrix(i, j) +=
                             (rho / time.get_delta_t()) * (phi_u[i] * phi_u[j]) *
                             fe_values.JxW(q); // time derivative term
+                          } 
+                          else
+                            {
+                              double theta = parameters.penalty_scale_factor;
+                              const double alpha = theta
+                                   * (parameters.solid_rho / time.get_delta_t());
+
+                               local_matrix(i, j) += alpha * (phi_u[i] * phi_u[j]) * fe_values.JxW(q);
+                            }*/
 
                           local_matrix(i, j) +=
                             (2 * viscosity *
@@ -620,10 +671,16 @@ namespace Fluid
                               fe.system_to_component_index(j).first < dim)
                             {
 
-                              local_preconditioner_matrix(i, j) +=
+                            //  local_preconditioner_matrix(i, j) +=
 
-                                ((rho / time.get_delta_t()) * phi_u[i] *
-                                   phi_u[j]
+                              //  ((rho / time.get_delta_t()) * phi_u[i] *
+                                //   phi_u[j]
+
+                                local_preconditioner_matrix(i, j) +=
+
+                                ((ind==0 ? mass_coef_f : mass_coef_s) * phi_u[i] *
+
+                                phi_u[j]
 
                                  +
                                  (viscosity * scalar_product(grad_phi_u[i],
@@ -637,10 +694,10 @@ namespace Fluid
                                    fe.system_to_component_index(j).first == dim)
                             {
                               local_preconditioner_matrix(i, j) +=
-                                //(1.0 / viscosity * phi_p[i] * phi_p[j]) *
-                                (1.0 / viscosity) *
+                               // (1.0 / viscosity * phi_p[i] * phi_p[j]) *
+                              (1.0 / viscosity) *
                                 scalar_product(grad_phi_p[i], grad_phi_p[j]) *
-                                fe_values.JxW(q);
+                               fe_values.JxW(q);
                             }
                         }
 
@@ -656,12 +713,25 @@ namespace Fluid
 
                       local_rhs(i) += phi_u[i] * gravity * fe_values.JxW(q);
 
-                      local_rhs(i) += (rho / time.get_delta_t()) *
-                                      (phi_u[i] * current_velocity_values[q]) *
-                                      fe_values.JxW(q); // time derivative term
+
+                      local_rhs(i) += ( (ind==0 ? mass_coef_f : mass_coef_s) *
+                      (phi_u[i] * current_velocity_values[q]) *
+                      fe_values.JxW(q) );
+                      
+                      //local_rhs(i) += (rho / time.get_delta_t()) *
+                                   //   (phi_u[i] * current_velocity_values[q]) *
+                                   //   fe_values.JxW(q); // time derivative term
 
                       if (ind != 0)
                         {
+                          /*
+                          double theta = parameters.penalty_scale_factor;
+                          const double alpha = theta
+                               * (parameters.solid_rho / time.get_delta_t());
+
+                               local_rhs(i) += alpha * (phi_u[i] * current_velocity_values[q]) *
+                               fe_values.JxW(q); */
+
                           local_rhs(i) +=
                             (scalar_product(grad_phi_u[i], fsi_stress_tensor) +
                              (fsi_acc_values[q] * parameters.solid_rho *
@@ -806,14 +876,6 @@ namespace Fluid
       SolverMinRes<dealii::LinearAlgebraPETSc::MPI::BlockVector> solver(
         solver_control);
 
-      // GrowingVectorMemory<BlockVector<double> > vector_memory;
-
-      // SolverGMRES<BlockVector<double> > solver(solver_control,
-      // vector_memory);
-
-      // PETScWrappers::MPI::BlockVector
-      // distributed_solution(owned_partitioning,
-      // mpi_communicator);
       dealii::LinearAlgebraPETSc::MPI::BlockVector distributed_solution(
         owned_partitioning, mpi_communicator);
 
@@ -858,12 +920,26 @@ namespace Fluid
       // double local_boundary_work = 0.0;
       double local_boundary_work_inlet = 0.0;
       double local_boundary_work_outlet = 0.0;
+      double local_pressure_power_inlet   = 0.0; // inlet: power from pressure
+      double local_shear_power_inlet      = 0.0; // inlet: power from shear
+      double local_pressure_power_outlet  = 0.0; // outlet: power from pressure
+      double local_shear_power_outlet     = 0.0; // outlet: power from shear
+
+      double local_ke_artificial = 0.0;      
+      double local_visc_artificial = 0.0;  
+      
+      
+      double local_alg_diss  = 0.0; // algo dissipation for backward euler
+
+      double local_alg_diss_artificial = 0.0;
 
       // Quadrature point data
       std::vector<Tensor<1, dim>> velocity_values(n_q_points);
       std::vector<SymmetricTensor<2, dim>> sym_grad_u(n_q_points);
       std::vector<double> pressure_values(n_q_points);
       std::vector<double> div_u_values(n_q_points);
+      
+      std::vector<Tensor<1, dim>> velocity_prev_values(n_q_points); 
 
       // Loop over cells
       for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
@@ -873,8 +949,8 @@ namespace Fluid
             continue;
 
           auto p = cell_property.get_data(cell);
-          if (p[0]->indicator == 1) // Skip solid regions if applicable
-            continue;
+          const bool is_artificial = (p[0]->indicator == 1); // for binary indicator only
+
 
           fe_values.reinit(cell);
 
@@ -886,24 +962,66 @@ namespace Fluid
           fe_values[velocities].get_function_divergences(solution,
                                                          div_u_values);
 
+          fe_values[velocities].get_function_values(previous_solution,
+                                                   velocity_prev_values);
+
           // Quadrature loop
           for (unsigned int q = 0; q < n_q_points; ++q)
             {
               // Kinetic energy: 1/2 * rho * |u|^2
               double u_sq = velocity_values[q].norm_square();
-              local_ke += 0.5 * parameters.fluid_rho * u_sq * fe_values.JxW(q);
-
+              double ke_increment = 0.0;
+              if (is_artificial)
+              {
+                ke_increment = 0.5 * parameters.solid_rho * u_sq * fe_values.JxW(q);
+              }
+              else
+              {
+                ke_increment = 0.5 * parameters.fluid_rho * u_sq * fe_values.JxW(q);
+              }
+             
               // Viscous dissipation: 2 * mu * eps:eps
               double eps_eps =
                 sym_grad_u[q] * sym_grad_u[q]; // Double contraction
-              local_visc +=
+              double  visc_increment =
                 2.0 * parameters.viscosity * eps_eps * fe_values.JxW(q);
 
               // Pressure-divergence term (diagnostic)
-              local_p_div_u +=
+              double p_div_u_increment =
                 pressure_values[q] * div_u_values[q] * fe_values.JxW(q);
+
+                if (is_artificial) // (indicator == 1)
+                {
+                  local_ke_artificial += ke_increment;           
+                  local_visc_artificial += visc_increment; 
+                  
+                  Tensor<1,dim> diff = velocity_values[q] - velocity_prev_values[q];
+
+                  double alg_diss_increment_artificial =
+                  0.5 * parameters.solid_rho / time.get_delta_t()
+                  * diff.norm_square() * fe_values.JxW(q);
+
+                  local_alg_diss_artificial += alg_diss_increment_artificial;
+
+                }
+                else
+                {
+                  local_ke += ke_increment;
+                  local_visc += visc_increment;
+                  local_p_div_u += p_div_u_increment;
+
+                  Tensor<1,dim> diff = velocity_values[q] - velocity_prev_values[q];
+                  double alg_diss_increment =
+                  0.5 * parameters.fluid_rho / time.get_delta_t()
+                  * diff.norm_square() * fe_values.JxW(q);
+
+                  local_alg_diss += alg_diss_increment;
+                }
             }
 
+
+          if (! is_artificial)
+          {
           for (unsigned int face_no = 0;
                face_no < GeometryInfo<dim>::faces_per_cell;
                ++face_no)
@@ -949,8 +1067,17 @@ namespace Fluid
                         2.0 * parameters.viscosity * symgrad_u_face;
 
                       Tensor<1, dim> traction = stress_face * n_face;
-
                       double integrand = u_face * traction;
+
+                      // pressure contribution: –p (u·n)
+                         double pressure_term =
+                        -face_pressure[qf] * (u_face * n_face);
+
+                       // viscous (shear) contribution
+                       //    (2μ symgrad(u)·n) · u
+                        Tensor<1, dim> viscous_traction =
+                        (2.0 * parameters.viscosity * symgrad_u_face) * n_face;
+                        double shear_term = viscous_traction * u_face;
 
                       // record inlet and outlet seperately
                       const types::boundary_id b_id =
@@ -960,17 +1087,31 @@ namespace Fluid
                         {
                           local_boundary_work_inlet +=
                             integrand * fe_face_values.JxW(qf);
+
+                          local_pressure_power_inlet +=
+                          pressure_term * fe_face_values.JxW(qf);
+                          
+                          local_shear_power_inlet +=
+                          shear_term * fe_face_values.JxW(qf);
                         }
                       else if (b_id == 1)
                         {
                           local_boundary_work_outlet +=
                             integrand * fe_face_values.JxW(qf);
+                          
+                          local_pressure_power_outlet +=
+                          pressure_term * fe_face_values.JxW(qf);
+                          
+                          local_shear_power_outlet +=
+                          shear_term * fe_face_values.JxW(qf);
+                          
                         }
                       // local_boundary_work += integrand *
                       // fe_face_values.JxW(qf);
                     }
                 }
             }
+          }
         }
 
       // Global reduction
@@ -1016,6 +1157,44 @@ namespace Fluid
                     MPI_SUM,
                     mpi_communicator);
 
+            // — reduce new power‐by‐pressure and power‐by‐shear terms
+      double global_pressure_power_inlet  = 0.0;
+     double global_shear_power_inlet     = 0.0;
+     double global_pressure_power_outlet = 0.0;
+    double global_shear_power_outlet    = 0.0;
+
+    MPI_Allreduce(&local_pressure_power_inlet,  &global_pressure_power_inlet,  1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
+    MPI_Allreduce(&local_shear_power_inlet,     &global_shear_power_inlet,     1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
+    MPI_Allreduce(&local_pressure_power_outlet, &global_pressure_power_outlet, 1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
+    MPI_Allreduce(&local_shear_power_outlet,    &global_shear_power_outlet,    1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
+
+      // ********** CHANGED: Global reduction for the artificial parts
+      double global_kinetic_energy_artificial = 0.0;      
+      double global_viscous_energy_artificial = 0.0;
+      MPI_Allreduce(&local_ke_artificial,                     // <<< CHANGED
+        &global_kinetic_energy_artificial,        // <<< CHANGED
+        1,
+        MPI_DOUBLE,
+        MPI_SUM,
+        mpi_communicator);
+
+    MPI_Allreduce(&local_visc_artificial,                   // <<< CHANGED
+        &global_viscous_energy_artificial,        // <<< CHANGED
+        1,
+        MPI_DOUBLE,
+        MPI_SUM,
+        mpi_communicator);
+        
+        double global_alg_diss = 0.0;           // *** NEW ***
+        MPI_Allreduce(&local_alg_diss, &global_alg_diss,
+        1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
+
+
+        double global_alg_diss_artificial = 0.0;
+        MPI_Allreduce(&local_alg_diss_artificial, & global_alg_diss_artificial,
+          1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
+      
+
       // Output results
       if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
         {
@@ -1027,21 +1206,31 @@ namespace Fluid
 
           if (time.current() == 0)
             {
-              file
-                << "Time\tKinetic_Energy\tViscous_Dissipation\tPressure_Div_"
-                   "Term"
-                << "\tBoundary_Work_Inlet\tBoundary_Work_Outlet\n"; // <<<
-                                                                    // CHANGED
+          file << "Time\tKinetic_Energy\tViscous_Dissipation\tPressure_Div_Term"
+           << "\tAlgorithmic_Dissipation"
+           << "\t Alrtificial Algorithmic_Dissipation"
+           << "\tBoundary_Work_Inlet\tBoundary_Work_Outlet" 
+           << "\tPressure_Power_Inlet\tShear_Power_Inlet"
+           << "\tPressure_Power_Outlet\tShear_Power_Outlet"                      
+           << "\tArtificial_KE\tArtificial_Viscous_Dissipation\n"; 
             }
 
           file << time.current() << "\t" << global_kinetic_energy << "\t"
                << global_viscous_energy << "\t" << global_divergence_residual
-               << "\t" << global_boundary_work_inlet << "\t" // <<< CHANGED
-               << global_boundary_work_outlet << "\n";       // <<< CHANGED
-
+               << "\t" << global_alg_diss
+               << "\t" << global_alg_diss_artificial
+               << "\t" << global_boundary_work_inlet << "\t"
+               << global_boundary_work_outlet << "\t"
+              << global_pressure_power_inlet   << "\t"
+              << global_shear_power_inlet     << "\t"
+              << global_pressure_power_outlet << "\t"
+               << global_shear_power_outlet    << "\t"
+               << global_kinetic_energy_artificial << "\t"
+               << global_viscous_energy_artificial << "\n";          
           file.close();
         }
     }
+  
 
     template <int dim>
     void Stokes<dim>::compute_ind_norms() const
@@ -1226,6 +1415,82 @@ namespace Fluid
           file_div.close();
         }
     }
+
+
+  template <int dim>
+  void Stokes<dim>::compute_pressure_gradient_norm()
+  {
+    FEValues<dim> fe_values(fe,
+      volume_quad_formula,
+      update_gradients | update_JxW_values);
+
+      const FEValuesExtractors::Scalar pressure(dim);
+      const unsigned int n_q_points = volume_quad_formula.size();
+
+        // Local sums for the L2 norm of grad(p)
+        double local_sum_gradp = 0.0;
+
+        // A container for the gradient of the pressure at each quadrature point
+        std::vector<Tensor<1, dim>> gradp_values(n_q_points);
+
+
+        for (auto cell = dof_handler.begin_active(); cell != dof_handler.end(); ++cell)
+        {
+          if (!cell->is_locally_owned())
+          continue;
+  
+        auto p = cell_property.get_data(cell);
+  
+        // Only compute in "fluid" cells (indicator == 0)
+        if (p[0]->indicator != 0)
+          {
+            continue;
+          }
+
+          fe_values.reinit(cell);
+
+          // Get the gradient of the pressure from the solution
+          fe_values[pressure].get_function_gradients(solution, gradp_values);
+
+          for (unsigned int q = 0; q < n_q_points; ++q)
+          {
+            const double gradp_sq = gradp_values[q].norm_square();
+            local_sum_gradp += gradp_sq * fe_values.JxW(q);
+          }
+
+        }
+
+        double global_sum_gradp = 0.0;
+        MPI_Allreduce(&local_sum_gradp,
+                      &global_sum_gradp,
+                      1,
+                      MPI_DOUBLE,
+                      MPI_SUM,
+                      mpi_communicator);
+
+       const double L2_norm_gradp = std::sqrt(global_sum_gradp);
+
+       if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+       {
+            std::ofstream file_gradp;
+            if (time.current() == 0)
+            {
+              file_gradp.open("gradp_L2_norm.txt");
+              file_gradp << "Time\tL2_norm_grad_p\n";
+            }
+            else
+            {
+              file_gradp.open("gradp_L2_norm.txt", std::ios_base::app);
+            }
+            file_gradp << time.current() << "\t" << L2_norm_gradp << "\n";
+            file_gradp.close();
+       }
+
+  }
+
+
+
+
 
     template <int dim>
     void Stokes<dim>::compute_drag_lift_coefficients()
@@ -1490,14 +1755,17 @@ namespace Fluid
 
       std::cout.precision(6);
       std::cout.width(12);
-      solution = present_solution;
+
+    previous_solution = present_solution;
+     solution = present_solution;
 
       if (time.get_timestep() == 0)
         {
           output_results(0);
           compute_ind_norms();
-          compute_fluid_norms();
-          compute_energy_estimates();
+         // compute_fluid_norms();
+         // compute_pressure_gradient_norm();
+         // compute_energy_estimates();
         }
 
       time.increment();
@@ -1509,17 +1777,20 @@ namespace Fluid
       set_up_boundary_values(); // Update boundary conditions with current time
       assemble();
 
+      //build_mass_matrix();
       auto state = solve();
-
-      // compute_drag_lift_coefficients();
-      // compute_ind_norms();
-      compute_fluid_norms();
-      compute_energy_estimates();
-
-      update_stress();
 
       present_solution = solution;
 
+       //compute_drag_lift_coefficients();
+      compute_ind_norms();
+      //compute_fluid_norms();
+      //compute_pressure_gradient_norm();
+      //compute_energy_estimates();
+      update_stress();
+
+    
+      
       pcout << std::scientific << std::left << " ITR = " << std::setw(3)
             << state.first << " RES = " << state.second << std::endl;
 
@@ -1531,6 +1802,7 @@ namespace Fluid
         {
           refine_mesh(1, 3);
         }
+          
     }
 
     template <int dim>
@@ -1538,7 +1810,8 @@ namespace Fluid
     {
       // setup_dofs();
       FluidSolver<dim>::setup_dofs();
-      /*
+      
+      
       for (auto cell = triangulation.begin_active();
            cell != triangulation.end();
            ++cell)
@@ -1557,7 +1830,7 @@ namespace Fluid
 
                       // Determine and set boundary IDs based on face center
                       // coordinates
-                     if (std::abs(y - 1) < 1e-10)
+                     if (std::abs(y - 0.5) < 1e-10)
                        {
                         cell->face(face)->set_boundary_id(3); // Top
                        }
@@ -1573,7 +1846,7 @@ namespace Fluid
                           cell->face(face)->set_boundary_id(0); // Left
                         }
 
-                       else if (std::abs(x - 1) < 1e-10)
+                       else if (std::abs(x - 1.5) < 1e-10)
                         {
                           cell->face(face)->set_boundary_id(1); // right
                         }
@@ -1582,7 +1855,7 @@ namespace Fluid
                     }
                 }
             }
-        } */
+        } 
       set_up_boundary_values();
       initialize_system();
     }

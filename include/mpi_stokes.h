@@ -8,21 +8,6 @@
 #include <deal.II/lac/solver_minres.h>
 #include <deal.II/lac/vector.h>
 
-/*
- namespace LA
-  {
-  #if defined(DEAL_II_WITH_PETSC) && !defined(DEAL_II_PETSC_WITH_COMPLEX) && \
-    !(defined(DEAL_II_WITH_TRILINOS) && defined(FORCE_USE_OF_TRILINOS))
-    using namespace dealii::LinearAlgebraPETSc;
-  #  define USE_PETSC_LA
-  #elif defined(DEAL_II_WITH_TRILINOS)
-    using namespace dealii::LinearAlgebraTrilinos;
-  #else
-  #  error DEAL_II_WITH_PETSC or DEAL_II_WITH_TRILINOS required
-  #endif
-  } // namespace LA
-  */
-
 namespace Fluid
 
 {
@@ -33,8 +18,8 @@ namespace Fluid
 
     namespace NumericalConstants
     {
-      constexpr double DOMAIN_HEIGHT = 0.41;
-      constexpr double DOMAIN_LENGTH = 2.2;
+      constexpr double DOMAIN_HEIGHT = 0.5;
+      constexpr double DOMAIN_LENGTH = 1.5;
       constexpr double INLET_U_MAX = 1.0;
     } // namespace NumericalConstants
 
@@ -126,6 +111,8 @@ namespace Fluid
       void run();
       void initialize_bcs();
       void set_up_boundary_values();
+      //void build_velocity_constraints(AffineConstraints <double> &velocity_constraints);
+      AffineConstraints<double> constraints;
 
       friend ::MPI::FSI<dim>;
 
@@ -171,7 +158,7 @@ namespace Fluid
 
       void initialize_system() override;
 
-      // void apply_initial_condition() override;
+      //void apply_initial_condition() override;
 
       void output_results(const unsigned int) const;
 
@@ -194,13 +181,17 @@ namespace Fluid
 
       void compute_energy_estimates();
 
+      void build_mass_matrix(); // for debugging, delete later
+
+      void compute_pressure_gradient_norm();
+
+      PETScWrappers::MPI::SparseMatrix mass_matrix_velocity;
+      
       PETScWrappers::MPI::BlockVector solution;
 
       BlockSparsityPattern preconditioner_sparsity_pattern;
 
       PETScWrappers::MPI::BlockSparseMatrix preconditioner_matrix;
-
-      AffineConstraints<double> constraints;
 
       PETScWrappers::MPI::BlockVector fsi_force_acceleration_part;
 
@@ -209,6 +200,10 @@ namespace Fluid
       PETScWrappers::MPI::BlockVector fsi_force;
 
       InletVelocity<dim> inlet_velocity;
+
+      PETScWrappers::MPI::BlockVector previous_solution;
+
+     
     };
 
   } // namespace MPI

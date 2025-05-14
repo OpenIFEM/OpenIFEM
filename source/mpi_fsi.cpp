@@ -558,6 +558,13 @@ namespace MPI
                 // Fluid total acceleration at support points
                 Tensor<1, dim> fluid_acc =
                   (vs - v[i]) / time.get_delta_t() + grad_v[i] * v[i];
+
+                // add penalty
+                double theta = parameters.penalty_scale_factor;
+
+                fluid_acc += theta *
+                ((vs - v[i]) / time.get_delta_t());
+
                 auto line = dof_indices[i];
                 // Note that we are setting the value of the constraint to the
                 // velocity delta!

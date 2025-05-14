@@ -316,6 +316,16 @@ namespace Fluid
                              gamma * div_phi_u[j] * div_phi_u[i] * rho +
                              phi_u[i] * phi_u[j] / time.get_delta_t() * rho) *
                             fe_values.JxW(q);
+                            
+                            /*
+                            if (ind != 0)
+                            {
+                              double theta = parameters.penalty_scale_factor;
+                              const double alpha = theta
+                              * (parameters.solid_rho / time.get_delta_t());
+                              local_matrix(i, j) += alpha * (phi_u[i] * phi_u[j]) * fe_values.JxW(q);
+                            }*/
+
                           local_mass_matrix(i, j) +=
                             (phi_u[i] * phi_u[j] + phi_p[i] * phi_p[j]) *
                             fe_values.JxW(q);
