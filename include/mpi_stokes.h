@@ -28,30 +28,25 @@ namespace Fluid
     {
     public:
       InletVelocity(const double ramp_time)
-        : Function<dim>(dim) // pass 'dim' to base so vector_value has size=dim
-          ,
-          ramp_time(ramp_time)
+        : Function<dim>(dim), ramp_time(ramp_time)
       {
       }
 
       virtual void vector_value(const Point<dim> &p,
                                 Vector<double> &values) const override
       {
-        // The current simulation time, which must be set via set_time() outside
+
         const double t = this->get_time();
-        // Simple linear ramp up from t=0 to t=ramp_time
+
         const double alpha =
           (ramp_time > 1e-14) ? std::min(1.0, t / ramp_time) : 1.0;
 
-        // Parabolic profile in y
         const double y = p[1];
         const double H = NumericalConstants::DOMAIN_HEIGHT;
 
-        // Scale the usual 4 * Umax * (y/H)*(1-y/H) by alpha
         values(0) = alpha * (4.0 * NumericalConstants::INLET_U_MAX * (y / H) *
                              (1.0 - y / H));
 
-        // Zero out other components
         for (unsigned int i = 1; i < dim; ++i)
           values(i) = 0.0;
       }
@@ -76,7 +71,6 @@ namespace Fluid
         {
         }
 
-        // Overload scalar value() to call user_function
         virtual double value(const Point<dim> &p,
                              const unsigned int component = 0) const override
         {
@@ -111,7 +105,6 @@ namespace Fluid
       void run();
       void initialize_bcs();
       void set_up_boundary_values();
-      //void build_velocity_constraints(AffineConstraints <double> &velocity_constraints);
       AffineConstraints<double> constraints;
 
       friend ::MPI::FSI<dim>;
@@ -154,15 +147,10 @@ namespace Fluid
       using FluidSolver<dim>::pvd_writer;
       using FluidSolver<dim>::apply_initial_condition;
       using FluidSolver<dim>::initial_condition_field;
-      // using FluidSolver<dim>::set_initial_condition;
 
       void initialize_system() override;
 
-      //void apply_initial_condition() override;
-
       void output_results(const unsigned int) const;
-
-      // void set_up_boundary_values();
 
       void assemble();
 
@@ -181,12 +169,10 @@ namespace Fluid
 
       void compute_energy_estimates();
 
-      void build_mass_matrix(); // for debugging, delete later
-
       void compute_pressure_gradient_norm();
 
       PETScWrappers::MPI::SparseMatrix mass_matrix_velocity;
-      
+
       PETScWrappers::MPI::BlockVector solution;
 
       BlockSparsityPattern preconditioner_sparsity_pattern;
@@ -202,8 +188,6 @@ namespace Fluid
       InletVelocity<dim> inlet_velocity;
 
       PETScWrappers::MPI::BlockVector previous_solution;
-
-     
     };
 
   } // namespace MPI

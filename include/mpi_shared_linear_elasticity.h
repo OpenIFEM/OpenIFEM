@@ -81,7 +81,7 @@ namespace Solid
 
       void compute_velocity_L2();
 
-      void compute_stress_power ();
+      void compute_stress_power();
 
       void compute_traction_power();
 

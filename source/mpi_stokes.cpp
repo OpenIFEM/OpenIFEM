@@ -33,7 +33,7 @@ namespace Fluid
       InverseMatrix<Matrix, Preconditioner>::vmult(VectorType &dst,
                                                    const VectorType &src) const
       {
-        SolverControl solver_control(src.size(), 1e-10 * src.l2_norm());
+        SolverControl solver_control(src.size(), 1e-11 * src.l2_norm());
         SolverCG<VectorType> cg(solver_control);
         dst = 0;
 
@@ -84,12 +84,50 @@ namespace Fluid
         preconditioner_S.vmult(dst.block(1), src.block(1));
       }
 
+      // test a new preconditioner
+      /*
+      template <class PreconditionerA, class PreconditionerMp>
+      class BlockSchurPreconditioner : public Subscriptor
+      {
+         public:
+         BlockSchurPreconditioner(
+          const PETScWrappers::MPI::BlockSparseMatrix &S,
+          const InverseMatrix<PETScWrappers::MPI::SparseMatrix,
+                              PreconditionerMp> &Mpinv,
+          const PreconditionerA &Apreconditioner)
+          : system_matrix(&S)
+          , m_inverse(&Mpinv)
+          , a_preconditioner(Apreconditioner)
+        {}
+
+         void vmult(dealii::LinearAlgebraPETSc::MPI::BlockVector &dst,
+                   const dealii::LinearAlgebraPETSc::MPI::BlockVector &src)
+      const
+                   {
+                     a_preconditioner.vmult(dst.block(0), src.block(0));
+                     dealii::LinearAlgebraPETSc::MPI::Vector tmp(src.block(1));
+                      system_matrix->block(1, 0).vmult(tmp, dst.block(0));
+                       tmp *= -1.0;
+                       tmp += src.block(1);
+                       m_inverse->vmult(dst.block(1), tmp);
+                   }
+
+
+        private:
+        const SmartPointer<const PETScWrappers::MPI::BlockSparseMatrix>
+          system_matrix;
+        const SmartPointer<
+          const InverseMatrix<PETScWrappers::MPI::SparseMatrix,
+      PreconditionerMp>> m_inverse; const PreconditionerA &a_preconditioner;
+      };*/
+
     } // namespace LinearSolvers
 
     template <int dim>
     Stokes<dim>::Stokes(parallel::distributed::Triangulation<dim> &tria,
                         const Parameters::AllParameters &parameters)
-      : FluidSolver<dim>(tria, parameters), inlet_velocity(1e-3) // set the ramp time here
+      : FluidSolver<dim>(tria, parameters),
+        inlet_velocity(1e-6) // set the ramp time here
     {
       Assert(
         parameters.fluid_velocity_degree - parameters.fluid_pressure_degree ==
@@ -104,8 +142,6 @@ namespace Fluid
       constraints.clear();
 
       constraints.reinit(locally_relevant_dofs);
-      // constraints.reinit(locally_owned_dofs, locally_relevant_dofs); from
-      // step 55
 
       const FEValuesExtractors::Vector velocities(0);
       const FEValuesExtractors::Scalar pressure(
@@ -113,28 +149,24 @@ namespace Fluid
 
       DoFTools::make_hanging_node_constraints(dof_handler, constraints);
 
-      Functions::ZeroFunction<dim> zero_velocity(
-        dim); // in serial code I used dim+1, only one is correct; check in the
-              // future
+      Functions::ZeroFunction<dim> zero_velocity(dim);
 
-       //Inlet (Left Boundary) with Parabolic Velocity Profile
-      //InletVelocity<dim> inlet_velocity;
+      // Inlet (Left Boundary) with Parabolic Velocity Profile
+      // InletVelocity<dim> inlet_velocity;
       inlet_velocity.set_time(time.current());
-      
-      
+
       VectorTools::interpolate_boundary_values(dof_handler,
-                                              0,
-                                              inlet_velocity,
-                                              constraints,
-                                              fe.component_mask(velocities));
-      
-      //VectorTools::interpolate_boundary_values(dof_handler,
-                                            //   1,
-                                            //   zero_velocity,
-                                            //   constraints,
-                                            //  fe.component_mask(velocities));
-    
-   
+                                               0,
+                                               inlet_velocity,
+                                               constraints,
+                                               fe.component_mask(velocities));
+
+      // VectorTools::interpolate_boundary_values(dof_handler,
+      //   1,
+      //   zero_velocity,
+      //   constraints,
+      //  fe.component_mask(velocities));
+
       VectorTools::interpolate_boundary_values(dof_handler,
                                                2,
                                                zero_velocity,
@@ -181,7 +213,7 @@ namespace Fluid
         }
       locally_owned_pressure_dofs.compress();
 
-      Point<dim> target_point(1.5, 0.0);
+      Point<dim> target_point(1.5, 0.5 / 2);
 
       types::global_dof_index local_fixed_pressure_dof =
         numbers::invalid_dof_index;
@@ -234,9 +266,6 @@ namespace Fluid
                     MPI_MINLOC,
                     MPI_COMM_WORLD);
 
-      // Now, global_data.distance is the global minimum distance
-      // and global_data.rank is the rank of the process that has it
-
       // Initialize the global fixed pressure DoF index
       types::global_dof_index global_fixed_pressure_dof =
         numbers::invalid_dof_index;
@@ -264,89 +293,11 @@ namespace Fluid
               constraints.add_line(global_fixed_pressure_dof);
               constraints.set_inhomogeneity(global_fixed_pressure_dof,
                                             0.0); // Set pressure to zero
-
             }
         }
 
       constraints.close();
     }
-
-    /*
-    template <int dim>
-    void Stokes<dim>::build_velocity_constraints(AffineConstraints<double> &velocity_constraints)
-    {
-
-      AffineConstraints<double> temp;
-      temp.clear();
-      temp.reinit(this->locally_relevant_dofs);
-      DoFTools::make_hanging_node_constraints(this->dof_handler, temp);
-      temp.close(); // now 'temp' has the full set of constraints for velocity + pressure
-
-      const FEValuesExtractors::Vector velocities(0);
-      ComponentMask velocity_mask = this->fe.component_mask(velocities);
-
-      IndexSet velocity_dof_indices = DoFTools::extract_dofs(this->dof_handler,
-        velocity_mask);
-
-      velocity_constraints.clear();
-      velocity_constraints.reinit(this->locally_relevant_dofs);
-
-      for (auto &line : temp.get_lines())
-      {
-        const types::global_dof_index line_index = line.index;
-        if (velocity_dof_indices.is_element(line_index))
-        {
-          velocity_constraints.add_line(line_index);
-          for (auto &entry : line.entries)
-          {
-            const types::global_dof_index entry_index = entry.first;
-            const double multiplier = entry.second;
-            if (velocity_dof_indices.is_element(entry_index))
-            {
-              velocity_constraints.add_entry(line_index, entry_index, multiplier);
-            }
-          }
-        }
-
-      }
-      velocity_constraints.close();
-
-      // same code as the full constriants except for pressure constraints
-      Functions::ZeroFunction<dim> zero_velocity(
-        dim); // in serial code I used dim+1, only one is correct; check in the
-              // future
-
-      // Inlet (Left Boundary) with Parabolic Velocity Profile
-      // InletVelocity<dim> inlet_velocity;
-      inlet_velocity.set_time(time.current());
-
-      VectorTools::interpolate_boundary_values(dof_handler,
-        0,
-        inlet_velocity,
-        velocity_constraints,
-        fe.component_mask(velocities));
-
-VectorTools::interpolate_boundary_values(dof_handler,
-        1,
-        zero_velocity,
-        velocity_constraints,
-        fe.component_mask(velocities));
-
-
-VectorTools::interpolate_boundary_values(dof_handler,
-        2,
-        zero_velocity,
-        velocity_constraints,
-        fe.component_mask(velocities));
-
-VectorTools::interpolate_boundary_values(dof_handler,
-        3,
-        zero_velocity,
-        velocity_constraints,
-        fe.component_mask(velocities));
-
-        velocity_constraints.close();
-    }*/
 
     template <int dim>
     void Stokes<dim>::initialize_system()
@@ -399,7 +350,7 @@ VectorTools::interpolate_boundary_values(dof_handler,
         owned_partitioning, relevant_partitioning, mpi_communicator);
 
       previous_solution.reinit(
-          owned_partitioning, relevant_partitioning, mpi_communicator);
+        owned_partitioning, relevant_partitioning, mpi_communicator);
 
       fsi_acceleration.reinit(
         owned_partitioning, relevant_partitioning, mpi_communicator);
@@ -438,45 +389,6 @@ VectorTools::interpolate_boundary_values(dof_handler,
         }
     }
 
-    /*
-    template <int dim>
-    void Stokes<dim>::apply_initial_condition()
-    {
-        // 1) Wrap the user std::function in our custom wrapper.
-     InternalWrappers::InitialVelocityWrapper<dim> velocity_function(
-     *this->initial_condition_field, // your stored std::function
-      dim                           // number of components (velocity)
-  );
-   // 2) Choose quadrature for projection
-   const QGauss<dim> quadrature(parameters.fluid_velocity_degree + 1);
-
-   // 3) Make a velocity-only component mask
-   const FEValuesExtractors::Vector velocities(0);
-   ComponentMask velocity_mask = fe.component_mask(velocities);
-
-   PETScWrappers::MPI::BlockVector projection;
-   projection.reinit(owned_partitioning, mpi_communicator);
-
-    //projection.reinit(owned_partitioning,
-    //relevant_partitioning,
-    //mpi_communicator);
-   VectorTools::project(
-    MappingQGeneric<dim>(this->parameters.fluid_velocity_degree),
-    dof_handler,
-    constraints,
-    quadrature,
-    velocity_function,
-    projection,
-    &velocity_mask
-  );
-     projection.compress(VectorOperation::insert);
-     constraints.distribute(projection);
-     present_solution = projection;
-
-    }*/
-
-    
-
     template <int dim>
     void Stokes<dim>::assemble()
     {
@@ -485,11 +397,11 @@ VectorTools::interpolate_boundary_values(dof_handler,
 
       const double rho = parameters.fluid_rho;
       const double rho_s = parameters.solid_rho;
-      const double dt_inv       = 1.0 / time.get_delta_t();
-      const double theta        = parameters.penalty_scale_factor;
+      const double dt_inv = 1.0 / time.get_delta_t();
+      const double theta = parameters.penalty_scale_factor;
 
-      const double mass_coef_s  = (1.0 + theta) * rho_s * dt_inv;
-      const double mass_coef_f  =  rho * dt_inv; 
+      const double mass_coef_s = (1.0 + theta) * rho_s * dt_inv;
+      const double mass_coef_f = rho * dt_inv;
 
       Tensor<1, dim> gravity;
       for (unsigned int i = 0; i < dim; ++i)
@@ -501,17 +413,6 @@ VectorTools::interpolate_boundary_values(dof_handler,
       fsi_force_acceleration_part = 0;
       fsi_force_stress_part = 0;
       fsi_force = 0;
-      /*
-      std::vector<std::vector<PETScWrappers::MPI::Vector>>
-        relevant_partition_stress =
-          std::vector<std::vector<PETScWrappers::MPI::Vector>>(
-            dim,
-            std::vector<PETScWrappers::MPI::Vector>(
-              dim,
-              PETScWrappers::MPI::Vector(locally_owned_scalar_dofs,
-                                         locally_relevant_scalar_dofs,
-                                         mpi_communicator)));
-      relevant_partition_stress = stress; */
 
       FEValues<dim> fe_values(fe,
                               volume_quad_formula,
@@ -634,53 +535,40 @@ VectorTools::interpolate_boundary_values(dof_handler,
                       for (unsigned int j = 0; j < dofs_per_cell; ++j)
                         {
                           if (ind == 0)
-                          {
-                            local_matrix(i,j) += mass_coef_f * (phi_u[i]*phi_u[j]) * fe_values.JxW(q);
-                          }
-                          else
-                          {
-                            local_matrix(i,j) += mass_coef_s * (phi_u[i]*phi_u[j]) * fe_values.JxW(q);
-                          }
-
-                          /*
-                          if(ind == 0)
-                          {
-                            local_matrix(i, j) +=
-                            (rho / time.get_delta_t()) * (phi_u[i] * phi_u[j]) *
-                            fe_values.JxW(q); // time derivative term
-                          } 
+                            {
+                              local_matrix(i, j) += mass_coef_f *
+                                                    (phi_u[i] * phi_u[j]) *
+                                                    fe_values.JxW(q);
+                            }
                           else
                             {
-                              double theta = parameters.penalty_scale_factor;
-                              const double alpha = theta
-                                   * (parameters.solid_rho / time.get_delta_t());
-
-                               local_matrix(i, j) += alpha * (phi_u[i] * phi_u[j]) * fe_values.JxW(q);
-                            }*/
+                              local_matrix(i, j) += mass_coef_s *
+                                                    (phi_u[i] * phi_u[j]) *
+                                                    fe_values.JxW(q);
+                            }
 
                           local_matrix(i, j) +=
                             (2 * viscosity *
-                               (symgrad_phi_u[i] *
-                                symgrad_phi_u[j])      // viscous term
-                             - div_phi_u[i] * phi_p[j] // pressure term
-                             -
-                             phi_p[i] * div_phi_u[j]) // incompressibility term
-                            * fe_values.JxW(q);
+                               (symgrad_phi_u[i] * symgrad_phi_u[j]) -
+                             div_phi_u[i] * phi_p[j] -
+                             phi_p[i] * div_phi_u[j]) *
+                            fe_values.JxW(q);
 
                           if (fe.system_to_component_index(i).first < dim &&
                               fe.system_to_component_index(j).first < dim)
                             {
 
-                            //  local_preconditioner_matrix(i, j) +=
+                              //  local_preconditioner_matrix(i, j) +=
 
                               //  ((rho / time.get_delta_t()) * phi_u[i] *
-                                //   phi_u[j]
+                              //   phi_u[j]
 
-                                local_preconditioner_matrix(i, j) +=
+                              local_preconditioner_matrix(i, j) +=
 
-                                ((ind==0 ? mass_coef_f : mass_coef_s) * phi_u[i] *
+                                ((ind == 0 ? mass_coef_f : mass_coef_s) *
+                                   phi_u[i] *
 
-                                phi_u[j]
+                                   phi_u[j]
 
                                  +
                                  (viscosity * scalar_product(grad_phi_u[i],
@@ -694,44 +582,22 @@ VectorTools::interpolate_boundary_values(dof_handler,
                                    fe.system_to_component_index(j).first == dim)
                             {
                               local_preconditioner_matrix(i, j) +=
-                               // (1.0 / viscosity * phi_p[i] * phi_p[j]) *
-                              (1.0 / viscosity) *
-                                scalar_product(grad_phi_p[i], grad_phi_p[j]) *
-                               fe_values.JxW(q);
+                                (1.0 / viscosity * phi_p[i] * phi_p[j]) *
+                                //(1.0 / viscosity) *
+                                // scalar_product(grad_phi_p[i], grad_phi_p[j])
+                                // *
+                                fe_values.JxW(q);
                             }
                         }
 
-                      /*
-                      local_preconditioner_matrix(i, j) +=
-                        ((rho / time.get_delta_t()) * phi_u[i] * phi_u[j] *
-                         fe_values.JxW(q)) +
-                        // ((2 / viscosity) * phi_p[i] * phi_p[j] *
-                        //   fe_values.JxW(q));
-                        1.0 / viscosity * phi_p[i] * phi_p[j] *
-                          fe_values.JxW(q);
-                      */
-
                       local_rhs(i) += phi_u[i] * gravity * fe_values.JxW(q);
 
-
-                      local_rhs(i) += ( (ind==0 ? mass_coef_f : mass_coef_s) *
-                      (phi_u[i] * current_velocity_values[q]) *
-                      fe_values.JxW(q) );
-                      
-                      //local_rhs(i) += (rho / time.get_delta_t()) *
-                                   //   (phi_u[i] * current_velocity_values[q]) *
-                                   //   fe_values.JxW(q); // time derivative term
+                      local_rhs(i) += ((ind == 0 ? mass_coef_f : mass_coef_s) *
+                                       (phi_u[i] * current_velocity_values[q]) *
+                                       fe_values.JxW(q));
 
                       if (ind != 0)
                         {
-                          /*
-                          double theta = parameters.penalty_scale_factor;
-                          const double alpha = theta
-                               * (parameters.solid_rho / time.get_delta_t());
-
-                               local_rhs(i) += alpha * (phi_u[i] * current_velocity_values[q]) *
-                               fe_values.JxW(q); */
-
                           local_rhs(i) +=
                             (scalar_product(grad_phi_u[i], fsi_stress_tensor) +
                              (fsi_acc_values[q] * parameters.solid_rho *
@@ -786,14 +652,6 @@ VectorTools::interpolate_boundary_values(dof_handler,
                     }
                 }
 
-              // for (unsigned int i = 0; i < dofs_per_cell; ++i)
-              // for (unsigned int j = i + 1; j < dofs_per_cell; ++j)
-              // {
-              // local_matrix(i, j) = local_matrix(j, i);
-              // local_preconditioner_matrix(i, j) =
-              //  local_preconditioner_matrix(j, i);
-              // }
-
               cell->get_dof_indices(local_dof_indices);
 
               constraints.distribute_local_to_global(local_matrix,
@@ -839,11 +697,6 @@ VectorTools::interpolate_boundary_values(dof_handler,
 
       data_A.symmetric_operator = true;
 
-      // data_A.relaxation_type_up =
-      // dealii::PETScWrappers::PreconditionBoomerAMG::AdditionalData::RelaxationType::Chebyshev;
-      // data_A.relaxation_type_down =
-      // dealii::PETScWrappers::PreconditionBoomerAMG::AdditionalData::RelaxationType::Chebyshev;
-
       prec_A.initialize(system_matrix.block(0, 0), data_A);
 
       dealii::LinearAlgebraPETSc::MPI::PreconditionAMG prec_S;
@@ -851,11 +704,6 @@ VectorTools::interpolate_boundary_values(dof_handler,
       dealii::LinearAlgebraPETSc::MPI::PreconditionAMG::AdditionalData data_S;
 
       data_S.symmetric_operator = true;
-
-      // data_S.relaxation_type_up =
-      // dealii::PETScWrappers::PreconditionBoomerAMG::AdditionalData::RelaxationType::Chebyshev;
-      // data_S.relaxation_type_down =
-      // dealii::PETScWrappers::PreconditionBoomerAMG::AdditionalData::RelaxationType::Chebyshev;
 
       prec_S.initialize(preconditioner_matrix.block(1, 1), data_S);
 
@@ -871,10 +719,16 @@ VectorTools::interpolate_boundary_values(dof_handler,
         preconditioner(prec_A, mp_inverse);
 
       SolverControl solver_control(system_matrix.m(),
-                                   1e-10 * system_rhs.l2_norm());
+                                   1e-11 * system_rhs.l2_norm());
 
       SolverMinRes<dealii::LinearAlgebraPETSc::MPI::BlockVector> solver(
         solver_control);
+
+      // GrowingVectorMemory<dealii::LinearAlgebraPETSc::MPI::BlockVector>
+      // vector_memory;
+
+      // SolverFGMRES<dealii::LinearAlgebraPETSc::MPI::BlockVector> gmres(
+      // solver_control, vector_memory);
 
       dealii::LinearAlgebraPETSc::MPI::BlockVector distributed_solution(
         owned_partitioning, mpi_communicator);
@@ -883,6 +737,9 @@ VectorTools::interpolate_boundary_values(dof_handler,
 
       solver.solve(
         system_matrix, distributed_solution, system_rhs, preconditioner);
+
+      // gmres.solve(system_matrix, distributed_solution, system_rhs,
+      // preconditioner);
 
       constraints.distribute(distributed_solution);
 
@@ -920,16 +777,15 @@ VectorTools::interpolate_boundary_values(dof_handler,
       // double local_boundary_work = 0.0;
       double local_boundary_work_inlet = 0.0;
       double local_boundary_work_outlet = 0.0;
-      double local_pressure_power_inlet   = 0.0; // inlet: power from pressure
-      double local_shear_power_inlet      = 0.0; // inlet: power from shear
-      double local_pressure_power_outlet  = 0.0; // outlet: power from pressure
-      double local_shear_power_outlet     = 0.0; // outlet: power from shear
+      double local_pressure_power_inlet = 0.0;  // inlet: power from pressure
+      double local_shear_power_inlet = 0.0;     // inlet: power from shear
+      double local_pressure_power_outlet = 0.0; // outlet: power from pressure
+      double local_shear_power_outlet = 0.0;    // outlet: power from shear
 
-      double local_ke_artificial = 0.0;      
-      double local_visc_artificial = 0.0;  
-      
-      
-      double local_alg_diss  = 0.0; // algo dissipation for backward euler
+      double local_ke_artificial = 0.0;
+      double local_visc_artificial = 0.0;
+
+      double local_alg_diss = 0.0; // algo dissipation for backward euler
 
       double local_alg_diss_artificial = 0.0;
 
@@ -938,8 +794,8 @@ VectorTools::interpolate_boundary_values(dof_handler,
       std::vector<SymmetricTensor<2, dim>> sym_grad_u(n_q_points);
       std::vector<double> pressure_values(n_q_points);
       std::vector<double> div_u_values(n_q_points);
-      
-      std::vector<Tensor<1, dim>> velocity_prev_values(n_q_points); 
+
+      std::vector<Tensor<1, dim>> velocity_prev_values(n_q_points);
 
       // Loop over cells
       for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
@@ -949,8 +805,8 @@ VectorTools::interpolate_boundary_values(dof_handler,
             continue;
 
           auto p = cell_property.get_data(cell);
-          const bool is_artificial = (p[0]->indicator == 1); // for binary indicator only
-
+          const bool is_artificial =
+            (p[0]->indicator == 1); // for binary indicator only
 
           fe_values.reinit(cell);
 
@@ -963,162 +819,153 @@ VectorTools::interpolate_boundary_values(dof_handler,
                                                          div_u_values);
 
           fe_values[velocities].get_function_values(previous_solution,
-                                                   velocity_prev_values);
+                                                    velocity_prev_values);
 
           // Quadrature loop
           for (unsigned int q = 0; q < n_q_points; ++q)
             {
-              // Kinetic energy: 1/2 * rho * |u|^2
+
               double u_sq = velocity_values[q].norm_square();
               double ke_increment = 0.0;
               if (is_artificial)
-              {
-                ke_increment = 0.5 * parameters.solid_rho * u_sq * fe_values.JxW(q);
-              }
+                {
+                  ke_increment =
+                    0.5 * parameters.solid_rho * u_sq * fe_values.JxW(q);
+                }
               else
-              {
-                ke_increment = 0.5 * parameters.fluid_rho * u_sq * fe_values.JxW(q);
-              }
-             
-              // Viscous dissipation: 2 * mu * eps:eps
+                {
+                  ke_increment =
+                    0.5 * parameters.fluid_rho * u_sq * fe_values.JxW(q);
+                }
+
               double eps_eps =
                 sym_grad_u[q] * sym_grad_u[q]; // Double contraction
-              double  visc_increment =
+              double visc_increment =
                 2.0 * parameters.viscosity * eps_eps * fe_values.JxW(q);
 
-              // Pressure-divergence term (diagnostic)
               double p_div_u_increment =
                 pressure_values[q] * div_u_values[q] * fe_values.JxW(q);
 
-                if (is_artificial) // (indicator == 1)
+              if (is_artificial)
                 {
-                  local_ke_artificial += ke_increment;           
-                  local_visc_artificial += visc_increment; 
-                  
-                  Tensor<1,dim> diff = velocity_values[q] - velocity_prev_values[q];
+                  local_ke_artificial += ke_increment;
+                  local_visc_artificial += visc_increment;
+
+                  Tensor<1, dim> diff =
+                    velocity_values[q] - velocity_prev_values[q];
 
                   double alg_diss_increment_artificial =
-                  0.5 * parameters.solid_rho / time.get_delta_t()
-                  * diff.norm_square() * fe_values.JxW(q);
+                    0.5 * parameters.solid_rho / time.get_delta_t() *
+                    diff.norm_square() * fe_values.JxW(q);
 
                   local_alg_diss_artificial += alg_diss_increment_artificial;
-
                 }
-                else
+              else
                 {
                   local_ke += ke_increment;
                   local_visc += visc_increment;
                   local_p_div_u += p_div_u_increment;
 
-                  Tensor<1,dim> diff = velocity_values[q] - velocity_prev_values[q];
+                  Tensor<1, dim> diff =
+                    velocity_values[q] - velocity_prev_values[q];
                   double alg_diss_increment =
-                  0.5 * parameters.fluid_rho / time.get_delta_t()
-                  * diff.norm_square() * fe_values.JxW(q);
+                    0.5 * parameters.fluid_rho / time.get_delta_t() *
+                    diff.norm_square() * fe_values.JxW(q);
 
                   local_alg_diss += alg_diss_increment;
                 }
             }
 
-
-          if (! is_artificial)
-          {
-          for (unsigned int face_no = 0;
-               face_no < GeometryInfo<dim>::faces_per_cell;
-               ++face_no)
+          if (!is_artificial)
             {
-              if (cell->at_boundary(face_no))
+              for (unsigned int face_no = 0;
+                   face_no < GeometryInfo<dim>::faces_per_cell;
+                   ++face_no)
                 {
-                  fe_face_values.reinit(cell, face_no);
-
-                  // We need the velocity, gradient(velocity), and pressure on
-                  // the face
-                  std::vector<Tensor<1, dim>> face_velocity(n_face_q_points);
-                  std::vector<Tensor<2, dim>> face_grad_u(n_face_q_points);
-                  std::vector<double> face_pressure(n_face_q_points);
-
-                  fe_face_values[velocities].get_function_values(solution,
-                                                                 face_velocity);
-                  fe_face_values[velocities].get_function_gradients(
-                    solution, face_grad_u);
-                  fe_face_values[pressure].get_function_values(solution,
-                                                               face_pressure);
-
-                  for (unsigned int qf = 0; qf < n_face_q_points; ++qf)
+                  if (cell->at_boundary(face_no))
                     {
-                      const Tensor<1, dim> &u_face = face_velocity[qf];
-                      const Tensor<1, dim> &n_face =
-                        fe_face_values.normal_vector(qf);
+                      fe_face_values.reinit(cell, face_no);
 
-                      SymmetricTensor<2, dim> symgrad_u_face;
+                      std::vector<Tensor<1, dim>> face_velocity(
+                        n_face_q_points);
+                      std::vector<Tensor<2, dim>> face_grad_u(n_face_q_points);
+                      std::vector<double> face_pressure(n_face_q_points);
 
-                      for (unsigned int i = 0; i < dim; ++i)
+                      fe_face_values[velocities].get_function_values(
+                        solution, face_velocity);
+                      fe_face_values[velocities].get_function_gradients(
+                        solution, face_grad_u);
+                      fe_face_values[pressure].get_function_values(
+                        solution, face_pressure);
+
+                      for (unsigned int qf = 0; qf < n_face_q_points; ++qf)
                         {
-                          for (unsigned int j = 0; j < dim; ++j)
+                          const Tensor<1, dim> &u_face = face_velocity[qf];
+                          const Tensor<1, dim> &n_face =
+                            fe_face_values.normal_vector(qf);
+
+                          SymmetricTensor<2, dim> symgrad_u_face;
+
+                          for (unsigned int i = 0; i < dim; ++i)
                             {
-                              symgrad_u_face[i][j] =
-                                0.5 *
-                                (face_grad_u[qf][i][j] + face_grad_u[qf][j][i]);
+                              for (unsigned int j = 0; j < dim; ++j)
+                                {
+                                  symgrad_u_face[i][j] =
+                                    0.5 * (face_grad_u[qf][i][j] +
+                                           face_grad_u[qf][j][i]);
+                                }
+                            }
+
+                          SymmetricTensor<2, dim> stress_face =
+                            -face_pressure[qf] *
+                              Physics::Elasticity::StandardTensors<dim>::I +
+                            2.0 * parameters.viscosity * symgrad_u_face;
+
+                          Tensor<1, dim> traction = stress_face * n_face;
+                          double integrand = u_face * traction;
+
+                          double pressure_term =
+                            -face_pressure[qf] * (u_face * n_face);
+
+                          Tensor<1, dim> viscous_traction =
+                            (2.0 * parameters.viscosity * symgrad_u_face) *
+                            n_face;
+                          double shear_term = viscous_traction * u_face;
+
+                          const types::boundary_id b_id =
+                            cell->face(face_no)->boundary_id();
+
+                          if (b_id == 0)
+                            {
+                              local_boundary_work_inlet +=
+                                integrand * fe_face_values.JxW(qf);
+
+                              local_pressure_power_inlet +=
+                                pressure_term * fe_face_values.JxW(qf);
+
+                              local_shear_power_inlet +=
+                                shear_term * fe_face_values.JxW(qf);
+                            }
+                          else if (b_id == 1)
+                            {
+                              local_boundary_work_outlet +=
+                                integrand * fe_face_values.JxW(qf);
+
+                              local_pressure_power_outlet +=
+                                pressure_term * fe_face_values.JxW(qf);
+
+                              local_shear_power_outlet +=
+                                shear_term * fe_face_values.JxW(qf);
                             }
                         }
-
-                      SymmetricTensor<2, dim> stress_face =
-                        -face_pressure[qf] *
-                          Physics::Elasticity::StandardTensors<dim>::I +
-                        2.0 * parameters.viscosity * symgrad_u_face;
-
-                      Tensor<1, dim> traction = stress_face * n_face;
-                      double integrand = u_face * traction;
-
-                      // pressure contribution: –p (u·n)
-                         double pressure_term =
-                        -face_pressure[qf] * (u_face * n_face);
-
-                       // viscous (shear) contribution
-                       //    (2μ symgrad(u)·n) · u
-                        Tensor<1, dim> viscous_traction =
-                        (2.0 * parameters.viscosity * symgrad_u_face) * n_face;
-                        double shear_term = viscous_traction * u_face;
-
-                      // record inlet and outlet seperately
-                      const types::boundary_id b_id =
-                        cell->face(face_no)->boundary_id();
-
-                      if (b_id == 0) // Inlet boundary
-                        {
-                          local_boundary_work_inlet +=
-                            integrand * fe_face_values.JxW(qf);
-
-                          local_pressure_power_inlet +=
-                          pressure_term * fe_face_values.JxW(qf);
-                          
-                          local_shear_power_inlet +=
-                          shear_term * fe_face_values.JxW(qf);
-                        }
-                      else if (b_id == 1)
-                        {
-                          local_boundary_work_outlet +=
-                            integrand * fe_face_values.JxW(qf);
-                          
-                          local_pressure_power_outlet +=
-                          pressure_term * fe_face_values.JxW(qf);
-                          
-                          local_shear_power_outlet +=
-                          shear_term * fe_face_values.JxW(qf);
-                          
-                        }
-                      // local_boundary_work += integrand *
-                      // fe_face_values.JxW(qf);
                     }
                 }
             }
-          }
         }
 
-      // Global reduction
       double global_kinetic_energy = 0.0;
       double global_viscous_energy = 0.0;
       double global_divergence_residual = 0.0;
-      // double global_boundary_work = 0.0;
       double global_boundary_work_inlet = 0.0;
       double global_boundary_work_outlet = 0.0;
 
@@ -1157,80 +1004,101 @@ VectorTools::interpolate_boundary_values(dof_handler,
                     MPI_SUM,
                     mpi_communicator);
 
-            // — reduce new power‐by‐pressure and power‐by‐shear terms
-      double global_pressure_power_inlet  = 0.0;
-     double global_shear_power_inlet     = 0.0;
-     double global_pressure_power_outlet = 0.0;
-    double global_shear_power_outlet    = 0.0;
+      double global_pressure_power_inlet = 0.0;
+      double global_shear_power_inlet = 0.0;
+      double global_pressure_power_outlet = 0.0;
+      double global_shear_power_outlet = 0.0;
 
-    MPI_Allreduce(&local_pressure_power_inlet,  &global_pressure_power_inlet,  1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
-    MPI_Allreduce(&local_shear_power_inlet,     &global_shear_power_inlet,     1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
-    MPI_Allreduce(&local_pressure_power_outlet, &global_pressure_power_outlet, 1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
-    MPI_Allreduce(&local_shear_power_outlet,    &global_shear_power_outlet,    1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
+      MPI_Allreduce(&local_pressure_power_inlet,
+                    &global_pressure_power_inlet,
+                    1,
+                    MPI_DOUBLE,
+                    MPI_SUM,
+                    mpi_communicator);
+      MPI_Allreduce(&local_shear_power_inlet,
+                    &global_shear_power_inlet,
+                    1,
+                    MPI_DOUBLE,
+                    MPI_SUM,
+                    mpi_communicator);
+      MPI_Allreduce(&local_pressure_power_outlet,
+                    &global_pressure_power_outlet,
+                    1,
+                    MPI_DOUBLE,
+                    MPI_SUM,
+                    mpi_communicator);
+      MPI_Allreduce(&local_shear_power_outlet,
+                    &global_shear_power_outlet,
+                    1,
+                    MPI_DOUBLE,
+                    MPI_SUM,
+                    mpi_communicator);
 
-      // ********** CHANGED: Global reduction for the artificial parts
-      double global_kinetic_energy_artificial = 0.0;      
+      double global_kinetic_energy_artificial = 0.0;
       double global_viscous_energy_artificial = 0.0;
-      MPI_Allreduce(&local_ke_artificial,                     // <<< CHANGED
-        &global_kinetic_energy_artificial,        // <<< CHANGED
-        1,
-        MPI_DOUBLE,
-        MPI_SUM,
-        mpi_communicator);
+      MPI_Allreduce(&local_ke_artificial,
+                    &global_kinetic_energy_artificial,
+                    1,
+                    MPI_DOUBLE,
+                    MPI_SUM,
+                    mpi_communicator);
 
-    MPI_Allreduce(&local_visc_artificial,                   // <<< CHANGED
-        &global_viscous_energy_artificial,        // <<< CHANGED
-        1,
-        MPI_DOUBLE,
-        MPI_SUM,
-        mpi_communicator);
-        
-        double global_alg_diss = 0.0;           // *** NEW ***
-        MPI_Allreduce(&local_alg_diss, &global_alg_diss,
-        1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
+      MPI_Allreduce(&local_visc_artificial,
+                    &global_viscous_energy_artificial,
+                    1,
+                    MPI_DOUBLE,
+                    MPI_SUM,
+                    mpi_communicator);
 
+      double global_alg_diss = 0.0;
+      MPI_Allreduce(&local_alg_diss,
+                    &global_alg_diss,
+                    1,
+                    MPI_DOUBLE,
+                    MPI_SUM,
+                    mpi_communicator);
 
-        double global_alg_diss_artificial = 0.0;
-        MPI_Allreduce(&local_alg_diss_artificial, & global_alg_diss_artificial,
-          1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
-      
+      double global_alg_diss_artificial = 0.0;
+      MPI_Allreduce(&local_alg_diss_artificial,
+                    &global_alg_diss_artificial,
+                    1,
+                    MPI_DOUBLE,
+                    MPI_SUM,
+                    mpi_communicator);
 
-      // Output results
       if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
         {
-          // --- BEGIN CHANGES ---
-          // Modify the output columns to include inlet and outlet separately
+
           std::ofstream file("energy_estimates.txt",
                              time.current() == 0 ? std::ios::out
                                                  : std::ios::app);
 
           if (time.current() == 0)
             {
-          file << "Time\tKinetic_Energy\tViscous_Dissipation\tPressure_Div_Term"
-           << "\tAlgorithmic_Dissipation"
-           << "\t Alrtificial Algorithmic_Dissipation"
-           << "\tBoundary_Work_Inlet\tBoundary_Work_Outlet" 
-           << "\tPressure_Power_Inlet\tShear_Power_Inlet"
-           << "\tPressure_Power_Outlet\tShear_Power_Outlet"                      
-           << "\tArtificial_KE\tArtificial_Viscous_Dissipation\n"; 
+              file << "Time\tKinetic_Energy\tViscous_Dissipation\tPressure_Div_"
+                      "Term"
+                   << "\tAlgorithmic_Dissipation"
+                   << "\t Alrtificial Algorithmic_Dissipation"
+                   << "\tBoundary_Work_Inlet\tBoundary_Work_Outlet"
+                   << "\tPressure_Power_Inlet\tShear_Power_Inlet"
+                   << "\tPressure_Power_Outlet\tShear_Power_Outlet"
+                   << "\tArtificial_KE\tArtificial_Viscous_Dissipation\n";
             }
 
           file << time.current() << "\t" << global_kinetic_energy << "\t"
                << global_viscous_energy << "\t" << global_divergence_residual
-               << "\t" << global_alg_diss
-               << "\t" << global_alg_diss_artificial
+               << "\t" << global_alg_diss << "\t" << global_alg_diss_artificial
                << "\t" << global_boundary_work_inlet << "\t"
                << global_boundary_work_outlet << "\t"
-              << global_pressure_power_inlet   << "\t"
-              << global_shear_power_inlet     << "\t"
-              << global_pressure_power_outlet << "\t"
-               << global_shear_power_outlet    << "\t"
+               << global_pressure_power_inlet << "\t"
+               << global_shear_power_inlet << "\t"
+               << global_pressure_power_outlet << "\t"
+               << global_shear_power_outlet << "\t"
                << global_kinetic_energy_artificial << "\t"
-               << global_viscous_energy_artificial << "\n";          
+               << global_viscous_energy_artificial << "\n";
           file.close();
         }
     }
-  
 
     template <int dim>
     void Stokes<dim>::compute_ind_norms() const
@@ -1273,12 +1141,8 @@ VectorTools::interpolate_boundary_values(dof_handler,
       double global_sum = 0.0;
       double global_max = 0.0;
 
-      MPI_Allreduce(&local_sum,  // sendbuf
-                    &global_sum, // recvbuf
-                    1,           // count
-                    MPI_DOUBLE,  // datatype
-                    MPI_SUM,     // operation
-                    mpi_communicator);
+      MPI_Allreduce(
+        &local_sum, &global_sum, 1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
 
       MPI_Allreduce(
         &local_max, &global_max, 1, MPI_DOUBLE, MPI_MAX, mpi_communicator);
@@ -1315,7 +1179,7 @@ VectorTools::interpolate_boundary_values(dof_handler,
     template <int dim>
     void Stokes<dim>::compute_fluid_norms()
     {
-      // Set up FEValues with necessary update flags
+
       FEValues<dim> fe_values(fe,
                               volume_quad_formula,
                               update_values | update_gradients |
@@ -1324,15 +1188,12 @@ VectorTools::interpolate_boundary_values(dof_handler,
       const FEValuesExtractors::Vector velocities(0);
       const unsigned int n_q_points = volume_quad_formula.size();
 
-      // Local sums for velocity and divergence norms
       double local_sum_vel = 0.0;
       double local_sum_div = 0.0;
 
-      // Vectors to store velocity and divergence values at quadrature points
       std::vector<Tensor<1, dim>> velocity_values(n_q_points);
       std::vector<double> divergence_values(n_q_points);
 
-      // Loop over all locally owned cells
       for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
            ++cell)
         {
@@ -1348,27 +1209,23 @@ VectorTools::interpolate_boundary_values(dof_handler,
 
               fe_values.reinit(cell);
 
-              // Get velocity and divergence values from the solution
               fe_values[velocities].get_function_values(solution,
                                                         velocity_values);
               fe_values[velocities].get_function_divergences(solution,
                                                              divergence_values);
 
-              // Compute contributions to the integrals
               for (unsigned int q = 0; q < n_q_points; ++q)
                 {
-                  // Velocity L2 norm: integrate |u|^2
+
                   double vel_norm_sq = velocity_values[q].norm_square();
                   local_sum_vel += vel_norm_sq * fe_values.JxW(q);
 
-                  // Divergence L2 norm: integrate (div u)^2
                   double div_u = divergence_values[q];
                   local_sum_div += div_u * div_u * fe_values.JxW(q);
                 }
             }
         }
 
-      // Global reduction to sum contributions across all processes
       double global_sum_vel = 0.0;
       double global_sum_div = 0.0;
       MPI_Allreduce(&local_sum_vel,
@@ -1384,16 +1241,13 @@ VectorTools::interpolate_boundary_values(dof_handler,
                     MPI_SUM,
                     mpi_communicator);
 
-      // Compute the L2 norms
       double L2_norm_vel = std::sqrt(global_sum_vel);
       double L2_norm_div = std::sqrt(global_sum_div);
 
-      // Write results to files from process 0
       if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
         {
           std::ofstream file_vel, file_div;
 
-          // If first time step, write headers
           if (time.current() == 0)
             {
               file_vel.open("velocity_L2_norm.txt");
@@ -1407,7 +1261,6 @@ VectorTools::interpolate_boundary_values(dof_handler,
               file_div.open("divergence_L2_norm.txt", std::ios_base::app);
             }
 
-          // Write current time and norms
           file_vel << time.current() << "\t" << L2_norm_vel << "\n";
           file_div << time.current() << "\t" << L2_norm_div << "\n";
 
@@ -1416,87 +1269,74 @@ VectorTools::interpolate_boundary_values(dof_handler,
         }
     }
 
-
-  template <int dim>
-  void Stokes<dim>::compute_pressure_gradient_norm()
-  {
-    FEValues<dim> fe_values(fe,
-      volume_quad_formula,
-      update_gradients | update_JxW_values);
+    template <int dim>
+    void Stokes<dim>::compute_pressure_gradient_norm()
+    {
+      FEValues<dim> fe_values(
+        fe, volume_quad_formula, update_gradients | update_JxW_values);
 
       const FEValuesExtractors::Scalar pressure(dim);
       const unsigned int n_q_points = volume_quad_formula.size();
 
-        // Local sums for the L2 norm of grad(p)
-        double local_sum_gradp = 0.0;
+      double local_sum_gradp = 0.0;
 
-        // A container for the gradient of the pressure at each quadrature point
-        std::vector<Tensor<1, dim>> gradp_values(n_q_points);
+      std::vector<Tensor<1, dim>> gradp_values(n_q_points);
 
-
-        for (auto cell = dof_handler.begin_active(); cell != dof_handler.end(); ++cell)
+      for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+           ++cell)
         {
           if (!cell->is_locally_owned())
-          continue;
-  
-        auto p = cell_property.get_data(cell);
-  
-        // Only compute in "fluid" cells (indicator == 0)
-        if (p[0]->indicator != 0)
-          {
             continue;
-          }
+
+          auto p = cell_property.get_data(cell);
+
+          if (p[0]->indicator != 0)
+            {
+              continue;
+            }
 
           fe_values.reinit(cell);
 
-          // Get the gradient of the pressure from the solution
           fe_values[pressure].get_function_gradients(solution, gradp_values);
 
           for (unsigned int q = 0; q < n_q_points; ++q)
-          {
-            const double gradp_sq = gradp_values[q].norm_square();
-            local_sum_gradp += gradp_sq * fe_values.JxW(q);
-          }
-
+            {
+              const double gradp_sq = gradp_values[q].norm_square();
+              local_sum_gradp += gradp_sq * fe_values.JxW(q);
+            }
         }
 
-        double global_sum_gradp = 0.0;
-        MPI_Allreduce(&local_sum_gradp,
-                      &global_sum_gradp,
-                      1,
-                      MPI_DOUBLE,
-                      MPI_SUM,
-                      mpi_communicator);
+      double global_sum_gradp = 0.0;
+      MPI_Allreduce(&local_sum_gradp,
+                    &global_sum_gradp,
+                    1,
+                    MPI_DOUBLE,
+                    MPI_SUM,
+                    mpi_communicator);
 
-       const double L2_norm_gradp = std::sqrt(global_sum_gradp);
+      const double L2_norm_gradp = std::sqrt(global_sum_gradp);
 
-       if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
-       {
-            std::ofstream file_gradp;
-            if (time.current() == 0)
+      if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+        {
+          std::ofstream file_gradp;
+          if (time.current() == 0)
             {
               file_gradp.open("gradp_L2_norm.txt");
               file_gradp << "Time\tL2_norm_grad_p\n";
             }
-            else
+          else
             {
               file_gradp.open("gradp_L2_norm.txt", std::ios_base::app);
             }
-            file_gradp << time.current() << "\t" << L2_norm_gradp << "\n";
-            file_gradp.close();
-       }
-
-  }
-
-
-
-
+          file_gradp << time.current() << "\t" << L2_norm_gradp << "\n";
+          file_gradp.close();
+        }
+    }
 
     template <int dim>
     void Stokes<dim>::compute_drag_lift_coefficients()
     {
 
-      // 1) Set up FEValues on boundary faces
       const FEValuesExtractors::Vector velocities(0);
       const FEValuesExtractors::Scalar pressure(dim);
 
@@ -1509,39 +1349,32 @@ VectorTools::interpolate_boundary_values(dof_handler,
       const unsigned int n_face_q_points = face_quad_formula.size();
       const unsigned int dofs_per_cell = fe.dofs_per_cell;
 
-      // 2) Local accumulators for drag and lift
       double local_drag = 0.0;
       double local_lift = 0.0;
 
-      // 3) Vectors to store shape function info at each quadrature
       std::vector<Tensor<1, dim>> phi_u(dofs_per_cell);
       std::vector<SymmetricTensor<2, dim>> symgrad_phi_u(dofs_per_cell);
       std::vector<double> phi_p(dofs_per_cell);
 
-      // 4) For evaluating final solution at quadrature
       std::vector<Tensor<1, dim>> velocity_values(n_face_q_points);
       std::vector<Tensor<2, dim>> velocity_gradients(n_face_q_points);
       std::vector<double> pressure_values(n_face_q_points);
 
-      // For each locally owned cell:
       for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
            ++cell)
         {
           if (!cell->is_locally_owned())
             continue;
 
-          // Check each face
           for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
             {
               if (cell->at_boundary(f))
                 {
-                  // If boundary_id == 4, we assume it's the cylinder boundary
+
                   if (cell->face(f)->boundary_id() == 2)
                     {
                       fe_face_values.reinit(cell, f);
 
-                      // Get velocity, pressure, velocity gradients at face
-                      // quadrature
                       fe_face_values[velocities].get_function_values(
                         solution, velocity_values);
                       fe_face_values[velocities].get_function_gradients(
@@ -1549,17 +1382,11 @@ VectorTools::interpolate_boundary_values(dof_handler,
                       fe_face_values[pressure].get_function_values(
                         solution, pressure_values);
 
-                      // Integration over the face quadrature points
                       for (unsigned int q = 0; q < n_face_q_points; ++q)
                         {
                           const Tensor<1, dim> &normal =
-                            -fe_face_values.normal_vector(
-                              q); // negative because its pointing inward the
-                                  // cylinder hole!
+                            -fe_face_values.normal_vector(q);
 
-                          // Compute stress tensor sigma = -p I + 2 mu
-                          // symgrad(u) For Stokes, let mu =
-                          // parameters.viscosity
                           SymmetricTensor<2, dim> grad_sym;
                           for (unsigned int i = 0; i < dim; ++i)
                             for (unsigned int j = 0; j < dim; ++j)
@@ -1572,26 +1399,19 @@ VectorTools::interpolate_boundary_values(dof_handler,
                             -p * Physics::Elasticity::StandardTensors<dim>::I +
                             2.0 * parameters.viscosity * grad_sym;
 
-                          // Traction vector t = sigma * n
-                          // (SymmetricTensor<2,dim> times Tensor<1,dim>)
                           const Tensor<1, dim> traction = sigma * normal;
 
-                          // Drag is x-component, Lift is y-component
-                          // In 3D, you'd typically define an axis convention or
-                          // use z for lift, etc.
                           const double tx = traction[0];
                           const double ty = traction[1];
 
-                          // Accumulate the integrals
                           local_drag += tx * fe_face_values.JxW(q);
                           local_lift += ty * fe_face_values.JxW(q);
-                        } // end face quadrature
-                    }     // end if boundary_id == 4
-                }         // end if at_boundary
-            }             // end face loop
-        }                 // end cell loop
+                        }
+                    }
+                }
+            }
+        }
 
-      // 5) Sum drag and lift across all MPI processes
       double global_drag = 0.0;
       double global_lift = 0.0;
 
@@ -1600,24 +1420,15 @@ VectorTools::interpolate_boundary_values(dof_handler,
       MPI_Allreduce(
         &local_lift, &global_lift, 1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
 
-      // 6) Compute dimensionless coefficients (example in 2D)
-      // Suppose the cylinder diameter is D, and reference velocity is U_ref.
-      // Then  (drag coefficient) =  F_x / (0.5 * rho * U_ref^2 * D)
-      //        lift coefficient =  F_y / (0.5 * rho * U_ref^2 * D)
-      // Here "rho" might be your parameters.fluid_rho
-      // Be sure to use consistent units in your code!
-
-      const double D = 0.1;        // example cylinder diameter
-      const double U_ref = 0.9796; // mean velocity
+      const double D = 0.1;
+      const double U_ref = 0.9796;
       const double rho = parameters.fluid_rho;
 
-      // Denominator for the usual 2D definition
       const double denominator = 0.5 * rho * U_ref * U_ref * D;
 
       const double drag_coefficient = global_drag / denominator;
       const double lift_coefficient = global_lift / denominator;
 
-      // 7) Print or store the results
       pcout << std::endl
             << "----------------------------------------------------------"
             << std::endl
@@ -1629,7 +1440,6 @@ VectorTools::interpolate_boundary_values(dof_handler,
             << std::endl
             << std::endl;
 
-      // Optionally, write to a file if you like:
       if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
         {
           std::ofstream coeffs("drag_lift_history.txt", std::ios::app);
@@ -1698,16 +1508,6 @@ VectorTools::interpolate_boundary_values(dof_handler,
                                DataOut<dim>::type_dof_data,
                                data_component_interpretation);
 
-      /*
-      // Partition
-      Vector<float> subdomain(triangulation.n_active_cells());
-      for (unsigned int i = 0; i < subdomain.size(); ++i)
-        {
-          subdomain(i) = triangulation.locally_owned_subdomain();
-        }
-      data_out.add_data_vector(subdomain, "subdomain");
-      */
-
       // Indicator
       Vector<float> ind(triangulation.n_active_cells());
 
@@ -1723,7 +1523,6 @@ VectorTools::interpolate_boundary_values(dof_handler,
         }
       data_out.add_data_vector(ind, "Indicator");
 
-      // viscous stress
       data_out.add_data_vector(scalar_dof_handler, tmp_stress[0][0], "Txx");
       data_out.add_data_vector(scalar_dof_handler, tmp_stress[0][1], "Txy");
       data_out.add_data_vector(scalar_dof_handler, tmp_stress[1][1], "Tyy");
@@ -1739,7 +1538,6 @@ VectorTools::interpolate_boundary_values(dof_handler,
         }
     }
 
-    // override the run_one_step function to aviod compilation error
     template <int dim>
     void Stokes<dim>::run_one_step(bool apply_nonzero_constraints,
                                    bool assemble_system)
@@ -1756,16 +1554,16 @@ VectorTools::interpolate_boundary_values(dof_handler,
       std::cout.precision(6);
       std::cout.width(12);
 
-    previous_solution = present_solution;
-     solution = present_solution;
+      previous_solution = present_solution;
+      solution = present_solution;
 
       if (time.get_timestep() == 0)
         {
           output_results(0);
           compute_ind_norms();
-         // compute_fluid_norms();
-         // compute_pressure_gradient_norm();
-         // compute_energy_estimates();
+          compute_fluid_norms();
+          compute_pressure_gradient_norm();
+          compute_energy_estimates();
         }
 
       time.increment();
@@ -1774,23 +1572,20 @@ VectorTools::interpolate_boundary_values(dof_handler,
             << "Time step = " << time.get_timestep()
             << ", at t = " << std::scientific << time.current() << std::endl;
 
-      set_up_boundary_values(); // Update boundary conditions with current time
+      set_up_boundary_values();
       assemble();
 
-      //build_mass_matrix();
       auto state = solve();
 
       present_solution = solution;
 
-       //compute_drag_lift_coefficients();
+      // compute_drag_lift_coefficients();
       compute_ind_norms();
-      //compute_fluid_norms();
-      //compute_pressure_gradient_norm();
-      //compute_energy_estimates();
+      compute_fluid_norms();
+      compute_pressure_gradient_norm();
+      compute_energy_estimates();
       update_stress();
 
-    
-      
       pcout << std::scientific << std::left << " ITR = " << std::setw(3)
             << state.first << " RES = " << state.second << std::endl;
 
@@ -1802,16 +1597,13 @@ VectorTools::interpolate_boundary_values(dof_handler,
         {
           refine_mesh(1, 3);
         }
-          
     }
 
     template <int dim>
     void Stokes<dim>::initialize_bcs()
     {
-      // setup_dofs();
       FluidSolver<dim>::setup_dofs();
-      
-      
+
       for (auto cell = triangulation.begin_active();
            cell != triangulation.end();
            ++cell)
@@ -1830,15 +1622,15 @@ VectorTools::interpolate_boundary_values(dof_handler,
 
                       // Determine and set boundary IDs based on face center
                       // coordinates
-                     if (std::abs(y - 0.5) < 1e-10)
-                       {
-                        cell->face(face)->set_boundary_id(3); // Top
-                       }
+                      if (std::abs(y - 0.5) < 1e-10)
+                        {
+                          cell->face(face)->set_boundary_id(3); // Top
+                        }
 
-                     else if (std::abs(y) < 1e-10)
-                      {
-                        cell->face(face)->set_boundary_id(2); // Bottom
-                      }
+                      else if (std::abs(y) < 1e-10)
+                        {
+                          cell->face(face)->set_boundary_id(2); // Bottom
+                        }
 
                       else if (std::abs(x) < 1e-10)
 
@@ -1846,16 +1638,14 @@ VectorTools::interpolate_boundary_values(dof_handler,
                           cell->face(face)->set_boundary_id(0); // Left
                         }
 
-                       else if (std::abs(x - 1.5) < 1e-10)
+                      else if (std::abs(x - 1.5) < 1e-10)
                         {
                           cell->face(face)->set_boundary_id(1); // right
                         }
-
-
                     }
                 }
             }
-        } 
+        }
       set_up_boundary_values();
       initialize_system();
     }

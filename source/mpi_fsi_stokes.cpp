@@ -318,1096 +318,820 @@ namespace MPI
     move_solid_mesh(false);
   }
 
-template <int dim>
-void FSI_stokes<dim>::build_projection_constraints()
-{
-  
-const unsigned int dofs_per_cell = fluid_solver.fe.dofs_per_cell;
-
-
-IndexSet arti_dofs(fluid_solver.dof_handler.n_dofs());
-
-for (auto cell : fluid_solver.dof_handler.active_cell_iterators())
-  if (cell->is_locally_owned() &&
-      fluid_solver.cell_property.get_data(cell)[0]->indicator == 1)
+  template <int dim>
+  void FSI_stokes<dim>::build_projection_constraints()
   {
-    std::vector<types::global_dof_index> local(dofs_per_cell);
-    cell->get_dof_indices(local);
-    for (unsigned int i=0;i<dofs_per_cell;++i)
-      if (fluid_solver.fe.system_to_component_index(i).first < dim)
-          arti_dofs.add_index(local[i]);
-  }
-arti_dofs.compress();
 
+    const unsigned int dofs_per_cell = fluid_solver.fe.dofs_per_cell;
 
-IndexSet zero_velocity_dofs (fluid_solver.dof_handler.n_dofs());
+    IndexSet arti_dofs(fluid_solver.dof_handler.n_dofs());
 
-for (auto cell = fluid_solver.dof_handler.begin_active();  
-cell != fluid_solver.dof_handler.end(); ++cell) 
-{
-  if (cell->is_locally_owned()) 
-  {
-    const auto property = fluid_solver.cell_property.get_data(cell); 
-    if (property[0]->indicator == 0)
-    {
-      std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell); 
-      cell->get_dof_indices (local_dof_indices);
-      for (unsigned int i=0;i<dofs_per_cell;++i)
-      {
-        if (fluid_solver.fe.system_to_component_index(i).first < dim)
-        {  
-          if (!arti_dofs.is_element(local_dof_indices[i]))
-          {
-            zero_velocity_dofs.add_index (local_dof_indices[i]); 
-          }
-        }
-      } 
-    } 
-  }  
-}
-zero_velocity_dofs.compress();
-
-projection_constraints.clear();
-DoFTools::make_hanging_node_constraints (fluid_solver.dof_handler,     
-  projection_constraints);
-
-  for (const auto idx : zero_velocity_dofs)
-  {
-    projection_constraints.add_line (idx);
-    projection_constraints.set_inhomogeneity (idx, 0.0);
-  }
-  projection_constraints.close(); 
-}
-
-template <int dim>
-void FSI_stokes<dim>::build_arti_mass_matrix()
-{
-  build_projection_constraints();
-  
-  FEValues<dim> fe_values(fluid_solver.fe, fluid_solver.volume_quad_formula,
-    update_values | update_quadrature_points | update_JxW_values);
-
-const unsigned int dofs_per_cell = fluid_solver.fe.dofs_per_cell;
-const unsigned int n_q_points = fluid_solver.volume_quad_formula.size();
-
-// Identify velocity DoFs once
-std::vector<unsigned int> velocity_local_indices;
-for (unsigned int i = 0; i < dofs_per_cell; ++i)
-  if (fluid_solver.fe.system_to_component_index(i).first < dim)
-    velocity_local_indices.push_back(i);
-const unsigned int n_velocity_dofs = velocity_local_indices.size();
-
-
-/* try to implement a filter constraints
-IndexSet zero_velocity_dofs (fluid_solver.dof_handler.n_dofs());
-
-for (auto cell = fluid_solver.dof_handler.begin_active();  
-cell != fluid_solver.dof_handler.end(); ++cell) 
-{
-  if (cell->is_locally_owned()) 
-  {
-    const auto property = fluid_solver.cell_property.get_data(cell); 
-    if (property[0]->indicator == 0)
-    {
-      std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell); 
-      cell->get_dof_indices (local_dof_indices);
-      for (unsigned int i=0;i<dofs_per_cell;++i)
-      {
-        if (fluid_solver.fe.system_to_component_index(i).first < dim)
+    for (auto cell : fluid_solver.dof_handler.active_cell_iterators())
+      if (cell->is_locally_owned() &&
+          fluid_solver.cell_property.get_data(cell)[0]->indicator == 1)
         {
-          zero_velocity_dofs.add_index (local_dof_indices[i]); 
+          std::vector<types::global_dof_index> local(dofs_per_cell);
+          cell->get_dof_indices(local);
+          for (unsigned int i = 0; i < dofs_per_cell; ++i)
+            if (fluid_solver.fe.system_to_component_index(i).first < dim)
+              arti_dofs.add_index(local[i]);
         }
-      } 
-    } 
-  }  
-}
-zero_velocity_dofs.compress();
+    arti_dofs.compress();
 
-AffineConstraints<double> projection_constraints;
-DoFTools::make_hanging_node_constraints (fluid_solver.dof_handler,     
-  projection_constraints);
+    IndexSet zero_velocity_dofs(fluid_solver.dof_handler.n_dofs());
 
-  for (const auto idx : zero_velocity_dofs)
-  {
-    projection_constraints.add_line (idx);
-    projection_constraints.set_inhomogeneity (idx, 0.0);
+    for (auto cell = fluid_solver.dof_handler.begin_active();
+         cell != fluid_solver.dof_handler.end();
+         ++cell)
+      {
+        if (cell->is_locally_owned())
+          {
+            const auto property = fluid_solver.cell_property.get_data(cell);
+            if (property[0]->indicator == 0)
+              {
+                std::vector<types::global_dof_index> local_dof_indices(
+                  dofs_per_cell);
+                cell->get_dof_indices(local_dof_indices);
+                for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                  {
+                    if (fluid_solver.fe.system_to_component_index(i).first <
+                        dim)
+                      {
+                        if (!arti_dofs.is_element(local_dof_indices[i]))
+                          {
+                            zero_velocity_dofs.add_index(local_dof_indices[i]);
+                          }
+                      }
+                  }
+              }
+          }
+      }
+    zero_velocity_dofs.compress();
+
+    projection_constraints.clear();
+    DoFTools::make_hanging_node_constraints(fluid_solver.dof_handler,
+                                            projection_constraints);
+
+    for (const auto idx : zero_velocity_dofs)
+      {
+        projection_constraints.add_line(idx);
+        projection_constraints.set_inhomogeneity(idx, 0.0);
+      }
+    projection_constraints.close();
   }
-  projection_constraints.close(); */
 
-
-//std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
-
-DynamicSparsityPattern dsp(fluid_solver.relevant_partitioning[0].size(),
-                          fluid_solver.relevant_partitioning[0].size());
-
-//AffineConstraints<double> empty_constraints;
-//DoFTools::make_hanging_node_constraints(fluid_solver.dof_handler, empty_constraints);
-//empty_constraints.close(); 
-
-  Table<2, DoFTools::Coupling> coupling(dim + 1, dim + 1);
-  for (unsigned int c = 0; c < dim; ++c)
+  template <int dim>
+  void FSI_stokes<dim>::build_arti_mass_matrix()
   {
-    for (unsigned int d = 0; d < dim; ++d)
-    {
-      coupling[c][d] = DoFTools::always;
-    }
-  }
+    build_projection_constraints();
 
-  for (unsigned int c = dim; c < dim + 1; ++c)
-  {
-    for (unsigned int d = 0; d < dim + 1; ++d)
-    {
-      coupling[c][d] = DoFTools::none;
-    }
-  }
-  
-  DoFTools::make_sparsity_pattern(
-    fluid_solver.dof_handler, coupling, dsp,
-    //empty_constraints,
-    projection_constraints,
-    false,
-    Utilities::MPI::this_mpi_process(mpi_communicator)); 
+    FEValues<dim> fe_values(fluid_solver.fe,
+                            fluid_solver.volume_quad_formula,
+                            update_values | update_quadrature_points |
+                              update_JxW_values);
 
+    const unsigned int dofs_per_cell = fluid_solver.fe.dofs_per_cell;
+    const unsigned int n_q_points = fluid_solver.volume_quad_formula.size();
 
-    //for (const auto &line : projection_constraints.get_lines())
-    //{
-      //dsp.add(line.index, line.index);
-    //}
+    // Identify velocity DoFs once
+    std::vector<unsigned int> velocity_local_indices;
+    for (unsigned int i = 0; i < dofs_per_cell; ++i)
+      if (fluid_solver.fe.system_to_component_index(i).first < dim)
+        velocity_local_indices.push_back(i);
+    const unsigned int n_velocity_dofs = velocity_local_indices.size();
 
+    DynamicSparsityPattern dsp(fluid_solver.relevant_partitioning[0].size(),
+                               fluid_solver.relevant_partitioning[0].size());
+
+    Table<2, DoFTools::Coupling> coupling(dim + 1, dim + 1);
+    for (unsigned int c = 0; c < dim; ++c)
+      {
+        for (unsigned int d = 0; d < dim; ++d)
+          {
+            coupling[c][d] = DoFTools::always;
+          }
+      }
+
+    for (unsigned int c = dim; c < dim + 1; ++c)
+      {
+        for (unsigned int d = 0; d < dim + 1; ++d)
+          {
+            coupling[c][d] = DoFTools::none;
+          }
+      }
+
+    DoFTools::make_sparsity_pattern(
+      fluid_solver.dof_handler,
+      coupling,
+      dsp,
+      // empty_constraints,
+      projection_constraints,
+      false,
+      Utilities::MPI::this_mpi_process(mpi_communicator));
 
     SparsityTools::distribute_sparsity_pattern(
       dsp,
-      fluid_solver.owned_partitioning[0], 
+      fluid_solver.owned_partitioning[0],
       mpi_communicator,
       fluid_solver.relevant_partitioning[0]);
 
+    dsp.compress();
 
-  dsp.compress();
+    mass_matrix_velocity.reinit(fluid_solver.owned_partitioning[0],
+                                fluid_solver.owned_partitioning[0],
+                                dsp,
+                                mpi_communicator);
 
-  mass_matrix_velocity.reinit(fluid_solver.owned_partitioning[0],
-    fluid_solver.owned_partitioning[0],
-     dsp, mpi_communicator);
+    mass_matrix_velocity = 0.0;
 
-  mass_matrix_velocity = 0.0;
+    FullMatrix<double> local_mass(n_velocity_dofs, n_velocity_dofs);
+    std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+    std::vector<types::global_dof_index> velocity_global_indices(
+      n_velocity_dofs);
 
-  
+    for (auto cell = fluid_solver.dof_handler.begin_active();
+         cell != fluid_solver.dof_handler.end();
+         ++cell)
 
-
-  FullMatrix<double> local_mass(n_velocity_dofs, n_velocity_dofs);
-  std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
-  std::vector<types::global_dof_index> velocity_global_indices(n_velocity_dofs);
-
-  
-  for (auto cell = fluid_solver.dof_handler.begin_active();
-       cell != fluid_solver.dof_handler.end(); ++cell)
-
-       {
-        //if (!cell->is_locally_owned()) continue;
+      {
         if (!(cell->is_locally_owned() &&
-        fluid_solver.cell_property.get_data(cell)[0]->indicator == 1))
-        {
-           continue;
-        }  
-               
+              fluid_solver.cell_property.get_data(cell)[0]->indicator == 1))
+          {
+            continue;
+          }
+
         fe_values.reinit(cell);
         local_mass = 0;
 
         for (unsigned int q = 0; q < n_q_points; ++q)
-        {
-          for (unsigned int k = 0; k < n_velocity_dofs; ++k)
           {
-            unsigned int i = velocity_local_indices[k];
-            for (unsigned int l = 0; l < n_velocity_dofs; ++l)
-            {
-              unsigned int j = velocity_local_indices[l];
-
-              double val_dot = 0.0; 
-
-              for (unsigned int c = 0; c < dim; ++c) // <--- changed
+            for (unsigned int k = 0; k < n_velocity_dofs; ++k)
               {
-                const double phi_i_c = fe_values.shape_value_component(i, q, c); 
-                const double phi_j_c = fe_values.shape_value_component(j, q, c);
-                val_dot += phi_i_c * phi_j_c;      // <--- changed
+                unsigned int i = velocity_local_indices[k];
+                for (unsigned int l = 0; l < n_velocity_dofs; ++l)
+                  {
+                    unsigned int j = velocity_local_indices[l];
+
+                    double val_dot = 0.0;
+
+                    for (unsigned int c = 0; c < dim; ++c)
+                      {
+                        const double phi_i_c =
+                          fe_values.shape_value_component(i, q, c);
+                        const double phi_j_c =
+                          fe_values.shape_value_component(j, q, c);
+                        val_dot += phi_i_c * phi_j_c;
+                      }
+
+                    local_mass(k, l) += val_dot * fe_values.JxW(q);
+                  }
               }
-
-              local_mass(k, l) += val_dot * fe_values.JxW(q);
-
-            }
           }
-        }
-     
-         cell->get_dof_indices(local_dof_indices);
-         for (unsigned int k = 0; k < n_velocity_dofs; ++k)
-        velocity_global_indices[k] = local_dof_indices[velocity_local_indices[k]];
 
-       //empty_constraints.distribute_local_to_global(local_mass, velocity_global_indices,  mass_matrix_velocity);
-       projection_constraints.distribute_local_to_global(local_mass, velocity_global_indices,  mass_matrix_velocity);
+        cell->get_dof_indices(local_dof_indices);
+        for (unsigned int k = 0; k < n_velocity_dofs; ++k)
+          velocity_global_indices[k] =
+            local_dof_indices[velocity_local_indices[k]];
 
-       }
-       mass_matrix_velocity.compress(VectorOperation::add);
+        projection_constraints.distribute_local_to_global(
+          local_mass, velocity_global_indices, mass_matrix_velocity);
+      }
+    mass_matrix_velocity.compress(VectorOperation::add);
 
-       std::vector<types::global_dof_index> constrained_rows;
-       constrained_rows.reserve(projection_constraints.n_constraints());
+    std::vector<types::global_dof_index> constrained_rows;
+    constrained_rows.reserve(projection_constraints.n_constraints());
 
-       for (const auto &c : projection_constraints.get_lines())
-       {
+    for (const auto &c : projection_constraints.get_lines())
+      {
         constrained_rows.push_back(c.index);
-       }
-
-       mass_matrix_velocity.clear_rows(constrained_rows, 1.0);
-       mass_matrix_velocity.compress(VectorOperation::insert);
-
-
-      /* 
-      //try to output mass matrix to matlab, method 1
-      Mat mat = mass_matrix_velocity.petsc_matrix();
-
-      PetscInt m, n;
-      MatGetSize(mat, &m, &n);
-      Assert(m == n, ExcMessage("Mass matrix is not square!"));
-
-      PetscInt start, end;
-      MatGetOwnershipRange(mat, &start, &end);
-
-      std::vector<PetscInt> rows;
-      std::vector<PetscInt> cols;
-      std::vector<double> vals;
-
-      for (PetscInt row = start; row < end; ++row)
-      {
-        PetscInt ncols;
-        const PetscInt *row_cols;
-        const PetscScalar *row_vals;
-        MatGetRow(mat, row, &ncols, &row_cols, &row_vals);
-        for (PetscInt j = 0; j < ncols; ++j)
-        {
-          rows.push_back(row);
-          cols.push_back(row_cols[j]);
-          vals.push_back(row_vals[j]);   
-        }
-        MatRestoreRow(mat, row, &ncols, &row_cols, &row_vals);
       }
 
-      int rank = Utilities::MPI::this_mpi_process(mpi_communicator);
-      int size = Utilities::MPI::n_mpi_processes(mpi_communicator);
-      int local_nnz = rows.size();
-      std::vector<int> nnz_per_proc(size);
-
-      MPI_Gather(&local_nnz, 1, MPI_INT, nnz_per_proc.data(), 1, MPI_INT, 0, mpi_communicator);
-
-      if (rank == 0)
-      {
-        int total_nnz = std::accumulate(nnz_per_proc.begin(), nnz_per_proc.end(), 0);
-        std::vector<int> offsets(size);
-        offsets[0] = 0;
-        for (int p = 1; p < size; ++p)
-        {
-          offsets[p] = offsets[p - 1] + nnz_per_proc[p - 1];
-        }
-
-        // Allocate arrays for all entries
-        std::vector<PetscInt> all_rows(total_nnz);
-        std::vector<PetscInt> all_cols(total_nnz);
-        std::vector<double> all_vals(total_nnz);
-
-        for (int i = 0; i < local_nnz; ++i)
-        {
-            all_rows[offsets[rank] + i] = rows[i];
-            all_cols[offsets[rank] + i] = cols[i];
-            all_vals[offsets[rank] + i] = vals[i];
-        }
-
-        for (int p = 1; p < size; ++p)
-        {
-          MPI_Recv(all_rows.data() + offsets[p], nnz_per_proc[p], MPI_INT, p, 0, mpi_communicator, MPI_STATUS_IGNORE);
-          MPI_Recv(all_cols.data() + offsets[p], nnz_per_proc[p], MPI_INT, p, 1, mpi_communicator, MPI_STATUS_IGNORE);
-          MPI_Recv(all_vals.data() + offsets[p], nnz_per_proc[p], MPI_DOUBLE, p, 2, mpi_communicator, MPI_STATUS_IGNORE);
-        }
-
-        std::ofstream file("mass_matrix.mm");
-        file << "%%MatrixMarket matrix coordinate real general" << std::endl;
-        file << m << " " << n << " " << total_nnz << std::endl;
-        for (auto i = 0; i < total_nnz; ++i)
-        {
-            file << all_rows[i] + 1 << " " << all_cols[i] + 1 << " " << all_vals[i] << std::endl; // 1-based indexing
-        }
-        file.close();
-      } else
-      {
-        MPI_Send(rows.data(), local_nnz, MPI_INT, 0, 0, mpi_communicator);
-        MPI_Send(cols.data(), local_nnz, MPI_INT, 0, 1, mpi_communicator);
-        MPI_Send(vals.data(), local_nnz, MPI_DOUBLE, 0, 2, mpi_communicator);
-      }
-
-      // method 2
-      
-      Mat petsc_matrix = mass_matrix_velocity;
-
-      PetscViewer viewer;
-      PetscErrorCode ierr;
-      ierr = PetscViewerASCIIOpen(mpi_communicator,
-                              "mass_matrix_velocity.m",
-                              &viewer);
-      AssertThrow(ierr == 0,
-              ExcMessage("PETScViewerASCIIOpen failed."));
-      
-              // ierr = PetscViewerSetFormat(viewer, PETSC_VIEWER_ASCII_MATLAB);
-              ierr = PetscViewerPushFormat(viewer, PETSC_VIEWER_ASCII_MATLAB);
-              AssertThrow(ierr == 0,
-                          ExcMessage("PetscViewerSetFormat failed."));
-
-        // Actually write the matrix:
-    ierr = MatView(petsc_matrix, viewer);
-    AssertThrow(ierr == 0,
-              ExcMessage("MatView failed."));
-
-              ierr = PetscViewerDestroy(&viewer);
-              AssertThrow(ierr == 0,
-                          ExcMessage("PetscViewerDestroy failed.")); */
-
-}
-
-template <int dim>
-void FSI_stokes<dim>::build_arti_scalar_mass_matrix()
-{
-
-  const unsigned int dofs_per_cell = fluid_solver.scalar_fe.dofs_per_cell;
-
-
-  IndexSet arti_scalar_dofs (fluid_solver.scalar_dof_handler.n_dofs());
-
-
-  for (auto cell : fluid_solver.scalar_dof_handler.active_cell_iterators())
-  {
-    if (cell->is_locally_owned() &&
-    fluid_solver.cell_property.get_data(cell)[0]->indicator == 1)
-    {
-      std::vector<types::global_dof_index> local(dofs_per_cell);
-      cell->get_dof_indices(local);
-      for (auto id : local)
-      {
-        arti_scalar_dofs.add_index(id);
-      }
-    }
+    mass_matrix_velocity.clear_rows(constrained_rows, 1.0);
+    mass_matrix_velocity.compress(VectorOperation::insert);
   }
 
-  arti_scalar_dofs.compress();
-
-
-  IndexSet zero_scalar_dofs (fluid_solver.scalar_dof_handler.n_dofs());
-
-  for (auto cell : fluid_solver.scalar_dof_handler.active_cell_iterators())
+  template <int dim>
+  void FSI_stokes<dim>::build_arti_scalar_mass_matrix()
   {
-    if (cell->is_locally_owned())
-    {
-      const auto prop = fluid_solver.cell_property.get_data(cell);
-      if (prop[0]->indicator == 0)
+
+    const unsigned int dofs_per_cell = fluid_solver.scalar_fe.dofs_per_cell;
+
+    IndexSet arti_scalar_dofs(fluid_solver.scalar_dof_handler.n_dofs());
+
+    for (auto cell : fluid_solver.scalar_dof_handler.active_cell_iterators())
       {
-        std::vector<types::global_dof_index> local(dofs_per_cell);
-        cell->get_dof_indices(local);
-        for (auto id : local)
-        {
-          if (!arti_scalar_dofs.is_element(id)) 
+        if (cell->is_locally_owned() &&
+            fluid_solver.cell_property.get_data(cell)[0]->indicator == 1)
           {
-            zero_scalar_dofs.add_index(id);
-          }     
-        }
+            std::vector<types::global_dof_index> local(dofs_per_cell);
+            cell->get_dof_indices(local);
+            for (auto id : local)
+              {
+                arti_scalar_dofs.add_index(id);
+              }
+          }
       }
-    }
-  }
 
-  zero_scalar_dofs.compress();
+    arti_scalar_dofs.compress();
 
-  scalar_projection_constraints.clear();
+    IndexSet zero_scalar_dofs(fluid_solver.scalar_dof_handler.n_dofs());
 
-  DoFTools::make_hanging_node_constraints(fluid_solver.scalar_dof_handler,
-    scalar_projection_constraints);
+    for (auto cell : fluid_solver.scalar_dof_handler.active_cell_iterators())
+      {
+        if (cell->is_locally_owned())
+          {
+            const auto prop = fluid_solver.cell_property.get_data(cell);
+            if (prop[0]->indicator == 0)
+              {
+                std::vector<types::global_dof_index> local(dofs_per_cell);
+                cell->get_dof_indices(local);
+                for (auto id : local)
+                  {
+                    if (!arti_scalar_dofs.is_element(id))
+                      {
+                        zero_scalar_dofs.add_index(id);
+                      }
+                  }
+              }
+          }
+      }
 
-  for (const auto id : zero_scalar_dofs)
-  {
-    scalar_projection_constraints.add_line(id);
-    scalar_projection_constraints.set_inhomogeneity(id,0.0);
-  }
-  
-  scalar_projection_constraints.close();
+    zero_scalar_dofs.compress();
 
-  DynamicSparsityPattern dsp(fluid_solver.locally_relevant_scalar_dofs);
+    scalar_projection_constraints.clear();
 
-  DoFTools::make_sparsity_pattern(fluid_solver.scalar_dof_handler,
-    dsp,
-    scalar_projection_constraints,
-    false,
-    Utilities::MPI::this_mpi_process(mpi_communicator));
+    DoFTools::make_hanging_node_constraints(fluid_solver.scalar_dof_handler,
+                                            scalar_projection_constraints);
 
-    SparsityTools::distribute_sparsity_pattern(dsp,
-      fluid_solver.locally_owned_scalar_dofs, mpi_communicator,
+    for (const auto id : zero_scalar_dofs)
+      {
+        scalar_projection_constraints.add_line(id);
+        scalar_projection_constraints.set_inhomogeneity(id, 0.0);
+      }
+
+    scalar_projection_constraints.close();
+
+    DynamicSparsityPattern dsp(fluid_solver.locally_relevant_scalar_dofs);
+
+    DoFTools::make_sparsity_pattern(
+      fluid_solver.scalar_dof_handler,
+      dsp,
+      scalar_projection_constraints,
+      false,
+      Utilities::MPI::this_mpi_process(mpi_communicator));
+
+    SparsityTools::distribute_sparsity_pattern(
+      dsp,
+      fluid_solver.locally_owned_scalar_dofs,
+      mpi_communicator,
       fluid_solver.locally_relevant_scalar_dofs);
 
     dsp.compress();
 
     mass_matrix_scalar.reinit(fluid_solver.locally_owned_scalar_dofs,
                               fluid_solver.locally_owned_scalar_dofs,
-                              dsp, mpi_communicator);
+                              dsp,
+                              mpi_communicator);
 
     mass_matrix_scalar = 0.0;
 
     FEValues<dim> fev(fluid_solver.scalar_fe,
-                       fluid_solver.volume_quad_formula,
+                      fluid_solver.volume_quad_formula,
                       update_values | update_JxW_values);
 
-    
-    FullMatrix<double> local(dofs_per_cell,dofs_per_cell);
+    FullMatrix<double> local(dofs_per_cell, dofs_per_cell);
     std::vector<types::global_dof_index> ldofs(dofs_per_cell);
 
     for (auto cell : fluid_solver.scalar_dof_handler.active_cell_iterators())
-    {
-      if (cell->is_locally_owned() &&
-      fluid_solver.cell_property.get_data(cell)[0]->indicator == 1)
       {
-        fev.reinit(cell);
-        local = 0;
-        for (unsigned int q=0;q<fev.n_quadrature_points;++q)
-        {
-          for (unsigned int i=0;i<dofs_per_cell;++i)
+        if (cell->is_locally_owned() &&
+            fluid_solver.cell_property.get_data(cell)[0]->indicator == 1)
           {
-            for (unsigned int j=0;j<dofs_per_cell;++j)
-            {
-              local(i,j) += fev.shape_value(i,q)*fev.shape_value(j,q)*fev.JxW(q);
-            }
+            fev.reinit(cell);
+            local = 0;
+            for (unsigned int q = 0; q < fev.n_quadrature_points; ++q)
+              {
+                for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                  {
+                    for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                      {
+                        local(i, j) += fev.shape_value(i, q) *
+                                       fev.shape_value(j, q) * fev.JxW(q);
+                      }
+                  }
+              }
+            cell->get_dof_indices(ldofs);
+            scalar_projection_constraints.distribute_local_to_global(
+              local, ldofs, mass_matrix_scalar);
           }
-        }
-        cell->get_dof_indices(ldofs);
-        scalar_projection_constraints.distribute_local_to_global(local,ldofs,
-                                                                      mass_matrix_scalar);
       }
-    }
     mass_matrix_scalar.compress(VectorOperation::add);
 
     std::vector<types::global_dof_index> constrained_rows;
     constrained_rows.reserve(scalar_projection_constraints.n_constraints());
     for (const auto &c : scalar_projection_constraints.get_lines())
-    {
-      constrained_rows.push_back(c.index);
-    }
+      {
+        constrained_rows.push_back(c.index);
+      }
     mass_matrix_scalar.clear_rows(constrained_rows, 1.0);
     mass_matrix_scalar.compress(VectorOperation::insert);
-}
+  }
 
-template <int dim>
-void FSI_stokes<dim>::build_surface_mass_matrix()
-{
-
-  IndexSet surface_dofs(solid_solver.dof_handler.n_dofs());
-
-  for (const auto &cell : solid_solver.dof_handler.active_cell_iterators())
+  template <int dim>
+  void FSI_stokes<dim>::build_surface_mass_matrix()
   {
-    if (cell->subdomain_id() == solid_solver.this_mpi_process)
-    {
-      for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+
+    IndexSet surface_dofs(solid_solver.dof_handler.n_dofs());
+
+    for (const auto &cell : solid_solver.dof_handler.active_cell_iterators())
       {
-        if (cell->face(f)->at_boundary())
-        {
-          std::vector<types::global_dof_index> face_dof_indices(
-                    cell->get_fe().dofs_per_face);
-
-          cell->face(f)->get_dof_indices(face_dof_indices);
-
-          for (const auto id : face_dof_indices)
+        if (cell->subdomain_id() == solid_solver.this_mpi_process)
           {
-            surface_dofs.add_index(id);
+            for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+              {
+                if (cell->face(f)->at_boundary())
+                  {
+                    std::vector<types::global_dof_index> face_dof_indices(
+                      cell->get_fe().dofs_per_face);
+
+                    cell->face(f)->get_dof_indices(face_dof_indices);
+
+                    for (const auto id : face_dof_indices)
+                      {
+                        surface_dofs.add_index(id);
+                      }
+                  }
+              }
           }
-        }
       }
-    }
-  }
 
-  surface_dofs.compress();
+    surface_dofs.compress();
 
-  IndexSet interior_dofs = solid_solver.locally_owned_dofs;
+    IndexSet interior_dofs = solid_solver.locally_owned_dofs;
 
-  interior_dofs.subtract_set(surface_dofs);
+    interior_dofs.subtract_set(surface_dofs);
 
-  surface_constraints.clear();
+    surface_constraints.clear();
 
-  //surface_constraints.copy_from(solid_solver.constraints);
+    DoFTools::make_hanging_node_constraints(solid_solver.dof_handler,
+                                            surface_constraints);
 
-  DoFTools::make_hanging_node_constraints(solid_solver.dof_handler,
-                                          surface_constraints);
+    for (const auto id : interior_dofs)
+      {
+        surface_constraints.add_line(id);
+        surface_constraints.set_inhomogeneity(id, 0.);
+      }
 
-  for (const auto id : interior_dofs)
-  {
-    surface_constraints.add_line(id);
-    surface_constraints.set_inhomogeneity(id,0.);
-  }
+    surface_constraints.close();
 
-  surface_constraints.close();
+    DynamicSparsityPattern dsp(solid_solver.dof_handler.n_dofs(),
+                               solid_solver.dof_handler.n_dofs());
 
-  DynamicSparsityPattern dsp(solid_solver.dof_handler.n_dofs(),
-  solid_solver.dof_handler.n_dofs());
-
-  DoFTools::make_sparsity_pattern(solid_solver.dof_handler,
-    dsp,
-    surface_constraints,
-    /*keep_constrained_dofs =*/false);
+    DoFTools::make_sparsity_pattern(solid_solver.dof_handler,
+                                    dsp,
+                                    surface_constraints,
+                                    /*keep_constrained_dofs =*/false);
 
     dsp.compress();
 
     surface_mass_matrix.reinit(solid_solver.locally_owned_dofs,
-      solid_solver.locally_owned_dofs,   // col-set
-      dsp,
-      mpi_communicator);
+                               solid_solver.locally_owned_dofs,
+                               dsp,
+                               mpi_communicator);
 
     surface_mass_matrix = 0.0;
 
-
     FEFaceValues<dim> fe_face(solid_solver.fe,
-      solid_solver.face_quad_formula,
-      update_values | update_JxW_values);
+                              solid_solver.face_quad_formula,
+                              update_values | update_JxW_values);
 
-      const unsigned dofs_per_cell = solid_solver.fe.dofs_per_cell;
-      const unsigned n_q_face      = solid_solver.face_quad_formula.size();
-      FullMatrix<double>             local(dofs_per_cell,dofs_per_cell);
-      std::vector<types::global_dof_index>  ldof(dofs_per_cell);
+    const unsigned dofs_per_cell = solid_solver.fe.dofs_per_cell;
+    const unsigned n_q_face = solid_solver.face_quad_formula.size();
+    FullMatrix<double> local(dofs_per_cell, dofs_per_cell);
+    std::vector<types::global_dof_index> ldof(dofs_per_cell);
 
-      for (const auto &cell : solid_solver.dof_handler.active_cell_iterators())
+    for (const auto &cell : solid_solver.dof_handler.active_cell_iterators())
       {
         if (cell->subdomain_id() == solid_solver.this_mpi_process)
-        {
-          for (unsigned f=0; f<GeometryInfo<dim>::faces_per_cell; ++f)
           {
-            if (cell->face(f)->at_boundary()) 
-            {
-              fe_face.reinit(cell,f);
-              local = 0.0;
-              cell->get_dof_indices(ldof);
-
-              for (unsigned q=0; q<n_q_face; ++q)
+            for (unsigned f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
               {
-                for (unsigned i=0; i<dofs_per_cell; ++i)
-                {
-                  if (!surface_dofs.is_element(ldof[i]))   
+                if (cell->face(f)->at_boundary())
                   {
-                     continue;
-                  }
+                    fe_face.reinit(cell, f);
+                    local = 0.0;
+                    cell->get_dof_indices(ldof);
 
-                  for (unsigned j=0; j<dofs_per_cell; ++j)
-                  {
-                    if (!surface_dofs.is_element(ldof[j])) 
-                    {
-                       continue;
-                    }
-                    double val = 0.0;
-                    for (unsigned int c = 0; c < dim; ++c)
-                    {
-                      const double phi_i = fe_face.shape_value_component(i,q,c);
-                      const double phi_j = fe_face.shape_value_component(j,q,c);
-                      val += phi_i * phi_j;
-                    }
-                    local(i,j) += val * fe_face.JxW(q);
+                    for (unsigned q = 0; q < n_q_face; ++q)
+                      {
+                        for (unsigned i = 0; i < dofs_per_cell; ++i)
+                          {
+                            if (!surface_dofs.is_element(ldof[i]))
+                              {
+                                continue;
+                              }
+
+                            for (unsigned j = 0; j < dofs_per_cell; ++j)
+                              {
+                                if (!surface_dofs.is_element(ldof[j]))
+                                  {
+                                    continue;
+                                  }
+                                double val = 0.0;
+                                for (unsigned int c = 0; c < dim; ++c)
+                                  {
+                                    const double phi_i =
+                                      fe_face.shape_value_component(i, q, c);
+                                    const double phi_j =
+                                      fe_face.shape_value_component(j, q, c);
+                                    val += phi_i * phi_j;
+                                  }
+                                local(i, j) += val * fe_face.JxW(q);
+                              }
+                          }
+                      }
+
+                    surface_constraints.distribute_local_to_global(
+                      local, ldof, surface_mass_matrix);
                   }
-                }
               }
-
-             // cell->get_dof_indices(ldof);
-  
-              surface_constraints.distribute_local_to_global(local, ldof,
-                surface_mass_matrix);
-            }
           }
-        }
       }
-      surface_mass_matrix.compress(VectorOperation::add);
+    surface_mass_matrix.compress(VectorOperation::add);
 
-      IndexSet interior_owned = interior_dofs & solid_solver.locally_owned_dofs;
+    IndexSet interior_owned = interior_dofs & solid_solver.locally_owned_dofs;
 
-      std::vector<types::global_dof_index> interior_rows;
+    std::vector<types::global_dof_index> interior_rows;
 
-      interior_rows.reserve(interior_owned.n_elements());
+    interior_rows.reserve(interior_owned.n_elements());
 
-      for (auto it = interior_owned.begin(); it != interior_owned.end(); ++it)
+    for (auto it = interior_owned.begin(); it != interior_owned.end(); ++it)
       {
         interior_rows.push_back(*it);
       }
 
-      surface_mass_matrix.clear_rows(interior_rows, 1.0); 
+    surface_mass_matrix.clear_rows(interior_rows, 1.0);
 
-      surface_mass_matrix.compress(VectorOperation::insert);
+    surface_mass_matrix.compress(VectorOperation::insert);
+  }
 
-     /*
-      Mat mat = surface_mass_matrix.petsc_matrix();
+  template <int dim>
+  void FSI_stokes<dim>::compute_fluid_traction_projection()
+  {
+    build_surface_mass_matrix();
 
-      PetscInt m, n;
-      MatGetSize(mat, &m, &n);
-      Assert(m == n, ExcMessage("Mass matrix is not square!"));
-
-      PetscInt start, end;
-      MatGetOwnershipRange(mat, &start, &end);
-
-      std::vector<PetscInt> rows;
-      std::vector<PetscInt> cols;
-      std::vector<double> vals;
-
-      for (PetscInt row = start; row < end; ++row)
+    for (unsigned d = 0; d < dim; ++d)
       {
-        PetscInt ncols;
-        const PetscInt *row_cols;
-        const PetscScalar *row_vals;
-        MatGetRow(mat, row, &ncols, &row_cols, &row_vals);
-        for (PetscInt j = 0; j < ncols; ++j)
-        {
-          rows.push_back(row);
-          cols.push_back(row_cols[j]);
-          vals.push_back(row_vals[j]);   
-        }
-        MatRestoreRow(mat, row, &ncols, &row_cols, &row_vals);
+        projected_fluid_traction[d] = 0.0;
       }
 
-      int rank = Utilities::MPI::this_mpi_process(mpi_communicator);
-      int size = Utilities::MPI::n_mpi_processes(mpi_communicator);
-      int local_nnz = rows.size();
-      std::vector<int> nnz_per_proc(size);
-
-      MPI_Gather(&local_nnz, 1, MPI_INT, nnz_per_proc.data(), 1, MPI_INT, 0, mpi_communicator);
-
-      if (rank == 0)
+    std::array<PETScWrappers::MPI::Vector, dim> rhs;
+    for (unsigned d = 0; d < dim; ++d)
       {
-        int total_nnz = std::accumulate(nnz_per_proc.begin(), nnz_per_proc.end(), 0);
-        std::vector<int> offsets(size);
-        offsets[0] = 0;
-        for (int p = 1; p < size; ++p)
-        {
-          offsets[p] = offsets[p - 1] + nnz_per_proc[p - 1];
-        }
+        rhs[d].reinit(solid_solver.locally_owned_dofs, mpi_communicator);
+      }
 
-        // Allocate arrays for all entries
-        std::vector<PetscInt> all_rows(total_nnz);
-        std::vector<PetscInt> all_cols(total_nnz);
-        std::vector<double> all_vals(total_nnz);
+    std::vector<std::vector<PETScWrappers::MPI::Vector>> fluid_stress(
+      dim,
+      std::vector<PETScWrappers::MPI::Vector>(
+        dim,
+        PETScWrappers::MPI::Vector(fluid_solver.locally_owned_scalar_dofs,
+                                   fluid_solver.locally_relevant_scalar_dofs,
+                                   mpi_communicator)));
+    fluid_stress = fluid_solver.stress;
 
-        for (int i = 0; i < local_nnz; ++i)
-        {
-            all_rows[offsets[rank] + i] = rows[i];
-            all_cols[offsets[rank] + i] = cols[i];
-            all_vals[offsets[rank] + i] = vals[i];
-        }
+    FEFaceValues<dim> solid_face(solid_solver.fe,
+                                 solid_solver.face_quad_formula,
+                                 update_values | update_quadrature_points |
+                                   update_normal_vectors | update_JxW_values);
 
-        for (int p = 1; p < size; ++p)
-        {
-          MPI_Recv(all_rows.data() + offsets[p], nnz_per_proc[p], MPI_INT, p, 0, mpi_communicator, MPI_STATUS_IGNORE);
-          MPI_Recv(all_cols.data() + offsets[p], nnz_per_proc[p], MPI_INT, p, 1, mpi_communicator, MPI_STATUS_IGNORE);
-          MPI_Recv(all_vals.data() + offsets[p], nnz_per_proc[p], MPI_DOUBLE, p, 2, mpi_communicator, MPI_STATUS_IGNORE);
-        }
+    const unsigned int n_q_face = solid_solver.face_quad_formula.size();
+    const unsigned int dofs_per_cell_s = solid_solver.fe.dofs_per_cell;
+    std::vector<types::global_dof_index> s_dofs(dofs_per_cell_s);
 
-        std::ofstream file("mass_matrix.mm");
-        file << "%%MatrixMarket matrix coordinate real general" << std::endl;
-        file << m << " " << n << " " << total_nnz << std::endl;
-        for (auto i = 0; i < total_nnz; ++i)
-        {
-            file << all_rows[i] + 1 << " " << all_cols[i] + 1 << " " << all_vals[i] << std::endl; // 1-based indexing
-        }
-        file.close();
-      } else
+    std::vector<Vector<double>> local_rhs(dim, Vector<double>(dofs_per_cell_s));
+
+    for (const auto &s_cell : solid_solver.dof_handler.active_cell_iterators())
       {
-        MPI_Send(rows.data(), local_nnz, MPI_INT, 0, 0, mpi_communicator);
-        MPI_Send(cols.data(), local_nnz, MPI_INT, 0, 1, mpi_communicator);
-        MPI_Send(vals.data(), local_nnz, MPI_DOUBLE, 0, 2, mpi_communicator);
-      }*/
-       
-}
-
-template <int dim>
-void FSI_stokes<dim>::compute_fluid_traction_projection()
-{
-  build_surface_mass_matrix();
-
-  for (unsigned d = 0; d < dim; ++d)
-  {
-    projected_fluid_traction[d] = 0.0;
-  }
-
-  std::array<PETScWrappers::MPI::Vector, dim> rhs;
-  for (unsigned d = 0; d < dim; ++d)
-  {
-    rhs[d].reinit(solid_solver.locally_owned_dofs,
-      mpi_communicator);
-  }
-
-  std::vector<std::vector<PETScWrappers::MPI::Vector>>
-  fluid_stress(dim, std::vector<PETScWrappers::MPI::Vector>(
-                        dim, PETScWrappers::MPI::Vector(
-                                 fluid_solver.locally_owned_scalar_dofs,
-                                 fluid_solver.locally_relevant_scalar_dofs,
-                                 mpi_communicator)));
-   fluid_stress = fluid_solver.stress;   // just a reference copy
-
-   FEFaceValues<dim> solid_face(solid_solver.fe,
-    solid_solver.face_quad_formula,
-    update_values |
-    update_quadrature_points |
-    update_normal_vectors |
-    update_JxW_values);
-
-   const unsigned int n_q_face        = solid_solver.face_quad_formula.size();
-   const unsigned int dofs_per_cell_s = solid_solver.fe.dofs_per_cell;
-   std::vector<types::global_dof_index> s_dofs(dofs_per_cell_s);
-
-   std::vector<Vector<double>> local_rhs(dim,
-    Vector<double>(dofs_per_cell_s));
-
-   for (const auto &s_cell : solid_solver.dof_handler.active_cell_iterators())
-   {
-    if (s_cell->subdomain_id() == solid_solver.this_mpi_process)
-    {
-      for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
-      {
-        if (s_cell->face(f)->at_boundary()) 
-        {
-          solid_face.reinit(s_cell, f);
-          s_cell->get_dof_indices(s_dofs);
-
-          for (unsigned d = 0; d < dim; ++d)
+        if (s_cell->subdomain_id() == solid_solver.this_mpi_process)
           {
-            local_rhs[d] = 0.0;
-          }
-
-          for (unsigned int q = 0; q < n_q_face; ++q)
-          {
-            const Point<dim>  x_q   = solid_face.quadrature_point(q);
-            const Tensor<1,dim> n_q = solid_face.normal_vector(q);
-
-            Vector<double> value(dim+1);
-
-            Utils::GridInterpolator<dim,
-                                      PETScWrappers::MPI::BlockVector>
-                      interp_vec(fluid_solver.dof_handler, x_q, vertices_mask);
-
-            if (!interp_vec.found_cell()) 
-            {
-              continue;    
-            }
-            
-            interp_vec.point_value(fluid_solver.present_solution, value);
-            
-            const double p_q = value[dim];
-
-             /* viscous part from scalar stresses ------------------------- */
-             SymmetricTensor<2,dim> visc_stress;
-             Utils::GridInterpolator<dim,
-             PETScWrappers::MPI::Vector> interp_scalar(
-                  fluid_solver.scalar_dof_handler, x_q);
-
-            for (unsigned int i = 0, c = 0; i < dim; ++i)
-            {
-              for (unsigned int j = i; j < dim; ++j, ++c)
+            for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
               {
-                Vector<double> s_comp(1);
-                interp_scalar.point_value(fluid_stress[i][j], s_comp);
-                visc_stress[i][j] = s_comp[0];
-              }
-            }
+                if (s_cell->face(f)->at_boundary())
+                  {
+                    solid_face.reinit(s_cell, f);
+                    s_cell->get_dof_indices(s_dofs);
 
-              /* total stress and traction */
-              SymmetricTensor<2,dim> total =
-                    visc_stress - p_q * Physics::Elasticity::StandardTensors<dim>::I;
-              const Tensor<1,dim> t_q = total * n_q;
-              
-              for (unsigned int i = 0; i < dofs_per_cell_s; ++i)
-              {
-                //const double phi_i = solid_face.shape_value(i,q);
-                const unsigned int comp_i = solid_solver.fe.system_to_component_index(i).first;
-                for (unsigned int d = 0; d < dim; ++d)
-                {
-                    if (comp_i != d) 
-                    {
-                       continue;
-                    }  
-                     //local_rhs[d][i] += t_q[d] * phi_i * solid_face.JxW(q);
-                     const double phi_i = solid_face.shape_value_component(i,q,d);
-                     local_rhs[d][i] += t_q[d] * phi_i * solid_face.JxW(q);     
-                }
+                    for (unsigned d = 0; d < dim; ++d)
+                      {
+                        local_rhs[d] = 0.0;
+                      }
+
+                    for (unsigned int q = 0; q < n_q_face; ++q)
+                      {
+                        const Point<dim> x_q = solid_face.quadrature_point(q);
+                        const Tensor<1, dim> n_q = solid_face.normal_vector(q);
+
+                        Vector<double> value(dim + 1);
+
+                        Utils::GridInterpolator<dim,
+                                                PETScWrappers::MPI::BlockVector>
+                          interp_vec(
+                            fluid_solver.dof_handler, x_q, vertices_mask);
+
+                        if (!interp_vec.found_cell())
+                          {
+                            continue;
+                          }
+
+                        interp_vec.point_value(fluid_solver.present_solution,
+                                               value);
+
+                        const double p_q = value[dim];
+
+                        SymmetricTensor<2, dim> visc_stress;
+                        Utils::GridInterpolator<dim, PETScWrappers::MPI::Vector>
+                          interp_scalar(fluid_solver.scalar_dof_handler, x_q);
+
+                        for (unsigned int i = 0, c = 0; i < dim; ++i)
+                          {
+                            for (unsigned int j = i; j < dim; ++j, ++c)
+                              {
+                                Vector<double> s_comp(1);
+                                interp_scalar.point_value(fluid_stress[i][j],
+                                                          s_comp);
+                                visc_stress[i][j] = s_comp[0];
+                              }
+                          }
+
+                        SymmetricTensor<2, dim> total =
+                          visc_stress -
+                          p_q * Physics::Elasticity::StandardTensors<dim>::I;
+                        const Tensor<1, dim> t_q = total * n_q;
+
+                        for (unsigned int i = 0; i < dofs_per_cell_s; ++i)
+                          {
+
+                            const unsigned int comp_i =
+                              solid_solver.fe.system_to_component_index(i)
+                                .first;
+                            for (unsigned int d = 0; d < dim; ++d)
+                              {
+                                if (comp_i != d)
+                                  {
+                                    continue;
+                                  }
+
+                                const double phi_i =
+                                  solid_face.shape_value_component(i, q, d);
+                                local_rhs[d][i] +=
+                                  t_q[d] * phi_i * solid_face.JxW(q);
+                              }
+                          }
+                      }
+                    for (unsigned int d = 0; d < dim; ++d)
+                      {
+                        surface_constraints.distribute_local_to_global(
+                          local_rhs[d], s_dofs, rhs[d]);
+                      }
+                  }
               }
-            
           }
-           for (unsigned int d = 0; d < dim; ++d)
-           {
-            surface_constraints.distribute_local_to_global(local_rhs[d],
-              s_dofs,
-              rhs[d]);
-           }
-        }
       }
-    }
-   }
-   for (auto &v : rhs)
-   {
-    v.compress(VectorOperation::add);
-   }
-
-   SolverControl  ctl(surface_mass_matrix.m(),1e-12);
-   PETScWrappers::SparseDirectMUMPS solver(ctl, mpi_communicator);
-
-   for (unsigned d = 0; d < dim; ++d)
-   {
-    solver.solve(surface_mass_matrix, projected_fluid_traction[d], rhs[d]);
-    surface_constraints.distribute(projected_fluid_traction[d]);
-    projected_fluid_traction[d].compress(VectorOperation::insert);
-   }
-
-   /*
-   for (unsigned int d = 0; d < dim; ++d)
-   {
-    PETScWrappers::MPI::Vector Ax(rhs[d]);
-    surface_mass_matrix.vmult(Ax, projected_fluid_traction[d]);
-
-    Ax -= rhs[d];
-
-    const double res_norm  = Ax.l2_norm();  
-    const double rhs_norm  = rhs[d].l2_norm();
-    const double rel_error = (rhs_norm > 1e-30)
-                             ? res_norm / rhs_norm
-                             : 0.0;
-
-    if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
-    {
-      pcout << "Traction projection check (component " << d << "):  "
-      << "||M t - b||_2 = " << res_norm
-      << "   (rel " << rel_error << ")" << std::endl;
-
-      if (rel_error > 1e-8)
+    for (auto &v : rhs)
       {
-        pcout << "  WARNING: residual is large – verify assembly/solve." << std::endl;
+        v.compress(VectorOperation::add);
       }
-    }
-   }*/
-   }
 
+    SolverControl ctl(surface_mass_matrix.m(), 1e-12);
+    PETScWrappers::SparseDirectMUMPS solver(ctl, mpi_communicator);
 
-template <int dim>
-void FSI_stokes<dim>::compute_stress_l2_projection()
-{
-  build_arti_scalar_mass_matrix();
-
-  std::vector<std::vector<Vector<double>>> loc_sigma(dim,
-    std::vector<Vector<double>>(dim));
-
-  for (unsigned int i=0;i<dim;++i)
-  {
-    for (unsigned int j=i;j<dim;++j)
-    {
-      loc_sigma[i][j] = solid_solver.stress[i][j];
-    }
+    for (unsigned d = 0; d < dim; ++d)
+      {
+        solver.solve(surface_mass_matrix, projected_fluid_traction[d], rhs[d]);
+        surface_constraints.distribute(projected_fluid_traction[d]);
+        projected_fluid_traction[d].compress(VectorOperation::insert);
+      }
   }
 
-  const unsigned s = dim + dim*(dim-1)/2;
-  Assert(projected_solid_stress.size()==s, ExcInternalError());
+  template <int dim>
+  void FSI_stokes<dim>::compute_stress_l2_projection()
+  {
+    build_arti_scalar_mass_matrix();
 
-  std::vector<PETScWrappers::MPI::Vector> rhs(s,
-    PETScWrappers::MPI::Vector(fluid_solver.locally_owned_scalar_dofs,
-      mpi_communicator));
+    std::vector<std::vector<Vector<double>>> loc_sigma(
+      dim, std::vector<Vector<double>>(dim));
 
-      FEValues<dim> fev(fluid_solver.scalar_fe,
-        fluid_solver.volume_quad_formula,
-        update_values | update_quadrature_points | update_JxW_values);
-    
+    for (unsigned int i = 0; i < dim; ++i)
+      {
+        for (unsigned int j = i; j < dim; ++j)
+          {
+            loc_sigma[i][j] = solid_solver.stress[i][j];
+          }
+      }
+
+    const unsigned s = dim + dim * (dim - 1) / 2;
+    Assert(projected_solid_stress.size() == s, ExcInternalError());
+
+    std::vector<PETScWrappers::MPI::Vector> rhs(
+      s,
+      PETScWrappers::MPI::Vector(fluid_solver.locally_owned_scalar_dofs,
+                                 mpi_communicator));
+
+    FEValues<dim> fev(fluid_solver.scalar_fe,
+                      fluid_solver.volume_quad_formula,
+                      update_values | update_quadrature_points |
+                        update_JxW_values);
+
     const unsigned dofs_per_cell = fluid_solver.scalar_fe.dofs_per_cell;
     Vector<double> local_rhs(dofs_per_cell);
     std::vector<types::global_dof_index> ldofs(dofs_per_cell);
 
     for (auto cell : fluid_solver.scalar_dof_handler.active_cell_iterators())
-    {
-      if (cell->is_locally_owned() &&
-      fluid_solver.cell_property.get_data(cell)[0]->indicator == 1)
       {
-        fev.reinit(cell);
-        cell->get_dof_indices(ldofs);
-        
-        for (unsigned comp=0, i=0;i<dim;++i)
-        {
-          for (unsigned j=0;j<=i;++j,++comp)
+        if (cell->is_locally_owned() &&
+            fluid_solver.cell_property.get_data(cell)[0]->indicator == 1)
           {
-            local_rhs = 0;
-            for (unsigned int q=0;q<fev.n_quadrature_points;++q)
-            {
-              const Point<dim> x_q = fev.quadrature_point(q);
-              Vector<double> sig_ij(1);
-              //Utils::GridInterpolator<dim,Vector<double>> interp(
-                                   //solid_solver.scalar_dof_handler, x_q);
+            fev.reinit(cell);
+            cell->get_dof_indices(ldofs);
 
-              Utils::GridInterpolator<dim,PETScWrappers::MPI::Vector> interp(
-                                       solid_solver.scalar_dof_handler, x_q);
-
-              if (!interp.found_cell())
+            for (unsigned comp = 0, i = 0; i < dim; ++i)
               {
-                continue;    
+                for (unsigned j = 0; j <= i; ++j, ++comp)
+                  {
+                    local_rhs = 0;
+                    for (unsigned int q = 0; q < fev.n_quadrature_points; ++q)
+                      {
+                        const Point<dim> x_q = fev.quadrature_point(q);
+                        Vector<double> sig_ij(1);
+
+                        Utils::GridInterpolator<dim, PETScWrappers::MPI::Vector>
+                          interp(solid_solver.scalar_dof_handler, x_q);
+
+                        if (!interp.found_cell())
+                          {
+                            continue;
+                          }
+
+                        const auto &sig_vec = solid_solver.stress[i][j];
+                        interp.point_value(sig_vec, sig_ij);
+
+                        for (unsigned int a = 0; a < dofs_per_cell; ++a)
+                          {
+                            local_rhs[a] +=
+                              sig_ij[0] * fev.shape_value(a, q) * fev.JxW(q);
+                          }
+                      }
+
+                    scalar_projection_constraints.distribute_local_to_global(
+                      local_rhs, ldofs, rhs[comp]);
+                  }
               }
-
-              const auto &sig_vec = solid_solver.stress[i][j];
-              interp.point_value(sig_vec, sig_ij);
-
-              //interp.point_value(loc_sigma[i][j], sig_ij);
-
-              for (unsigned int a=0;a<dofs_per_cell;++a)
-              {
-                local_rhs[a] += sig_ij[0]*fev.shape_value(a,q)*fev.JxW(q);
-              }
-            }
-
-           scalar_projection_constraints.distribute_local_to_global(local_rhs,
-                                                                   ldofs,
-                                                                    rhs[comp]);
           }
-        }
       }
-    }
 
-    for (auto &v:rhs) 
-    {
-      v.compress(VectorOperation::add);
-    }
+    for (auto &v : rhs)
+      {
+        v.compress(VectorOperation::add);
+      }
 
-    SolverControl ctl(rhs[0].size(),1e-12); 
-    PETScWrappers::SparseDirectMUMPS direct(ctl,mpi_communicator);
-    
-    for (unsigned c=0;c<s;++c)
-    {
-      direct.solve(mass_matrix_scalar, projected_solid_stress[c], rhs[c]);
-      scalar_projection_constraints.distribute(projected_solid_stress[c]);
-      projected_solid_stress[c].compress(VectorOperation::insert);
-    }
+    SolverControl ctl(rhs[0].size(), 1e-12);
+    PETScWrappers::SparseDirectMUMPS direct(ctl, mpi_communicator);
 
-}
+    for (unsigned c = 0; c < s; ++c)
+      {
+        direct.solve(mass_matrix_scalar, projected_solid_stress[c], rhs[c]);
+        scalar_projection_constraints.distribute(projected_solid_stress[c]);
+        projected_solid_stress[c].compress(VectorOperation::insert);
+      }
+  }
 
+  template <int dim>
+  void FSI_stokes<dim>::compute_velocity_l2_projection()
+  {
+    PETScWrappers::MPI::Vector rhs_velocity(fluid_solver.owned_partitioning[0],
+                                            mpi_communicator);
+    rhs_velocity = 0.0;
 
-template <int dim>
-void FSI_stokes<dim>::compute_velocity_l2_projection()
-{
-  PETScWrappers::MPI::Vector rhs_velocity(fluid_solver.owned_partitioning[0], mpi_communicator);
-  rhs_velocity = 0.0;
+    FEValues<dim> fe_values(fluid_solver.fe,
+                            fluid_solver.volume_quad_formula,
+                            update_values | update_quadrature_points |
+                              update_JxW_values);
 
-  FEValues<dim> fe_values(fluid_solver.fe, fluid_solver.volume_quad_formula,
-    update_values | update_quadrature_points | update_JxW_values);
+    const unsigned int dofs_per_cell = fluid_solver.fe.dofs_per_cell;
+    const unsigned int n_q_points = fluid_solver.volume_quad_formula.size();
 
-  const unsigned int dofs_per_cell = fluid_solver.fe.dofs_per_cell;
-  const unsigned int n_q_points = fluid_solver.volume_quad_formula.size();
+    // Identify velocity DoFs
+    std::vector<unsigned int> velocity_local_indices;
+    for (unsigned int i = 0; i < dofs_per_cell; ++i)
+      if (fluid_solver.fe.system_to_component_index(i).first < dim)
+        velocity_local_indices.push_back(i);
+    const unsigned int n_velocity_dofs = velocity_local_indices.size();
 
+    Vector<double> local_rhs(n_velocity_dofs);
+    std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+    std::vector<types::global_dof_index> velocity_global_indices(
+      n_velocity_dofs);
 
-  // Identify velocity DoFs
-  std::vector<unsigned int> velocity_local_indices;
-  for (unsigned int i = 0; i < dofs_per_cell; ++i)
-    if (fluid_solver.fe.system_to_component_index(i).first < dim)
-      velocity_local_indices.push_back(i);
-  const unsigned int n_velocity_dofs = velocity_local_indices.size();
+    build_projection_constraints();
 
-  Vector<double> local_rhs(n_velocity_dofs);
-  std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
-  std::vector<types::global_dof_index> velocity_global_indices(n_velocity_dofs);
+    // Localize solid velocity for interpolation
+    Vector<double> localized_solid_velocity(solid_solver.current_velocity);
 
-  //AffineConstraints<double> empty_constraints;
-  //DoFTools::make_hanging_node_constraints(fluid_solver.dof_handler, empty_constraints);
-  //empty_constraints.close();
-  build_projection_constraints();
+    for (auto cell = fluid_solver.dof_handler.begin_active();
+         cell != fluid_solver.dof_handler.end();
+         ++cell)
+      {
 
+        if (!cell->is_locally_owned())
+          continue;
+        auto p = fluid_solver.cell_property.get_data(cell);
+        if (p[0]->indicator == 0)
+          continue;
+        fe_values.reinit(cell);
+        local_rhs = 0;
 
-  // Localize solid velocity for interpolation
-  Vector<double> localized_solid_velocity(solid_solver.current_velocity);
-
-  for (auto cell = fluid_solver.dof_handler.begin_active();
-       cell != fluid_solver.dof_handler.end(); ++cell)
-       {
-
-        if (!cell->is_locally_owned()) continue;
-          auto p = fluid_solver.cell_property.get_data(cell);
-          if (p[0]->indicator == 0) continue;
-          fe_values.reinit(cell);
-          local_rhs = 0;
-
-          
-          for (unsigned int q = 0; q < n_q_points; ++q)
+        for (unsigned int q = 0; q < n_q_points; ++q)
           {
             Point<dim> point = fe_values.quadrature_point(q);
             Vector<double> solid_vel(dim);
             Utils::GridInterpolator<dim, Vector<double>> interpolator(
-                solid_solver.dof_handler, point);
+              solid_solver.dof_handler, point);
 
-                if (!interpolator.found_cell())
-                {
-                  std::stringstream message;
-                  message
-                    << "Cannot find point in solid: " << point
-                    << std::endl;
-                  AssertThrow(interpolator.found_cell(),
-                              ExcMessage(message.str()));
-                }
-                interpolator.point_value(localized_solid_velocity, solid_vel);
+            if (!interpolator.found_cell())
+              {
+                std::stringstream message;
+                message << "Cannot find point in solid: " << point << std::endl;
+                AssertThrow(interpolator.found_cell(),
+                            ExcMessage(message.str()));
+              }
+            interpolator.point_value(localized_solid_velocity, solid_vel);
 
-                for (unsigned int k = 0; k < n_velocity_dofs; ++k)
-                {
-                  unsigned int i = velocity_local_indices[k];
-                  //unsigned int component = fluid_solver.fe.system_to_component_index(i).first;
-                  const unsigned int component = fluid_solver.fe.system_to_component_index(i).first;
+            for (unsigned int k = 0; k < n_velocity_dofs; ++k)
+              {
+                unsigned int i = velocity_local_indices[k];
+                const unsigned int component =
+                  fluid_solver.fe.system_to_component_index(i).first;
 
-                  //local_rhs(k) += solid_vel[component] * fe_values.shape_value(i, q) *
-                                  //fe_values.JxW(q);
+                local_rhs(k) +=
+                  solid_vel[component] *
+                  fe_values.shape_value_component(i, q, component) *
+                  fe_values.JxW(q);
+              }
+          }
+        cell->get_dof_indices(local_dof_indices);
+        for (unsigned int k = 0; k < n_velocity_dofs; ++k)
+          velocity_global_indices[k] =
+            local_dof_indices[velocity_local_indices[k]];
 
-                   local_rhs(k) += solid_vel[component] * fe_values.shape_value_component(i,q,component) *
-                                    fe_values.JxW(q);
+        projection_constraints.distribute_local_to_global(
+          local_rhs, velocity_global_indices, rhs_velocity);
+      }
+    rhs_velocity.compress(VectorOperation::add);
 
-                }
-          } 
-          cell->get_dof_indices(local_dof_indices);
-          for (unsigned int k = 0; k < n_velocity_dofs; ++k)
-          velocity_global_indices[k] = local_dof_indices[velocity_local_indices[k]];
+    // Solve
+    PETScWrappers::MPI::Vector projected_velocity(
+      fluid_solver.owned_partitioning[0], mpi_communicator);
+    projected_velocity = 0.0;
 
-          //empty_constraints.distribute_local_to_global(local_rhs, velocity_global_indices, rhs_velocity);
-          projection_constraints.distribute_local_to_global(local_rhs, velocity_global_indices, rhs_velocity);
-         
-       }
-       rhs_velocity.compress(VectorOperation::add);
+    SolverControl solver_control(
+      rhs_velocity.size(),
+      rhs_velocity.l2_norm() > 1e-30 ? 1e-12 * rhs_velocity.l2_norm() : 1e-25);
+    PETScWrappers::SparseDirectMUMPS direct_solver(solver_control,
+                                                   mpi_communicator);
 
-       // Solve
-       PETScWrappers::MPI::Vector projected_velocity(fluid_solver.owned_partitioning[0], mpi_communicator);
-       projected_velocity = 0.0;
-        
-        //SolverControl solver_control(rhs_velocity.size(), 1e-12 * rhs_velocity.l2_norm());
-        SolverControl   solver_control(rhs_velocity.size(), rhs_velocity.l2_norm() > 1e-30 ? 1e-12 * rhs_velocity.l2_norm() : 1e-25);
-        PETScWrappers::SparseDirectMUMPS direct_solver(solver_control,
-          mpi_communicator);
+    direct_solver.solve(mass_matrix_velocity, projected_velocity, rhs_velocity);
 
-         direct_solver.solve(mass_matrix_velocity,
-            projected_velocity,
-            rhs_velocity);  
+    projection_constraints.distribute(projected_velocity);
 
-        projection_constraints.distribute(projected_velocity);
-        //empty_constraints.distribute(projected_velocity);
-        
-        projected_solid_velocity.block(0) = projected_velocity;
-        projected_solid_velocity.block(0).compress(VectorOperation::insert);
-}
+    projected_solid_velocity.block(0) = projected_velocity;
+    projected_solid_velocity.block(0).compress(VectorOperation::insert);
+  }
 
-template <int dim>
-void FSI_stokes<dim>::compute_acceleration_l2_projection()
-{
-  PETScWrappers::MPI::Vector rhs_acc(fluid_solver.owned_partitioning[0],
-                                      mpi_communicator);
+  template <int dim>
+  void FSI_stokes<dim>::compute_acceleration_l2_projection()
+  {
+    PETScWrappers::MPI::Vector rhs_acc(fluid_solver.owned_partitioning[0],
+                                       mpi_communicator);
 
-  rhs_acc = 0.0;
+    rhs_acc = 0.0;
 
     FEValues<dim> fe_values(fluid_solver.fe,
-                              fluid_solver.volume_quad_formula,
-                              update_values | update_quadrature_points |
-                                update_JxW_values);
+                            fluid_solver.volume_quad_formula,
+                            update_values | update_quadrature_points |
+                              update_JxW_values);
 
     const unsigned int dofs_per_cell = fluid_solver.fe.dofs_per_cell;
-    const unsigned int n_q_points    = fluid_solver.volume_quad_formula.size();
+    const unsigned int n_q_points = fluid_solver.volume_quad_formula.size();
 
     std::vector<unsigned int> vel_idx;
     for (unsigned int i = 0; i < dofs_per_cell; ++i)
-    {
-      if (fluid_solver.fe.system_to_component_index(i).first < dim)
       {
-        vel_idx.push_back(i);
+        if (fluid_solver.fe.system_to_component_index(i).first < dim)
+          {
+            vel_idx.push_back(i);
+          }
       }
-    }
     const unsigned int n_vdofs = vel_idx.size();
 
     Vector<double> local_rhs(n_vdofs);
@@ -1417,56 +1141,56 @@ void FSI_stokes<dim>::compute_acceleration_l2_projection()
     Vector<double> loc_acc(solid_solver.current_acceleration);
 
     for (auto cell : fluid_solver.dof_handler.active_cell_iterators())
-    {
-      if (cell->is_locally_owned() &&
-              fluid_solver.cell_property.get_data(cell)[0]->indicator == 1)
-              {
-                fe_values.reinit(cell);
-                local_rhs = 0;
+      {
+        if (cell->is_locally_owned() &&
+            fluid_solver.cell_property.get_data(cell)[0]->indicator == 1)
+          {
+            fe_values.reinit(cell);
+            local_rhs = 0;
 
-                for (unsigned int q = 0; q < n_q_points; ++q)
-                {
-                  Point<dim> x_q = fe_values.quadrature_point(q);
-                  Vector<double> a_s(dim);
-                  Utils::GridInterpolator<dim, Vector<double>> interp(solid_solver.dof_handler, x_q);
-                  if (!interp.found_cell())
+            for (unsigned int q = 0; q < n_q_points; ++q)
+              {
+                Point<dim> x_q = fe_values.quadrature_point(q);
+                Vector<double> a_s(dim);
+                Utils::GridInterpolator<dim, Vector<double>> interp(
+                  solid_solver.dof_handler, x_q);
+                if (!interp.found_cell())
                   {
                     continue;
                   }
-                  //Utils::GridInterpolator<dim, Vector<double>>(solid_solver.dof_handler,
-                   // x_q).point_value(loc_acc, a_s);
-                   interp.point_value(loc_acc, a_s);
-                  
-                    for (unsigned int k = 0; k < n_vdofs; ++k)
-                    {
-                      const unsigned int i = vel_idx[k];
-                      const unsigned int c =  fluid_solver.fe.system_to_component_index(i).first;
-                      local_rhs(k) += a_s[c] *
-                                      fe_values.shape_value_component(i, q, c) *
-                                      fe_values.JxW(q);
-                    }
-                  
-                }
 
-                cell->get_dof_indices(ldof);
+                interp.point_value(loc_acc, a_s);
+
                 for (unsigned int k = 0; k < n_vdofs; ++k)
-                {
-                  gdof[k] = ldof[vel_idx[k]];
-                }
-                projection_constraints.distribute_local_to_global(local_rhs,gdof,rhs_acc);
+                  {
+                    const unsigned int i = vel_idx[k];
+                    const unsigned int c =
+                      fluid_solver.fe.system_to_component_index(i).first;
+                    local_rhs(k) += a_s[c] *
+                                    fe_values.shape_value_component(i, q, c) *
+                                    fe_values.JxW(q);
+                  }
               }
-    }
+
+            cell->get_dof_indices(ldof);
+            for (unsigned int k = 0; k < n_vdofs; ++k)
+              {
+                gdof[k] = ldof[vel_idx[k]];
+              }
+            projection_constraints.distribute_local_to_global(
+              local_rhs, gdof, rhs_acc);
+          }
+      }
 
     rhs_acc.compress(VectorOperation::add);
 
     PETScWrappers::MPI::Vector proj_acc(fluid_solver.owned_partitioning[0],
-      mpi_communicator);
+                                        mpi_communicator);
 
-      const double rhs_norm = rhs_acc.l2_norm();
+    const double rhs_norm = rhs_acc.l2_norm();
 
-    //SolverControl ctl(rhs_acc.size(), 1e-12 * rhs_acc.l2_norm());
-
-    SolverControl ctl(rhs_acc.size(), rhs_norm > 1e-30 ? 1e-12 * rhs_norm : 1e-25);
+    SolverControl ctl(rhs_acc.size(),
+                      rhs_norm > 1e-30 ? 1e-12 * rhs_norm : 1e-25);
 
     PETScWrappers::SparseDirectMUMPS solver(ctl, mpi_communicator);
 
@@ -1476,8 +1200,7 @@ void FSI_stokes<dim>::compute_acceleration_l2_projection()
 
     projected_solid_acceleration.block(0) = proj_acc;
     projected_solid_acceleration.block(0).compress(VectorOperation::insert);
-}
-
+  }
 
   template <int dim>
   void FSI_stokes<dim>::find_fluid_bc()
@@ -1547,12 +1270,10 @@ void FSI_stokes<dim>::compute_acceleration_l2_projection()
     std::vector<double> p(unit_points.size());
     std::vector<Tensor<2, dim>> grad_v(unit_points.size());
     std::vector<Tensor<1, dim>> v(unit_points.size());
-    
+
     // projected solid velocity and acc
     std::vector<Tensor<1, dim>> vs_projected(unit_points.size());
     std::vector<Tensor<1, dim>> as_projected(unit_points.size());
-
-    //std::vector<Tensor<1, dim>> previous_vel(unit_points.size());
 
     MappingQGeneric<dim> mapping(parameters.fluid_velocity_degree);
     Quadrature<dim> dummy_q(unit_points);
@@ -1624,26 +1345,27 @@ void FSI_stokes<dim>::compute_acceleration_l2_projection()
                 stress_index++;
               }
           }*/
-          
-          // NEW get projected solid stress and the fluid stress
-          
-          for (unsigned int i=0;i<dim;++i)
+
+        // get projected solid stress and the fluid stress
+
+        for (unsigned int i = 0; i < dim; ++i)
           {
-            for (unsigned int j=0;j<=i;++j,++stress_index)
-            {
-              scalar_dummy_fe_values.get_function_values(
-                               relevant_partition_stress[i][j], f_stress_component);
-              
-              std::vector<double> sigma_proj(scalar_unit_points.size());
-
-              scalar_dummy_fe_values.get_function_values(
-                projected_solid_stress[stress_index], sigma_proj);
-
-              for (unsigned int k=0;k<scalar_unit_points.size();++k)
+            for (unsigned int j = 0; j <= i; ++j, ++stress_index)
               {
-                f_cell_stress[stress_index][k] = f_stress_component[k] - sigma_proj[k];
+                scalar_dummy_fe_values.get_function_values(
+                  relevant_partition_stress[i][j], f_stress_component);
+
+                std::vector<double> sigma_proj(scalar_unit_points.size());
+
+                scalar_dummy_fe_values.get_function_values(
+                  projected_solid_stress[stress_index], sigma_proj);
+
+                for (unsigned int k = 0; k < scalar_unit_points.size(); ++k)
+                  {
+                    f_cell_stress[stress_index][k] =
+                      f_stress_component[k] - sigma_proj[k];
+                  }
               }
-            }
           }
 
         for (unsigned int i = 0; i < scalar_unit_points.size(); ++i)
@@ -1662,18 +1384,18 @@ void FSI_stokes<dim>::compute_acceleration_l2_projection()
               solid_solver.scalar_dof_handler, scalar_support_points[i]);
 
             stress_index = 0;
-            
 
-            //NEW store the fluid stress - projected solid stress into tmp fsi stress
-            
-            for (unsigned int j=0;j<dim;++j)
-            {
-              for (unsigned int k=0;k<=j;++k,++stress_index)
+            // store the fluid stress - projected solid stress into tmp fsi
+            // stress
+
+            for (unsigned int j = 0; j < dim; ++j)
               {
-                tmp_fsi_stress[stress_index][scalar_dof_indices[i]] =
-                f_cell_stress[stress_index][i];
+                for (unsigned int k = 0; k <= j; ++k, ++stress_index)
+                  {
+                    tmp_fsi_stress[stress_index][scalar_dof_indices[i]] =
+                      f_cell_stress[stress_index][i];
+                  }
               }
-            }
 
             // oldway for point-wise solid stress
             /*
@@ -1693,7 +1415,6 @@ void FSI_stokes<dim>::compute_acceleration_l2_projection()
               }*/
           }
       }
-
 
     for (auto f_cell = fluid_solver.dof_handler.begin_active();
          f_cell != fluid_solver.dof_handler.end();
@@ -1720,10 +1441,10 @@ void FSI_stokes<dim>::compute_acceleration_l2_projection()
             dummy_fe_values[velocities].get_function_values(
               fluid_solver.present_solution, v);
 
-            dummy_fe_values[velocities].get_function_values(projected_solid_velocity, vs_projected);
-            dummy_fe_values[velocities].get_function_values(projected_solid_acceleration, as_projected);
-           // dummy_fe_values[velocities].get_function_values(
-             // fluid_solver.previous_solution, previous_vel);
+            dummy_fe_values[velocities].get_function_values(
+              projected_solid_velocity, vs_projected);
+            dummy_fe_values[velocities].get_function_values(
+              projected_solid_acceleration, as_projected);
 
             // Fluid velocity gradient at support points
             dummy_fe_values[velocities].get_function_gradients(
@@ -1779,106 +1500,35 @@ void FSI_stokes<dim>::compute_acceleration_l2_projection()
                 Tensor<1, dim> vs;
                 for (int j = 0; j < dim; ++j)
                   {
-                    vs[j] = solid_vel[j];  // pointwise-interpolation
+                    vs[j] = solid_vel[j]; // pointwise-interpolation
                   }
                 // Fluid total acceleration at support points
                 Tensor<1, dim> fluid_acc =
-                  
-                 //(vs - v[i]) / time.get_delta_t(); // point-wise solid velocity
-                 (vs_projected[i] - v[i]) / time.get_delta_t();  // L-2 projected solid velocity
-               
+
+                  (vs - v[i]) / time.get_delta_t(); // point-wise solid velocity
+                //(vs_projected[i] - v[i]) / time.get_delta_t();  // L-2
+                //projected solid velocity
+
                 double theta = parameters.penalty_scale_factor;
 
                 fluid_acc += theta *
-                         // ((vs - v[i]) / time.get_delta_t()); // point-wise solid velocity
-                         (vs_projected[i] - v[i]) / time.get_delta_t(); // L-2 projected solid velocity
+                             //((vs - v[i]) / time.get_delta_t()); // point-wise
+                             //solid velocity
+                             (vs_projected[i] - v[i]) /
+                             time.get_delta_t(); // L-2 projected solid velocity
 
                 auto line = dof_indices[i];
                 // Note that we are setting the value of the constraint to the
                 // velocity delta!
                 tmp_fsi_acceleration(line) =
-                //fluid_acc[index] - solid_acc[index];
-                fluid_acc[index] - as_projected[i][index];
-
+                  // fluid_acc[index] - solid_acc[index];
+                  fluid_acc[index] - as_projected[i][index];
               }
           }
-
-        // Dirichlet BCs
-        /*
-        if (use_dirichlet_bc)
-          {
-            dummy_fe_values.reinit(f_cell);
-            f_cell->get_dof_indices(dof_indices);
-            auto support_points = dummy_fe_values.get_quadrature_points();
-            auto hints = cell_hints.get_data(f_cell);
-            // Declare the fluid velocity for interpolating BC
-            Vector<double> fluid_velocity(dim);
-            // Loop over the support points to set Dirichlet BCs.
-            for (unsigned int i = 0; i < unit_points.size(); ++i)
-              {
-                // Skip the already-set dofs.
-                if (dof_touched[dof_indices[i]] != 0)
-                  continue;
-                auto base_index = fluid_solver.fe.system_to_base_index(i);
-                const unsigned int i_group = base_index.first.first;
-                Assert(i_group < 2,
-                       ExcMessage(
-                         "There should be only 2 groups of finite element!"));
-                if (i_group == 1)
-                  continue; // skip the pressure dofs
-                int inside_dim_count = 0;
-                for (unsigned int d = 0; d < dim; ++d)
-                  {
-                    if (0 < std::abs(unit_points[i][d]) &&
-                        std::abs(unit_points[i][d]) < 1)
-                      {
-                        inside_dim_count++;
-                      }
-                  }
-                if (inside_dim_count == dim)
-                  {
-                    continue; // skip the in-cell support point
-                  }
-                // Same as fluid_solver.fe.system_to_base_index(i).first.second;
-                const unsigned int index =
-                  fluid_solver.fe.system_to_component_index(i).first;
-                Assert(index < dim,
-                       ExcMessage("Vector component should be less than dim!"));
-                dof_touched[dof_indices[i]] = 1;
-                if (!point_in_solid(solid_solver.dof_handler,
-                                    support_points[i]))
-                  continue;
-                Utils::CellLocator<dim, DoFHandler<dim>> locator(
-                  solid_solver.dof_handler, support_points[i], *(hints[i]));
-                *(hints[i]) = locator.search();
-                Utils::GridInterpolator<dim, Vector<double>> interpolator(
-                  solid_solver.dof_handler, support_points[i], {}, *(hints[i]));
-                if (!interpolator.found_cell())
-                  {
-                    std::stringstream message;
-                    message
-                      << "Cannot find point in solid: " << support_points[i]
-                      << std::endl;
-                    AssertThrow(interpolator.found_cell(),
-                                ExcMessage(message.str()));
-                  }
-                interpolator.point_value(localized_solid_velocity,
-                                         fluid_velocity);
-                auto line = dof_indices[i];
-                inner_nonzero.add_line(line);
-                inner_zero.add_line(line);
-                // Note that we are setting the value of the constraint to the
-                // velocity delta!
-                inner_nonzero.set_inhomogeneity(
-                  line,
-                  fluid_velocity[index] - fluid_solver.present_solution(line));
-              }
-          }*/
       }
     tmp_fsi_acceleration.compress(VectorOperation::insert);
     fluid_solver.fsi_acceleration = tmp_fsi_acceleration;
-   
-    // for (auto &stress_vector : fluid_solver.fsi_stress)
+
     for (auto &stress_vector : tmp_fsi_stress)
       {
         stress_vector.compress(VectorOperation::insert);
@@ -1913,161 +1563,165 @@ void FSI_stokes<dim>::compute_acceleration_l2_projection()
     move_solid_mesh(false);
   }
 
-template <int dim>
-void FSI_stokes<dim>::compute_penalty_energy()
-{
+  template <int dim>
+  void FSI_stokes<dim>::compute_penalty_energy()
+  {
 
-  //move_solid_mesh(true);
+    double term2_local = 0.0;
+    double penalty_term_2 = 0.0;
+    double power_local = 0.0;
+    double power_global = 0.0;
 
-  double term2_local = 0.0;
-  double penalty_term_2 = 0.0;
-  double power_local = 0.0;
-  double power_global = 0.0;
+    double theta = parameters.penalty_scale_factor;
 
-  double theta = parameters.penalty_scale_factor;
+    const double alpha = (theta * parameters.solid_rho) / time.get_delta_t();
 
-  const double alpha = (theta * parameters.solid_rho)
-                       / time.get_delta_t();
+    double l2_local = 0.0;
+    double solid_l2_global = 0.0;
 
-  double l2_local = 0.0;
-  double solid_l2_global= 0.0;
-  
-FEValues<dim> fe_values(fluid_solver.fe, fluid_solver.volume_quad_formula,
-                        update_values | update_quadrature_points | update_JxW_values);
-const FEValuesExtractors::Vector velocities(0);
-Vector<double> localized_solid_velocity(solid_solver.current_velocity); 
+    FEValues<dim> fe_values(fluid_solver.fe,
+                            fluid_solver.volume_quad_formula,
+                            update_values | update_quadrature_points |
+                              update_JxW_values);
+    const FEValuesExtractors::Vector velocities(0);
 
-for (auto f_cell = fluid_solver.dof_handler.begin_active();
-     f_cell != fluid_solver.dof_handler.end(); ++f_cell) {
+    Vector<double> localized_solid_velocity(solid_solver.current_velocity);
 
-  if (!f_cell->is_locally_owned()) continue;
-  auto ptr = fluid_solver.cell_property.get_data(f_cell);
-  if (ptr[0]->indicator == 0) continue;
-  
-  fe_values.reinit(f_cell);
-  std::vector<Tensor<1, dim>> v_quad(fe_values.n_quadrature_points);
-  fe_values[velocities].get_function_values(fluid_solver.present_solution, v_quad);
-  std::vector<Tensor<1, dim>> vs_quad(fe_values.n_quadrature_points);
-  
-  for (unsigned int q = 0; q < fe_values.n_quadrature_points; ++q) {
-    Point<dim> point = fe_values.quadrature_point(q);
-    Utils::GridInterpolator<dim, Vector<double>> interpolator(
-        solid_solver.dof_handler, point);
-    Vector<double> solid_vel(dim);
-    interpolator.point_value(localized_solid_velocity, solid_vel);
-    for (unsigned int d = 0; d < dim; ++d) {
-      vs_quad[q][d] = solid_vel[d];
-    }
+    for (auto f_cell = fluid_solver.dof_handler.begin_active();
+         f_cell != fluid_solver.dof_handler.end();
+         ++f_cell)
+      {
+
+        if (!f_cell->is_locally_owned())
+          continue;
+        auto ptr = fluid_solver.cell_property.get_data(f_cell);
+        if (ptr[0]->indicator == 0)
+          continue;
+
+        fe_values.reinit(f_cell);
+        std::vector<Tensor<1, dim>> v_quad(fe_values.n_quadrature_points);
+        fe_values[velocities].get_function_values(fluid_solver.present_solution,
+                                                  v_quad);
+        std::vector<Tensor<1, dim>> vs_quad(fe_values.n_quadrature_points);
+
+        // use projected solid velocity
+        fe_values[velocities].get_function_values(projected_solid_velocity,
+                                                  vs_quad);
+
+        // use point-wise interpolated velocity
+        /*
+        for (unsigned int q = 0; q < fe_values.n_quadrature_points; ++q) {
+          Point<dim> point = fe_values.quadrature_point(q);
+          Utils::GridInterpolator<dim, Vector<double>> interpolator(
+              solid_solver.dof_handler, point);
+          Vector<double> solid_vel(dim);
+          interpolator.point_value(localized_solid_velocity, solid_vel);
+          for (unsigned int d = 0; d < dim; ++d) {
+            vs_quad[q][d] = solid_vel[d];
+          }
+        }*/
+
+        for (unsigned int q = 0; q < fe_values.n_quadrature_points; ++q)
+          {
+
+            double diff_norm_sq = 0.0;
+            double dot = 0.0;
+            double vs_norm_sq = 0.0;
+
+            for (unsigned int d = 0; d < dim; ++d)
+              {
+                double diff = vs_quad[q][d] - v_quad[q][d];
+                diff_norm_sq += diff * diff;
+                dot += diff * v_quad[q][d];
+                vs_norm_sq += vs_quad[q][d] * vs_quad[q][d];
+              }
+
+            term2_local += diff_norm_sq * fe_values.JxW(q);
+            l2_local += vs_norm_sq * fe_values.JxW(q);
+            power_local += dot * fe_values.JxW(q);
+          }
+      }
+
+    MPI_Allreduce(
+      &l2_local, &solid_l2_global, 1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
+
+    MPI_Allreduce(
+      &term2_local, &penalty_term_2, 1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
+
+    MPI_Allreduce(
+      &power_local, &power_global, 1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
+
+    // penalty_term_2 = (alpha/2)*penalty_term_2;
+
+    power_global = alpha * power_global;
+
+    const double solid_velocity_L2 = std::sqrt(solid_l2_global);
+
+    const double velocity_diff_L2 = std::sqrt(penalty_term_2);
+
+    if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+      {
+
+        std::ofstream file("penalty_energy.txt",
+                           time.current() == 0 ? std::ios::out : std::ios::app);
+
+        if (time.current() == 0)
+          {
+            file << "Time\tPenalty_power\tSolid_L2_Vel\tVel_diff_L2\n";
+          }
+
+        file << time.current() << "\t" << power_global << "\t"
+             << solid_velocity_L2 << "\t" << velocity_diff_L2 << '\n';
+        file.close();
+      }
   }
 
-  for (unsigned int q = 0; q < fe_values.n_quadrature_points; ++q) {
-    
-    double diff_norm_sq = 0.0;
-    double dot = 0.0;
-    double vs_norm_sq   = 0.0; 
+  template <int dim>
+  void FSI_stokes<dim>::compute_ke_rate()
+  {
 
-    for (unsigned int d = 0; d < dim; ++d) {
-      double diff = vs_quad[q][d] - v_quad[q][d];
-      diff_norm_sq += diff * diff;
-      dot += diff * v_quad[q][d];
-      vs_norm_sq   += vs_quad[q][d] * vs_quad[q][d];
-    }
-    term2_local += diff_norm_sq * fe_values.JxW(q);
-    l2_local    += vs_norm_sq   * fe_values.JxW(q);
-    power_local += dot * fe_values.JxW(q);
+    double ke_rate_local = 0.0, ke_rate_global = 0.0;
 
-  }
-}
-
-MPI_Allreduce(&l2_local, &solid_l2_global, 1,
-  MPI_DOUBLE, MPI_SUM, mpi_communicator);
-
-MPI_Allreduce(
-  &term2_local, &penalty_term_2, 1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
-
-
-  MPI_Allreduce(&power_local,     &power_global,
-    1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
-
-penalty_term_2 = (alpha/2)*penalty_term_2;
-
-power_global = alpha * power_global;
-
-const double solid_velocity_L2 = std::sqrt(solid_l2_global);
-
-
- if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
-        {
-          
-          std::ofstream file("penalty_energy.txt",
-                             time.current() == 0 ? std::ios::out
-                                                 : std::ios::app);
-
-          if (time.current() == 0)
-            {
-              file << "Time\tPenalty_dissipation\tPenalty_power\tSolid_L2_Vel\n";
-            }
-
-          file << time.current() << "\t" 
-               << penalty_term_2 << "\t"
-               << power_global << "\t"
-               << solid_velocity_L2 << '\n';           
-          file.close();
-        }
-    
-
-//move_solid_mesh(false);
-}
-
-template <int dim>
-void FSI_stokes<dim>::compute_ke_rate()
-{
-  //move_solid_mesh(true);
-
-  double ke_rate_local = 0.0, ke_rate_global = 0.0;
-
-  FEValues<dim> fe_values(fluid_solver.fe,
-                              fluid_solver.volume_quad_formula,
-                              update_values | update_quadrature_points |
+    FEValues<dim> fe_values(fluid_solver.fe,
+                            fluid_solver.volume_quad_formula,
+                            update_values | update_quadrature_points |
                               update_JxW_values);
 
-  const FEValuesExtractors::Vector velocities(0);
-  Vector<double> localized_solid_acc(solid_solver.current_acceleration);
+    const FEValuesExtractors::Vector velocities(0);
+    Vector<double> localized_solid_acc(solid_solver.current_acceleration);
 
-
-
-  for (auto f_cell = fluid_solver.dof_handler.begin_active();
-      f_cell != fluid_solver.dof_handler.end(); ++f_cell)
+    for (auto f_cell = fluid_solver.dof_handler.begin_active();
+         f_cell != fluid_solver.dof_handler.end();
+         ++f_cell)
       {
         if (!f_cell->is_locally_owned())
-        {
-          continue;
-        }
+          {
+            continue;
+          }
 
         const auto property = fluid_solver.cell_property.get_data(f_cell);
-        if (property[0]->indicator == 0) 
-        {
-          continue;
-        }
+        if (property[0]->indicator == 0)
+          {
+            continue;
+          }
 
         fe_values.reinit(f_cell);
 
         const unsigned int n_q = fe_values.n_quadrature_points;
-        std::vector<Tensor<1,dim>> u_f(n_q), a_s(n_q);
+        std::vector<Tensor<1, dim>> u_f(n_q), a_s(n_q);
         fe_values[velocities].get_function_values(fluid_solver.present_solution,
-                                                       u_f);
+                                                  u_f);
 
-       fe_values[velocities].get_function_values(
-        projected_solid_acceleration, a_s);       
+        fe_values[velocities].get_function_values(projected_solid_acceleration,
+                                                  a_s);
 
-        
         // Point-wise interpolation
         /*
         for (unsigned int q=0; q<n_q; ++q)
         {
           const Point<dim> x_q = fe_values.quadrature_point(q);
-          Utils::GridInterpolator<dim,Vector<double>> interp(solid_solver.dof_handler, x_q);
-          Vector<double> tmp(dim);
+          Utils::GridInterpolator<dim,Vector<double>>
+        interp(solid_solver.dof_handler, x_q); Vector<double> tmp(dim);
           interp.point_value(localized_solid_acc, tmp);
           for (unsigned int d=0; d<dim; ++d)
           {
@@ -2075,202 +1729,190 @@ void FSI_stokes<dim>::compute_ke_rate()
           }
         }*/
 
-        for (unsigned int q=0; q<n_q; ++q)
-        {
+        for (unsigned int q = 0; q < n_q; ++q)
+          {
             double dot = 0.0;
-            for (unsigned int d=0; d<dim; ++d)
-            {
-              dot += a_s[q][d] * u_f[q][d];
-            }
+            for (unsigned int d = 0; d < dim; ++d)
+              {
+                dot += a_s[q][d] * u_f[q][d];
+              }
             ke_rate_local += dot * fe_values.JxW(q);
-        }
+          }
       }
 
-      MPI_Allreduce(&ke_rate_local, &ke_rate_global, 1,
-                       MPI_DOUBLE, MPI_SUM, mpi_communicator);
+    MPI_Allreduce(&ke_rate_local,
+                  &ke_rate_global,
+                  1,
+                  MPI_DOUBLE,
+                  MPI_SUM,
+                  mpi_communicator);
 
-      ke_rate_global *= parameters.solid_rho;
+    ke_rate_global *= parameters.solid_rho;
 
-      if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+    if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
       {
         std::ofstream file("ke_rate.txt",
-                                  time.current() == 0 ? std::ios::out
-                                                       : std::ios::app);
+                           time.current() == 0 ? std::ios::out : std::ios::app);
 
         if (time.current() == 0)
-        {
-          file << "Time\tKE_rate\n";
-        }
+          {
+            file << "Time\tKE_rate\n";
+          }
 
-        file << time.current() << '\t'
-        << ke_rate_global << '\n';
+        file << time.current() << '\t' << ke_rate_global << '\n';
 
         file.close();
       }
+  }
 
-      //move_solid_mesh(false);
-}
+  template <int dim>
+  void FSI_stokes<dim>::compute_stress_power()
+  {
 
+    double local_power = 0.0, global_power = 0.0;
 
-template <int dim>
-void FSI_stokes<dim>::compute_stress_power()
-{
-  //move_solid_mesh(true);
+    FEValues<dim> fe_values(fluid_solver.fe,
+                            fluid_solver.volume_quad_formula,
+                            update_values | update_gradients |
+                              update_quadrature_points | update_JxW_values);
 
-  double local_power = 0.0, global_power = 0.0;
+    FEValues<dim> fe_values_s(
+      fluid_solver.scalar_fe, fluid_solver.volume_quad_formula, update_values);
 
-  FEValues<dim> fe_values(fluid_solver.fe,
-                           fluid_solver.volume_quad_formula,
-                          update_values | update_gradients | update_quadrature_points |
-                          update_JxW_values);
+    const FEValuesExtractors::Vector velocities(0);
 
-  FEValues<dim> fe_values_s(fluid_solver.scalar_fe,
-                           fluid_solver.volume_quad_formula,
-                          update_values); 
-  
+    std::vector<std::vector<Vector<double>>> localized_stress(
+      dim, std::vector<Vector<double>>(dim));
 
-  const FEValuesExtractors::Vector velocities(0);
-
-  std::vector<std::vector<Vector<double>>> localized_stress(
-    dim, std::vector<Vector<double>>(dim));
-
-    for (unsigned int i=0;i<dim;++i)
-    {
-      for (unsigned int j=i;j<dim;++j)
+    for (unsigned int i = 0; i < dim; ++i)
       {
-        localized_stress[i][j] = solid_solver.stress[i][j];
+        for (unsigned int j = i; j < dim; ++j)
+          {
+            localized_stress[i][j] = solid_solver.stress[i][j];
+          }
       }
-    }   
 
-    std::array<std::vector<double>, SymmetricTensor<2,dim>::n_independent_components>
-    sigma_q; 
-
+    std::array<std::vector<double>,
+               SymmetricTensor<2, dim>::n_independent_components>
+      sigma_q;
 
     for (auto f_cell = fluid_solver.dof_handler.begin_active();
-    f_cell != fluid_solver.dof_handler.end(); ++f_cell)
+         f_cell != fluid_solver.dof_handler.end();
+         ++f_cell)
 
-    {
-      if (!f_cell->is_locally_owned())
       {
-        continue;
-      }
+        if (!f_cell->is_locally_owned())
+          {
+            continue;
+          }
 
-      if (fluid_solver.cell_property.get_data(f_cell)[0]->indicator == 0)
-      {
-         continue;
-      }
+        if (fluid_solver.cell_property.get_data(f_cell)[0]->indicator == 0)
+          {
+            continue;
+          }
 
-      fe_values.reinit(f_cell);
+        fe_values.reinit(f_cell);
 
-      typename DoFHandler<dim>::active_cell_iterator
-      scalar_cell(&fluid_solver.triangulation,
-        f_cell->level(),
-        f_cell->index(),
-        &fluid_solver.scalar_dof_handler);
+        typename DoFHandler<dim>::active_cell_iterator scalar_cell(
+          &fluid_solver.triangulation,
+          f_cell->level(),
+          f_cell->index(),
+          &fluid_solver.scalar_dof_handler);
 
         fe_values_s.reinit(scalar_cell);
-  
+
         for (auto &vecs : sigma_q)
-        {
-          vecs.resize(fe_values_s.n_quadrature_points);
-        }
+          {
+            vecs.resize(fe_values_s.n_quadrature_points);
+          }
 
+        const unsigned int n_q = fe_values.n_quadrature_points;
+        std::vector<Tensor<2, dim>> grad_u(n_q);
+        fe_values[velocities].get_function_gradients(
+          fluid_solver.present_solution, grad_u);
 
-      const unsigned int n_q = fe_values.n_quadrature_points;
-      std::vector<Tensor<2,dim>> grad_u(n_q);
-      fe_values[velocities].get_function_gradients(fluid_solver.present_solution,
-                                                       grad_u);
+        // L-2 projected stress
 
-      // L-2 projected stress
-      /*
-      unsigned int comp = 0;  
-      for (unsigned int i = 0; i < dim; ++i)  
-      {
-        for (unsigned int j = 0; j <= i; ++j, ++comp) 
-        {
-          fe_values_s.get_function_values(projected_solid_stress[comp],
-            sigma_q[comp]);
-        }
-      }*/
-
-      for (unsigned int q=0;q<n_q;++q)
-      {
-        SymmetricTensor<2,dim> sigma_s;
-        
-        
-        /*
-        comp = 0;
+        unsigned int comp = 0;
         for (unsigned int i = 0; i < dim; ++i)
-        {
-          for (unsigned int j = 0; j <= i; ++j, ++comp)  
           {
-            sigma_s[i][j] = sigma_q[comp][q];  
+            for (unsigned int j = 0; j <= i; ++j, ++comp)
+              {
+                fe_values_s.get_function_values(projected_solid_stress[comp],
+                                                sigma_q[comp]);
+              }
           }
-        }*/
-        
-        // point-wise stress
-        
-        const Point<dim> x_q = fe_values.quadrature_point(q);
 
-            Utils::GridInterpolator<dim,Vector<double>>
-               interp(solid_solver.scalar_dof_handler, x_q);
-
-        for (unsigned int i=0;i<dim;++i)
-        {
-          for (unsigned int j=i;j<dim;++j)
+        for (unsigned int q = 0; q < n_q; ++q)
           {
-            Vector<double> tmp(1);
-            interp.point_value(localized_stress[i][j], tmp);
-            sigma_s[i][j] = tmp[0];
+            SymmetricTensor<2, dim> sigma_s;
+
+            comp = 0;
+            for (unsigned int i = 0; i < dim; ++i)
+              {
+                for (unsigned int j = 0; j <= i; ++j, ++comp)
+                  {
+                    sigma_s[i][j] = sigma_q[comp][q];
+                  }
+              }
+
+            // point-wise stress
+            /*
+            const Point<dim> x_q = fe_values.quadrature_point(q);
+
+                Utils::GridInterpolator<dim,Vector<double>>
+                   interp(solid_solver.scalar_dof_handler, x_q);
+
+            for (unsigned int i=0;i<dim;++i)
+            {
+              for (unsigned int j=i;j<dim;++j)
+              {
+                Vector<double> tmp(1);
+                interp.point_value(localized_stress[i][j], tmp);
+                sigma_s[i][j] = tmp[0];
+              }
+            }*/
+
+            double dot = 0.0;
+            for (unsigned int i = 0; i < dim; ++i)
+              {
+                for (unsigned int j = 0; j < dim; ++j)
+                  {
+                    dot += sigma_s[i][j] * grad_u[q][i][j];
+                  }
+              }
+
+            local_power += dot * fe_values.JxW(q);
           }
-        }
-
-        double dot = 0.0;
-        for (unsigned int i=0;i<dim;++i)
-        {
-          for (unsigned int j=0;j<dim;++j)
-          {
-            dot += sigma_s[i][j] * grad_u[q][i][j];
-          }
-        }
-
-        local_power += dot * fe_values.JxW(q);
-
       }
-    }
 
-    MPI_Allreduce(&local_power, &global_power, 1,
-                   MPI_DOUBLE, MPI_SUM, mpi_communicator);
+    MPI_Allreduce(
+      &local_power, &global_power, 1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
 
-    
-    if (Utilities::MPI::this_mpi_process(mpi_communicator)==0)
-    {
-      std::ofstream file("stress_power.txt",
-                           time.current()==0 ? std::ios::out : std::ios::app);
-
-      if (time.current()==0) 
+    if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
       {
-        file << "Time\tStress_Power\n";
+        std::ofstream file("stress_power.txt",
+                           time.current() == 0 ? std::ios::out : std::ios::app);
+
+        if (time.current() == 0)
+          {
+            file << "Time\tStress_Power\n";
+          }
+
+        file << time.current() << '\t' << global_power << '\n';
+        file.close();
       }
+  }
 
-      file << time.current() << '\t' << global_power << '\n';
-      file.close();
-    }
+  template <int dim>
+  void FSI_stokes<dim>::compute_traction_power()
+  {
 
-
-  //move_solid_mesh(false);
-}
-
-template <int dim>
-void FSI_stokes<dim>::compute_traction_power()
-{
-  //move_solid_mesh(true);
-
-  FEFaceValues<dim> fe_face_values(
-    fluid_solver.fe,
-    fluid_solver.face_quad_formula,
-    update_values | update_gradients | update_quadrature_points |
-      update_normal_vectors | update_JxW_values);
+    FEFaceValues<dim> fe_face_values(
+      fluid_solver.fe,
+      fluid_solver.face_quad_formula,
+      update_values | update_gradients | update_quadrature_points |
+        update_normal_vectors | update_JxW_values);
 
     const FEValuesExtractors::Vector velocities(0);
     const FEValuesExtractors::Scalar pressure(dim);
@@ -2284,98 +1926,89 @@ void FSI_stokes<dim>::compute_traction_power()
     std::vector<double> pressure_values_face(n_q_points_face);
 
     for (auto cell = fluid_solver.dof_handler.begin_active();
-    cell != fluid_solver.dof_handler.end(); ++cell)
+         cell != fluid_solver.dof_handler.end();
+         ++cell)
 
-    {
-      if (!cell->is_locally_owned()) 
       {
-        continue;
-      }
+        if (!cell->is_locally_owned())
+          {
+            continue;
+          }
 
-      if (fluid_solver.cell_property.get_data(cell)[0]->indicator == 0)
-      {
-         continue;
-      }
+        if (fluid_solver.cell_property.get_data(cell)[0]->indicator == 0)
+          {
+            continue;
+          }
 
-      for (unsigned int f=0; f<GeometryInfo<dim>::faces_per_cell; ++f)
-      {
-        if (cell->face(f)->at_boundary())
-        {
-           continue;   // for now ignore external boundary, change in the future
-        }
+        for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+          {
+            if (cell->face(f)->at_boundary())
+              {
+                continue; // for now ignore external boundary, change in the
+                          // future
+              }
 
-        auto neigh = cell->neighbor(f);
+            auto neigh = cell->neighbor(f);
 
-        Assert(neigh.state() == IteratorState::valid,
-                    ExcMessage("Invalid neighbour."));
+            Assert(neigh.state() == IteratorState::valid,
+                   ExcMessage("Invalid neighbour."));
 
+            if (fluid_solver.cell_property.get_data(neigh)[0]->indicator == 1)
+              {
+                continue;
+              }
 
-        if (fluid_solver.cell_property.get_data(neigh)[0]->indicator == 1)
-        {
-           continue;
-        }
+            fe_face_values.reinit(cell, f);
 
-        fe_face_values.reinit(cell, f);
+            fe_face_values[velocities].get_function_values(
+              fluid_solver.present_solution, vel_face);
 
-        fe_face_values[velocities].get_function_values(
-          fluid_solver.present_solution, vel_face);
+            fe_face_values[pressure].get_function_values(
+              fluid_solver.present_solution, pressure_values_face);
 
-          fe_face_values[pressure].get_function_values(
-            fluid_solver.present_solution, pressure_values_face);
-
-          fe_face_values[velocities].get_function_symmetric_gradients(
+            fe_face_values[velocities].get_function_symmetric_gradients(
               fluid_solver.present_solution, sym_grad_v_face);
 
+            for (unsigned int q = 0; q < n_q_points_face; ++q)
+              {
+                SymmetricTensor<2, dim> stress_tensor =
+                  2 * parameters.viscosity * sym_grad_v_face[q];
 
-        for (unsigned int q=0;q<n_q_points_face;++q)
-        {
-          SymmetricTensor<2, dim> stress_tensor =
-          2 * parameters.viscosity * sym_grad_v_face[q];
+                SymmetricTensor<2, dim> pressure_tensor =
+                  -(pressure_values_face[q]) *
+                  Physics::Elasticity::StandardTensors<dim>::I;
 
-          SymmetricTensor<2, dim> pressure_tensor =
-          -(pressure_values_face[q]) *
-          Physics::Elasticity::StandardTensors<dim>::I;
+                stress_tensor += pressure_tensor;
 
-          stress_tensor += pressure_tensor;
-
-          for (int i = 0; i < dim; i++)
-          {
-            for (int j = 0; j < dim; j++)
-            {
-              local_P += stress_tensor[i][j] *
-              vel_face[q][i] *
-              fe_face_values.normal_vector(q)[j] *
-              fe_face_values.JxW(q);
-            }
+                for (int i = 0; i < dim; i++)
+                  {
+                    for (int j = 0; j < dim; j++)
+                      {
+                        local_P += stress_tensor[i][j] * vel_face[q][i] *
+                                   fe_face_values.normal_vector(q)[j] *
+                                   fe_face_values.JxW(q);
+                      }
+                  }
+              }
           }
-        }
+      }
 
-      }     
-    }
+    MPI_Allreduce(
+      &local_P, &global_P, 1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
 
-    MPI_Allreduce(&local_P, &global_P, 1, MPI_DOUBLE, MPI_SUM,
-      mpi_communicator);
+    if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+      {
+        std::ofstream file("traction_power.txt",
+                           time.current() == 0 ? std::ios::out : std::ios::app);
 
-    if (Utilities::MPI::this_mpi_process(mpi_communicator)==0)
-    {
-         std::ofstream file("traction_power.txt",
-                             time.current()==0 ? std::ios::out
-                                                  : std::ios::app);
-
-        if (time.current()==0)
-        {
-          file << "Time\tTraction_Power\n";
-        }
+        if (time.current() == 0)
+          {
+            file << "Time\tTraction_Power\n";
+          }
         file << time.current() << '\t' << global_P << '\n';
         file.close();
-    }
-
-  //move_solid_mesh(false);
-}
-
-
-
-
+      }
+  }
 
   template <int dim>
   void FSI_stokes<dim>::find_solid_bc()
@@ -2387,9 +2020,9 @@ void FSI_stokes<dim>::compute_traction_power()
     compute_fluid_traction_projection();
 
     for (unsigned int d = 0; d < dim; ++d)
-    {
-      solid_solver.fsi_traction_rows[d] = projected_fluid_traction[d];
-    }
+      {
+        solid_solver.fsi_traction_rows[d] = projected_fluid_traction[d];
+      }
 
     // Fluid FEValues to do interpolation
     FEValues<dim> fe_values(
@@ -2496,7 +2129,7 @@ void FSI_stokes<dim>::compute_traction_power()
                     for (unsigned int d2 = 0; d2 < dim; ++d2)
                       {
                         // fluid stress for traction computation
-                       solid_solver.fsi_stress_rows[d1][line + d2] =
+                        solid_solver.fsi_stress_rows[d1][line + d2] =
                           stress[d1][d2];
                       }
                     // fluid velocity for friction work computation
@@ -2844,7 +2477,7 @@ void FSI_stokes<dim>::compute_traction_power()
   template <int dim>
   void FSI_stokes<dim>::run()
   {
-    
+
     pcout << "Running with PETSc on "
           << Utilities::MPI::n_mpi_processes(mpi_communicator)
           << " MPI rank(s)..." << std::endl;
@@ -2862,7 +2495,6 @@ void FSI_stokes<dim>::compute_traction_power()
       {
         solid_solver.setup_dofs();
         solid_solver.initialize_system();
-        
 
         fluid_solver.triangulation.refine_global(
           parameters.global_refinements[0]);
@@ -2874,39 +2506,39 @@ void FSI_stokes<dim>::compute_traction_power()
             stokes_solver->initialize_bcs();
 
             projected_solid_velocity.reinit(fluid_solver.owned_partitioning,
-              fluid_solver.relevant_partitioning,
-              mpi_communicator); 
+                                            fluid_solver.relevant_partitioning,
+                                            mpi_communicator);
 
-            projected_solid_acceleration.reinit(fluid_solver.owned_partitioning,
+            projected_solid_acceleration.reinit(
+              fluid_solver.owned_partitioning,
               fluid_solver.relevant_partitioning,
               mpi_communicator);
 
-            const unsigned int stress_vec_size = dim + dim*(dim-1)/2;
+            const unsigned int stress_vec_size = dim + dim * (dim - 1) / 2;
             projected_solid_stress.resize(stress_vec_size);
             for (auto &v : projected_solid_stress)
-            {
-              v.reinit(fluid_solver.locally_owned_scalar_dofs,
-                fluid_solver.locally_relevant_scalar_dofs,
-                mpi_communicator);
-            }
+              {
+                v.reinit(fluid_solver.locally_owned_scalar_dofs,
+                         fluid_solver.locally_relevant_scalar_dofs,
+                         mpi_communicator);
+              }
 
-        for (unsigned d=0; d<dim; ++d)
-        {
-          projected_fluid_traction[d].reinit(solid_solver.locally_owned_dofs,
-            mpi_communicator); 
-        }
+            for (unsigned d = 0; d < dim; ++d)
+              {
+                projected_fluid_traction[d].reinit(
+                  solid_solver.locally_owned_dofs, mpi_communicator);
+              }
 
-              compute_ke_rate();
-              //compute_stress_power();
-              //compute_traction_power();
-              //compute_penalty_energy();
+            compute_ke_rate();
+            compute_stress_power();
+            compute_traction_power();
+            compute_penalty_energy();
           }
         else
           {
             fluid_solver.setup_dofs();
             fluid_solver.make_constraints();
             fluid_solver.initialize_system();
-    
           }
       }
     else
@@ -2957,8 +2589,7 @@ void FSI_stokes<dim>::compute_traction_power()
         }
         update_solid_box();
         update_indicator();
-       
-  
+
         Fluid::MPI::Stokes<dim> *stokes_solver =
           dynamic_cast<Fluid::MPI::Stokes<dim> *>(&fluid_solver);
         if (stokes_solver)
@@ -2983,10 +2614,8 @@ void FSI_stokes<dim>::compute_traction_power()
               first_step);
           }
 
-       
         find_fluid_bc();
-        
-       
+
         {
           TimerOutput::Scope timer_section(timer, "Run fluid solver");
           if (fluid_solver.turbulence_model)
@@ -2995,14 +2624,13 @@ void FSI_stokes<dim>::compute_traction_power()
             }
 
           fluid_solver.run_one_step(true);
-         
         }
         first_step = false;
         time.increment();
         compute_ke_rate();
-        //compute_stress_power();
-        //compute_traction_power();
-        //compute_penalty_energy();
+        compute_stress_power();
+        compute_traction_power();
+        compute_penalty_energy();
 
         if (time.time_to_refine())
           {

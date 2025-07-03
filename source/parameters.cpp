@@ -44,11 +44,10 @@ namespace Parameters
         Patterns::Selection("CompletelyInsideSolid|PartiallyInsideSolid"),
         "Set condition for calculating indicator field");
 
-      prm.declare_entry(
-          "penalty scale factor",
-          "0.0",
-          Patterns::Double(0.0),
-          "Set penalty scale factor for fluid");
+      prm.declare_entry("penalty scale factor",
+                        "0.0",
+                        Patterns::Double(0.0),
+                        "Set penalty scale factor for fluid");
     }
     prm.leave_subsection();
   }
@@ -84,8 +83,7 @@ namespace Parameters
       penalty_scale_factor = prm.get_double("penalty scale factor");
       AssertThrow(
         penalty_scale_factor >= 0.0,
-        ExcMessage(
-          "fluid penalty scale must be grater than or equal to 0.0!"));
+        ExcMessage("fluid penalty scale must be grater than or equal to 0.0!"));
     }
     prm.leave_subsection();
   }

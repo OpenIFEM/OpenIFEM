@@ -583,14 +583,12 @@ namespace Utils
     SphericalManifold<dim> spherical_manifold(center);
     TransfiniteInterpolationManifold<dim> inner_manifold;
     GridGenerator::hyper_ball_balanced(tria, center, radius);
-    //GridGenerator::hyper_ball(tria, center, radius);
+    // GridGenerator::hyper_ball(tria, center, radius);
     tria.set_all_manifold_ids(1);
     tria.set_all_manifold_ids_on_boundary(0);
     tria.set_manifold(0, spherical_manifold);
     inner_manifold.initialize(tria);
     tria.set_manifold(1, inner_manifold);
- 
-  
   }
 
   template <>

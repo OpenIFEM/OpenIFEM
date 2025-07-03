@@ -1,12 +1,12 @@
 #ifndef MPI_FSI_STOKES
 #define MPI_FSI_STOKES
 
-#include <deal.II/base/table_indices.h>
-#include <deal.II/lac/affine_constraints.h>
-#include <deal.II/physics/elasticity/standard_tensors.h>
 #include "mpi_fluid_solver.h"
 #include "mpi_shared_solid_solver.h"
 #include "mpi_stokes.h"
+#include <deal.II/base/table_indices.h>
+#include <deal.II/lac/affine_constraints.h>
+#include <deal.II/physics/elasticity/standard_tensors.h>
 
 using namespace dealii;
 
@@ -58,13 +58,10 @@ namespace MPI
                             unsigned int>>,
         int>>;
 
-
-    //PETScWrappers::MPI::BlockSparseMatrix mass_matrix;
+    // PETScWrappers::MPI::BlockSparseMatrix mass_matrix;
     PETScWrappers::MPI::SparseMatrix mass_matrix_velocity;
-    PETScWrappers::MPI::SparseMatrix mass_matrix_scalar;   
+    PETScWrappers::MPI::SparseMatrix mass_matrix_scalar;
     PETScWrappers::MPI::SparseMatrix surface_mass_matrix;
-
-
 
     PETScWrappers::MPI::BlockVector projected_solid_velocity;
     PETScWrappers::MPI::BlockVector projected_solid_acceleration;
@@ -74,7 +71,7 @@ namespace MPI
 
     AffineConstraints<double> projection_constraints;
     AffineConstraints<double> scalar_projection_constraints;
-    AffineConstraints<double> surface_constraints; 
+    AffineConstraints<double> surface_constraints;
 
     void build_projection_constraints();
 
@@ -94,9 +91,10 @@ namespace MPI
 
     void compute_ke_rate(); // compute KE rate in artificial domain
 
-    void compute_stress_power();  //compute PE rate in artificial domain
+    void compute_stress_power(); // compute PE rate in artificial domain
 
-    void compute_traction_power(); // compute traction power in the artificial boundary
+    void compute_traction_power(); // compute traction power in the artificial
+                                   // boundary
 
     /// Collect all the boundary lines in solid triangulation.
     void collect_solid_boundaries();
@@ -201,7 +199,6 @@ namespace MPI
     void refine_mesh(const unsigned int, const unsigned int);
 
     void compute_penalty_energy();
-
 
     // For MPI FSI, the solid solver uses shared trianulation. i.e.,
     // each process has the entire graph, for the ease of looping.

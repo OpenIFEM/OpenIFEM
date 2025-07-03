@@ -149,14 +149,13 @@ namespace Solid
                             }
                         }
                     }
-                } 
+                }
               AssertThrow(find_point == true,
                           ExcMessage("Did not find the specified point!"));
             }
         }
 
-      fix_nodes_on_axes(1e-10);
-      
+      // fix_nodes_on_axes(1e-10);
 
       constraints.close();
 
@@ -167,48 +166,52 @@ namespace Solid
     }
 
     template <int dim, int spacedim>
-    void SharedSolidSolver<dim, spacedim>::fix_nodes_on_axes(const double tolerance)
+    void
+    SharedSolidSolver<dim, spacedim>::fix_nodes_on_axes(const double tolerance)
     {
       pcout << "solid node is fixed on axes" << std::endl;
-      
-      for (auto cell = dof_handler.begin_active(); cell != dof_handler.end(); ++cell)
-      {
-        if (cell->subdomain_id() == this_mpi_process)
+
+      for (auto cell = dof_handler.begin_active(); cell != dof_handler.end();
+           ++cell)
         {
-          for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
-          {
-            const auto &node_3d = cell->vertex(v);
-            // Convert into a 2D point
-        Point<dim> node_2d;
-        for (unsigned int d = 0; d < dim; ++d)
-        {
-          node_2d[d] = node_3d[d];
-        }
-
-          const double x = node_2d[0];
-          const double y = node_2d[1];
-
-          if (std::fabs(x-0.25) < tolerance && std::fabs(y-0.25) < tolerance)
-          continue; // skip origin
-
-          // If y=0, fix y displacement
-          if (std::fabs(y-0.25) < tolerance)
-          {
-            unsigned int dof_index_y = cell->vertex_dof_index(v, 1);
-            if (!constraints.is_constrained(dof_index_y))
-            constraints.add_line(dof_index_y);
-          }
-
-             // If x=0, fix x displacement
-            if (std::fabs(x-0.25) < tolerance)
+          if (cell->subdomain_id() == this_mpi_process)
             {
-              unsigned int dof_index_x = cell->vertex_dof_index(v, 0);
-              if (!constraints.is_constrained(dof_index_x))
-              constraints.add_line(dof_index_x);
+              for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
+                   ++v)
+                {
+                  const auto &node_3d = cell->vertex(v);
+                  // Convert into a 2D point
+                  Point<dim> node_2d;
+                  for (unsigned int d = 0; d < dim; ++d)
+                    {
+                      node_2d[d] = node_3d[d];
+                    }
+
+                  const double x = node_2d[0];
+                  const double y = node_2d[1];
+
+                  if (std::fabs(x - 0.25) < tolerance &&
+                      std::fabs(y - 0.25) < tolerance)
+                    continue; // skip origin
+
+                  // If y=0, fix y displacement
+                  if (std::fabs(y - 0.25) < tolerance)
+                    {
+                      unsigned int dof_index_y = cell->vertex_dof_index(v, 1);
+                      if (!constraints.is_constrained(dof_index_y))
+                        constraints.add_line(dof_index_y);
+                    }
+
+                  // If x=0, fix x displacement
+                  if (std::fabs(x - 0.25) < tolerance)
+                    {
+                      unsigned int dof_index_x = cell->vertex_dof_index(v, 0);
+                      if (!constraints.is_constrained(dof_index_x))
+                        constraints.add_line(dof_index_x);
+                    }
+                }
             }
-          }
         }
-      }
     }
 
     template <int dim, int spacedim>
@@ -254,12 +257,12 @@ namespace Solid
           fsi_stress_rows[d].reinit(dof_handler.n_dofs());
         }
 
-        fsi_traction_rows.resize(dim);
-        for (unsigned int d = 0; d < dim; ++d)
-          {
-            fsi_traction_rows[d].reinit(dof_handler.n_dofs());
-          }
-      
+      fsi_traction_rows.resize(dim);
+      for (unsigned int d = 0; d < dim; ++d)
+        {
+          fsi_traction_rows[d].reinit(dof_handler.n_dofs());
+        }
+
       fluid_velocity.reinit(dof_handler.n_dofs());
       fluid_pressure.reinit(scalar_dof_handler.n_dofs());
 
